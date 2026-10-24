@@ -17,10 +17,26 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install Android SDK platform
+      - name: Install Android SDK platform 37
+        # API 37 (Android 17, "Cinnamon Bun") is a preview platform: the stable
+        # repository only lists up to android-36, and sdkmanager's
+        # "platforms;android-37" only works where the runner already ships it.
+        # So: keep an existing android-37 if the runner has one; otherwise
+        # download the preview platform zip (platform-CinnamonBun) and install
+        # it as platforms/android-37. Never overwrite an existing platform.
         run: |
-          echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;37.0.0" || true
-          ls "$ANDROID_HOME/platforms" || true
+          if [ -d "$ANDROID_HOME/platforms/android-37" ]; then
+            echo "platform android-37 already present, keeping it"
+          else
+            echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;37.0.0" || true
+          fi
+          if [ ! -d "$ANDROID_HOME/platforms/android-37" ]; then
+            echo "falling back to Cinnamon Bun preview platform zip"
+            curl -sL -o /tmp/platform-CinnamonBun.zip https://dl.google.com/android/repository/platform-CinnamonBun_r02.zip
+            mkdir -p /tmp/cb && unzip -q -o /tmp/platform-CinnamonBun.zip -d /tmp/cb
+            cp -r /tmp/cb/android-37.1-beta2 "$ANDROID_HOME/platforms/android-37"
+          fi
+          ls "$ANDROID_HOME/platforms"
       - name: Build debug APK
         run: ./gradlew :gearslip:assembleDebug --stacktrace
       - name: Upload debug APK
