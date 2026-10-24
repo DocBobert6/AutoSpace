@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in Gearslip broke or behaves wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Check the [open issues](https://github.com/DocBobert6/AutoSpace/issues) first, in case someone has already reported it.
+
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Make, model, and year.
+      placeholder: 2019 Honda Civic
+    validations:
+      required: true
+
+  - type: dropdown
+    id: head-unit
+    attributes:
+      label: Head unit
+      options:
+        - The one the car came with
+        - A factory unit from another car
+        - An aftermarket unit (Pioneer, Kenwood, Alpine, and so on)
+        - A homemade or open-source unit, such as LIVI
+        - I don't know
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - USB cable
+        - Wireless dongle
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        On the phone, open Logs from Gearslip's home screen and tap Share log. Drag the file here.
+        The log records your phone, its Android version, the Gearslip version, and why the connection ended.
+      placeholder: Drop the log file here.
+    validations:
+      required: true

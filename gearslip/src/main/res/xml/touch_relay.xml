@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Gearslip never reads screen content: it only needs canPerformGestures, which is what lets
+  dispatchGesture replay a head-unit touch onto whatever app is mirrored. No event types are
+  requested, so the service is notified of nothing.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canPerformGestures="true"
+    android:description="@string/touch_relay_description"
+    android:notificationTimeout="0" />

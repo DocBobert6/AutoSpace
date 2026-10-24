@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest something Gearslip should do.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do?
+      description: Describe the problem, not the solution. "I can't see my next turn while music plays" helps more than "add a turn widget."
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: How should it work?
+      description: Your idea for a fix, if you have one.
+
+  - type: textarea
+    id: apps
+    attributes:
+      label: Apps involved
+      description: Any apps this touches, such as a map or music app.

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="touch_relay_description">Lets Gearslip replay touches from the car screen onto the phone while mirroring. Gearslip does not read screen content.</string>
+</resources>

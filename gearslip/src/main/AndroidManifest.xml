@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The projected WebView loads real pages; without this every load fails silently. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
+      Phone mirroring. Android refuses to hand over a MediaProjection unless a foreground
+      service of this type is already running, so MirrorService exists purely to satisfy that
+      and to give the driver a way to stop the capture from the notification shade.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!--
+        Wireless Android Auto: Bluetooth reaches the paired car's Android Auto service, which
+        hands over its Wi-Fi details; Gearslip then joins that network to reach the car.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation" />
+    <!-- Android 17 drops an app's traffic to the car's Wi-Fi without this. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
+    <!-- The dashboard opened from the car clock: today's agenda and current weather. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+
+    <!-- Capturing a media app's playback (to send to the car) is gated on this by the platform. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!--
+        Playback capture copies a stream rather than moving it, so the phone keeps playing the
+        music it is sending to the car. Silencing the phone's own speaker for the drive needs this.
+    -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!--
+        Audio capture counts as a screen share, and Android hides notifications during one. The
+        protection can be switched off for the drive, but only with this, granted once over adb
+        (pm grant). Without it Gearslip works the same and notifications stay hidden.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
+        Phone calls on the car screen. READ_PHONE_STATE and READ_CALL_LOG together are what a
+        call's own state (ringing, in progress) and the incoming number need; READ_CONTACTS
+        turns that number into a name; ANSWER_PHONE_CALLS lets the driver pick up from here.
+        Declining a call, and the caller ID itself, need Gearslip set as the phone's caller ID
+        and spam app too - an on-device consent, not a permission declared here.
+    -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+
+    <!-- Placing a call from the car screen's dial pad or contacts list needs this. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+
+    <!--
+      Declared, not just requested. Templated apps decide whether to talk to a host by asking
+      whether it holds this permission (HostValidator.isValidHost checks it before falling back
+      to a signature allow-list containing Android Auto's). It is defined by the car framework
+      on Android Automotive, which does not exist on a phone, so nothing else defines it here
+      and Gearslip has to define it to be able to hold it.
+    -->
+    <permission
+        android:name="android.car.permission.TEMPLATE_RENDERER"
+        android:protectionLevel="normal" />
+    <uses-permission android:name="android.car.permission.TEMPLATE_RENDERER" />
+
+    <uses-feature android:name="android.hardware.usb.accessory" android:required="true" />
+
+    <queries>
+    <!-- Named directly: current builds have no launcher-category entry point for the MAIN/
+         LAUNCHER query below to find, so the setup guide's Android Auto check needs this to see
+         whether the package is installed at all. -->
+    <package android:name="com.google.android.projection.gearhead" />
+    <!-- The opt-in usage note names the OS: GrapheneOS's setup app and /e/OS's app store give
+         them away (UsageStats.osName). -->
+    <package android:name="app.grapheneos.setupwizard" />
+    <package android:name="foundation.e.apps" />
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+    <!-- Templated apps are invisible to us without this, and the catalog comes back empty. -->
+    <intent>
+        <action android:name="androidx.car.app.CarAppService" />
+    </intent>
+    <!-- Media apps for the car: found by their browser service. -->
+    <intent>
+        <action android:name="android.media.browse.MediaBrowserService" />
+    </intent>
+    <!-- Speech: without these, Android hides the recognizer and the voice from us and
+         SpeechRecognizer reports none installed even when one is. -->
+    <intent>
+        <action android:name="android.speech.RecognitionService" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.TTS_SERVICE" />
+    </intent>
+</queries>
+
+<application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="${appLabel}"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AutoSpace">
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.logshare"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
+
+
+        <!--
+          singleTop: the head unit can re-attach while we are already foregrounded, which
+          arrives via onNewIntent rather than a fresh instance.
+        -->
+        <activity
+            android:name=".GearslipActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density|locale|layoutDirection|fontScale">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <!--
+          Answers the car's USB connection on GearslipActivity's behalf. Kept apart from the
+          activity so Settings can switch off just this (AppSettings.setGearslipEnabled) and leave
+          the head unit to Android Auto, without disabling the screen the switch is on.
+        -->
+        <activity-alias
+            android:name=".GearslipUsbAccessory"
+            android:targetActivity=".GearslipActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.hardware.usb.action.USB_ACCESSORY_ATTACHED"
+                android:resource="@xml/accessory_filter" />
+        </activity-alias>
+
+        <!-- Dev builds' test message: its Reply and Mark as read actions land here. -->
+        <receiver
+            android:name=".notify.TestMessageReceiver"
+            android:exported="false" />
+
+        <service
+            android:name=".mirror.MirrorService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".host.LocationKeepAlive"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!--
+          Holds the capture session that carries a media app's audio to the car. It also claims
+          the microphone, so voice replies can hear the driver with the phone locked.
+        -->
+        <service
+            android:name=".audio.AudioCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection|microphone" />
+
+        <!--
+          Touch on the car screen is replayed onto the phone through this service.
+          dispatchGesture is the only public way for an app to inject input into another app,
+          and it is unavailable until the user enables Gearslip under Settings > Accessibility.
+        -->
+        <service
+            android:name=".mirror.TouchRelayService"
+            android:exported="true"
+            android:label="AutoSpace car touch"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/touch_relay" />
+        </service>
+
+        <!--
+          Reads the phone's notifications so the car can show and answer them. Inert until the
+          user grants Notification access to Gearslip in the phone's settings.
+        -->
+        <service
+            android:name=".notify.GearslipNotificationListener"
+            android:exported="true"
+            android:label="AutoSpace notifications"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!--
+          Sees incoming calls before they ring, so the car screen can show the caller and
+          decline it. Inert until the driver sets Gearslip as the phone's caller ID and spam
+          app, under Settings > Apps > Default apps - the same consent a call-blocking app asks
+          for, not a privileged one.
+        -->
+        <service
+            android:name=".call.GearslipCallScreening"
+            android:exported="true"
+            android:label="AutoSpace calls"
+            android:permission="android.permission.BIND_SCREENING_SERVICE">
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Must match the strings the head unit sends during the AOAP switch. aasdk pins
+  src/USB/AccessoryModeQueryFactory.cpp:43-51 as manufacturer "Android", model "Android Auto" -
+  confirmed against the real 2018 Uconnect. Google's own desktop-head-unit reference tool
+  reports a different model string ("Android Open Automotive Protocol", confirmed via logcat
+  on 2026-09-17), so both are listed here. `version` is deliberately omitted: head units differ
+  on what they send, and a mismatch fails the filter silently.
+-->
+<resources>
+    <usb-accessory manufacturer="Android" model="Android Auto" />
+    <usb-accessory manufacturer="Android" model="Android Open Automotive Protocol" />
+</resources>

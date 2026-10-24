@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug-only override of the main icon background (src/debug/res wins over src/main/res),
+     so a debug install is never mistaken for a release one on the home screen. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M0,0h108v108h-108z"
+        android:fillColor="#f5c518"/>
+    <path
+        android:pathData="M54,2 A52,52 0 1,1 53.99,2 Z"
+        android:fillColor="#e6b400"/>
+</vector>

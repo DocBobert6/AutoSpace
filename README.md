@@ -1,17 +1,17 @@
-# Frostslip
+# AutoSpace
 
-Frostslip is a fork of [Gearslip](https://github.com/twinksoftware/Gearslip) by Twink Software LLC,
+AutoSpace is a fork of [Gearslip](https://github.com/twinksoftware/Gearslip) by Twink Software LLC,
 rebuilt around a modern frosted-glass Material 3 UI, custom screen resolutions, a no-AI
 DuckDuckGo browser with a media finder, and mirrored Google Maps support. It is licensed
 under AGPL-3.0 (see `LICENSE`); upstream credit is retained in `NOTICE.md` and below.
 This fork is not affiliated with, endorsed by, or sponsored by Twink Software LLC or Google LLC.
 
 > Upstream baseline: twinksoftware/Gearslip commit `e8f51f4947d6edeb3d3e9dc52ae6598d867f677a`
-> (0.3.01-alpha). Frostslip's own changes are listed in `CHANGELOG.md`.
+> (0.3.01-alpha). AutoSpace's own changes are listed in `CHANGELOG.md`.
 
 ---
 
-<img src="docs/icon/gearslip-icon.png" alt="Gearslip icon" width="96" height="96">
+<img src="docs/icon/autospace-icon.png" alt="AutoSpace icon" width="96" height="96">
 
 # Gearslip (upstream project)
 
@@ -20,7 +20,7 @@ An Android Auto alternative built for everyone.
 
 [![forthebadge](https://forthebadge.com/badges/compatibility-club-penguin.svg)](https://forthebadge.com)
 
-[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/DocBobert6/Frostslip)
+[<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/DocBobert6/AutoSpace)
 
 Questions, ideas?
 [Join the discussion on Matrix](https://matrix.to/#/!mf0_mgBd5KqKpc9FfX_wHp1jFCcwAtPrndIn_oGIyMk?via=matrix.org).
@@ -117,7 +117,7 @@ Check that your copy of Gearslip is genuine with
 with the output of `apksigner verify --print-certs`.
 
 ```
-app.frostslip
+app.autospace
 4C:C5:6E:BD:D1:3A:54:D2:60:EC:A9:B7:E2:B2:AE:6B:30:E2:F2:25:BF:DA:8F:50:8F:07:09:ED:F0:84:94:8B
 ```
 

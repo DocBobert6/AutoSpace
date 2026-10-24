@@ -1,0 +1,65 @@
+name: Car report
+description: Tell us whether Gearslip works in your car, so others know before they install.
+labels: ["car report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from working cars help as much as reports from broken ones.
+
+  - type: input
+    id: car
+    attributes:
+      label: Car
+      description: Make, model, and year.
+      placeholder: 2019 Honda Civic
+    validations:
+      required: true
+
+  - type: dropdown
+    id: head-unit
+    attributes:
+      label: Head unit
+      options:
+        - The one the car came with
+        - A factory unit from another car
+        - An aftermarket unit (Pioneer, Kenwood, Alpine, and so on)
+        - A homemade or open-source unit, such as LIVI
+        - I don't know
+    validations:
+      required: true
+
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options:
+        - USB cable
+        - Wireless dongle
+    validations:
+      required: true
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Does it work?
+      options:
+        - Yes, everything I tried works
+        - Partly. It connects, but something is wrong
+        - No, it never connects
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What you tried, and anything that didn't work.
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Needed if the car doesn't work. On the phone, open Logs from Gearslip's home screen and tap Share log. Drag the file here.
+      placeholder: Drop the log file here.

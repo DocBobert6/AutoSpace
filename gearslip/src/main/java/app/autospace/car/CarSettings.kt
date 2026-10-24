@@ -1,0 +1,356 @@
+package app.autospace.car
+
+import android.content.Context
+import app.autospace.AppSettings
+import app.autospace.audio.CarAudio
+import app.autospace.car.theme.GsTheme
+import app.autospace.car.theme.GsThemes
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+enum class NightMode { AUTO, DAY, NIGHT }
+
+/** Distances and temperatures. [AUTO] goes by the phone's region. */
+enum class Units { AUTO, IMPERIAL, METRIC }
+
+/** Where a new message shows: [NAV_BAR] turns the clock button into it, [CARD] floats a card top right. */
+
+/** The car UI's own colours. Separate from [NightMode], which is about the light outside (the map). */
+enum class AppTheme { PHONE, LIGHT, DARK }
+
+/**
+ * Settings changed from the car screen itself. Held as flows so the car UI reacts the moment a
+ * button is tapped, and persisted through [AppSettings] so they survive the next connection.
+ */
+object CarSettings {
+
+    private const val KEY_SCALE = "car_scale"
+    private const val KEY_OPEN = "car_open_on_connect"
+    private const val KEY_NIGHT = "car_night_mode"
+    private const val KEY_PIPE_AUDIO = "car_pipe_audio"
+private const val KEY_SPEAK_DIRECTIONS = "car_speak_directions"
+private const val KEY_BLUETOOTH_WARNING = "car_bluetooth_warning"
+private const val KEY_LOCATION_WARNING = "car_location_warning"
+    private const val KEY_AUDIO_CHOICE_ASKED = "car_audio_choice_asked"
+    private const val KEY_LAST_NAV = "car_last_nav"
+    private const val KEY_LAST_MEDIA = "car_last_media"
+    private const val KEY_AUTOPLAY = "car_autoplay"
+    private const val KEY_PLAYER_TITLE = "car_player_title"
+    private const val KEY_THEME = "car_app_theme"
+    private const val KEY_UI_THEME = "car_ui_theme"
+    private const val KEY_PINNED = "car_pinned_apps"
+    private const val KEY_APP_ORDER = "car_app_order"
+    private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
+    private const val KEY_SYSTEM_SPEECH = "car_system_speech"
+    private const val KEY_CAR_SENSORS = "car_sensors_enabled"
+    private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
+    private const val KEY_UNITS = "car_units"
+    private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
+    private const val KEY_WHATS_NEW_SEEN = "car_whats_new_seen_code"
+
+    /** How many shortcuts the nav bar makes room for; a driver reaching for one needs it to
+     * still be on the bar, not off the edge of a long list. */
+    const val MAX_PINNED = 3
+
+    /** Id of the app to open on connect; [HOME] opens the launcher. */
+    const val HOME = "home"
+
+    private lateinit var app: Context
+
+    private val scaleFlow = MutableStateFlow(1f)
+    private val openFlow = MutableStateFlow(HOME)
+    private val nightFlow = MutableStateFlow(NightMode.AUTO)
+    private val pipeAudioFlow = MutableStateFlow(true)
+    private val speakDirectionsFlow = MutableStateFlow(true)
+    private val bluetoothWarningFlow = MutableStateFlow(true)
+    private val locationWarningFlow = MutableStateFlow(true)
+    private val lastNavFlow = MutableStateFlow<String?>(null)
+    private val lastMediaFlow = MutableStateFlow<String?>(null)
+    private val autoplayFlow = MutableStateFlow(false)
+    private val playerTitleFlow = MutableStateFlow(false)
+    private val themeFlow = MutableStateFlow(AppTheme.PHONE)
+    val appTheme: StateFlow<AppTheme> = themeFlow
+    private val uiThemeFlow = MutableStateFlow(GsThemes.default.id)
+
+    /** Id of the [GsTheme] controls are drawn in; an unknown id falls back to the default. */
+    val uiTheme: StateFlow<String> = uiThemeFlow
+    private val pinnedFlow = MutableStateFlow<Set<String>>(emptySet())
+    private val appOrderFlow = MutableStateFlow<List<String>>(emptyList())
+    private val experimentalFeaturesFlow = MutableStateFlow(false)
+    private val systemSpeechFlow = MutableStateFlow(false)
+    private val carSensorsFlow = MutableStateFlow(false)
+    private val seenSafetyWarningFlow = MutableStateFlow(false)
+    private val unitsFlow = MutableStateFlow(Units.AUTO)
+
+    val units: StateFlow<Units> = unitsFlow
+
+
+    private val whatsNewFlow = MutableStateFlow(true)
+    private val whatsNewSeenFlow = MutableStateFlow(0)
+    private val whatsNewOpenFlow = MutableStateFlow(false)
+
+    /** Whether the car screen shows what's new once after each update. */
+    val whatsNewAfterUpdates: StateFlow<Boolean> = whatsNewFlow
+
+    /** Version code whose notes the car screen last showed. */
+    val whatsNewSeen: StateFlow<Int> = whatsNewSeenFlow
+
+    /** Opened by hand from Settings, whatever the two above say. Not saved. */
+    val whatsNewOpen: StateFlow<Boolean> = whatsNewOpenFlow
+
+    fun setWhatsNewAfterUpdates(on: Boolean) {
+        whatsNewFlow.value = on
+        AppSettings.putString(app, KEY_WHATS_NEW, on.toString())
+    }
+
+    fun openWhatsNew() { whatsNewOpenFlow.value = true }
+
+    /** Closes the notes and marks [versionCode]'s as read. */
+    fun closeWhatsNew(versionCode: Int) {
+        whatsNewOpenFlow.value = false
+        whatsNewSeenFlow.value = versionCode
+        AppSettings.putString(app, KEY_WHATS_NEW_SEEN, versionCode.toString())
+    }
+
+
+
+    /** Whether to show miles, feet and °F; [Units.AUTO] follows the countries that still use them. */
+    fun imperial(): Boolean = when (unitsFlow.value) {
+        Units.IMPERIAL -> true
+        Units.METRIC -> false
+        Units.AUTO -> java.util.Locale.getDefault().country in setOf("US", "LR", "MM")
+    }
+
+    fun setUnits(units: Units) {
+        unitsFlow.value = units
+        AppSettings.putString(app, KEY_UNITS, units.name)
+        Weather.refresh(app, force = true)
+    }
+
+    /** Flattened component names of the apps long-pressed onto the nav bar as shortcuts. */
+    val pinnedApps: StateFlow<Set<String>> = pinnedFlow
+
+    /** The launcher's order once the driver has moved a tile; empty keeps the grouped default. */
+    val appOrder: StateFlow<List<String>> = appOrderFlow
+
+    /** Flattened component names of the map and media apps used last, brought back on connect. */
+    val lastNav: StateFlow<String?> = lastNavFlow
+    val lastMedia: StateFlow<String?> = lastMediaFlow
+
+    /** Whether the media app starts playing by itself when the car connects. */
+    val autoplay: StateFlow<Boolean> = autoplayFlow
+
+    /**
+     * The nav bar's player keeps the song title up, with play/pause and the dock button, instead of
+     * settling to the skip buttons once a new song has announced itself.
+     */
+    val playerTitle: StateFlow<Boolean> = playerTitleFlow
+
+    val scale: StateFlow<Float> = scaleFlow
+    val openOnConnect: StateFlow<String> = openFlow
+    val nightMode: StateFlow<NightMode> = nightFlow
+
+    /**
+     * Whether a media app's sound is captured and sent over the car link. On by default, since
+     * sound in the car is the point of the exercise; the platform allows the capture only behind a
+     * consent dialog, which [app.autospace.audio.CarAudio] raises once the car has
+     * somewhere to play it. Turned off ("Bluetooth" in the settings), the app plays through the
+     * phone's normal output instead, and Android never asks.
+     */
+    val pipeAudio: StateFlow<Boolean> = pipeAudioFlow
+
+    /** Gearslip reads the map app's turns aloud on the car's directions channel; see DirectionsVoice. */
+    val speakDirections: StateFlow<Boolean> = speakDirectionsFlow
+
+    /** With Bluetooth audio, warn when the phone isn't connected to the car; see BluetoothAudioCheck. */
+    val bluetoothWarning: StateFlow<Boolean> = bluetoothWarningFlow
+
+    /** Warn on the car when the phone's location is off; see LocationCheck. */
+    val locationWarning: StateFlow<Boolean> = locationWarningFlow
+
+    /**
+     * Whether the driver has already been offered Bluetooth after turning down the capture
+     * dialog. Offered once only: someone who chose to keep the USB route shouldn't be nagged.
+     */
+    /** False until the driver picks USB or Bluetooth, in setup or in settings. */
+    val pipeAudioChosen: Boolean
+        get() = AppSettings.getString(app, KEY_PIPE_AUDIO, "") != ""
+
+    val audioChoiceAsked: Boolean
+        get() = AppSettings.getString(app, KEY_AUDIO_CHOICE_ASKED, "false") == "true"
+
+    fun markAudioChoiceAsked() = AppSettings.putString(app, KEY_AUDIO_CHOICE_ASKED, "true")
+
+    /**
+     * Off by default: a driver has to opt into experimental features as a whole before any of
+     * them - the voice assistant included - show up to turn on individually.
+     */
+    val experimentalFeaturesEnabled: StateFlow<Boolean> = experimentalFeaturesFlow
+
+    /** Listen with the phone's own speech service instead of Gearslip's on-device model. */
+    val systemSpeech: StateFlow<Boolean> = systemSpeechFlow
+
+    /**
+     * Vehicle data is experimental and off by default: the launcher's tile for it, and the
+     * voice assistant's "vehicle data" command, only show up once this and
+     * [experimentalFeaturesEnabled] are both on. See [app.autospace.car.CarSensors]
+     * for why the raw sensor feed it shows is worth gating - the field labels are unverified.
+     */
+    val carSensorsEnabled: StateFlow<Boolean> = carSensorsFlow
+
+    /**
+     * Whether the car screen's own "drive safely" warning has already been shown and dismissed
+     * once, from this same install. Separate from the phone side's own compat/safety dialogs -
+     * a driver who only ever plugs in and never opens the phone app should still see this once,
+     * on the screen they are actually about to use while driving.
+     */
+    val hasSeenSafetyWarning: StateFlow<Boolean> = seenSafetyWarningFlow
+
+    fun markSafetyWarningSeen() {
+        seenSafetyWarningFlow.value = true
+        AppSettings.putString(app, KEY_SEEN_SAFETY_WARNING, "true")
+    }
+
+    fun init(context: Context) {
+        app = context.applicationContext
+        scaleFlow.value = AppSettings.getString(app, KEY_SCALE, "1.0").toFloatOrNull() ?: 1f
+        openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
+        lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
+        lastMediaFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA, "").ifEmpty { null }
+        themeFlow.value = runCatching {
+            AppTheme.valueOf(AppSettings.getString(app, KEY_THEME, AppTheme.PHONE.name))
+        }.getOrDefault(AppTheme.PHONE)
+        uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
+        autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
+        playerTitleFlow.value = AppSettings.getString(app, KEY_PLAYER_TITLE, "false") == "true"
+        pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
+        // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
+        // own voice already reaches the car.
+        speakDirectionsFlow.value = AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, pipeAudioFlow.value.toString()) == "true"
+        bluetoothWarningFlow.value = AppSettings.getString(app, KEY_BLUETOOTH_WARNING, "true") == "true"
+        locationWarningFlow.value = AppSettings.getString(app, KEY_LOCATION_WARNING, "true") == "true"
+        nightFlow.value = runCatching {
+            NightMode.valueOf(AppSettings.getString(app, KEY_NIGHT, NightMode.AUTO.name))
+        }.getOrDefault(NightMode.AUTO)
+        pinnedFlow.value = AppSettings.getString(app, KEY_PINNED, "")
+            .split(",").filter { it.isNotEmpty() }.toSet()
+        appOrderFlow.value = AppSettings.getString(app, KEY_APP_ORDER, "")
+            .split(",").filter { it.isNotEmpty() }
+        experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
+        systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
+        carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
+        seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
+        unitsFlow.value = runCatching {
+            Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
+        }.getOrDefault(Units.AUTO)
+        whatsNewFlow.value = AppSettings.getString(app, KEY_WHATS_NEW, "true") == "true"
+        whatsNewSeenFlow.value = AppSettings.getString(app, KEY_WHATS_NEW_SEEN, "0").toIntOrNull() ?: 0
+    }
+
+    fun setScale(value: Float) {
+        scaleFlow.value = value
+        AppSettings.putString(app, KEY_SCALE, value.toString())
+    }
+
+    fun setOpenOnConnect(id: String) {
+        openFlow.value = id
+        AppSettings.putString(app, KEY_OPEN, id)
+    }
+
+    fun setLastNav(component: String) {
+        lastNavFlow.value = component
+        AppSettings.putString(app, KEY_LAST_NAV, component)
+    }
+
+    fun setLastMedia(component: String) {
+        lastMediaFlow.value = component
+        AppSettings.putString(app, KEY_LAST_MEDIA, component)
+    }
+
+    fun setAppTheme(theme: AppTheme) {
+        themeFlow.value = theme
+        AppSettings.putString(app, KEY_THEME, theme.name)
+    }
+
+    fun setUiTheme(id: String) {
+        uiThemeFlow.value = id
+        AppSettings.putString(app, KEY_UI_THEME, id)
+    }
+
+    fun setPlayerTitle(on: Boolean) {
+        playerTitleFlow.value = on
+        AppSettings.putString(app, KEY_PLAYER_TITLE, on.toString())
+    }
+
+    fun setAutoplay(on: Boolean) {
+        autoplayFlow.value = on
+        AppSettings.putString(app, KEY_AUTOPLAY, on.toString())
+    }
+
+    /**
+     * Takes effect at once: switching to Bluetooth mid-drive stops the capture, and switching
+     * back asks for it again (or waits for the car, if none is connected).
+     */
+    fun setPipeAudio(on: Boolean) {
+        // Saved even when unchanged, so picking the default still counts as a choice.
+        AppSettings.putString(app, KEY_PIPE_AUDIO, on.toString())
+        if (pipeAudioFlow.value == on) return
+        pipeAudioFlow.value = on
+        if (AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, "") == "") speakDirectionsFlow.value = on
+        if (on) CarAudio.request() else CarAudio.release()
+    }
+
+    fun setSpeakDirections(on: Boolean) {
+        speakDirectionsFlow.value = on
+        AppSettings.putString(app, KEY_SPEAK_DIRECTIONS, on.toString())
+    }
+
+    fun setBluetoothWarning(on: Boolean) {
+        bluetoothWarningFlow.value = on
+        AppSettings.putString(app, KEY_BLUETOOTH_WARNING, on.toString())
+    }
+
+    fun setLocationWarning(on: Boolean) {
+        locationWarningFlow.value = on
+        AppSettings.putString(app, KEY_LOCATION_WARNING, on.toString())
+    }
+
+    fun setExperimentalFeaturesEnabled(on: Boolean) {
+        experimentalFeaturesFlow.value = on
+        AppSettings.putString(app, KEY_EXPERIMENTAL_FEATURES, on.toString())
+    }
+
+    fun setSystemSpeech(on: Boolean) {
+        systemSpeechFlow.value = on
+        AppSettings.putString(app, KEY_SYSTEM_SPEECH, on.toString())
+    }
+
+    fun setCarSensorsEnabled(on: Boolean) {
+        carSensorsFlow.value = on
+        AppSettings.putString(app, KEY_CAR_SENSORS, on.toString())
+    }
+
+    fun setNightMode(mode: NightMode) {
+        nightFlow.value = mode
+        AppSettings.putString(app, KEY_NIGHT, mode.name)
+        CarEnvironment.refresh()
+    }
+
+    /** Long-pressed onto or off the nav bar. Silently does nothing past [MAX_PINNED] rather than
+     * bumping the oldest pin - a driver who filled the bar on purpose shouldn't lose one by accident. */
+    fun togglePin(component: String) {
+        val current = pinnedFlow.value
+        val next = when {
+            component in current -> current - component
+            current.size >= MAX_PINNED -> return
+            else -> current + component
+        }
+        pinnedFlow.value = next
+        AppSettings.putString(app, KEY_PINNED, next.joinToString(","))
+    }
+
+    fun setAppOrder(ids: List<String>) {
+        appOrderFlow.value = ids
+        AppSettings.putString(app, KEY_APP_ORDER, ids.joinToString(","))
+    }
+}

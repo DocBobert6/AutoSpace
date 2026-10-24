@@ -1,0 +1,40 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+.kotlin
+/build
+local.properties
+
+# Keys
+*.jks
+*.keystore
+keystore.properties
+
+# Native build cache
+.cxx/
+
+# Testing
+/cloned-repos
+docs-internal/
+
+# Internal
+*.pdf
+todo.md
+logs/
+
+# For AI code
+.claude/
+CLAUDE.md
+
+# Other
+archive/
+.wrangler/
+stats-worker/
+
+# Certificates and keys never go in the repo; the app downloads or imports them on the phone.
+*.p12
+*.pfx
+*.pem
+*.crt
+*.key

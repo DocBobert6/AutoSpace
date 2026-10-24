@@ -1,0 +1,10 @@
+# Build output is redirected to <root>/build/gearslip/ (see build.gradle.kts), already
+# covered by the root .gitignore's /build - this is just a safety net in case that ever
+# changes back.
+build/
+
+# User-supplied certificate material - never checked in (see CertProvider.kt).
+phone.p12
+phone.pass
+*.crt
+*.key
