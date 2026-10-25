@@ -474,7 +474,7 @@ class GearslipActivity : ComponentActivity(), Projection {
                     else -> Unit
                 }
             } else if (pinchStartDist > 0f && dist > 0f) {
-                MirrorDisplayState.setZoom(pinchStartZoom * dist / pinchStartDist)
+                MirrorDisplayState.setZoomClamped(pinchStartZoom * dist / pinchStartDist)
                 pushMirrorTransform()
             }
             return true
@@ -520,10 +520,10 @@ class GearslipActivity : ComponentActivity(), Projection {
                                     PhoneMirror.fillEnabled = fill
                                     CarSettings.setMirrorFit(if (fill) MirrorFit.FILL else MirrorFit.FIT)
                                 }
-                                1 -> MirrorDisplayState.setZoom(MirrorDisplayState.zoom - 0.25f)
-                                2 -> MirrorDisplayState.setZoom(MirrorDisplayState.zoom + 0.25f)
+                                1 -> MirrorDisplayState.setZoomClamped(MirrorDisplayState.zoom - 0.25f)
+                                2 -> MirrorDisplayState.setZoomClamped(MirrorDisplayState.zoom + 0.25f)
                                 3 -> {
-                                    MirrorDisplayState.setZoom(1f)
+                                    MirrorDisplayState.setZoomClamped(1f)
                                     MirrorDisplayState.panX = 0f
                                     MirrorDisplayState.panY = 0f
                                 }

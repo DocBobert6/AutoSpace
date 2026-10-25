@@ -29,7 +29,7 @@ object MirrorDisplayState {
         chromeVisible = false
     }
 
-    fun setZoom(value: Float) {
+    fun setZoomClamped(value: Float) {
         zoom = value.coerceIn(1f, 3f)
     }
 }
