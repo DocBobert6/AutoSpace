@@ -96,6 +96,7 @@ import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -132,6 +133,20 @@ import kotlinx.coroutines.withContext
  * shows transport only, not the options capsule; the error screen's Close
  * is the car's Back (both return to the browser).
  */
+
+/**
+ * Phase 9 immersive fullscreen: the player publishes its controls
+ * visibility here so CarUi can hide the nav bar with it. CarUi reads
+ * this flow; the player writes it on every controls change and resets
+ * it to true when it leaves, so a hidden bar can never outlive the
+ * player. Defaults true, so the bar shows until the player says
+ * otherwise (and while paused/driving/error/listen mode, when the
+ * player never hides its controls at all).
+ */
+object PlayerImmersiveState {
+    val controlsVisible = MutableStateFlow(true)
+}
+
 @Composable
 fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -456,6 +471,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             controlsVisible = false
             closeAllRows()
         }
+    }
+    // Phase 9 immersive: publish every controls change for CarUi, and
+    // reset to shown when the player leaves, so the nav bar can never
+    // stay hidden after the player closes. Tap toggles controls and
+    // nav bar together because both read the same published value.
+    LaunchedEffect(controlsVisible) {
+        PlayerImmersiveState.controlsVisible.value = controlsVisible
+    }
+    DisposableEffect(Unit) {
+        onDispose { PlayerImmersiveState.controlsVisible.value = true }
     }
     LaunchedEffect(sleepMinutes) {
         if (sleepMinutes > 0) {

@@ -65,12 +65,11 @@ fun PhoneAppsScreen() {
             Spacer(Modifier.height(12.dp))
         }
 
-        // Phase 6, phone-drawer language scaled UP for the car: search-style
-        // header above, clean icon grid with the label underneath, neutral
-        // Frost tiles — icons larger than a phone's, never smaller. The
+        // Phase 9 pills: capsule pill rows (icon + label on one line),
+        // 2 columns on a wide car screen — no square tiles. The
         // touch-relay warning above is unchanged.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = (144f * tileFrac).coerceAtLeast(96f).dp),
+            columns = GridCells.Adaptive(minSize = 320.dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -116,24 +115,26 @@ private fun TouchRelayWarning() {
 private fun PhoneAppTile(app: PhoneApp, iconFrac: Float = 1f, tileFrac: Float = 1f, onClick: () -> Unit) {
     GsIconBox(
         onClick = onClick,
-        modifier = Modifier.height((152f * tileFrac).coerceAtLeast(88f).dp),
+        modifier = Modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
     ) {
-        Column(
-            Modifier.fillMaxSize().padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(72.dp * iconFrac)) }
-            Spacer(Modifier.height(10.dp))
+            if (iconFrac > 0f) {
+                app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(48.dp * iconFrac)) }
+            }
             Text(
                 app.label,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
+                textAlign = TextAlign.Start,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
     }

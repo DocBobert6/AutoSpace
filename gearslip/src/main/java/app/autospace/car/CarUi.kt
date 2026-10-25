@@ -113,6 +113,9 @@ fun CarUi() {
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
     val appContext = LocalContext.current.applicationContext
     val darkType by CarSettings.darkModeType.collectAsState()
+    // Phase 9 immersive player: CarUi reads the player's published
+    // controls visibility and hides the nav bar with it (see below).
+    val playerControlsVisible by PlayerImmersiveState.controlsVisible.collectAsState()
     val dark = when (appTheme) {
         AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
         AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
@@ -208,9 +211,10 @@ fun CarUi() {
         LocalDarkOutside provides darkOutside,
         LocalMapControlsWake provides controlsWake,
         LocalGsTheme provides GsThemes.byId(uiThemeId),
-        // Phase 8: true OLED flag for the kit — cards and controls draw a
-        // hairline outline instead of a grey fill when this is true, so a
-        // black card on a black backdrop still reads as a card.
+        // Phase 9 OLED flag for the kit — cards and controls draw a
+        // hairline outline when this is true, so a dark surface on the
+        // pure-black OLED background still reads as a surface, and the
+        // frost gradient still has an edge to shade.
         LocalOledDark provides (dark && darkType == DarkModeType.OLED),
     ) {
         MaterialTheme(colorScheme = colors) {
@@ -295,8 +299,23 @@ fun CarUi() {
                     // The keyboard takes the nav bar's row instead of squeezing in above it -
                     // nothing on the nav bar is useful mid-type, and the screen is too small to
                     // show both.
+                    // Phase 9 immersive player: when the video player is the
+                    // active screen AND its controls are hidden (3.5s
+                    // auto-hide while playing), the bottom toolbar hides
+                    // with them, and a tap — which re-shows the player
+                    // controls — re-shows the bar too. The bar is NEVER
+                    // hidden while controls are shown (Close/Stop must
+                    // stay reachable), nor while paused/driving/error/
+                    // listen mode, because the player never hides its
+                    // controls in those states. CarUi has no persistent
+                    // top bar (the breadcrumb is off, and call/notification
+                    // overlays are urgent and transient, not chrome), and
+                    // the player's own top capsule already follows
+                    // controlsVisible, so the nav bar is the chrome that
+                    // had to be lifted here; the video stays full-bleed.
                     val keyboardVisible by CarKeyboardVisibility.state
-                    if (!keyboardVisible) CarNavBar(navigator)
+                    val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
+                    if (!keyboardVisible && !playerImmersiveHide) CarNavBar(navigator)
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())
@@ -947,31 +966,24 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
 }
 
 /**
- * Dynamic dark, OLED-forced (Phase 8, correcting Phase 7): the dynamic
- * accent and content colours are kept exactly, and EVERY surface goes to
- * pure black #000000 — background, surface, surfaceDim, surfaceContainer
- * Lowest/Low/Container/High/Highest, surfaceBright, surfaceVariant, and
- * surfaceTint (so tonal elevation cannot lift a panel back to grey).
- * Phase 7 only blackened background/surface/surfaceDim and left the
- * containers #1C1C1E/#2C2C2E, so Settings (backdrop surfaceContainerLow,
- * cards surfaceBright) still read as grey blocks. Separation in OLED comes
- * from hairline outlines (see LocalOledDark in GsKit), not grey fills.
- * Dynamic dark + Regular is left untouched: its surfaces are already dark
- * grey, not black, which is what Regular means.
+ * Dynamic dark, OLED (Phase 9, correcting Phase 8 — the middle path
+ * between Phase 7 and Phase 8, do not ping-pong back to either): the
+ * background is pure black #000000 (pixels off), but surfaces stay
+ * DARK, not black — the dynamic Material You surfaces and accent are
+ * RETAINED exactly, so OLED still has colour and the frost gradient
+ * still has something to shade. Phase 8 forced every surface to black,
+ * which killed the frost, killed the dynamic colour, and made
+ * everything blend into one too-dark field. Separation comes from the
+ * frost gradient (lighter top) plus the 0.5dp hairline (LocalOledDark),
+ * not from grey fills and not from all-black. Dynamic dark + Regular
+ * is left untouched: its surfaces are already dark grey, not black,
+ * which is what Regular means.
  */
 private fun oledDynamicDark(context: android.content.Context): androidx.compose.material3.ColorScheme {
     val black = androidx.compose.ui.graphics.Color.Black
     return dynamicDarkColorScheme(context).copy(
         background = black,
-        surface = black,
         surfaceDim = black,
-        surfaceContainerLowest = black,
-        surfaceContainerLow = black,
-        surfaceContainer = black,
-        surfaceContainerHigh = black,
-        surfaceContainerHighest = black,
-        surfaceVariant = black,
-        surfaceBright = black,
         surfaceTint = black,
     )
 }
@@ -983,10 +995,14 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
  * neutral system backgrounds, label black/white, secondary label ~60%, accent
  * only on primary/selected controls (system blue). Deliberately NOT the
  * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
- * [oled] picks the dark surface family: OLED = pure-black backgrounds AND
- * pure-black surfaces (Phase 8 correction — Phase 7 kept #1C1C1E/#2C2C2E
- * containers, which did not read as OLED); Regular = dark-grey
- * backgrounds, no pure black anywhere.
+ * [oled] picks the dark surface family (Phase 9, correcting Phase 8):
+ * OLED = pure-black BACKGROUND with surfaces DARK but not black
+ * (#1C1C1E/#2C2C2E family, onSurfaceVariant lifted to #C7C7CC for
+ * contrast on black), so the frost gradient and hairline still
+ * separate surfaces from the background instead of everything
+ * blending into one black field (Phase 8) or reading as grey blocks
+ * (Phase 7, which never blackened the background properly); Regular
+ * = dark-grey backgrounds, no pure black anywhere.
  */
 private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.compose.material3.ColorScheme {
     val white = androidx.compose.ui.graphics.Color.White
@@ -1024,16 +1040,16 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
         onSecondary = black,
         background = black,
         onBackground = white,
-        surface = black,
+        surface = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
         onSurface = white,
-        surfaceVariant = black,
-        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
-        surfaceContainerLowest = black,
-        surfaceContainerLow = black,
-        surfaceContainer = black,
-        surfaceContainerHigh = black,
-        surfaceContainerHighest = black,
-        surfaceBright = black,
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFC7C7CC),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
         surfaceDim = black,
         outline = androidx.compose.ui.graphics.Color(0xFF38383A),
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),

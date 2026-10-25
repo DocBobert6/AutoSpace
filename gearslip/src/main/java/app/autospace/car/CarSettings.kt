@@ -281,7 +281,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     fun init(context: Context) {
         app = context.applicationContext
-        scaleFlow.value = AppSettings.getString(app, KEY_SCALE, "1.0").toFloatOrNull()?.coerceIn(1f, 1.5f) ?: 1f
+        scaleFlow.value = AppSettings.getString(app, KEY_SCALE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
         iconSizeFlow.value = AppSettings.getString(app, KEY_ICON_SIZE, "1.0").toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
         openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
         lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
@@ -336,10 +336,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     }
 
     fun setScale(value: Float) {
-        // Phase 8: UI size is a 100%-150% slider, not chips — coerce both
-        // the setter and the loaded value to that range (the old presets
-        // were exactly 100/125/150, so no stored value is lost by it).
-        val v = value.coerceIn(1f, 1.5f)
+        // Phase 9: UI size is a 50%-150% slider (Phase 8's 100%-150% put
+        // the default 100% at the slider's zero end, so the user could
+        // never go smaller). Coerce both the setter and the loaded value
+        // to that range; the old presets (100/125/150) still survive in it.
+        val v = value.coerceIn(0.5f, 1.5f)
         scaleFlow.value = v
         AppSettings.putString(app, KEY_SCALE, v.toString())
     }

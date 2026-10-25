@@ -295,7 +295,11 @@ fun CarLauncher() {
     // every tile a car target), while the icon keeps its own size.
     val iconFrac by CarSettings.iconSize.collectAsState()
     val tileFrac by CarSettings.tileSize.collectAsState()
-    val launcherGridMin = (168f * tileFrac).coerceAtLeast(96f).dp
+    // Phase 9 pills: the grid is no longer a 4-5 column square-tile
+    // grid — pills are wide, so the column width comes from the car
+    // width alone (2 columns on an 800px screen, 1 on a narrow one),
+    // not from the tile-size slider. Tile size scales pill HEIGHT
+    // (see AppTile), icon size scales the pill icon.
     val ordered = launcherOrder(all, showVehicleData, appOrder)
 
     // Search, through the car's own keyboard: tapping the search row opens it, typing
@@ -362,13 +366,12 @@ fun CarLauncher() {
                 items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac, tileFrac) }
             }
         }
-        // Phase 6, phone-drawer language scaled UP for the car: search at the
-        // top, a clean icon grid with the label underneath, neutral Frost
-        // tiles — but icons larger than a phone's, never smaller. Phase 7:
-        // one flat list, no group headers; search and the pinned row are
-        // unchanged behaviour (pinned is a user choice, not a category).
+        // Phase 9 pills: search at the top, then capsule pill rows
+        // (icon + label on one horizontal line), 2 columns on a wide
+        // car screen — no square tiles anywhere. Phase 7's flat list,
+        // no group headers, search and pinned behaviour are unchanged.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = launcherGridMin),
+            columns = GridCells.Adaptive(minSize = 320.dp),
             state = gridState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp),
@@ -414,32 +417,36 @@ fun CarLauncher() {
     }
 }
 
-/** A compact pinned-app tile for the launcher's pinned row. Phase 7: kit panel colour, tile-size scaled, 72dp floor. */
+/** A pinned-app pill for the launcher's pinned row. Phase 9: a capsule
+ * pill row (icon + label on one line), not a square tile — height
+ * scales with the tile-size slider (56dp floor), icon with the
+ * icon-size slider, label fully readable on one line. */
 @Composable
 private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
-        modifier = Modifier.size((112f * tileFrac).coerceAtLeast(72f).dp),
+        modifier = Modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
     ) {
-        Column(
-            Modifier.fillMaxSize().padding(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Row(
+            Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box {
-                TileIcon(tile, 56.dp * iconFrac)
-                if (tile.broken) {
-                    BrokenBadge(
-                        20.dp,
-                        Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
-                            .border(2.dp, MaterialTheme.colorScheme.surfaceContainerLow, CircleShape),
-                    )
+            if (iconFrac > 0f) {
+                Box {
+                    TileIcon(tile, 48.dp * iconFrac)
+                    if (tile.broken) {
+                        BrokenBadge(
+                            20.dp,
+                            Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
+                                .border(2.dp, MaterialTheme.colorScheme.surfaceContainerLow, CircleShape),
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.height(4.dp))
             TileLabel(tile, maxLines = 1)
         }
     }
@@ -471,11 +478,14 @@ private fun AppTile(
     onDragEnd: () -> Unit = {},
     onDragCancel: () -> Unit = {},
 ) {
-    // Phase 6: 20dp card radius (Notscape ladder), taller tile for the
-    // larger icon, so the label is never crowded. Phase 7: kit panel colour
-    // (surfaceContainerLow on the plain backdrop) and tile-size scaling with
-    // an 88dp height floor, so a small tile is still a car target.
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
+    // Phase 9 pills: the square tile is gone — a fully rounded stadium
+    // pill row, icon + label on ONE horizontal line, frost gradient +
+    // hairline via GsIconBox (in Frost; other GsThemes keep their own
+    // finish through the same control). Height scales with the
+    // tile-size slider (56dp floor, so a small pill is still a car
+    // target); the icon scales with the icon-size slider and is hidden
+    // at 0% with the label (and the whole tap area) intact.
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
     // When drag is enabled, the tile's own long-press is NOT wired into
     // GsIconBox: the drag detector owns the long press, and a release without
     // movement opens the menu through onDragEnd instead. Otherwise a drag
@@ -500,25 +510,19 @@ private fun AppTile(
         GsIconBox(
             onClick = tile.onClick,
             onLongClick = if (dragEnabled) null else tile.onLongClick,
-            modifier = modifier.height((176f * tileFrac).coerceAtLeast(88f).dp),
+            modifier = modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
             colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
             shape = shape,
         ) {
-            Box(Modifier.fillMaxSize()) {
-                Column(
-                    Modifier.fillMaxSize().padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
+            Row(
+                Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (iconFrac > 0f) {
                     Box {
-                        // Phase 8 audit fix: the icon scales with BOTH
-                        // sliders (icon-size and tile-size), from a
-                        // larger 96dp base, so it no longer sits small
-                        // in the top third of a tall tile.
-                        TileIcon(tile, (96.dp * iconFrac * tileFrac).coerceAtLeast(56.dp))
+                        TileIcon(tile, 48.dp * iconFrac)
                         if (tile.broken) {
-                            // Pinned to the icon's lower corner, ringed in the tile's colour so it
-                            // reads as sitting on top of the icon.
                             BrokenBadge(
                                 22.dp,
                                 Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
@@ -526,9 +530,10 @@ private fun AppTile(
                             )
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    TileLabel(tile)
                 }
+                // One line, left-aligned, fills the pill — a long label
+                // ellipsises, never wraps mid-word or crowds the icon.
+                TileLabel(tile, maxLines = 1, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
             }
         }
     }
@@ -543,13 +548,18 @@ private fun TileIcon(tile: Tile, size: androidx.compose.ui.unit.Dp = 80.dp) {
 }
 
 @Composable
-private fun TileLabel(tile: Tile, maxLines: Int = 2, modifier: Modifier = Modifier) {
+private fun TileLabel(
+    tile: Tile,
+    maxLines: Int = 2,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign = TextAlign.Center,
+) {
     Text(
         tile.label,
         modifier = modifier,
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
-        textAlign = TextAlign.Center,
+        textAlign = textAlign,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
     )

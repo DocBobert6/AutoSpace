@@ -106,9 +106,11 @@ fun CarSettingsScreen() {
             open,
         ) { CarSettings.setOpenOnConnect(it) }
 
-        // UI size (Phase 8): the old Normal/Large/Extra large chips are
-        // gone — a slider in the Icon/Tile size style, 100%-150%, which
-        // covers the old presets exactly (100, 125, 150). Default 100%.
+        // UI size (Phase 9, correcting Phase 8): a slider in the
+        // Icon/Tile size style, 50%-150%, default 100% mid-range — Phase
+        // 8's 100%-150% put the default at the slider's zero end, so the
+        // user could never go smaller. Old presets (100, 125, 150)
+        // still survive inside the new range.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -120,11 +122,11 @@ fun CarSettingsScreen() {
             GsGroupedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GsSeekBar(
-                        fraction = ((scale - 1f) / 0.5f).coerceIn(0f, 1f),
-                        onSeek = { CarSettings.setScale(1f + it * 0.5f) },
+                        fraction = ((scale - 0.5f) / 1.0f).coerceIn(0f, 1f),
+                        onSeek = { CarSettings.setScale(0.5f + it * 1.0f) },
                     )
                     Text(
-                        "Scales the whole car UI, 100%–150%; 100% is the old Normal, 125% the old Large, 150% the old Extra large.",
+                        "Scales the whole car UI, 50%–150%; 100% is the old Normal, 125% the old Large, 150% the old Extra large.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
