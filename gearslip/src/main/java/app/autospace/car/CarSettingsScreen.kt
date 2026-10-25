@@ -26,12 +26,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.autospace.speech.VoiceEngine
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsThemes
@@ -433,6 +436,27 @@ private fun VoiceSettings() {
     val kokoroState by VoiceModels.state(Engine.KOKORO).collectAsState()
     val piperState by VoiceModels.state(Engine.PIPER).collectAsState()
     val selectedVoice by VoiceModels.selectedVoice.collectAsState()
+    // Voice preview: the key of the voice currently previewing ("kokoro:<id>"
+    // or "piper"), or null. Previewing never writes the selection — it only
+    // plays the fixed GPS phrase in that voice through VoiceEngine.
+    var previewing by remember { mutableStateOf<String?>(null) }
+    val previewingNow = rememberUpdatedState(previewing)
+    // Leaving this section stops a preview in flight; the guard reads the
+    // live value so an assistant reply playing on its own is untouched.
+    DisposableEffect(Unit) {
+        onDispose { if (previewingNow.value != null) VoiceEngine.stop() }
+    }
+    fun togglePreview(key: String, voice: VoiceModels.KokoroVoice?) {
+        if (previewing == key) {
+            VoiceEngine.stop()
+            previewing = null
+            return
+        }
+        val started = VoiceEngine.playPreview(context, VoiceModels.PREVIEW_PHRASE, voice) {
+            if (previewing == key) previewing = null
+        }
+        previewing = if (started) key else null
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GsSectionHeader("Voice")
@@ -447,14 +471,18 @@ private fun VoiceSettings() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                VoiceEngineRow(Engine.KOKORO, kokoroState) {
+                VoiceEngineRow(Engine.KOKORO, kokoroState, previewing = null, onPreview = null) {
                     when (kokoroState) {
                         State.Ready -> VoiceModels.delete(context, Engine.KOKORO)
                         is State.Downloading -> VoiceModels.delete(context, Engine.KOKORO)
                         else -> VoiceModels.download(context, Engine.KOKORO)
                     }
                 }
-                VoiceEngineRow(Engine.PIPER, piperState) {
+                VoiceEngineRow(
+                    Engine.PIPER, piperState,
+                    previewing = previewing,
+                    onPreview = { togglePreview("piper", null) },
+                ) {
                     when (piperState) {
                         State.Ready -> VoiceModels.delete(context, Engine.PIPER)
                         is State.Downloading -> VoiceModels.delete(context, Engine.PIPER)
@@ -476,35 +504,68 @@ private fun VoiceSettings() {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     "Applies to Kokoro speech; Piper always speaks as Amy. A new choice takes " +
-                        "effect on the next spoken prompt.",
+                        "effect on the next spoken prompt. Every voice previews with " +
+                        "“${VoiceModels.PREVIEW_PHRASE}” without changing your choice; " +
+                        "previews need Kokoro downloaded, so a missing download leaves " +
+                        "its Preview button disabled.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // Grouped by language, in the model's sid order, so the list
-                // reads as voices rather than 53 undifferentiated ids.
-                var lastLanguage: String? = null
-                VoiceModels.KOKORO_VOICES.forEach { voice ->
-                    if (voice.language != lastLanguage) {
-                        lastLanguage = voice.language
-                        Text(
-                            voice.language,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 12.dp),
+                // Featured page first: four voices, then a More voices page
+                // with the other 49 — same list, same selection, no removal.
+                // The default (am_adam) lives on the More voices page.
+                var showMore by remember { mutableStateOf(false) }
+                if (!showMore) {
+                    VoiceModels.FEATURED_VOICES.forEach { voice ->
+                        KokoroVoiceRow(
+                            voice = voice,
+                            selected = voice == selectedVoice,
+                            previewing = previewing == "kokoro:${voice.id}",
+                            previewEnabled = kokoroState is State.Ready,
+                            onSelect = { VoiceModels.selectVoice(context, voice) },
+                            onPreview = { togglePreview("kokoro:${voice.id}", voice) },
                         )
                     }
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable { VoiceModels.selectVoice(context, voice) }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    GsButton(
+                        onClick = { showMore = true },
+                        tone = GsTone.Tonal,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     ) {
-                        RadioButton(selected = voice == selectedVoice, onClick = null)
-                        Text(
-                            voice.id + if (voice == VoiceModels.DEFAULT_VOICE) " (default)" else "",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = if (voice == selectedVoice) FontWeight.Bold else FontWeight.Normal,
+                        Text("More voices")
+                    }
+                    Text(
+                        "49 more Kokoro voices, including the default.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    GsButton(
+                        onClick = { showMore = false },
+                        tone = GsTone.Tonal,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                    ) {
+                        Text("Back to featured voices")
+                    }
+                    // Grouped by language, in the model's sid order, so the list
+                    // reads as voices rather than 49 undifferentiated ids.
+                    var lastLanguage: String? = null
+                    VoiceModels.MORE_VOICES.forEach { voice ->
+                        if (voice.language != lastLanguage) {
+                            lastLanguage = voice.language
+                            Text(
+                                voice.language,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 12.dp),
+                            )
+                        }
+                        KokoroVoiceRow(
+                            voice = voice,
+                            selected = voice == selectedVoice,
+                            previewing = previewing == "kokoro:${voice.id}",
+                            previewEnabled = kokoroState is State.Ready,
+                            onSelect = { VoiceModels.selectVoice(context, voice) },
+                            onPreview = { togglePreview("kokoro:${voice.id}", voice) },
                         )
                     }
                 }
@@ -513,8 +574,49 @@ private fun VoiceSettings() {
     }
 }
 
+/** One Kokoro voice row: radio selection plus a Preview/Stop button. */
 @Composable
-private fun VoiceEngineRow(engine: Engine, state: State, onAction: () -> Unit) {
+private fun KokoroVoiceRow(
+    voice: VoiceModels.KokoroVoice,
+    selected: Boolean,
+    previewing: Boolean,
+    previewEnabled: Boolean,
+    onSelect: () -> Unit,
+    onPreview: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable { onSelect() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Text(
+            voice.id + if (voice == VoiceModels.DEFAULT_VOICE) " (default)" else "",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
+        GsButton(
+            onClick = onPreview,
+            tone = GsTone.Tonal,
+            enabled = previewEnabled,
+            modifier = Modifier.height(44.dp),
+        ) {
+            Text(if (previewing) "Stop" else "Preview")
+        }
+    }
+}
+
+@Composable
+private fun VoiceEngineRow(
+    engine: Engine,
+    state: State,
+    previewing: String?,
+    onPreview: (() -> Unit)?,
+    onAction: () -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             Modifier.fillMaxWidth(),
@@ -533,6 +635,18 @@ private fun VoiceEngineRow(engine: Engine, state: State, onAction: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            // Piper's only preview button: its engine row is its voice row
+            // (Kokoro's previews live on each voice row below instead).
+            if (onPreview != null) {
+                GsButton(
+                    onClick = onPreview,
+                    tone = GsTone.Tonal,
+                    enabled = state is State.Ready,
+                    modifier = Modifier.height(48.dp),
+                ) {
+                    Text(if (previewing == "piper") "Stop" else "Preview")
+                }
             }
             GsButton(
                 onClick = onAction,

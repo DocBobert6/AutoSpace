@@ -213,43 +213,107 @@ object VoiceEngine {
                 if (myGeneration == generation.get()) main.post(onDone)
                 return@execute
             }
-            val shorts = floatsToShorts(audio.samples)
-            val track = AudioTrack.Builder()
-                .setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                        .build(),
-                )
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setSampleRate(audio.rate)
-                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .build(),
-                )
-                .setBufferSizeInBytes(shorts.size * 2)
-                .setTransferMode(AudioTrack.MODE_STREAM)
-                .build()
-            currentTrack = track
-            try {
-                track.play()
-                var offset = 0
-                while (offset < shorts.size && myGeneration == generation.get()) {
-                    val written = track.write(shorts, offset, shorts.size - offset)
-                    if (written <= 0) break
-                    offset += written
-                }
-            } catch (e: Exception) {
-                GearslipLog.w("voice: playback failed: ${e.message}")
-            } finally {
-                runCatching { track.stop() }
-                runCatching { track.release() }
-                if (currentTrack === track) currentTrack = null
-            }
-            if (myGeneration == generation.get()) main.post(onDone)
+            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = false)
         }
         return true
+    }
+
+    /**
+     * A voice preview: renders [text] in exactly one voice and plays it,
+     * without touching the stored selection — [VoiceModels.selectVoice]
+     * is never called, so no engine is unloaded and the default survives.
+     * [voice] is a Kokoro voice, or null for Piper (Amy). Returns false
+     * straight away when that engine isn't downloaded, so the UI can say
+     * so instead of showing a dead button; there is deliberately no
+     * fallback to the other engine, because a preview of one voice spoken
+     * in another would be a lie.
+     *
+     * Playback shares the single channel assistant speech uses (the same
+     * generation counter and current track): starting a preview stops
+     * any assistant speech in flight, and a new assistant reply stops a
+     * preview — the preview's [onDone] still fires on interruption, so
+     * the row's playing state clears instead of sticking. Stop a preview
+     * with [stop], the same call that stops assistant speech.
+     */
+    fun playPreview(context: Context, text: String, voice: VoiceModels.KokoroVoice?, onDone: () -> Unit): Boolean {
+        if (text.isBlank()) {
+            main.post(onDone)
+            return true
+        }
+        val app = context.applicationContext
+        if (voice != null && !VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)) return false
+        if (voice == null && !VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) return false
+        val myGeneration = generation.incrementAndGet()
+        playExecutor.execute {
+            val audio = runCatching {
+                if (voice != null) {
+                    val started = System.currentTimeMillis()
+                    val generated = kokoro(app, voice)?.generate(text, voice.sid, 1.0f)
+                    if (generated != null && generated.samples.isNotEmpty()) {
+                        GearslipLog.i(
+                            "voice: preview ${voice.id} rendered " +
+                                "${generated.samples.size * 1000 / generated.sampleRate} ms " +
+                                "in ${System.currentTimeMillis() - started} ms",
+                        )
+                        Synthesized(generated.samples, generated.sampleRate, "kokoro")
+                    } else null
+                } else {
+                    val generated = piper(app)?.generate(text, 0, 1.0f)
+                    if (generated != null && generated.samples.isNotEmpty()) {
+                        GearslipLog.i(
+                            "voice: preview piper rendered " +
+                                "${generated.samples.size * 1000 / generated.sampleRate} ms",
+                        )
+                        Synthesized(generated.samples, generated.sampleRate, "piper")
+                    } else null
+                }
+            }.getOrNull()
+            if (myGeneration != generation.get() || audio == null) {
+                main.post(onDone)
+                return@execute
+            }
+            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = true)
+        }
+        return true
+    }
+
+    /** The shared AudioTrack playback loop for [play] and [playPreview]. */
+    private fun playAudio(audio: Synthesized, myGeneration: Int, onDone: () -> Unit, notifyOnInterrupt: Boolean) {
+        val shorts = floatsToShorts(audio.samples)
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(audio.rate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build(),
+            )
+            .setBufferSizeInBytes(shorts.size * 2)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+        currentTrack = track
+        try {
+            track.play()
+            var offset = 0
+            while (offset < shorts.size && myGeneration == generation.get()) {
+                val written = track.write(shorts, offset, shorts.size - offset)
+                if (written <= 0) break
+                offset += written
+            }
+        } catch (e: Exception) {
+            GearslipLog.w("voice: playback failed: ${e.message}")
+        } finally {
+            runCatching { track.stop() }
+            runCatching { track.release() }
+            if (currentTrack === track) currentTrack = null
+        }
+        if (myGeneration == generation.get() || notifyOnInterrupt) main.post(onDone)
     }
 
     /** Float samples in [-1, 1] to 16-bit PCM, clamped, never silent by overflow. */

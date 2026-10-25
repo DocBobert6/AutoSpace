@@ -104,6 +104,24 @@ object VoiceModels {
     val DEFAULT_VOICE: KokoroVoice = KOKORO_VOICES.first { it.id == "am_adam" }
 
     /**
+     * The four featured voices on the picker's main page, in the order
+     * Robert listed them (hyphens in his message are underscores in the
+     * model ids). Presentation only: every other voice stays selectable
+     * on the "More voices" page, and the default above is unchanged.
+     */
+    val FEATURED_VOICES: List<KokoroVoice> = listOf("am_michael", "bm_george", "af_heart", "bf_emma")
+        .mapNotNull { id -> KOKORO_VOICES.firstOrNull { it.id == id } }
+
+    /** Every Kokoro voice not featured — the "More voices" page. */
+    val MORE_VOICES: List<KokoroVoice> = KOKORO_VOICES.filter { it !in FEATURED_VOICES }
+
+    /**
+     * The phrase a voice preview speaks: a common GPS instruction, in
+     * the previewed voice, without changing the stored selection.
+     */
+    const val PREVIEW_PHRASE = "In 500 feet, turn left."
+
+    /**
      * The espeak voice sherpa-onnx phonemizes with for a Kokoro voice, from
      * the voice id's first letter. Best-known espeak names; a wrong one
      * fails synthesis audibly (the engine falls back to Piper) rather than

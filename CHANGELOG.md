@@ -296,3 +296,15 @@ in the local worktree; it can be added later by a git push from a local clone.
   belongs to Telecom and the system dialer, which AutoSpace is not, so
   if the car's Bluetooth takes the call back, this setting cannot
   override it. Whether it wins on a given car is a car-test result.
+
+## Unreleased (Kokoro voice picker redesign)
+- The Kokoro voice picker's main page now shows four featured voices —
+  am_michael, bm_george, af_heart, bf_emma — with a "More voices"
+  button opening a second page with the other 49. Nothing was removed:
+  all 53 voices are still selectable, the default is still am_adam
+  (on the More voices page), and the fp32 model is unchanged.
+- Every voice row now has a Preview button that speaks "In 500 feet,
+  turn left." in that voice without changing the stored selection;
+  tapping again stops it, leaving the page stops it, and a new preview
+  or assistant reply stops the one playing. The Piper row previews as
+  Amy. A preview button is disabled until its engine is downloaded.

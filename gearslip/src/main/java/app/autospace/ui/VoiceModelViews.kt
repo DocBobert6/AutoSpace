@@ -14,9 +14,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +31,7 @@ import app.autospace.speech.SpeechModels.Model
 import app.autospace.speech.SpeechModels.State
 import androidx.compose.ui.text.font.FontWeight
 import app.autospace.car.CarSettings
+import app.autospace.speech.VoiceEngine
 import app.autospace.speech.VoiceModels
 
 /**
@@ -103,6 +108,25 @@ internal fun SpokenVoiceSection() {
     val kokoroState by VoiceModels.state(VoiceModels.Engine.KOKORO).collectAsState()
     val piperState by VoiceModels.state(VoiceModels.Engine.PIPER).collectAsState()
     val selectedVoice by VoiceModels.selectedVoice.collectAsState()
+    // Voice preview: same rules as the car picker — the key of the voice
+    // currently previewing ("kokoro:<id>" or "piper"), or null; previewing
+    // never writes the selection, only plays the fixed GPS phrase.
+    var previewing by remember { mutableStateOf<String?>(null) }
+    val previewingNow = rememberUpdatedState(previewing)
+    DisposableEffect(Unit) {
+        onDispose { if (previewingNow.value != null) VoiceEngine.stop() }
+    }
+    fun togglePreview(key: String, voice: VoiceModels.KokoroVoice?) {
+        if (previewing == key) {
+            VoiceEngine.stop()
+            previewing = null
+            return
+        }
+        val started = VoiceEngine.playPreview(context, VoiceModels.PREVIEW_PHRASE, voice) {
+            if (previewing == key) previewing = null
+        }
+        previewing = if (started) key else null
+    }
     SettingsSection(title = "Voice: spoken voice") {
         Text(
             "The voice AutoSpace speaks with, entirely on this phone — no system voice, " +
@@ -114,9 +138,13 @@ internal fun SpokenVoiceSection() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
-        SpokenEngineRow(VoiceModels.Engine.KOKORO, kokoroState)
+        SpokenEngineRow(VoiceModels.Engine.KOKORO, kokoroState, previewing = null, onPreview = null)
         SettingsDivider()
-        SpokenEngineRow(VoiceModels.Engine.PIPER, piperState)
+        SpokenEngineRow(
+            VoiceModels.Engine.PIPER, piperState,
+            previewing = previewing,
+            onPreview = { togglePreview("piper", null) },
+        )
         if (kokoroState is VoiceModels.State.Missing && piperState is VoiceModels.State.Missing) {
             Text(
                 "No voice downloaded yet: assistant replies and spoken directions will stay silent " +
@@ -130,36 +158,67 @@ internal fun SpokenVoiceSection() {
     SettingsSection(title = "Kokoro voice") {
         Text(
             "Applies to Kokoro speech; Piper always speaks as Amy. A new choice takes " +
-                "effect on the next spoken prompt.",
+                "effect on the next spoken prompt. Every voice previews with " +
+                "“${VoiceModels.PREVIEW_PHRASE}” without changing your choice; " +
+                "previews need Kokoro downloaded, so a missing download leaves " +
+                "its Preview button disabled.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
-        // Grouped by language, in the model's sid order, so the list reads as
-        // voices rather than 53 undifferentiated ids — same grouping as car Settings.
-        var lastLanguage: String? = null
-        VoiceModels.KOKORO_VOICES.forEach { voice ->
-            if (voice.language != lastLanguage) {
-                lastLanguage = voice.language
-                Text(
-                    voice.language,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        // Featured page first, More voices page second — same list, same
+        // selection, no removal; the default (am_adam) is on the second page.
+        var showMore by remember { mutableStateOf(false) }
+        if (!showMore) {
+            VoiceModels.FEATURED_VOICES.forEach { voice ->
+                KokoroVoiceRowPhone(
+                    voice = voice,
+                    selected = voice == selectedVoice,
+                    previewing = previewing == "kokoro:${voice.id}",
+                    previewEnabled = kokoroState is VoiceModels.State.Ready,
+                    onSelect = { VoiceModels.selectVoice(context, voice) },
+                    onPreview = { togglePreview("kokoro:${voice.id}", voice) },
                 )
             }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .selectable(voice == selectedVoice, role = Role.RadioButton) { VoiceModels.selectVoice(context, voice) }
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            OutlinedButton(
+                onClick = { showMore = true },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
-                RadioButton(voice == selectedVoice, onClick = null, modifier = Modifier.padding(8.dp))
-                Text(
-                    voice.id + if (voice == VoiceModels.DEFAULT_VOICE) " (default)" else "",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (voice == selectedVoice) FontWeight.Bold else FontWeight.Normal,
+                Text("More voices")
+            }
+            Text(
+                "49 more Kokoro voices, including the default.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        } else {
+            OutlinedButton(
+                onClick = { showMore = false },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                Text("Back to featured voices")
+            }
+            // Grouped by language, in the model's sid order — same grouping
+            // as car Settings.
+            var lastLanguage: String? = null
+            VoiceModels.MORE_VOICES.forEach { voice ->
+                if (voice.language != lastLanguage) {
+                    lastLanguage = voice.language
+                    Text(
+                        voice.language,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+                }
+                KokoroVoiceRowPhone(
+                    voice = voice,
+                    selected = voice == selectedVoice,
+                    previewing = previewing == "kokoro:${voice.id}",
+                    previewEnabled = kokoroState is VoiceModels.State.Ready,
+                    onSelect = { VoiceModels.selectVoice(context, voice) },
+                    onPreview = { togglePreview("kokoro:${voice.id}", voice) },
                 )
             }
         }
@@ -189,6 +248,35 @@ internal fun SpokenVoiceSection() {
     }
 }
 
+/** One Kokoro voice row: radio selection plus a Preview/Stop button. */
+@Composable
+private fun KokoroVoiceRowPhone(
+    voice: VoiceModels.KokoroVoice,
+    selected: Boolean,
+    previewing: Boolean,
+    previewEnabled: Boolean,
+    onSelect: () -> Unit,
+    onPreview: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .selectable(selected, role = Role.RadioButton) { onSelect() }
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected, onClick = null, modifier = Modifier.padding(8.dp))
+        Text(
+            voice.id + if (voice == VoiceModels.DEFAULT_VOICE) " (default)" else "",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onPreview, enabled = previewEnabled) {
+            Text(if (previewing) "Stop" else "Preview")
+        }
+    }
+}
 /**
  * Call speaker: the same persisted switch as car Settings, so either place reflects the
  * other. Calls only — this section is about a call-audio choice, not a voice model, and
@@ -221,7 +309,12 @@ internal fun CallSpeakerSection() {
 }
 
 @Composable
-private fun SpokenEngineRow(engine: VoiceModels.Engine, state: VoiceModels.State) {
+private fun SpokenEngineRow(
+    engine: VoiceModels.Engine,
+    state: VoiceModels.State,
+    previewing: String?,
+    onPreview: (() -> Unit)?,
+) {
     val context = LocalContext.current
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -241,6 +334,13 @@ private fun SpokenEngineRow(engine: VoiceModels.Engine, state: VoiceModels.State
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Piper's only preview button: its engine row is its voice row
+                // (Kokoro's previews live on each voice row instead).
+                if (onPreview != null) {
+                    TextButton(onClick = onPreview, enabled = state is VoiceModels.State.Ready) {
+                        Text(if (previewing == "piper") "Stop" else "Preview")
+                    }
+                }
                 when (state) {
                     VoiceModels.State.Ready -> TextButton(onClick = { VoiceModels.delete(context, engine) }) { Text("Delete") }
                     is VoiceModels.State.Downloading -> TextButton(onClick = { VoiceModels.delete(context, engine) }) { Text("Cancel") }

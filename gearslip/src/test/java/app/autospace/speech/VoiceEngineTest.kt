@@ -23,6 +23,23 @@ class VoiceEngineTest {
     }
 
     @Test
+    fun featuredPlusMoreCoversAll53VoicesWithNothingRemoved() {
+        assertEquals(
+            listOf("am_michael", "bm_george", "af_heart", "bf_emma"),
+            VoiceModels.FEATURED_VOICES.map { it.id },
+        )
+        assertEquals(49, VoiceModels.MORE_VOICES.size)
+        assertTrue(VoiceModels.FEATURED_VOICES.intersect(VoiceModels.MORE_VOICES.toSet()).isEmpty())
+        assertEquals(
+            VoiceModels.KOKORO_VOICES.map { it.id }.toSet(),
+            (VoiceModels.FEATURED_VOICES + VoiceModels.MORE_VOICES).map { it.id }.toSet(),
+        )
+        // The default stays am_adam, and it lives on the More voices page.
+        assertTrue(VoiceModels.DEFAULT_VOICE in VoiceModels.MORE_VOICES)
+        assertEquals("In 500 feet, turn left.", VoiceModels.PREVIEW_PHRASE)
+    }
+
+    @Test
     fun espeakLangFollowsVoicePrefix() {
         val byId = VoiceModels.KOKORO_VOICES.associateBy { it.id }
         assertEquals("en", VoiceModels.espeakLang(byId.getValue("am_adam")))
