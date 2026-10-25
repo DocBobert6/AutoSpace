@@ -62,7 +62,6 @@ fun CarSettingsScreen() {
     val bluetoothWarning by CarSettings.bluetoothWarning.collectAsState()
     val locationWarning by CarSettings.locationWarning.collectAsState()
     val autoplay by CarSettings.autoplay.collectAsState()
-    val playerTitle by CarSettings.playerTitle.collectAsState()
     val theme by CarSettings.appTheme.collectAsState()
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
@@ -247,12 +246,6 @@ fun CarSettingsScreen() {
             listOf(Units.AUTO to "Auto", Units.IMPERIAL to "Imperial (mi, ft, °F)", Units.METRIC to "Metric (km, m, °C)"),
             units,
         ) { CarSettings.setUnits(it) }
-
-        ChoiceRow(
-            "Player in the nav bar",
-            listOf(false to "Skip buttons", true to "Song title"),
-            playerTitle,
-        ) { CarSettings.setPlayerTitle(it) }
 
         ChoiceRow(
             "Autoplay on connect",

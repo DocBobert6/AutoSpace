@@ -95,20 +95,87 @@ private fun AppSurface(
         }
     }
 
+    // Audit (second video): closing the media split black-flashed the
+    // map for ~1s — the split close resizes the pane, the size-keyed
+    // SurfaceView below is recreated, and the new surface stays black
+    // until the app redraws into it. The surface itself still
+    // recreates per size (the freeze lesson below is NOT revisited:
+    // resizing in place can freeze a map app for good), but the flash
+    // is masked: when a SurfaceView is released, its last frame is
+    // copied out with PixelCopy and held as a window-layer image over
+    // the new surface, fading out after 1.2s — long enough to cover
+    // the redraw, short enough that a stale map never lingers. If the
+    // copy fails (a secure surface, a dead surface) there is simply
+    // no placeholder and behaviour is exactly as before. The image
+    // takes no pointer input, so map gestures pass through untouched.
+    // Bitmaps are deliberately NOT recycled by hand: the fade keeps
+    // drawing the last bitmap after the live one clears, and drawing
+    // a recycled bitmap crashes — short-lived references here are
+    // reclaimed by the collector instead.
+    var snapshot by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var snapshotShown by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    if (snapshot != null) snapshotShown = snapshot
+    val snapshotAlpha by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (snapshot != null) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(300),
+        label = "mapSnapshot",
+    )
+    val snapshotHandler = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
+    fun captureFrom(view: SurfaceView) {
+        val w = view.width
+        val h = view.height
+        if (w <= 0 || h <= 0) return
+        try {
+            val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+            android.view.PixelCopy.request(view.holder.surface, bmp, { result ->
+                if (result == android.view.PixelCopy.SUCCESS) snapshot = bmp
+            }, snapshotHandler)
+        } catch (e: IllegalArgumentException) {
+            GearslipLog.i("stage: snapshot unavailable (${e.message})")
+        }
+    }
+    LaunchedEffect(snapshot) {
+        val bmp = snapshot
+        if (bmp != null) {
+            kotlinx.coroutines.delay(1200)
+            if (snapshot === bmp) snapshot = null
+            kotlinx.coroutines.delay(350)
+            if (snapshotShown === bmp) snapshotShown = null
+        }
+    }
+
     // A fresh SurfaceView - and so a fresh Surface - for every size, the way Android Auto hands an
     // app a new surface rather than resizing the old one. A resized SurfaceView keeps the same
     // BufferQueue, and apps that draw through their own VirtualDisplay build the
     // new one on it before releasing the old: the old display's disconnect then takes the new one's
     // connection with it and the map freezes for good. The nav bar hiding for the search keyboard
     // and the lyrics pane opening both resize this area.
-    androidx.compose.foundation.layout.BoxWithConstraints(modifier) {
-        val epoch by connection.surfaceEpoch.collectAsState()
-        androidx.compose.runtime.key(constraints.maxWidth, constraints.maxHeight, epoch) {
-            SurfaceHost(connection, frame, onSize = { size = it }, Modifier.fillMaxSize())
+    androidx.compose.foundation.layout.Box(modifier) {
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize()) {
+            val epoch by connection.surfaceEpoch.collectAsState()
+            androidx.compose.runtime.key(constraints.maxWidth, constraints.maxHeight, epoch) {
+                SurfaceHost(
+                    connection, frame, onSize = { size = it }, Modifier.fillMaxSize(),
+                    onSurfaceViewReleased = ::captureFrom,
+                )
+            }
+        }
+        if (snapshotShown != null && snapshotAlpha > 0f) {
+            androidx.compose.foundation.Image(
+                snapshotShown!!.asImageBitmap(), null, Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alpha = snapshotAlpha,
+            )
         }
     }
 
-    DisposableEffect(connection) { onDispose { connection.detachSurface() } }
+    DisposableEffect(connection) {
+        onDispose {
+            connection.detachSurface()
+            snapshot = null
+            snapshotShown = null
+        }
+    }
 }
 
 @Composable
@@ -117,8 +184,10 @@ private fun SurfaceHost(
     frame: CarEnvironment.Frame,
     onSize: (Pair<Int, Int>) -> Unit,
     modifier: Modifier,
+    onSurfaceViewReleased: (SurfaceView) -> Unit = {},
 ) {
     AndroidView(
+        onRelease = { view -> onSurfaceViewReleased(view) },
         modifier = modifier
             .pointerInput(connection) {
                 detectTapGestures { connection.surfaceClick(it.x, it.y) }

@@ -770,9 +770,6 @@ internal fun rememberNow(): State<Long> = produceState(System.currentTimeMillis(
     }
 }
 
-/** How long the pill shows a new song's title before settling to just the controls. */
-private const val TITLE_SHOWN_MS = 3_000L
-
 /** Below this, the nav bar's middle only has room for the turn, not the player beside it. */
 private val TURN_AND_PLAYER_MIN_WIDTH = 520.dp
 
@@ -863,79 +860,68 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
         }
     }
 
-    // A new song announces itself: title, play/pause and dock for a few seconds, then the title
-    // goes and the pill settles to just the controls - unless the driver keeps the title up.
-    val keepTitle by CarSettings.playerTitle.collectAsState()
-    var announcing by remember { mutableStateOf(true) }
-    LaunchedEffect(now.title, now.artist) {
-        announcing = true
-        delay(TITLE_SHOWN_MS)
-        announcing = false
-    }
-    val showTitle = keepTitle || announcing
-
+    // Audit (second video): the pill used to have two layouts — a
+    // full-width title + play + dock while a new song "announced"
+    // itself, then a compact art + prev/play/next + dock once the
+    // announcement expired — so the same bar read as two different
+    // players from one frame to the next. There is one layout now:
+    // art + title (always, taking the room the bar has) + prev/play/
+    // next + dock, every button a 44dp target, pill 52dp tall.
     val scheme = MaterialTheme.colorScheme
     val onPill = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer
     Surface(
         modifier = modifier
             .animateContentSize()
-            // With the title up, all the room the bar has, so as much of it shows as can.
-            .then(if (showTitle) Modifier.fillMaxWidth() else Modifier)
-            .height(44.dp),
+            .fillMaxWidth()
+            .height(52.dp),
         shape = RoundedCornerShape(14.dp),
         color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
         contentColor = onPill,
     ) {
         Box {
             Row(
-                Modifier.fillMaxHeight().padding(horizontal = 4.dp),
+                Modifier.fillMaxHeight().padding(horizontal = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Art (and the title while it shows) opens the full media screen.
+                // Art and title open the full media screen.
                 Row(
                     Modifier
-                        .then(if (showTitle) Modifier.weight(1f) else Modifier)
+                        .weight(1f)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(10.dp))
                         .clickable { navigator.media() },
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(scheme.surfaceVariant)) {
+                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(scheme.surfaceVariant)) {
                         art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                     }
-                    if (showTitle) {
-                        Text(
-                            nowPlayingLabel(now.title, now.artist),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                if (!showTitle) {
-                    GsIconButton(
-                        MediaIcons.Previous, "Previous", media::previous,
-                        enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = 36.dp, iconSize = 22.dp,
+                    Text(
+                        nowPlayingLabel(now.title, now.artist),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
+                GsIconButton(
+                    MediaIcons.Previous, "Previous", media::previous,
+                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = 44.dp, iconSize = 24.dp,
+                )
                 GsIconButton(
                     if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
                     if (now.playing) "Pause" else "Play",
                     media::togglePlay,
-                    tone = GsTone.Primary, size = 36.dp, iconSize = 22.dp,
+                    tone = GsTone.Primary, size = 44.dp, iconSize = 24.dp,
                 )
-                if (!showTitle) {
-                    GsIconButton(
-                        MediaIcons.Next, "Next", media::next,
-                        enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = 36.dp, iconSize = 22.dp,
-                    )
-                }
+                GsIconButton(
+                    MediaIcons.Next, "Next", media::next,
+                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = 44.dp, iconSize = 24.dp,
+                )
                 GsIconButton(
                     MediaIcons.DockRight, "Move the player beside the map", navigator::togglePlayerDock,
-                    size = 36.dp, iconSize = 22.dp,
+                    size = 44.dp, iconSize = 24.dp,
                 )
             }
             if (now.durationMs > 0) {

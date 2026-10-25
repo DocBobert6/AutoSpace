@@ -182,7 +182,12 @@ internal fun HeaderBar(
             title,
             style = ChromeType.title,
             color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
+            // Audit (second video): a map pane narrows to 232dp beside the
+            // media panel, and a one-line header truncated the place name
+            // ("Mayfield Brain & Spine...") where the full-width pane
+            // showed it whole. The header wraps to two lines now, so the
+            // panel resizes with the split instead of truncating.
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
@@ -256,14 +261,19 @@ internal fun RightEdgeControls(
                 }
             },
         horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        // Audit (second video): the map's edge controls read ~24dp in
+        // the video and are hard to hit while driving. The row/column
+        // gaps widen to 12dp and the icon-only buttons grow to 64dp
+        // with 34dp glyphs (ActionButton's size params, below) — the
+        // titled Search pill keeps its own padding and is untouched.
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (actions.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                actions.forEach { ActionButton(it) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                actions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp) }
             }
         }
-        mapActions.forEach { ActionButton(it) }
+        mapActions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp) }
     }
 }
 
@@ -287,7 +297,15 @@ private fun CarRow.isBlank(): Boolean =
  * the map. An app that names a color for its button (a green Start) keeps it.
  */
 @Composable
-internal fun ActionButton(action: Action, large: Boolean = false, modifier: Modifier = Modifier) {
+internal fun ActionButton(
+    action: Action,
+    large: Boolean = false,
+    modifier: Modifier = Modifier,
+    /** Icon-only button size; the map's edge controls pass 64dp. Everywhere else keeps 54dp. */
+    buttonSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_SIZE,
+    /** Icon-only glyph size; the map's edge controls pass 34dp. Everywhere else keeps 30dp. */
+    glyphSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_GLYPH,
+) {
     if (action.type == Action.TYPE_APP_ICON) {
         AppIconBadge()
         return
@@ -331,8 +349,8 @@ internal fun ActionButton(action: Action, large: Boolean = false, modifier: Modi
             }
         } else if (title.isEmpty()) {
             // Every icon-only button - back, settings, the map's zoom and locate - is the same size.
-            androidx.compose.foundation.layout.Box(Modifier.size(ICON_BUTTON_SIZE), contentAlignment = Alignment.Center) {
-                if (hasGlyph) CarGlyph(action.icon, Modifier.size(ICON_BUTTON_GLYPH), standardFor(action))
+            androidx.compose.foundation.layout.Box(Modifier.size(buttonSize), contentAlignment = Alignment.Center) {
+                if (hasGlyph) CarGlyph(action.icon, Modifier.size(glyphSize), standardFor(action))
             }
         } else {
             Row(

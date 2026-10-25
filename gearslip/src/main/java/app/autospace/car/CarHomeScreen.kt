@@ -124,11 +124,19 @@ fun CarHome() {
             Modifier.fillMaxSize().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Audit (second video): the pane's clip is gone. It cannot
+            // round a SurfaceView (a separate window layer), and a Compose
+            // clip DOES apply to descendant Canvas draws — so it was
+            // clipping MapCornerOverlays' own corner masks into no-ops,
+            // leaving the split mode's inner corners unmasked while the
+            // outer corners relied on HomeFrameOverlay alone. The masks
+            // below do the rounding now, at all four pane corners, in
+            // every theme: their colour is the background token, never
+            // a hardcoded black (verified at source).
             Box(
                 Modifier
                     .weight(if (splitScreen) 1.75f else 1f)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(20.dp)),
+                    .fillMaxHeight(),
             ) {
                 MapPane(navStatus, frame)
             }
@@ -299,7 +307,15 @@ private fun DockedPlayer(now: NowPlaying, modifier: Modifier) {
             // Whatever height the controls below leave over, so the art grows on a taller
             // screen and shrinks rather than pushing the buttons off a short one.
             val artSize = minOf(maxWidth - 44.dp, maxHeight - 250.dp).coerceIn(56.dp, 200.dp)
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Audit (second video): the panel's content sat top-loaded with
+            // ~40% dead space below the mode row. The block is centred
+            // vertically now, so the dead space splits top and bottom
+            // instead of pooling underneath.
+            Column(
+                Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Box(Modifier.fillMaxWidth()) {
                     // Art opens the full media screen, same as on the pill.
                     Box(

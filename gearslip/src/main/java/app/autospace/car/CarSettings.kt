@@ -58,7 +58,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_LAST_NAV = "car_last_nav"
     private const val KEY_LAST_MEDIA = "car_last_media"
     private const val KEY_AUTOPLAY = "car_autoplay"
-    private const val KEY_PLAYER_TITLE = "car_player_title"
+    // KEY_PLAYER_TITLE retired with playerTitle (see above); the stored
+    // value is simply never read again.
     private const val KEY_THEME = "car_app_theme"
     private const val KEY_BRIGHTNESS = "car_brightness"
     private const val KEY_MIRROR_FIT = "car_mirror_fit"
@@ -105,7 +106,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val lastNavFlow = MutableStateFlow<String?>(null)
     private val lastMediaFlow = MutableStateFlow<String?>(null)
     private val autoplayFlow = MutableStateFlow(false)
-    private val playerTitleFlow = MutableStateFlow(false)
+    // (playerTitle removed: the nav pill shows title AND skip buttons
+    // together now, so the old Skip-buttons-vs-Song-title choice is dead.)
     private val themeFlow = MutableStateFlow(AppTheme.FOLLOW_SYSTEM)
     val appTheme: StateFlow<AppTheme> = themeFlow
     /** Dark-mode surface type; see [DarkModeType]. Default OLED preserves the pre-Phase-7 dark look. */
@@ -192,12 +194,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     /** Whether the media app starts playing by itself when the car connects. */
     val autoplay: StateFlow<Boolean> = autoplayFlow
-
-    /**
-     * The nav bar's player keeps the song title up, with play/pause and the dock button, instead of
-     * settling to the skip buttons once a new song has announced itself.
-     */
-    val playerTitle: StateFlow<Boolean> = playerTitleFlow
 
     val scale: StateFlow<Float> = scaleFlow
     /** App-icon size fraction, 0..1: 1.0 is the Phase 6 large size, 0 hides the icon. Tiles do not shrink with it. */
@@ -307,7 +303,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             MirrorFit.valueOf(AppSettings.getString(app, KEY_MIRROR_FIT, MirrorFit.FILL.name))
         }.getOrDefault(MirrorFit.FILL)
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
-        playerTitleFlow.value = AppSettings.getString(app, KEY_PLAYER_TITLE, "false") == "true"
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
         // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
         // own voice already reaches the car.
@@ -401,11 +396,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setUiTheme(id: String) {
         uiThemeFlow.value = id
         AppSettings.putString(app, KEY_UI_THEME, id)
-    }
-
-    fun setPlayerTitle(on: Boolean) {
-        playerTitleFlow.value = on
-        AppSettings.putString(app, KEY_PLAYER_TITLE, on.toString())
     }
 
     fun setAutoplay(on: Boolean) {
