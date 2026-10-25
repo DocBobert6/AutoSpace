@@ -20,3 +20,89 @@ fork's git tree, because GitHub's blob API and Contents API both reject it (422,
 "too large to process") and no AutoSpace code references speech-models/ — runtime
 speech models are downloaded from Hugging Face by SpeechModels.kt. The file remains
 in the local worktree; it can be added later by a git push from a local clone.
+
+## Unreleased (Phase 1 — Frost / Material theme)
+- New features: Material and Frost theme styles alongside Classic (Flat/Tactile/Keycap).
+  Frost is the default for fresh installs; stored theme choices are kept. Frost uses
+  translucency + scrim, not live blur over the video stream.
+- Improvements: larger launcher tiles (136/148dp, 64dp icons) with group headers,
+  a pinned row, and search via the car keyboard; larger music-player transport
+  controls and queue/browse rows. Every host-owned surface follows the same
+  Material You colours + Gs control finishes.
+
+## Unreleased (Phase 1.5 — Quick brightness)
+- New features: quick brightness control — a brightness icon in the nav bar and
+  on the dashboard, at most 2 taps to a large slider sheet that also holds
+  Light/Dark and NightMode shortcuts. Persisted per CarSettings.brightness
+  (default 100%), implemented as a touch-transparent dim overlay so host UI and
+  templated apps dim uniformly.
+- Honest limits: 100% is the head unit's backlight maximum — the slider cannot
+  brighten past it. A manual value always wins over night auto-dim and persists
+  across drives. Mirror dimming is out of scope.
+
+## Unreleased (Phase 2 — Custom resolutions + screencast Fill)
+- New features: Settings > Display > Resolution (Auto / 720p / 1080p / 2K / 4K),
+  stored per vehicle and resolved only against configs the head unit actually
+  offers (nearest offered size at or below, never an invented config; wireless
+  2K/4K capped at 1080p). Screen-sharing fit: Fill (crop, new default) or Fit
+  (letterbox), with a GL renderer that crops Fit frames to the frame, Fill touch
+  remapping, and a Fill exit button in the top-right corner (Fill has no
+  letterbox bars to tap).
+- Bug fixes: the "Screen fit" text now shows the real negotiated frame height
+  instead of a hardcoded 480.
+
+## Unreleased (Phase 3 — Browser: no-AI search, media finder, own player)
+- New features: default search is now no-AI DuckDuckGo (noai.duckduckgo.com,
+  assist=false); typed text that isn't a URL searches there. A "Media on this
+  page" finder lists playable media the page exposes (direct video/audio files,
+  HLS, DASH), deduplicated, and opens it in AutoSpace's own Media3 player
+  (HLS first, DASH included; play/pause, ±30s seek, seek bar for VOD, LIVE
+  handling). Video is parked-only: while the car is moving the video blanks
+  and audio continues; controls stay usable while driving.
+- Improvements: browser chrome follows AutoSpace theming (Material You colours
+  + Gs control finishes on every button/bar/sheet).
+- What pages do NOT do: pages are never themed. No force-dark, no algorithmic
+  darkening from the phone theme or from darkness outside (upstream's
+  darkOutside darkening was removed). Pages render as authored.
+- Honest limits: plays only media the page exposes as a playable URL. No DRM
+  bypass, no DRM-locked streams, no YouTube playback through the finder, no
+  sign-in-gated video (the player has no access to the WebView's cookies), and
+  no background audio after leaving the player screen (closing it stops audio).
+
+## Unreleased (Phase 3.4 — Browser quick wins)
+- New features: address/search bar with Forward / Reload / Home (car keyboard
+  for typing); progress bar in the browser header; friendly error page with
+  Retry and Go back (replacing log-only errors); fullscreen video and JS
+  dialogs (alert/confirm/prompt) via in-composition overlays; downloads routed
+  to the phone Downloads folder with a started/failed notice; persisted
+  bookmarks + history picker ("Saved & history", bookmark this page, clear
+  history). Tabs are deferred, not included.
+
+## Unreleased (Phase 4 — Mirrored Google Maps)
+- New features: "Maps (mirrored)" launcher tile (Maps group) that opens stock
+  Google Maps on the phone and mirrors it to the car screen, with Fill + touch
+  from Phase 2. The tile appears only when Maps is installed and launchable.
+- Honest limits: this is mirroring, not a native car app — no native Maps
+  template, no car-template chrome. The phone must stay unlocked and awake;
+  the mirror shows whatever is on the phone, not just Maps; guidance audio
+  follows the phone's live audio route. Native Maps support is NOT included:
+  Google Maps only accepts Google's own Android Auto as its car host, so it
+  can't run as a built-in car app in AutoSpace. No patched or re-signed copy
+  of Maps is used. The native-promotion spike is still owed in a real car
+  session (see BUILD_LOG Phase 4); until it passes, native Maps is "not proven".
+
+## Unreleased (Phase 5 — Regression / release prep)
+- First release will be a BETA (Robert, 2026-10-24), not a stable release:
+  beta labelling in the release notes, prerelease marking on the GitHub
+  release, no stable-release claim. Debug builds keep their current numbering
+  (0.3.01-alpha, versionCode 10) until the beta release itself.
+- Release prep done here: changelog for Phases 1–4, a beta release checklist
+  kept with the build log, and the two
+  fork-specific user-visible strings updated (accessibility touch-relay
+  description, built-in test page title). Upstream's version history in
+  Changelog.kt is deliberately left as upstream history, not rewritten.
+- NOT yet done, and not claimed: the full in-car regression matrix (themes ×
+  wired/wireless × resolutions × Fit/Fill × every surface), the Maps spike,
+  a release signing key, and the beta version number itself — all need
+  Robert (car testing on his 2019 Altima, a key kept out of the repo, and his
+  go-ahead). No beta release has been published from this work.
