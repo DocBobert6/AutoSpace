@@ -119,6 +119,38 @@ class OfflineTtsBindingTest {
         assertEquals("java.lang.String", field.type.name)
     }
 
+    // Round 5 (2026-10-25 second launch trace: 5 previews, every
+    // one dying on "Failed to get field ID for silenceScale", lmFlow
+    // gone): the round-4 audit MISSED this field because its list
+    // stopped at maxNumSentences. The .so's GetOfflineTtsConfig
+    // reads silenceScale (Float) off OfflineTtsConfig AFTER
+    // maxNumSentences (GetFieldID at 0x59c274, signature "F"), and
+    // after it only runs DeleteLocalRef cleanup and returns — it is
+    // the LAST field of that conversion. GenerationConfig's own
+    // silenceScale does not satisfy the load read (different class).
+    // The fixed audit enumerates GetFieldID call sites across the
+    // whole function (65 sites, 42 unique pairs); silenceScale on
+    // OfflineTtsConfig is the ONLY gap it finds, and GetGeneration-
+    // Config's three fields (sid/I, speed/F, silenceScale/F) are all
+    // present. These tests fail on the old binding and pass on the
+    // fixed one.
+
+    @Test
+    fun configCarriesSilenceScale() {
+        val field = Class.forName("com.k2fsa.sherpa.onnx.OfflineTtsConfig")
+            .getDeclaredField("silenceScale")
+        assertEquals("float", field.type.name)
+    }
+
+    @Test
+    fun generationConfigCarriesSidSpeedSilenceScale() {
+        val fields = Class.forName("com.k2fsa.sherpa.onnx.GenerationConfig")
+            .declaredFields.associateBy { it.name }
+        assertEquals("int", fields["sid"]!!.type.name)
+        assertEquals("float", fields["speed"]!!.type.name)
+        assertEquals("float", fields["silenceScale"]!!.type.name)
+    }
+
     @Test
     fun modelConfigCarriesAllSubConfigsAndTopFields() {
         val fields = OfflineTtsModelConfig::class.java.declaredFields

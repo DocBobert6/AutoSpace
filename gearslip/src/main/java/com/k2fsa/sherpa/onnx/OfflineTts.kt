@@ -41,8 +41,37 @@
 // ModelConfig: all seven sub-configs + numThreads + debug +
 // provider; OfflineTtsConfig: model + ruleFsts + ruleFars +
 // maxNumSentences; GenerationConfig: sid + speed + silenceScale) is
-// present in this binding; the generic extra fields on the older
+// present in this binding EXCEPT OfflineTtsConfig.silenceScale,
+// which round 5 adds (see CORRECTION note below); the generic extra fields on the older
 // sub-configs are inert (JNI reads by name) and are kept.
+// CORRECTION, 2026-10-25 round 5 (Robert's second launch trace:
+// 5 previews, every one dying on "Failed to get field ID for
+// silenceScale", lmFlow gone): the round-4 audit MISSED silenceScale
+// because its field list stopped at maxNumSentences instead of
+// following GetOfflineTtsConfig through to its epilogue. Disassembly
+// of the vendored .so proves silenceScale is the LAST field that
+// conversion reads: GetFieldID at 0x59c274 with signature "F" off
+// the OfflineTtsConfig class object (the same stack slot used for
+// ruleFars and maxNumSentences), success path GetFloatField then
+// store at struct offset 0x484, after which the function only runs
+// DeleteLocalRef cleanup and returns. The round-4 claim that
+// "GenerationConfig: sid + speed + silenceScale is present" was
+// true but irrelevant to load: the .so reads silenceScale from TWO
+// classes — OfflineTtsConfig during load (previously missing) and
+// GenerationConfig during generateWithConfig (already present, and
+// never called by this binding's generateImpl, which passes sid and
+// speed as primitives). The fixed audit method enumerates GetFieldID
+// call sites (0x2f0 loads) across the whole function range and
+// resolves each (name, signature) pair from its adrp+add operands —
+// 65 sites in GetOfflineTtsConfig (0x593e30-0x59c600), 42 unique
+// pairs, of which silenceScale on OfflineTtsConfig is the ONLY gap
+// against this binding — plus the 3 sites in GetGenerationConfig
+// (sid/I, speed/F, silenceScale/F, all present). It also accounts
+// for duplicate string constants (lmFlow occurs twice in .rodata;
+// a scanner targeting one occurrence finds nothing at the site
+// that uses the other). Do NOT "simplify" this audit back to a
+// hand list: two rounds in a row, the hand list stopped one field
+// short of the function's end.
 // GeneratedAudio's constructor shape (FloatArray, Int) is what the JNI layer
 // builds, so keep it exactly.
 package com.k2fsa.sherpa.onnx
@@ -148,7 +177,9 @@ data class OfflineTtsPocketModelConfig(
     // existed but every load died on the first real field. The same
     // disassembly audited the whole ModelConfig conversion (see the
     // header note): Pocket and Supertonic were the only sub-configs
-    // with missing fields, plus ruleFars on OfflineTtsConfig.
+    // with missing fields, plus ruleFars on OfflineTtsConfig (round 5
+    // adds the fourth: silenceScale on OfflineTtsConfig — see the
+    // CORRECTION note below; the round-4 list ended one field short).
     var lmFlow: String = "",
     var lmMain: String = "",
     var encoder: String = "",
@@ -198,6 +229,27 @@ data class OfflineTtsConfig(
     // ruleFsts, then ruleFars, then maxNumSentences — the binding
     // lacked ruleFars, a third fatal gap behind Pocket/Supertonic).
     var ruleFars: String = "",
+    // silenceScale (round-5 audit, 2026-10-25 second launch trace:
+    // 5 previews, every one dying on "Failed to get field ID for
+    // silenceScale"): the .so's GetOfflineTtsConfig reads this FLOAT
+    // field off OfflineTtsConfig AFTER maxNumSentences (GetFieldID
+    // at 0x59c274, signature "F", success path GetFloatField then
+    // store at struct offset 0x484; after it the function only does
+    // DeleteLocalRef cleanup and returns — silenceScale is the LAST
+    // field of GetOfflineTtsConfig). The round-4 audit MISSED it
+    // because it stopped its field list at maxNumSentences instead
+    // of following the function through to its epilogue; the fixed
+    // method enumerates GetFieldID call sites across the whole
+    // function (65 sites, 0x593e30-0x59c600) rather than trusting a
+    // hand list. NOTE: GenerationConfig.silenceScale (below) does
+    // NOT satisfy this read — the .so reads silenceScale from TWO
+    // classes: OfflineTtsConfig during load (this field, previously
+    // missing) and GenerationConfig during generateWithConfig (which
+    // the binding never calls, and which was already present). The
+    // round-4 claim that "GenerationConfig: sid + speed +
+    // silenceScale is present" was true and irrelevant to load.
+    // Default 0.2f matches GenerationConfig's default in this file.
+    var silenceScale: Float = 0.2f,
 )
 
 data class GenerationConfig(
