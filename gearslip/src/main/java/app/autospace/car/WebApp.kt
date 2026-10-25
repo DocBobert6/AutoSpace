@@ -166,14 +166,6 @@ fun WebApp(content: String) {
     // immersive on entry — leaving the browser clears it (see the
     // DisposableEffect below), this is the belt-and-braces half.
     val immersive by BrowserImmersiveState.immersive.collectAsState()
-    // Exiting immersive restores the bar: without this, leaving
-    // immersive (pill, BACK, keyboard) while the page sat at the top
-    // left the bar hidden with no scroll event left to restore it —
-    // the stuck-hidden-at-page-top case. Same for moving the bar
-    // top/bottom: it reappears at its new edge instead of staying
-    // hidden there.
-    LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
-    LaunchedEffect(barBottom) { resetBarScrollHide() }
     LaunchedEffect(Unit) { BrowserImmersiveState.exit() }
     // Scroll-hide (Robert 2026-10-25 06:20 redirect): the address
     // bar row — and ONLY it — follows the active tab's WebView
@@ -312,6 +304,15 @@ fun WebApp(content: String) {
     // a DropdownMenu: real popup windows crash on this virtual display,
     // the same reason JS dialogs are in-composition overlays.
     var barBottom by remember { mutableStateOf(BrowserStore.barAtBottom(context)) }
+    // Exiting immersive restores the bar: without this, leaving
+    // immersive (pill, BACK, keyboard) while the page sat at the top
+    // left the bar hidden with no scroll event left to restore it —
+    // the stuck-hidden-at-page-top case. Same for moving the bar
+    // top/bottom: it reappears at its new edge instead of staying
+    // hidden there. (Placed here, not by the immersive read above:
+    // both names are only in scope from this point down.)
+    LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
+    LaunchedEffect(barBottom) { resetBarScrollHide() }
     var settingsMenuOpen by remember { mutableStateOf(false) }
     // Passenger gate (Robert 2026-10-25 05:40): per-entry, never
     // persisted — no setting, no "don't ask again". CarMotion is
