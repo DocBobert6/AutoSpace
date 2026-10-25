@@ -100,6 +100,7 @@ fun Modifier.gsSurface(
     latched: Boolean = false,
 ): Modifier {
     val look = gsLook()
+    val effContainer = if (look.containerAlpha < 1f) container.copy(alpha = container.alpha * look.containerAlpha) else container
     val down = pressed || latched
     // The keycap's face sinks onto its base while pressed, and stays down while latched: the base
     // shrinks to nothing and the face moves down by the same amount, so the control's overall size
@@ -109,12 +110,12 @@ fun Modifier.gsSurface(
     val lift by animateFloatAsState(if (down) 0f else 1f, tween(if (pressed) 50 else 140), label = "lift")
     val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, tween(if (pressed) 50 else 140), label = "sink")
     var m = this
-    if (container.alpha > 0f && look.shadow > 0.dp) {
+    if (effContainer.alpha > 0f && look.shadow > 0.dp) {
         m = m.drawBehind { drawSoftShadow(shape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
     }
     if (look.sink > 0.dp) m = m.offset(y = sinkNow)
-    if (container.alpha > 0f && look.lip > 0.dp) {
-        val base = lerp(container, Color.Black, 0.35f)
+    if (effContainer.alpha > 0f && look.lip > 0.dp) {
+        val base = lerp(effContainer, Color.Black, 0.35f)
         m = m
             .padding(top = look.lip - lipNow, bottom = lipNow)
             .drawBehind {
@@ -124,18 +125,18 @@ fun Modifier.gsSurface(
             }
     }
     m = m.clip(shape)
-    if (container.alpha > 0f) {
-        val shade = if (container.luminance() > 0.5f) look.bottomShadeOnLight else look.bottomShade
+    if (effContainer.alpha > 0f) {
+        val shade = if (effContainer.luminance() > 0.5f) look.bottomShadeOnLight else look.bottomShade
         m = if (look.topLight > 0f || shade > 0f) {
             m.background(
                 Brush.verticalGradient(
-                    0f to lerp(container, Color.White, look.topLight),
-                    0.5f to container,
-                    1f to lerp(container, Color.Black, shade),
+                    0f to lerp(effContainer, Color.White, look.topLight),
+                    0.5f to effContainer,
+                    1f to lerp(effContainer, Color.Black, shade),
                 ),
             )
         } else {
-            m.background(container)
+            m.background(effContainer)
         }
         if (latched && look.insetAlpha > 0f) {
             val inset = look.insetAlpha

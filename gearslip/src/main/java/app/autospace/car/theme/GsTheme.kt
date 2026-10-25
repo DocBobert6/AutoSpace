@@ -64,6 +64,14 @@ data class ControlLook(
      * from; a flat look takes the dot.
      */
     val holdMarker: HoldMarkerStyle = HoldMarkerStyle.PEEL,
+    /**
+     * Multiplier for a control container's alpha. 1f is opaque (every Classic/Material look).
+     * Frost uses <1f so surfaces read as glass over whatever sits behind them (art, a
+     * header image, the nav strip) — never as live blur over the video stream, which the
+     * H.264 compression would smear and which costs phone heat. If a blur pass ever proves
+     * expensive, Frost still reads correctly from translucency + scrim alone.
+     */
+    val containerAlpha: Float = 1f,
     /** Replaces this look when the UI is light, for effects that only work on one background. */
     val light: ControlLook? = null,
 )
@@ -112,8 +120,48 @@ object GsThemes {
         control = ControlLook(holdMarker = HoldMarkerStyle.DOT),
     )
 
-    val default = Flat
-    val builtIn = listOf(Tactile, Keycap, Flat)
+    /** Pure Material 3: standard corner, tonal surfaces, no keycap/bevel/shadow. */
+    val Material = GsTheme(
+        id = "material",
+        name = "Material",
+        control = ControlLook(
+            corner = 16.dp,
+            pressedDim = 0.12f,
+            pressedScale = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+    )
+
+    /**
+     * Frost (AutoSpace default): Material 3 + translucent surfaces + a top rim highlight.
+     * No shadow, bevel, lip or sink — depth comes from translucency. Blur is deliberately
+     * NOT part of ControlLook: it is only ever applied to small static backdrops (see
+     * the player art treatment), never to live controls over the video stream.
+     */
+    val Frost = GsTheme(
+        id = "frost",
+        name = "Frost",
+        control = ControlLook(
+            corner = 24.dp,
+            rimAlpha = 0.18f,
+            containerAlpha = 0.78f,
+            pressedDim = 0.14f,
+            pressedScale = 0.98f,
+            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                corner = 24.dp,
+                rimAlpha = 0.12f,
+                containerAlpha = 0.82f,
+                pressedDim = 0.10f,
+                pressedScale = 0.98f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
+    val default = Frost
+    // Classic = Flat / Tactile / Keycap, kept unchanged for existing users.
+    val builtIn = listOf(Material, Frost, Flat, Tactile, Keycap)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }
