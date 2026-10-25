@@ -177,6 +177,18 @@ in the local worktree; it can be added later by a git push from a local clone.
   drag-seek (scrubber + skip cover it); the old overflow menu and its
   Restart row are gone (Close + Stop + scrubber cover them), and the
   driving branch shows transport only.
+- Bug fix: screen-sharing Fill mirroring no longer destroys itself.
+  PhoneMirror.beginFill created the GL renderer, assigned it, then called
+  begin(), whose first line runs end() — and end() released that same
+  renderer, leaving the virtual display on a dead surface with no frames
+  while _active was already true (so no fallback ran either). Fill is the
+  default, so every screen share hit this. beginFill now ends the previous
+  session first, then creates the renderer, then creates the display
+  through a new beginInternal() that assumes cleanup already happened;
+  begin() keeps ending first for the Fit path. Stop/start ends each
+  renderer exactly once (release is idempotent) and creates a fresh one.
+  Fill geometry and the exit region are untouched; Fit is unchanged.
+  Until this build, the workaround was Settings > Screen sharing > Fit.
 - New features: a persisted "Use phone microphone for voice commands"
   toggle in car Settings (default off; car mic preferred when it works).
   When on, SpeechEngine skips the car's microphone entirely and listens

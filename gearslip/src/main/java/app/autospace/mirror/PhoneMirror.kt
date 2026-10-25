@@ -91,6 +91,18 @@ object PhoneMirror {
      */
     fun begin(token: MediaProjection, surface: Surface, width: Int, height: Int, densityDpi: Int) {
         end()
+        beginInternal(token, surface, width, height, densityDpi)
+    }
+
+    /**
+     * The display-creation half of [begin], assuming the previous session
+     * is already ended. [beginFill] calls this directly after ending first
+     * — going through [begin] here would run [end] again and release the
+     * renderer [beginFill] just created (the 2026-10-24 Fill self-destruct:
+     * the virtual display was left on a released surface and no frame ever
+     * arrived, while _active was already true so no fallback ran either).
+     */
+    private fun beginInternal(token: MediaProjection, surface: Surface, width: Int, height: Int, densityDpi: Int) {
         media = token
         frameWidth = width
         frameHeight = height
@@ -123,9 +135,14 @@ object PhoneMirror {
      * rather than showing a black screen.
      */
     fun beginFill(context: Context, token: MediaProjection, output: Surface, width: Int, height: Int, densityDpi: Int): Boolean {
+        // End the previous session FIRST: its renderer, display, and media
+        // must be gone before the new renderer exists, so no end() call
+        // below can ever touch the new renderer. (Previously the create
+        // came first and begin()'s end() destroyed it immediately.)
+        end()
         val renderer = MirrorFillRenderer.create(output, width, height, context) ?: return false
         fillRenderer = renderer
-        begin(token, renderer.inputSurface, width, height, densityDpi)
+        beginInternal(token, renderer.inputSurface, width, height, densityDpi)
         if (!_active.value) {
             runCatching { renderer.release() }
             fillRenderer = null
