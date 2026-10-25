@@ -74,6 +74,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.autospace.R
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsIconBox
+import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
@@ -207,6 +208,10 @@ fun CarUi() {
         LocalDarkOutside provides darkOutside,
         LocalMapControlsWake provides controlsWake,
         LocalGsTheme provides GsThemes.byId(uiThemeId),
+        // Phase 8: true OLED flag for the kit — cards and controls draw a
+        // hairline outline instead of a grey fill when this is true, so a
+        // black card on a black backdrop still reads as a card.
+        LocalOledDark provides (dark && darkType == DarkModeType.OLED),
     ) {
         MaterialTheme(colorScheme = colors) {
           CompositionLocalProvider(LocalIndication provides FocusRingIndication(MaterialTheme.colorScheme.primary)) {
@@ -283,13 +288,9 @@ fun CarUi() {
                         VoiceHelpOverlay(Modifier.align(Alignment.Center))
                         CallOverlay(Modifier.align(Alignment.TopCenter))
                         AssistantOverlay(Modifier.align(Alignment.BottomCenter))
-                        if (app.autospace.BuildConfig.DEBUG) {
-                            // Bottom corner, not top: a screen's own header almost always puts
-                            // something in the top-right (settings, search, a Liked Songs
-                            // shortcut) and this badge used to sit right on top of it, hiding
-                            // whatever the screen drew there.
-                            DebugBuildBadge(Modifier.align(Alignment.BottomEnd))
-                        }
+                        // Phase 8 audit fix: the debug badge no longer
+                        // floats over content at all — it lives in the nav
+                        // bar (see CarNavBar), where it can cover nothing.
                     }
                     // The keyboard takes the nav bar's row instead of squeezing in above it -
                     // nothing on the nav bar is useful mid-type, and the screen is too small to
@@ -494,7 +495,7 @@ private fun CarNavBar(navigator: CarNavigator) {
     val running = rememberRunningApps()
 
     Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 10.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 10.dp)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 // Home and Apps are two different places now, not a toggle on one button - the
                 // breadcrumb trail is how you retrace your steps, but reaching for either of
@@ -536,6 +537,10 @@ private fun CarNavBar(navigator: CarNavigator) {
                 // control the driver has.
                 GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
                 Spacer(Modifier.width(6.dp))
+                if (app.autospace.BuildConfig.DEBUG) {
+                    DebugBuildBadge()
+                    Spacer(Modifier.width(6.dp))
+                }
                 // Weather no longer has its own chip - the temperature alone (no icon, no room
                 // for one) sits where "Night"/"Day" used to, freeing a whole chip's width for the
                 // Home button above.
@@ -559,14 +564,14 @@ private fun CarNavBar(navigator: CarNavigator) {
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
                             DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                             if (battery.percent >= 0) {
                                 Text(
                                     "${battery.percent}%",
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 if (battery.charging) {
@@ -576,7 +581,7 @@ private fun CarNavBar(navigator: CarNavigator) {
                             weatherData?.let { w ->
                                 Text(
                                     "  ·  ${w.temp}°",
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -611,7 +616,7 @@ private fun NavHomeButton(navigator: CarNavigator, entries: List<Entry>, running
         } else {
             Icon(
                 ImageVector.vectorResource(R.drawable.navigation_24), contentDescription = "Home",
-                modifier = Modifier.padding(NAV_ITEM_PADDING).size(28.dp),
+                modifier = Modifier.padding(NAV_ITEM_PADDING).size(32.dp),
             )
         }
     }
@@ -664,14 +669,14 @@ private fun NavAppIcon(
     val scheme = MaterialTheme.colorScheme
     GsIconBox(
         onClick,
-        Modifier.size(44.dp),
+        Modifier.size(52.dp),
         colors = if (showing) GsColors(scheme.secondaryContainer, scheme.onSecondaryContainer)
         else GsColors(scheme.surfaceVariant, scheme.onSurfaceVariant),
         latched = showing,
         onLongClick = onLongClick,
     ) {
-        entry.icon?.let { Image(it, entry.label, Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))) }
-        entry.builtIn?.let { Icon(it.glyph, entry.label, Modifier.size(26.dp)) }
+        entry.icon?.let { Image(it, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp))) }
+        entry.builtIn?.let { Icon(it.glyph, entry.label, Modifier.size(30.dp)) }
         // Only running apps get the line along the bottom edge, the usual taskbar mark for it.
         if (open) {
             Box(
@@ -712,7 +717,7 @@ private fun NavAssistantIcon() {
     val state by CarAssistant.state.collectAsState()
     val active = state.phase != CarAssistant.Phase.IDLE
     GsIconBox({ CarAssistant.start() }, colors = navColors(active), latched = active) {
-        MicGlyph(Modifier.padding(NAV_ITEM_PADDING).size(28.dp))
+        MicGlyph(Modifier.padding(NAV_ITEM_PADDING).size(32.dp))
     }
 }
 
@@ -722,7 +727,7 @@ private val NAV_ITEM_PADDING = 8.dp
 @Composable
 private fun NavItem(icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
     GsIconBox(onClick, colors = navColors(selected), latched = selected) {
-        Icon(icon, contentDescription = null, modifier = Modifier.padding(NAV_ITEM_PADDING).size(28.dp))
+        Icon(icon, contentDescription = null, modifier = Modifier.padding(NAV_ITEM_PADDING).size(32.dp))
     }
 }
 
@@ -942,25 +947,32 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
 }
 
 /**
- * Dynamic dark, OLED-forced (Phase 7): the dynamic accent and content colours
- * are kept exactly, and ONLY backgrounds/surfaces are forced — background,
- * surface and surfaceDim to pure black #000000, surfaceContainerLow and
- * surfaceContainer and surfaceVariant to #1C1C1E, surfaceBright to #2C2C2E.
+ * Dynamic dark, OLED-forced (Phase 8, correcting Phase 7): the dynamic
+ * accent and content colours are kept exactly, and EVERY surface goes to
+ * pure black #000000 — background, surface, surfaceDim, surfaceContainer
+ * Lowest/Low/Container/High/Highest, surfaceBright, surfaceVariant, and
+ * surfaceTint (so tonal elevation cannot lift a panel back to grey).
+ * Phase 7 only blackened background/surface/surfaceDim and left the
+ * containers #1C1C1E/#2C2C2E, so Settings (backdrop surfaceContainerLow,
+ * cards surfaceBright) still read as grey blocks. Separation in OLED comes
+ * from hairline outlines (see LocalOledDark in GsKit), not grey fills.
  * Dynamic dark + Regular is left untouched: its surfaces are already dark
  * grey, not black, which is what Regular means.
  */
 private fun oledDynamicDark(context: android.content.Context): androidx.compose.material3.ColorScheme {
     val black = androidx.compose.ui.graphics.Color.Black
-    val c1c = androidx.compose.ui.graphics.Color(0xFF1C1C1E)
-    val c2c = androidx.compose.ui.graphics.Color(0xFF2C2C2E)
     return dynamicDarkColorScheme(context).copy(
         background = black,
         surface = black,
         surfaceDim = black,
-        surfaceContainerLow = c1c,
-        surfaceContainer = c1c,
-        surfaceVariant = c1c,
-        surfaceBright = c2c,
+        surfaceContainerLowest = black,
+        surfaceContainerLow = black,
+        surfaceContainer = black,
+        surfaceContainerHigh = black,
+        surfaceContainerHighest = black,
+        surfaceVariant = black,
+        surfaceBright = black,
+        surfaceTint = black,
     )
 }
 
@@ -971,8 +983,9 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
  * neutral system backgrounds, label black/white, secondary label ~60%, accent
  * only on primary/selected controls (system blue). Deliberately NOT the
  * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
- * [oled] picks the dark surface family: OLED = pure-black backgrounds with
- * #1C1C1E/#2C2C2E surfaces (pre-Phase-7 dark); Regular = dark-grey
+ * [oled] picks the dark surface family: OLED = pure-black backgrounds AND
+ * pure-black surfaces (Phase 8 correction — Phase 7 kept #1C1C1E/#2C2C2E
+ * containers, which did not read as OLED); Regular = dark-grey
  * backgrounds, no pure black anywhere.
  */
 private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.compose.material3.ColorScheme {
@@ -1013,13 +1026,14 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
         onBackground = white,
         surface = black,
         onSurface = white,
-        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surfaceVariant = black,
         onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
-        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
-        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
-        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
-        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
-        surfaceBright = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerLowest = black,
+        surfaceContainerLow = black,
+        surfaceContainer = black,
+        surfaceContainerHigh = black,
+        surfaceContainerHighest = black,
+        surfaceBright = black,
         surfaceDim = black,
         outline = androidx.compose.ui.graphics.Color(0xFF38383A),
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),

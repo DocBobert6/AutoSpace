@@ -1,10 +1,12 @@
 package app.autospace.car
 
 import android.app.DownloadManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.view.View
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -26,6 +28,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -44,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Text
@@ -51,7 +56,10 @@ import app.autospace.GearslipLog
 import app.autospace.ProjectedContent
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.GsProgressBar
+import app.autospace.car.theme.frostBar
+import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -105,9 +113,59 @@ fun WebApp(content: String) {
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
+    // Phase 8 strict popup blocking (Notscape's model, car-adapted — no
+    // tabs exist here, so an opened popup loads in the main view instead
+    // of a new window, and Back is the way back from it):
+    // strict ON by default; a blocked target is captured (up to 5, in
+    // arrival order) and offered from a frost-panel notice; a per-site
+    // Allow loads it in the main view; a per-site Block always silences
+    // it with no notice. Captured transport WebViews are never shown —
+    // they exist only to learn the popup's URL — and are destroyed when
+    // the notice is cleared.
+    var popupStrict by remember { mutableStateOf(BrowserStore.popupStrict(context)) }
+    var popupSettingForHost by remember { mutableStateOf(BrowserStore.PopupSetting.STRICT) }
+    val pendingPopups = remember { mutableStateListOf<String>() }
+    var popupHost by remember { mutableStateOf<String?>(null) }
+    var showPopupNotice by remember { mutableStateOf(false) }
+    val capturedPopupViews = remember { mutableListOf<WebView>() }
+    fun hostOf(url: String): String =
+        runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+    fun clearPendingPopups() {
+        pendingPopups.clear()
+        showPopupNotice = false
+        capturedPopupViews.forEach { runCatching { it.destroy() } }
+        capturedPopupViews.clear()
+    }
+    fun openFirstPopup() {
+        val url = pendingPopups.firstOrNull() ?: return
+        pendingPopups.removeAt(0)
+        web?.loadUrl(url)
+        if (pendingPopups.isEmpty()) {
+            showPopupNotice = false
+            capturedPopupViews.forEach { runCatching { it.destroy() } }
+            capturedPopupViews.clear()
+        }
+    }
+    fun onPopupUrl(host: String, url: String, transport: WebView, allowed: Boolean) {
+        if (allowed) {
+            runCatching { transport.destroy() }
+            web?.loadUrl(url)
+        } else if (pendingPopups.size < 5) {
+            capturedPopupViews.add(transport)
+            pendingPopups.add(url)
+            popupHost = host
+            showPopupNotice = true
+        } else {
+            // Over the 5-popup cap: drop the extra silently rather than
+            // growing the notice without bound.
+            runCatching { transport.destroy() }
+        }
+    }
     fun refreshLists() {
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
+        popupStrict = BrowserStore.popupStrict(context)
+        popupSettingForHost = BrowserStore.popupSetting(context, hostOf(currentUrl))
     }
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
@@ -115,11 +173,25 @@ fun WebApp(content: String) {
         fullscreenView = null
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView) {
+    // Popup notice auto-dismiss (Notscape's 12,000 ms, restarted when a
+    // new popup arrives so a late capture is not cut off mid-read), then
+    // pending popups are cleared exactly as Notscape clears them.
+    LaunchedEffect(showPopupNotice, pendingPopups.size) {
+        if (showPopupNotice) {
+            delay(12_000)
+            clearPendingPopups()
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { capturedPopupViews.forEach { runCatching { it.destroy() } } }
+    }
+
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice) {
         navigator.backInterceptor = {
             when {
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
+                showPopupNotice -> { clearPendingPopups(); true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
                 web != null && web!!.canGoBack() -> { web!!.goBack(); true }
@@ -234,6 +306,10 @@ fun WebApp(content: String) {
                             },
                         )
                         webChromeClient = BrowserChrome(
+                            context = context,
+                            onPopupUrl = { host, url, transport, allowed ->
+                                mainHandler.post { onPopupUrl(host, url, transport, allowed) }
+                            },
                             onProgress = { p -> mainHandler.post { progress = p } },
                             onShowFullscreen = { view, callback ->
                                 mainHandler.post {
@@ -314,29 +390,33 @@ fun WebApp(content: String) {
         }
         // Friendly error page (Phase 3.4, item 2): replaces the log-only error.
         // The WebView stays composed underneath, so Retry just reloads it.
+        // Phase 8: a kit panel, not a bare column, like every other browser
+        // notice — the page itself stays unthemed, the chrome does not.
         if (loadError != null) {
             Box(
                 Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f)),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        "This page couldn't load",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    )
-                    Text(
-                        loadError ?: "",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GsButton(onClick = { loadError = null; web?.reload() }) { Text("Retry") }
-                        GsButton(onClick = { loadError = null; web?.goBack() }) { Text("Go back") }
+                GsPanelCard(Modifier.fillMaxWidth().padding(32.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            "This page couldn't load",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(
+                            loadError ?: "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            GsButton(onClick = { loadError = null; web?.reload() }) { Text("Retry") }
+                            GsButton(onClick = { loadError = null; web?.goBack() }) { Text("Go back") }
+                        }
                     }
                 }
             }
@@ -346,6 +426,17 @@ fun WebApp(content: String) {
                 bookmarks = bookmarks,
                 history = historyList,
                 currentUrl = currentUrl,
+                currentHost = hostOf(currentUrl),
+                popupStrict = popupStrict,
+                popupSetting = popupSettingForHost,
+                onPopupStrictChange = { strict ->
+                    BrowserStore.setPopupStrict(context, strict)
+                    popupStrict = strict
+                },
+                onPopupSettingChange = { setting ->
+                    BrowserStore.setPopupSetting(context, hostOf(currentUrl), setting)
+                    popupSettingForHost = setting
+                },
                 isBookmarked = BrowserStore.isBookmarked(context, currentUrl),
                 onLoad = { url ->
                     listsOpen = false
@@ -382,6 +473,45 @@ fun WebApp(content: String) {
                 dialog = dialog,
                 onDismiss = { jsDialog = null },
             )
+        }
+        // Phase 8 popup notice (Notscape's popup notice, car-sized): a frost
+        // panel floating over the page — NOT a Gs sheet — naming the site
+        // and offering Open popup (first captured URL, into this main view;
+        // tabs are still deferred), Block always for this site, and Dismiss.
+        if (showPopupNotice && pendingPopups.isNotEmpty()) {
+            val host = popupHost?.takeIf { it.isNotBlank() }
+                ?: hostOf(pendingPopups.first()).takeIf { it.isNotBlank() }
+                ?: "this site"
+            val count = pendingPopups.size
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+                Column(
+                    Modifier.fillMaxWidth().frostBar(RoundedCornerShape(28.dp), 6.dp).padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        if (count == 1) "Popup blocked on $host" else "$count popups blocked on $host",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    Text(
+                        pendingPopups.first(),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    GsButton(onClick = { openFirstPopup() }, modifier = Modifier.fillMaxWidth()) { Text("Open popup") }
+                    GsButton(
+                        onClick = {
+                            BrowserStore.setPopupSetting(context, host, BrowserStore.PopupSetting.BLOCK)
+                            popupSettingForHost = BrowserStore.PopupSetting.BLOCK
+                            clearPendingPopups()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Block always for this site") }
+                    GsButton(onClick = { clearPendingPopups() }, modifier = Modifier.fillMaxWidth()) { Text("Dismiss") }
+                }
+            }
         }
         if (sheetOpen) {
             MediaFinderSheet(
@@ -479,6 +609,8 @@ private class BrowserClient(
  * windows, which crash on this virtual display.
  */
 private class BrowserChrome(
+    private val context: android.content.Context,
+    private val onPopupUrl: (host: String, url: String, transport: WebView, allowed: Boolean) -> Unit,
     private val onProgress: (Int) -> Unit,
     private val onShowFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     private val onHideFullscreen: () -> Unit,
@@ -486,6 +618,46 @@ private class BrowserChrome(
 ) : WebChromeClient() {
     override fun onProgressChanged(view: WebView?, newProgress: Int) {
         onProgress(newProgress)
+    }
+
+    /**
+     * Phase 8 strict popup blocking (Notscape's onCreateWindow, car-adapted).
+     * window.open / target=_blank never opens a window silently and never
+     * navigates the main view silently:
+     *  - per-site Block always: dropped silently, no notice, no transport.
+     *  - allowed (strict off globally, or per-site Allow): the target's URL
+     *    is captured and loaded in the MAIN view (there are no tabs here);
+     *    the browser's Back control is the way back from it.
+     *  - strict default: the target's URL is captured and reported, and the
+     *    notice offers it, up to 5 in arrival order.
+     * In the captured cases a transport WebView is still created and handed
+     * to the message — without it window.open returns null and some pages
+     * treat the popup as blocked and retry in a loop. The transport view is
+     * never attached or shown; it exists only to learn the URL, then the
+     * caller destroys it (allowed) or holds it until the notice clears.
+     */
+    override fun onCreateWindow(
+        view: WebView?,
+        isDialog: Boolean,
+        isUserGesture: Boolean,
+        resultMsg: Message?,
+    ): Boolean {
+        if (resultMsg == null) return false
+        val pageHost = view?.url?.let { runCatching { Uri.parse(it).host ?: "" }.getOrDefault("") } ?: ""
+        val setting = BrowserStore.popupSetting(context, pageHost)
+        if (setting == BrowserStore.PopupSetting.BLOCK) {
+            GearslipLog.i("car browser popup blocked silently for $pageHost (block always)")
+            return false
+        }
+        val allowed = !BrowserStore.popupStrict(context) || setting == BrowserStore.PopupSetting.ALLOW
+        val transport = WebView(view?.context ?: context).apply {
+            settings.javaScriptEnabled = true
+            webViewClient = PopupCaptureClient { url -> onPopupUrl(pageHost, url, this, allowed) }
+        }
+        (resultMsg.obj as? WebView.WebViewTransport)?.webView = transport
+        resultMsg.sendToTarget()
+        GearslipLog.i("car browser popup captured for $pageHost (allowed=$allowed)")
+        return true
     }
 
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -518,6 +690,40 @@ private class BrowserChrome(
         if (result == null) return false
         onJsDialog(JsDialogState.Prompt(message ?: "", defaultValue ?: "", result))
         return true
+    }
+}
+
+/**
+ * Reports the first http(s) URL a captured popup target navigates to, then
+ * never again for that view. Both hooks are needed: for window.open(url)
+ * the initial load may arrive via onPageStarted without shouldOverride
+ * ever firing, while a script-driven hop fires shouldOverride first —
+ * either way the URL is recorded exactly once, and returning true from
+ * shouldOverride keeps the (never-shown) transport view from loading it.
+ */
+private class PopupCaptureClient(
+    private val onFirstUrl: (String) -> Unit,
+) : WebViewClient() {
+    private var captured = false
+
+    private fun capture(url: String?) {
+        if (!captured && url != null && (url.startsWith("http://") || url.startsWith("https://"))) {
+            captured = true
+            onFirstUrl(url)
+        }
+    }
+
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+        val url = request?.url?.toString()
+        if (url != null && !captured) {
+            capture(url)
+            return true
+        }
+        return false
+    }
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        capture(url)
     }
 }
 
@@ -559,11 +765,8 @@ private fun JsDialogOverlay(dialog: JsDialogState, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            androidx.compose.material3.Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = MaterialTheme.shapes.extraLarge,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            // Phase 8: a kit panel, not a raw Material surface.
+            GsPanelCard(Modifier.fillMaxWidth()) {
                 Column(
                     Modifier.fillMaxWidth().padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),

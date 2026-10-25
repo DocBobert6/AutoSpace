@@ -11,7 +11,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -89,6 +91,16 @@ fun Modifier.frostBar(shape: Shape = GsKit.PillShape, elevation: Dp = 6.dp): Mod
         .background(GsKit.brush())
         .border(0.5.dp, GsKit.hairline(), shape)
 
+/**
+ * True when the current scheme is OLED black (provided by CarUi): every
+ * surface token is pure #000000, so a card on its backdrop is invisible
+ * unless it draws an edge. Kit cards and sheets then get a 0.5dp hairline
+ * outline (outline @0.45, the kit hairline) instead of a grey fill — that
+ * outline, plus text, is what separates panels in OLED mode. Off, cards
+ * are exactly as before (no border at all).
+ */
+val LocalOledDark = compositionLocalOf { false }
+
 /** A grouped card in the kit's card material and radius. */
 @Composable
 fun GsGroupedCard(
@@ -100,6 +112,7 @@ fun GsGroupedCard(
         shape = GsKit.CardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = content
     )
 }
@@ -118,6 +131,7 @@ fun GsPanelCard(
         shape = GsKit.CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = content
     )
 }
@@ -132,6 +146,7 @@ fun GsSheetSurface(
         modifier = modifier,
         color = GsKit.sheetColor(),
         shape = GsKit.SheetShape,
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = { Column { content() } }
     )
 }

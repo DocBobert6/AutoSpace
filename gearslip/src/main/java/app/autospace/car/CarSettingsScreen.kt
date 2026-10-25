@@ -83,15 +83,22 @@ fun CarSettingsScreen() {
     // screen, vertical scrolling, controls kept at car size. In light mode this
     // also fixes white-on-white: white cards on the #F2F2F7 tint, not tinted
     // cards on a white page.
+    // Phase 8 audit fix: the header is sticky — it sits outside the
+    // scroll column, so the car-sized back target stays visible while
+    // the sections scroll away underneath it.
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+            .background(MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        ScreenHeader("Settings")
+        ScreenHeader("Settings", Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 56.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
 
         ChoiceRow(
             "Open on connect",
@@ -99,37 +106,56 @@ fun CarSettingsScreen() {
             open,
         ) { CarSettings.setOpenOnConnect(it) }
 
-        ChoiceRow(
-            "Size",
-            listOf(1f to "Normal", 1.25f to "Large", 1.5f to "Extra large"),
-            scale,
-        ) { CarSettings.setScale(it) }
+        // UI size (Phase 8): the old Normal/Large/Extra large chips are
+        // gone — a slider in the Icon/Tile size style, 100%-150%, which
+        // covers the old presets exactly (100, 125, 150). Default 100%.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.foundation.layout.Box(
+                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) { Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            }
+            GsGroupedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GsSeekBar(
+                        fraction = ((scale - 1f) / 0.5f).coerceIn(0f, 1f),
+                        onSeek = { CarSettings.setScale(1f + it * 0.5f) },
+                    )
+                    Text(
+                        "Scales the whole car UI, 100%–150%; 100% is the old Normal, 125% the old Large, 150% the old Extra large.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
 
         // Icon size (Phase 6, corrected 2026-10-24 22:10: 0%-100%, superseding
         // the first 20%-100% ask). Finer than the Size presets above, which
         // stay exactly as they are. 0% hides the icon; the tile, its label
         // and its tap area stay, so a tile is never lost by shrinking it.
-        GsGroupedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Icon size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("0%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Icon size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.foundation.layout.Box(
+                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) { Text("${(iconSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            }
+            GsGroupedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GsSeekBar(
                         fraction = (iconSize),
                         onSeek = { CarSettings.setIconSize(it) },
-                        modifier = Modifier.weight(1f),
                     )
-                    Text("100%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(
-                    "${(iconSize * 100).roundToInt()}% — icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 
@@ -138,27 +164,26 @@ fun CarSettingsScreen() {
         // below a car target — launcher tiles floor at 88dp high, pinned tiles
         // at 72dp — and the grid reflows with size. Applies to launcher tiles
         // and to screen-sharing (PhoneApps) tiles.
-        GsGroupedCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Tile size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text("50%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Tile size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                androidx.compose.foundation.layout.Box(
+                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                ) { Text("${(tileSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            }
+            GsGroupedCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     GsSeekBar(
                         fraction = (tileSize - 0.5f),
                         onSeek = { CarSettings.setTileSize(0.5f + it) },
-                        modifier = Modifier.weight(1f),
                     )
-                    Text("150%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        "Tiles and their grid, 50%–150%; icons keep their own size above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
-                Text(
-                    "${(tileSize * 100).roundToInt()}% — tiles and their grid; icons keep their own size above.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 
@@ -180,7 +205,7 @@ fun CarSettingsScreen() {
                 "wallpaper colours. Material You follows the phone's wallpaper " +
                 "colours and light/dark; Material You Light / Dark use the " +
                 "phone's wallpaper colours, forced to that variant.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -194,7 +219,7 @@ fun CarSettingsScreen() {
                 "uses pure-black backgrounds with dark-grey surfaces. Applies " +
                 "to plain Dark, Material You Dark, and the dark variant of " +
                 "both Follow options, in every style.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -237,7 +262,7 @@ fun CarSettingsScreen() {
             "USB sends the phone's sound through AutoSpace. Android asks to share your screen each " +
                 "drive, and a few apps block it. Bluetooth plays as the phone normally would, and " +
                 "Android never asks.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (!pipeAudio) {
@@ -261,7 +286,7 @@ fun CarSettingsScreen() {
         Text(
             "AutoSpace reads each turn aloud through the car's speakers, and the music dips while it " +
                 "speaks. Turn it off if your map app's own voice already plays in the car.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -302,7 +327,7 @@ fun CarSettingsScreen() {
                 "to exit. Fit shows the whole phone with bars; tap a bar to exit. A portrait " +
                 "phone on a landscape car crops heavily in Fill — Fit looks better there. " +
                 "Applies the next time screen sharing starts.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -315,7 +340,7 @@ fun CarSettingsScreen() {
             "How far the video player's skip buttons jump. The player shows " +
                 "the matching glyph at 5/10/30 seconds and a curved arrow " +
                 "with the seconds everywhere else.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
@@ -329,7 +354,7 @@ fun CarSettingsScreen() {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Connection", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Info("Phone", "${Build.MANUFACTURER} ${Build.MODEL}")
             Info("Vehicle", vehicle.ifEmpty { "-" })
             Info("Video", display.ifEmpty { "-" })
@@ -337,7 +362,7 @@ fun CarSettingsScreen() {
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("About", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Text("About", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Info("Version", app.autospace.BuildConfig.VERSION_NAME)
             Info("Build", app.autospace.BuildConfig.VERSION_CODE.toString())
             ExperimentalFeatureRow(
@@ -349,6 +374,7 @@ fun CarSettingsScreen() {
                 Text("What's new", style = MaterialTheme.typography.titleMedium)
             }
         }
+        }
     }
 }
 
@@ -356,23 +382,42 @@ fun CarSettingsScreen() {
 private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     // Phase 7: every choice row is its own grouped card (surfaceBright on the
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
-    GsGroupedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                options.forEach { (value, label) ->
-                    val on = value == selected
-                    val scheme = MaterialTheme.colorScheme
-                    GsIconBox(
-                        onClick = { onSelect(value) },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(64.dp),
-                        colors = if (on) GsColors(scheme.primaryContainer, scheme.onPrimaryContainer)
-                        else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
-                        latched = on,
-                    ) {
-                        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+    // Phase 8 audit fix: the section header sits ABOVE the card in a
+    // neutral colour (not blue text inside it); chips wrap to rows of at
+    // most 3, so 6 app-theme chips and long "Maps (mirrored)" labels are
+    // never squeezed into one row; labels never wrap mid-chip (maxLines 1
+    // + ellipsis); and the selected state is tonal/neutral — the old
+    // primaryContainer fill read brown under a dynamic theme and bright
+    // blue under plain Dark, the same control in two different accents.
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                options.chunked(3).forEach { rowOptions ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        rowOptions.forEach { (value, label) ->
+                            val on = value == selected
+                            val scheme = MaterialTheme.colorScheme
+                            GsIconBox(
+                                onClick = { onSelect(value) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(64.dp),
+                                colors = if (on) GsColors(scheme.surfaceContainerHighest, scheme.onSurface)
+                                else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
+                                latched = on,
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    softWrap = false,
+                                )
+                            }
+                        }
+                        repeat(3 - rowOptions.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -422,7 +467,7 @@ private fun ExperimentalFeatureRow(
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(
                     description,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp),
                 )
@@ -441,7 +486,7 @@ private fun WebPageSetting() {
     var url by remember { mutableStateOf(AppSettings.startupUrl(context)) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Web page", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Text("Web page", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Surface(
             onClick = { editing = !editing },
             // Phase 7 kit: bright grouped-card colour, 20dp radius.
@@ -460,7 +505,7 @@ private fun WebPageSetting() {
         }
         Text(
             "Shown by the Browser app on the launcher. Applies on the next connection.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (editing) {
@@ -521,7 +566,7 @@ private fun ResolutionSetting(vehicle: String, display: String) {
             "Now showing: $display. Only sizes this head unit offers are ever used — " +
                 "if your pick isn't offered, the nearest size at or below it is picked " +
                 "instead. 2K/4K are wired-first: on a wireless link they cap at 1080p.",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         saved?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -542,7 +587,7 @@ private fun ScreenFit(vehicle: String) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Screen fit", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Text("Screen fit", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Stepper("Top", insets.top) { change(insets.copy(top = (insets.top + it).coerceAtLeast(0))) }
         Stepper("Bottom", insets.bottom) { change(insets.copy(bottom = (insets.bottom + it).coerceAtLeast(0))) }
         Text(

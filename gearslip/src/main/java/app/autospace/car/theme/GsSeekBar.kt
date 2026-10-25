@@ -10,12 +10,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
@@ -141,6 +143,12 @@ private fun WavyBar(fraction: Float, color: Color, track: Color, modifier: Modif
 /**
  * [GsProgressBar] that seeks: tapping or dragging moves it. The position is committed on release
  * rather than on every pixel of a drag, because each commit is a request to the media app.
+ *
+ * Phase 8 audit fix: a car-sized thumb (32dp) and a thicker track (28dp),
+ * instead of the old thumb-less thin bar whose position could only be read
+ * from the fill edge. The video player's own slim scrubber does NOT use
+ * this — it has its own PlayerScrubber, so the player keeps Notscape's
+ * slim over-video scrubber.
  */
 @Composable
 fun GsSeekBar(
@@ -148,13 +156,16 @@ fun GsSeekBar(
     onSeek: (Float) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    /** A car-sized thumb; false keeps the old thumb-less bar (unused by the player now). */
+    showThumb: Boolean = true,
+    trackHeight: Dp = 28.dp,
 ) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     // A taller touch area than the bar itself, so it's easy to hit on a car screen.
-    Box(
+    BoxWithConstraints(
         modifier
             .fillMaxWidth()
-            .height(36.dp)
+            .height(48.dp)
             .then(
                 if (!enabled) Modifier else Modifier
                     .pointerInput(Unit) { detectTapGestures { onSeek((it.x / size.width).coerceIn(0f, 1f)) } }
@@ -168,6 +179,19 @@ fun GsSeekBar(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        GsProgressBar(dragging ?: fraction, active = dragging != null)
+        GsProgressBar(dragging ?: fraction, active = dragging != null, height = trackHeight)
+        if (showThumb) {
+            val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+            val thumb = 32.dp
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = (maxWidth - thumb) * shown)
+                    .size(thumb)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+            )
+        }
     }
 }

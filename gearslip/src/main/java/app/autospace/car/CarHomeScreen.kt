@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
 import android.support.v4.media.session.PlaybackStateCompat
 import app.autospace.R
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,7 +41,12 @@ import kotlinx.coroutines.delay
 import androidx.compose.material3.Icon
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.luminance
 import app.autospace.media.ArtColor
 import kotlinx.coroutines.Dispatchers
@@ -94,16 +100,20 @@ fun CarHome() {
     }
     val splitScreen = phase == CarMedia.Phase.READY && now.isActive && panel != SidePanel.NONE
 
-    // No outer padding on any side, split screen or not - only the gap between the two panes
-    // when the player is sharing the screen with the map.
+    // Phase 8: 12dp outer padding (so rounded corners actually show against
+    // the backdrop), 12dp gap, map 1.75 / media 1.0 — the media pane is
+    // ~36% of the width instead of ~32%, about 22px wider on an 800px
+    // screen once padding and gap are counted. With nothing playing the
+    // map still takes the full row (minus the padding), as before.
     Row(
-        Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxSize().padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Box(
             Modifier
-                .weight(if (splitScreen) 2.1f else 1f)
-                .fillMaxHeight(),
+                .weight(if (splitScreen) 1.75f else 1f)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(20.dp)),
         ) {
             MapPane(navStatus, frame)
         }
@@ -114,11 +124,69 @@ fun CarHome() {
     }
 }
 
+/**
+ * Rounds the map pane's corners for real, despite the map being a
+ * SurfaceView. Each corner gets a backdrop-coloured mask: the corner
+ * square minus a quarter circle (EvenOdd path), so only the square's
+ * outer corner is painted over and the map shows through the rounded
+ * cut. No pointer handling, so it never intercepts a map gesture; and
+ * it sits above the SurfaceView only because a default SurfaceView
+ * renders behind the window — if the stage ever moves to
+ * setZOrderOnTop, these masks would silently stop working and the map
+ * would go square-cornered again.
+ */
+@Composable
+private fun MapCornerOverlays(modifier: Modifier = Modifier) {
+    val backdrop = MaterialTheme.colorScheme.background
+    Canvas(modifier) {
+        val r = 20.dp.toPx()
+        val w = size.width
+        val h = size.height
+        fun corner(rect: Rect, circle: Rect) {
+            drawPath(
+                Path().apply {
+                    addRect(rect)
+                    addOval(circle)
+                    fillType = PathFillType.EvenOdd
+                },
+                backdrop,
+            )
+        }
+        // Top-left: circle centred at the inner corner (r, r).
+        corner(Rect(Offset.Zero, Size(r, r)), Rect(Offset.Zero, Size(2 * r, 2 * r)))
+        // Top-right: circle centred at (w - r, r).
+        corner(
+            Rect(Offset(w - r, 0f), Size(r, r)),
+            Rect(Offset(w - 2 * r, 0f), Size(2 * r, 2 * r)),
+        )
+        // Bottom-left: circle centred at (r, h - r).
+        corner(
+            Rect(Offset(0f, h - r), Size(r, r)),
+            Rect(Offset(0f, h - 2 * r), Size(2 * r, 2 * r)),
+        )
+        // Bottom-right: circle centred at (w - r, h - r).
+        corner(
+            Rect(Offset(w - r, h - r), Size(r, r)),
+            Rect(Offset(w - 2 * r, h - 2 * r), Size(2 * r, 2 * r)),
+        )
+    }
+}
+
 @Composable
 private fun MapPane(status: CarAppConnection.Status, frame: CarEnvironment.Frame) {
     val navigator = LocalCarNavigator.current
     if (status.phase == CarAppConnection.Phase.RUNNING) {
-        CarAppStage(CarServices.nav, status, frame, embedded = true) { CarServices.stopNav() }
+        // The map is a SurfaceView (its own SurfaceFlinger layer), so the
+        // Box clip above rounds the Compose chrome but NOT the map itself
+        // — Compose clip cannot round a separate window layer, and claiming
+        // otherwise would be wrong. The corners are rounded for real by
+        // MapCornerOverlays: backdrop-coloured masks over the four corners,
+        // drawn above the SurfaceView (default Z-order: behind the window),
+        // which no touch handling touches, so map gestures pass through.
+        Box(Modifier.fillMaxSize()) {
+            CarAppStage(CarServices.nav, status, frame, embedded = true) { CarServices.stopNav() }
+            MapCornerOverlays(Modifier.fillMaxSize())
+        }
         return
     }
 
@@ -175,7 +243,11 @@ private fun DockedPlayer(now: NowPlaying, modifier: Modifier) {
     val scheme = MaterialTheme.colorScheme
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
 
-    Surface(modifier = modifier, color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant)) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
             // Whatever height the controls below leave over, so the art grows on a taller
             // screen and shrinks rather than pushing the buttons off a short one.
@@ -235,7 +307,11 @@ private fun SideLyrics(now: NowPlaying, modifier: Modifier) {
     val navigator = LocalCarNavigator.current
     val context = LocalContext.current
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
-    Surface(modifier = modifier, color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant)) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant),
+    ) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {

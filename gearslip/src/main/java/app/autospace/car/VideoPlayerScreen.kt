@@ -11,12 +11,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Close
@@ -50,6 +53,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -87,13 +91,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import app.autospace.R
-import app.autospace.car.theme.GsButton
-import app.autospace.car.theme.GsColors
-import app.autospace.car.theme.GsIconBox
-import app.autospace.car.theme.GsIconButton
-import app.autospace.car.theme.GsSeekBar
-import app.autospace.car.theme.GsTone
-import app.autospace.car.theme.gsColors
+import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -534,10 +532,10 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             horizontalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             if (urls.size > 1) {
-                GsIconButton(
+                PlayerIconButton(
                     Icons.Filled.SkipPrevious, "Previous",
                     { player.seekToPreviousMediaItem(); touchControls() },
-                    size = 60.dp, iconSize = 30.dp, shape = CircleShape,
+                    size = 60.dp, iconSize = 30.dp,
                 )
             }
             if (isBuffering) {
@@ -548,29 +546,33 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             // Play/pause with Notscape's buffering treatment: while
             // buffering, the button fills and empties in a steady cycle
             // (tween 1600, Reverse) — a buffer has no honest progress.
-            GsIconBox(
-                onClick = { if (isPlaying) player.pause() else player.play(); touchControls() },
-                modifier = Modifier.size(96.dp),
-                colors = gsColors(GsTone.Primary),
-                shape = CircleShape,
-            ) {
-                if (isBuffering) {
-                    val cycle = rememberInfiniteTransition(label = "bufferFill")
-                    val fillFrac = cycle.animateFloat(
-                        initialValue = 0f, targetValue = 1f,
-                        animationSpec = infiniteRepeatable(animation = tween(1600), repeatMode = RepeatMode.Reverse),
-                        label = "bufferFillFrac",
-                    )
-                    Box(
-                        Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fillFrac.value)
-                            .background(MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.35f)),
+            // Notscape's fill is primary at 0.35 over the frost circle,
+            // and the icon is onSurface, not onPrimary: the old Gs
+            // Primary box (primary background, onPrimary icon) is gone.
+            PlayerCircle(96.dp, { if (isPlaying) player.pause() else player.play(); touchControls() }) {
+                Box(
+                    Modifier.size(96.dp).clip(CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (isBuffering) {
+                        val cycle = rememberInfiniteTransition(label = "bufferFill")
+                        val fillFrac = cycle.animateFloat(
+                            initialValue = 0f, targetValue = 1f,
+                            animationSpec = infiniteRepeatable(animation = tween(1600), repeatMode = RepeatMode.Reverse),
+                            label = "bufferFillFrac",
+                        )
+                        Box(
+                            Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fillFrac.value)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                        )
+                    }
+                    Icon(
+                        if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(44.dp),
                     )
                 }
-                Icon(
-                    if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(44.dp),
-                )
             }
             if (isBuffering) {
                 Spacer(Modifier.size(72.dp))
@@ -578,10 +580,10 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 PlayerCircle(72.dp, { seekBy(skipSec * 1000L); touchControls() }) { SkipForwardIcon(skipSec) }
             }
             if (urls.size > 1) {
-                GsIconButton(
+                PlayerIconButton(
                     Icons.Filled.SkipNext, "Next",
                     { player.seekToNextMediaItem(); touchControls() },
-                    size = 60.dp, iconSize = 30.dp, shape = CircleShape,
+                    size = 60.dp, iconSize = 30.dp,
                 )
             }
         }
@@ -604,8 +606,9 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             ) {
                 Text(formatTime(pos), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = timeColor)
                 Box(Modifier.weight(1f)) {
-                    GsSeekBar(
+                    PlayerScrubber(
                         fraction = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f),
+                        ink = timeColor,
                         onSeek = { fraction -> player.seekTo((fraction * dur).toLong()); touchControls() },
                     )
                 }
@@ -624,13 +627,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         // controls: there is nothing to auto-hide over. Close returns to
         // the browser, which is the car's Back here.
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader(
-                currentTitle,
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                trailing = {
-                    GsIconButton(Icons.Filled.Close, "Close", onClose, size = 64.dp, iconSize = 32.dp)
-                },
-            )
+            PlayerScreenHeader(currentTitle, onClose)
             Column(
                 Modifier.weight(1f).fillMaxWidth().padding(24.dp),
                 verticalArrangement = Arrangement.Center,
@@ -656,8 +653,8 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GsButton(onClick = { error = null; retryKey++ }) { Text("Retry") }
-                    GsButton(onClick = onClose, tone = GsTone.Neutral) { Text("Close") }
+                    androidx.compose.material3.Button(onClick = { error = null; retryKey++ }) { Text("Retry") }
+                    androidx.compose.material3.OutlinedButton(onClick = onClose) { Text("Close") }
                 }
             }
         }
@@ -666,13 +663,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         // Controls stay visible and reachable while driving — they control audio.
         // The options capsule is parked chrome; driving shows transport only.
         Column(Modifier.fillMaxSize()) {
-            ScreenHeader(
-                currentTitle,
-                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                trailing = {
-                    GsIconButton(Icons.Filled.Close, "Close", onClose, size = 64.dp, iconSize = 32.dp)
-                },
-            )
+            PlayerScreenHeader(currentTitle, onClose)
             Column(
                 Modifier.weight(1f).fillMaxWidth().padding(24.dp),
                 verticalArrangement = Arrangement.Center,
@@ -874,15 +865,15 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             ) {
                 Row(
                     Modifier.padding(16.dp)
-                        .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                        .playerCapsule()
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    GsIconButton(Icons.Filled.Close, "Close player", onClose, size = 56.dp, iconSize = 28.dp, shape = CircleShape)
-                    GsIconButton(
+                    PlayerIconButton(Icons.Filled.Close, "Close player", onClose, size = 56.dp, iconSize = 28.dp)
+                    PlayerIconButton(
                         Icons.Filled.Stop, "Stop playback",
                         { player.stop(); onClose },
-                        size = 56.dp, iconSize = 28.dp, shape = CircleShape,
+                        size = 56.dp, iconSize = 28.dp,
                     )
                 }
             }
@@ -920,15 +911,15 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             horizontalArrangement = Arrangement.End,
                         ) {
                             Row(
-                                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                                Modifier.playerCapsule()
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 ScaleMode.entries.forEach { m ->
-                                    GsButton(
+                                    PlayerTextButton(
+                                        m.label, selected = scaleMode == m,
                                         onClick = { touchControls(); applyScaleMode(m) },
-                                        tone = if (scaleMode == m) GsTone.Primary else GsTone.Neutral,
-                                    ) { Text(m.label) }
+                                    )
                                 }
                             }
                         }
@@ -939,31 +930,31 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             horizontalArrangement = Arrangement.End,
                         ) {
                             Row(
-                                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                                Modifier.playerCapsule()
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                     .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                GsButton(
+                                PlayerTextButton(
+                                    "Auto", selected = selectedVideoId == null && selectedParsedBw == null,
                                     onClick = {
                                         touchControls()
                                         if (videoTracks.size > 1) selectVideo(null) else selectParsedQuality(null)
                                     },
-                                    tone = if (selectedVideoId == null && selectedParsedBw == null) GsTone.Primary else GsTone.Neutral,
-                                ) { Text("Auto") }
+                                )
                                 if (videoTracks.size > 1) {
                                     videoTracks.forEach { choice ->
-                                        GsButton(
+                                        PlayerTextButton(
+                                            choice.label, selected = selectedVideoId == choice.id,
                                             onClick = { touchControls(); selectVideo(choice) },
-                                            tone = if (selectedVideoId == choice.id) GsTone.Primary else GsTone.Neutral,
-                                        ) { Text(choice.label) }
+                                        )
                                     }
                                 } else {
                                     parsedQualities.forEach { q ->
-                                        GsButton(
+                                        PlayerTextButton(
+                                            q.label, selected = selectedParsedBw == q.bandwidth,
                                             onClick = { touchControls(); selectParsedQuality(q.bandwidth) },
-                                            tone = if (selectedParsedBw == q.bandwidth) GsTone.Primary else GsTone.Neutral,
-                                        ) { Text(q.label) }
+                                        )
                                     }
                                 }
                             }
@@ -975,16 +966,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             horizontalArrangement = Arrangement.End,
                         ) {
                             Row(
-                                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                                Modifier.playerCapsule()
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                     .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 audioTracks.forEach { choice ->
-                                    GsButton(
+                                    PlayerTextButton(
+                                        choice.label, selected = selectedAudioId == choice.id,
                                         onClick = { touchControls(); selectAudio(choice) },
-                                        tone = if (selectedAudioId == choice.id) GsTone.Primary else GsTone.Neutral,
-                                    ) { Text(choice.label) }
+                                    )
                                 }
                             }
                         }
@@ -995,20 +986,20 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             horizontalArrangement = Arrangement.End,
                         ) {
                             Row(
-                                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                                Modifier.playerCapsule()
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                                     .horizontalScroll(rememberScrollState()),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                GsButton(
+                                PlayerTextButton(
+                                    "Off", selected = subtitlesOff,
                                     onClick = { touchControls(); selectText(null) },
-                                    tone = if (subtitlesOff) GsTone.Primary else GsTone.Neutral,
-                                ) { Text("Off") }
+                                )
                                 textTracks.forEach { choice ->
-                                    GsButton(
+                                    PlayerTextButton(
+                                        choice.label, selected = !subtitlesOff && selectedTextId == choice.id,
                                         onClick = { touchControls(); selectText(choice) },
-                                        tone = if (!subtitlesOff && selectedTextId == choice.id) GsTone.Primary else GsTone.Neutral,
-                                    ) { Text(choice.label) }
+                                    )
                                 }
                             }
                         }
@@ -1044,63 +1035,58 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                         // button is tinted whenever the mode is not Fit, and
                         // the sleep button whenever a timer is running.
                         Row(
-                            Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(50))
+                            Modifier.playerCapsule()
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            val scheme = MaterialTheme.colorScheme
-                            val activeColors = GsColors(Color.Transparent, scheme.primary)
-                            GsIconButton(
+                            PlayerIconButton(
                                 Icons.Filled.Headphones, if (listenMode) "Show video" else "Listen mode",
                                 {
                                     touchControls()
                                     listenMode = !listenMode
                                     if (listenMode) { resetZoom(); showScaleRow = false }
                                 },
-                                size = 56.dp, iconSize = 28.dp, shape = CircleShape,
-                                colors = if (listenMode) activeColors else gsColors(GsTone.Neutral),
+                                size = 56.dp, iconSize = 28.dp, active = listenMode,
                             )
                             if (audioTracks.size > 1) {
-                                GsIconButton(
+                                PlayerIconButton(
                                     Icons.Filled.Audiotrack, "Audio track",
                                     { openRow("audio") },
-                                    size = 56.dp, iconSize = 28.dp, shape = CircleShape,
-                                    colors = if (showAudioRow) activeColors else gsColors(GsTone.Neutral),
+                                    size = 56.dp, iconSize = 28.dp, active = showAudioRow,
                                 )
                             }
                             if ((videoTracks.size > 1 || parsedQualities.size > 1) && !listenMode) {
-                                GsIconButton(
+                                PlayerIconButton(
                                     Icons.Filled.HighQuality, "Video quality",
                                     { openRow("quality") },
-                                    size = 56.dp, iconSize = 28.dp, shape = CircleShape,
-                                    colors = if (showQualityRow || selectedVideoId != null || selectedParsedBw != null) activeColors else gsColors(GsTone.Neutral),
+                                    size = 56.dp, iconSize = 28.dp,
+                                    active = showQualityRow || selectedVideoId != null || selectedParsedBw != null,
                                 )
                             }
                             if (textTracks.isNotEmpty()) {
-                                GsIconButton(
+                                PlayerIconButton(
                                     Icons.Filled.Subtitles, "Subtitles",
                                     { openRow("text") },
-                                    size = 56.dp, iconSize = 28.dp, shape = CircleShape,
-                                    colors = if (showTextRow || !subtitlesOff) activeColors else gsColors(GsTone.Neutral),
+                                    size = 56.dp, iconSize = 28.dp, active = showTextRow || !subtitlesOff,
                                 )
                             }
                             if (!listenMode) {
-                                GsIconButton(
+                                PlayerIconButton(
                                     Icons.Filled.AspectRatio, "Video scaling",
                                     { openRow("scale") },
-                                    size = 56.dp, iconSize = 28.dp, shape = CircleShape,
-                                    colors = if (showScaleRow || scaleMode != ScaleMode.FIT) activeColors else gsColors(GsTone.Neutral),
+                                    size = 56.dp, iconSize = 28.dp, active = showScaleRow || scaleMode != ScaleMode.FIT,
                                 )
                             }
-                            GsButton(onClick = { touchControls(); cycleSpeed() }, tone = GsTone.Neutral) {
-                                Text(if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×")
-                            }
-                            GsButton(
+                            PlayerTextButton(
+                                if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×",
+                                selected = false,
+                                onClick = { touchControls(); cycleSpeed() },
+                            )
+                            PlayerTextButton(
+                                if (sleepMinutes == 0) "Sleep" else "${sleepMinutes}m",
+                                selected = sleepMinutes != 0,
                                 onClick = { touchControls(); cycleSleep() },
-                                tone = if (sleepMinutes == 0) GsTone.Neutral else GsTone.Primary,
-                            ) {
-                                Text(if (sleepMinutes == 0) "Sleep" else "${sleepMinutes}m")
-                            }
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -1111,14 +1097,137 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     }
 }
 
-/** A frosted circular transport button (Gs material, AVKit-style). */
+// ---- Notscape player chrome, exempt from AutoSpace's GsTheme styling ----
+// Phase 8 (Robert 2026-10-25 00:32, correcting Phase 6/7): the player must
+// be basically the exact same player as Notscape Mariner's, so its chrome
+// wears Notscape's playerCapsule — the kit frostBar material — and NOT a
+// Gs control, and it must NOT vary with GsTheme (Frost/Flat/Tactile/
+// Keycap). Colours come from MaterialTheme's scheme (neutral/dynamic per
+// AppTheme), exactly as Notscape's do; on-video labels stay WHITE.
+// Notscape's playerCapsule passes elevation 4dp (the kit default is 6dp);
+// the car build uses 4dp to match Notscape's player, not the kit default.
+// Car sizes are scale, not style, and stay: prev/next 60dp, skip 72dp,
+// play-pause 96dp, options icons 56dp.
+@Composable
+private fun Modifier.playerCapsule(shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(50)): Modifier =
+    this.frostBar(shape, elevation = 4.dp)
+
+/** A frosted circular transport button, Notscape's FrostCircle, car-scaled. */
 @Composable
 private fun PlayerCircle(size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, content: @Composable () -> Unit) {
-    GsIconBox(
-        onClick = onClick,
-        modifier = Modifier.size(size),
-        shape = CircleShape,
+    Box(
+        modifier = Modifier.size(size).playerCapsule(CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) { content() }
+}
+
+/** A frost-capsule icon button: tint primary only when active, else onSurface (Notscape's rule). */
+@Composable
+private fun PlayerIconButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    size: androidx.compose.ui.unit.Dp = 56.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 28.dp,
+    active: Boolean = false,
+) {
+    Box(
+        modifier = Modifier.size(size).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon, contentDescription,
+            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
+
+/** A frost-row text button: primary + bold only when selected, else onSurface. */
+@Composable
+private fun PlayerTextButton(text: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The player's slim scrubber (Notscape landscape language): a thin ink
+ * track with a small round thumb, white over video, onSurface off video.
+ * Tap or drag seeks; the seek commits on release, like GsSeekBar.
+ */
+@Composable
+private fun PlayerScrubber(fraction: Float, ink: Color, onSeek: (Float) -> Unit) {
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier.fillMaxWidth().height(36.dp)
+            .pointerInput(Unit) {
+                detectTapGestures { onSeek((it.x / size.width).coerceIn(0f, 1f)) }
+            }
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { dragging = (it.x / size.width).coerceIn(0f, 1f) },
+                    onDragEnd = { dragging?.let(onSeek); dragging = null },
+                    onDragCancel = { dragging = null },
+                ) { change, _ -> dragging = (change.position.x / size.width).coerceIn(0f, 1f) }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(50))
+                .background(ink.copy(alpha = 0.3f)),
+        )
+        Box(
+            Modifier.fillMaxWidth().height(4.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(
+                Modifier.fillMaxWidth(shown).fillMaxHeight().clip(RoundedCornerShape(50))
+                    .background(ink),
+            )
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val thumbX = (maxWidth - 16.dp) * shown
+            Box(
+                Modifier.padding(start = thumbX).size(16.dp).clip(CircleShape).background(ink),
+            )
+        }
+    }
+}
+
+/** The error/driving branches' header: plain Material3, no Gs control. */
+@Composable
+private fun PlayerScreenHeader(title: String, onClose: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        IconButton(onClick = onClose, modifier = Modifier.size(56.dp)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
+        }
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onClose, modifier = Modifier.size(56.dp)) {
+            Icon(Icons.Filled.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
+        }
+    }
 }
 
 /** Skip-button faces (Notscape 0.0.9997): the baked glyph where Material
@@ -1127,12 +1236,12 @@ private fun PlayerCircle(size: androidx.compose.ui.unit.Dp, onClick: () -> Unit,
 @Composable
 private fun SkipBackIcon(sec: Int) {
     when (sec) {
-        5 -> Icon(Icons.Filled.Replay5, "Back 5 seconds", modifier = Modifier.size(36.dp))
-        10 -> Icon(Icons.Filled.Replay10, "Back 10 seconds", modifier = Modifier.size(36.dp))
-        30 -> Icon(Icons.Filled.Replay30, "Back 30 seconds", modifier = Modifier.size(36.dp))
+        5 -> Icon(Icons.Filled.Replay5, "Back 5 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
+        10 -> Icon(Icons.Filled.Replay10, "Back 10 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
+        30 -> Icon(Icons.Filled.Replay30, "Back 30 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
         else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Filled.Undo, "Back $sec seconds", modifier = Modifier.size(26.dp))
-            Text(sec.toString(), style = MaterialTheme.typography.labelSmall)
+            Text(sec.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -1140,12 +1249,12 @@ private fun SkipBackIcon(sec: Int) {
 @Composable
 private fun SkipForwardIcon(sec: Int) {
     when (sec) {
-        5 -> Icon(Icons.Filled.Forward5, "Forward 5 seconds", modifier = Modifier.size(36.dp))
-        10 -> Icon(Icons.Filled.Forward10, "Forward 10 seconds", modifier = Modifier.size(36.dp))
-        30 -> Icon(Icons.Filled.Forward30, "Forward 30 seconds", modifier = Modifier.size(36.dp))
+        5 -> Icon(Icons.Filled.Forward5, "Forward 5 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
+        10 -> Icon(Icons.Filled.Forward10, "Forward 10 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
+        30 -> Icon(Icons.Filled.Forward30, "Forward 30 seconds", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(36.dp))
         else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(Icons.Filled.Redo, "Forward $sec seconds", modifier = Modifier.size(26.dp))
-            Text(sec.toString(), style = MaterialTheme.typography.labelSmall)
+            Text(sec.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }

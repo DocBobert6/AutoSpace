@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -24,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.GsSheetSurface
 import app.autospace.car.theme.GsTone
 
 /**
@@ -37,6 +37,11 @@ fun BrowserListsSheet(
     bookmarks: List<String>,
     history: List<String>,
     currentUrl: String,
+    currentHost: String,
+    popupStrict: Boolean,
+    popupSetting: BrowserStore.PopupSetting,
+    onPopupStrictChange: (Boolean) -> Unit,
+    onPopupSettingChange: (BrowserStore.PopupSetting) -> Unit,
     isBookmarked: Boolean,
     onLoad: (String) -> Unit,
     onBookmarkToggle: () -> Unit,
@@ -53,11 +58,9 @@ fun BrowserListsSheet(
             ),
         )
         // Phase 7 kit sheet: solid surfaceContainerLow, 28dp corners.
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        ) {
+        // Phase 8: the kit sheet composable itself (same colours, plus the
+        // OLED hairline when OLED is on).
+        GsSheetSurface(Modifier.fillMaxWidth().padding(16.dp)) {
             Column(
                 Modifier.fillMaxWidth().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -69,6 +72,46 @@ fun BrowserListsSheet(
                 )
                 GsButton(onClick = onBookmarkToggle, modifier = Modifier.fillMaxWidth()) {
                     Text(if (isBookmarked) "Remove this page from bookmarks" else "Bookmark this page")
+                }
+                // Phase 8 per-site popup settings (Notscape's model): strict
+                // blocking is ON by default; a site set to Allow loads its
+                // popups in this browser (Back returns), a site set to Block
+                // always silences them with no notice, and Strict default
+                // captures them for the popup notice instead.
+                Text("Popups", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Strict blocking captures popups and offers them from a notice " +
+                        "instead of opening them silently. Allowed popups load in this " +
+                        "browser — Back returns.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                GsButton(onClick = { onPopupStrictChange(!popupStrict) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (popupStrict) "Strict popup blocking: On" else "Strict popup blocking: Off")
+                }
+                if (currentHost.isNotBlank()) {
+                    Text(
+                        "For $currentHost:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        GsButton(
+                            onClick = { onPopupSettingChange(BrowserStore.PopupSetting.ALLOW) },
+                            tone = if (popupSetting == BrowserStore.PopupSetting.ALLOW) GsTone.Primary else GsTone.Neutral,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Allow") }
+                        GsButton(
+                            onClick = { onPopupSettingChange(BrowserStore.PopupSetting.BLOCK) },
+                            tone = if (popupSetting == BrowserStore.PopupSetting.BLOCK) GsTone.Primary else GsTone.Neutral,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Block always") }
+                        GsButton(
+                            onClick = { onPopupSettingChange(BrowserStore.PopupSetting.STRICT) },
+                            tone = if (popupSetting == BrowserStore.PopupSetting.STRICT) GsTone.Primary else GsTone.Neutral,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Strict default") }
+                    }
                 }
                 Text("Bookmarks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 if (bookmarks.isEmpty()) {

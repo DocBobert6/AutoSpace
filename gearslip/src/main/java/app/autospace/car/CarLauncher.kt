@@ -336,12 +336,16 @@ fun CarLauncher() {
     Column(Modifier.fillMaxSize()) {
         GsButton(
             onClick = { searching = true },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 20.dp, vertical = 12.dp),
             tone = GsTone.Neutral,
         ) {
             Icon(Icons.Filled.Search, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(if (query.isBlank()) "Search apps" else query, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                if (query.isBlank()) "Search apps" else query,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
         }
         if (pinned.isNotEmpty()) {
             Text(
@@ -367,7 +371,7 @@ fun CarLauncher() {
             columns = GridCells.Adaptive(minSize = launcherGridMin),
             state = gridState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(20.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -507,7 +511,11 @@ private fun AppTile(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Box {
-                        TileIcon(tile, 80.dp * iconFrac)
+                        // Phase 8 audit fix: the icon scales with BOTH
+                        // sliders (icon-size and tile-size), from a
+                        // larger 96dp base, so it no longer sits small
+                        // in the top third of a tall tile.
+                        TileIcon(tile, (96.dp * iconFrac * tileFrac).coerceAtLeast(56.dp))
                         if (tile.broken) {
                             // Pinned to the icon's lower corner, ringed in the tile's colour so it
                             // reads as sitting on top of the icon.
@@ -539,7 +547,7 @@ private fun TileLabel(tile: Tile, maxLines: Int = 2, modifier: Modifier = Modifi
     Text(
         tile.label,
         modifier = modifier,
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
         maxLines = maxLines,

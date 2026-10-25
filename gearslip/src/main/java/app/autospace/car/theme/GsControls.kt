@@ -152,6 +152,15 @@ fun Modifier.gsSurface(
         if (look.hairlineAlpha > 0f) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = look.hairlineAlpha), shape)
         }
+        // Phase 8 OLED: every surface token is pure black, so a control whose
+        // look has no hairline (Flat, Tactile, Keycap) would be a black shape
+        // on a black backdrop, separated by nothing but its icon and label.
+        // Force the same 0.5dp kit hairline on every Gs control in OLED mode,
+        // whatever the style — for Frost it duplicates its own identical
+        // hairline, which is visually a no-op.
+        if (LocalOledDark.current) {
+            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
+        }
         if (!latched && (look.bevelTop > 0f || look.bevelBottom > 0f)) {
             m = m.border(
                 1.dp,

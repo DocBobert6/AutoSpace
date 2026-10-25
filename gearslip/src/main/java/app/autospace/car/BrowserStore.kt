@@ -14,6 +14,10 @@ import org.json.JSONArray
 object BrowserStore {
     private const val KEY_BOOKMARKS = "browser_bookmarks"
     private const val KEY_HISTORY = "browser_history"
+    /** Global strict popup blocking, ON by default (Phase 8, Notscape's popupStrict). */
+    const val KEY_POPUP_STRICT = "browser_popup_strict"
+    /** Per-site popup settings, JSON object host -> {"allow": bool, "block": bool}. */
+    private const val KEY_POPUP_SITES = "browser_popup_sites"
     private const val MAX_HISTORY = 50
     private const val MAX_BOOKMARKS = 200
 
@@ -65,4 +69,67 @@ object BrowserStore {
     fun clearHistory(context: Context) {
         write(context, KEY_HISTORY, emptyList())
     }
+
+    // ---- Popup settings (Phase 8, Notscape's per-site popup model) ----
+    // Strict = window.open / target=_blank never opens a window silently;
+    // blocked targets are captured and offered from a notice instead.
+    // Per site, allowPopups and blockPopups are mutually exclusive, like
+    // Notscape's SiteSetting: allow = popups load (in the main view, since
+    // the car browser has no tabs); block = blocked silently, no notice;
+    // neither = the strict default (capture + notice).
+    /** One site's popup setting: allow, block-always, or the strict default. */
+    enum class PopupSetting { STRICT, ALLOW, BLOCK }
+
+    fun popupStrict(context: Context): Boolean =
+        AppSettings.getString(context, KEY_POPUP_STRICT, "true") != "false"
+
+    fun setPopupStrict(context: Context, strict: Boolean) {
+        AppSettings.putString(context, KEY_POPUP_STRICT, strict.toString())
+    }
+
+    private fun popupSiteMap(context: Context): MutableMap<String, JSONObject> {
+        val raw = AppSettings.getString(context, KEY_POPUP_SITES, "")
+        val out = mutableMapOf<String, JSONObject>()
+        if (raw.isBlank()) return out
+        runCatching {
+            val obj = JSONObject(raw)
+            for (key in obj.keys()) out[key] = obj.getJSONObject(key)
+        }
+        return out
+    }
+
+    private fun writePopupSiteMap(context: Context, map: Map<String, JSONObject>) {
+        val obj = JSONObject()
+        for ((host, value) in map) obj.put(host, value)
+        AppSettings.putString(context, KEY_POPUP_SITES, obj.toString())
+    }
+
+    fun popupSetting(context: Context, host: String): PopupSetting {
+        if (host.isBlank()) return PopupSetting.STRICT
+        val entry = popupSiteMap(context)[host] ?: return PopupSetting.STRICT
+        return when {
+            entry.optBoolean("allow", false) -> PopupSetting.ALLOW
+            entry.optBoolean("block", false) -> PopupSetting.BLOCK
+            else -> PopupSetting.STRICT
+        }
+    }
+
+    fun setPopupSetting(context: Context, host: String, setting: PopupSetting) {
+        if (host.isBlank()) return
+        val map = popupSiteMap(context)
+        if (setting == PopupSetting.STRICT) {
+            map.remove(host)
+        } else {
+            map[host] = JSONObject()
+                .put("allow", setting == PopupSetting.ALLOW)
+                .put("block", setting == PopupSetting.BLOCK)
+        }
+        writePopupSiteMap(context, map)
+    }
+
+    fun popupAllow(context: Context, host: String): Boolean =
+        popupSetting(context, host) == PopupSetting.ALLOW
+
+    fun popupBlockAlways(context: Context, host: String): Boolean =
+        popupSetting(context, host) == PopupSetting.BLOCK
 }

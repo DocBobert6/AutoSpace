@@ -47,6 +47,7 @@ class MirrorService : Service() {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
         )
 
+        GearslipLog.i("mirror service started, consent data present, redeeming token")
         val media: MediaProjection? = try {
             getSystemService(MediaProjectionManager::class.java).getMediaProjection(resultCode, data)
         } catch (t: Throwable) {
@@ -59,7 +60,17 @@ class MirrorService : Service() {
         }
 
         // The session owns the encoder Surface, so it performs the swap once a token exists.
-        Handler(Looper.getMainLooper()).post { PhoneMirror.onTokenReady?.invoke(media) }
+        // A null callback means the session activity is gone — log it loudly,
+        // because the token then has nowhere to go and the car silently stays
+        // on its own UI, which looks exactly like "mirroring does nothing".
+        Handler(Looper.getMainLooper()).post {
+            if (PhoneMirror.onTokenReady == null) {
+                GearslipLog.e("mirror token ready but no session wired to receive it (activity gone?)")
+            } else {
+                GearslipLog.i("mirror token ready, handing it to the session")
+                PhoneMirror.onTokenReady?.invoke(media)
+            }
+        }
         return START_NOT_STICKY
     }
 

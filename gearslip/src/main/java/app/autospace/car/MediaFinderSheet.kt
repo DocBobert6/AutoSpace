@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -24,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.GsSheetSurface
 import app.autospace.car.theme.GsTone
 
 /** One playable URL the finder saw on the current page (Phase 3.2). */
@@ -50,11 +50,9 @@ fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onCl
             ),
         )
         // Phase 7 kit sheet: solid surfaceContainerLow, 28dp corners.
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-        ) {
+        // Phase 8: the kit sheet composable itself (same colours, plus the
+        // OLED hairline when OLED is on).
+        GsSheetSurface(Modifier.fillMaxWidth().padding(16.dp)) {
             Column(
                 Modifier.fillMaxWidth().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

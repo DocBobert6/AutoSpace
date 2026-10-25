@@ -10,6 +10,8 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import android.view.MotionEvent
@@ -69,9 +71,10 @@ class GearslipActivity : ComponentActivity(), Projection {
     private val captureConsent = registerForActivityResult(StartActivityForResult()) { result ->
         val data = result.data
         if (result.resultCode == RESULT_OK && data != null) {
+            GearslipLog.i("mirror capture consent granted, starting mirror service")
             MirrorService.start(this, result.resultCode, data)
         } else {
-            GearslipLog.w("screen capture consent declined")
+            GearslipLog.w("screen capture consent declined (result=${result.resultCode}, data present=${data != null})")
         }
     }
 
@@ -264,18 +267,47 @@ class GearslipActivity : ComponentActivity(), Projection {
 
     private fun requestCapture() {
         val manager = getSystemService(MediaProjectionManager::class.java)
+        GearslipLog.i("mirror requesting capture consent dialog")
         runCatching { captureConsent.launch(manager.createScreenCaptureIntent()) }
             .onFailure { GearslipLog.e("could not ask for screen capture", it) }
     }
 
     /** A Surface has a single producer, so our own display must go before the mirror arrives. */
     private fun showMirror(token: MediaProjection) {
-        val target = surface ?: return
+        // Phase 8: log every link of the common path, because the 2026-10-25
+        // report (neither Fit nor Fill works, car back on fully functional
+        // AutoSpace UI) is consistent with ANY of: no surface, a failed
+        // display create, or a token that never arrived — and the old code
+        // returned silently on a null surface, leaving no trace at all.
+        // This runs in a real car session only: the phone preview never wires
+        // PhoneMirror, so mirror logs here prove a real session, and their
+        // absence in a test proves the request never reached the session.
+        GearslipLog.i(
+            "mirror showMirror: surface=${if (surface != null) "present" else "NULL"} " +
+                "frame=${frameWidth}x${frameHeight}@${frameDensity}dpi " +
+                "fit=${CarSettings.mirrorFit.value}"
+        )
+        val target = surface ?: run {
+            GearslipLog.e("mirror showMirror aborted: no encoder surface yet; AutoSpace UI stays")
+            return
+        }
         screenProjector?.stop()
         screenProjector = null
-        // Fill is the default: the GL renderer crops Fit frames to the frame, with
-        // an exit button. If it cannot start, fall back to direct Fit mirroring
-        // rather than showing a black screen.
+        attemptMirror(token, target, retry = false)
+    }
+
+    /**
+     * One mirror attempt: Fill first (the default, GL-cropped, with an exit
+     * button), direct Fit if Fill cannot start. A failed begin never stops
+     * its token (see PhoneMirror.beginInternal), so the Fit retry after a
+     * failed Fill reuses a LIVE token — the old chain stopped it and the
+     * retry was doomed before it ran. If the first attempt fails on BOTH
+     * paths, one delayed retry runs before falling back to the car UI: the
+     * old virtual display's producer may not have disconnected from the
+     * encoder Surface yet when the mirror display is created immediately
+     * after ScreenProjector.stop(), and that race fails Fit and Fill alike.
+     */
+    private fun attemptMirror(token: MediaProjection, target: Surface, retry: Boolean) {
         PhoneMirror.fillEnabled = CarSettings.mirrorFit.value == MirrorFit.FILL
         var ok = false
         if (PhoneMirror.fillEnabled) {
@@ -283,7 +315,19 @@ class GearslipActivity : ComponentActivity(), Projection {
             if (!ok) PhoneMirror.fillEnabled = false
         }
         if (!ok) PhoneMirror.begin(token, target, frameWidth, frameHeight, frameDensity)
-        if (PhoneMirror.active.value) PhoneMirror.launchPending(this) else showCarUi()
+        if (PhoneMirror.active.value) {
+            GearslipLog.i("mirror live (${if (PhoneMirror.fillEnabled) "Fill" else "Fit"})${if (retry) " after retry" else ""}")
+            PhoneMirror.launchPending(this)
+        } else if (!retry) {
+            GearslipLog.w("mirror first attempt failed on both paths, retrying once in 500ms")
+            Handler(Looper.getMainLooper()).postDelayed(
+                { attemptMirror(token, target, retry = true) },
+                500,
+            )
+        } else {
+            GearslipLog.e("mirror retry failed too; falling back to AutoSpace UI")
+            showCarUi()
+        }
     }
 
     private fun showCarUi() {
