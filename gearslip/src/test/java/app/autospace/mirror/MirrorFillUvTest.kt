@@ -6,9 +6,13 @@ import org.junit.Test
 
 class MirrorFillUvTest {
 
-    private fun aspect(uv: FloatArray): Float {
-        val w = uv[2] - uv[0]
-        val h = uv[3] - uv[1]
+    // Sampled rect's aspect IN PIXELS: UV fractions must be scaled back
+    // by the frame size first (comparing raw u/v ranges directly is
+    // wrong — that was the test bug that failed the first mirror push:
+    // the u/v ranges are equal fractions for a frame-aspect rect).
+    private fun aspect(uv: FloatArray, frameW: Float, frameH: Float): Float {
+        val w = (uv[2] - uv[0]) * frameW
+        val h = (uv[3] - uv[1]) * frameH
         return w / h
     }
 
@@ -22,7 +26,7 @@ class MirrorFillUvTest {
         assertEquals(0.6336f, uv[3], 0.001f)
         // The sampled rect's aspect must equal the frame's aspect (1.667):
         // one scale on both axes, no distortion.
-        assertEquals(800f / 480f, aspect(uv), 0.01f)
+        assertEquals(800f / 480f, aspect(uv, 800f, 480f), 0.01f)
     }
 
     @Test
@@ -34,7 +38,7 @@ class MirrorFillUvTest {
         assertEquals(0.1288f, uv[1], 0.001f)
         assertEquals(0.8713f, uv[2], 0.001f)
         assertEquals(0.8713f, uv[3], 0.001f)
-        assertEquals(800f / 480f, aspect(uv), 0.01f)
+        assertEquals(800f / 480f, aspect(uv, 800f, 480f), 0.01f)
     }
 
     @Test
@@ -47,14 +51,14 @@ class MirrorFillUvTest {
     @Test
     fun oldContentUvWasAStretchForPortraitPhone() {
         // Regression anchor for the bug: the old Fill code sampled the
-        // whole Fit rect, whose aspect (0.446) is nothing like the
-        // frame's (1.667) — a 3.7x horizontal stretch.
+        // whole Fit rect, whose pixel aspect (0.446) is nothing like
+        // the frame's (1.667) — a 3.7x horizontal stretch.
         val fit = MirrorGeometry.contentUv(1080f, 2424f, 800f, 480f)
         assertEquals(0.3664f, fit[0], 0.001f)
         assertEquals(0f, fit[1], 0.001f)
         assertEquals(0.6336f, fit[2], 0.001f)
         assertEquals(1f, fit[3], 0.001f)
-        assertNotEquals(800f / 480f, aspect(fit), 0.1f)
+        assertNotEquals(800f / 480f, aspect(fit, 800f, 480f), 0.1f)
     }
 
     @Test
