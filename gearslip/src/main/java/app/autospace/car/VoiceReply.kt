@@ -141,7 +141,7 @@ object VoiceReply {
                     if (id != run) return@dictate
                     if (isYes(text)) {
                         _state.value = _state.value.copy(phase = Phase.ASKING, heard = "", until = 0L, span = 0L, held = 0f)
-                        CarAssistant.say("Go ahead.") { if (id == run) listen(id) }
+                        CarAssistant.say("Go ahead.", onDone = { if (id == run) listen(id) })
                     } else {
                         close()
                     }
@@ -239,7 +239,7 @@ object VoiceReply {
                 when (command(text)) {
                     Command.CANCEL -> {
                         close()
-                        CarAssistant.say("Not sent.") {}
+                        CarAssistant.say("Not sent.", onDone = {})
                     }
                     Command.CHANGE -> {
                         main.removeCallbacksAndMessages(SEND_TOKEN)
@@ -313,7 +313,7 @@ object VoiceReply {
         CarAssistant.stopSpeaking()
         if (CarNotifications.reply(context, n, s.heard.trim())) {
             GearslipLog.i("voice reply: sent to ${n.appLabel}")
-            CarAssistant.say("Message sent.") {}
+            CarAssistant.say("Message sent.", onDone = {})
             CarNotifications.dismissPopup(n.id)
             _state.value = s.copy(phase = Phase.SENT, until = SystemClock.uptimeMillis() + SENT_MS, span = SENT_MS, held = 0f)
             main.postDelayed({ if (id == run) finish() }, SENT_MS)

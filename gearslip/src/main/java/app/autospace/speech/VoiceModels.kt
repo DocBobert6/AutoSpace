@@ -332,7 +332,7 @@ object VoiceModels {
                 target.deleteRecursively()
                 check(partial.renameTo(target)) { "couldn't store the voice" }
                 val failure = validationFailure(app, engine)
-                check(failure == null) { failure }
+                check(failure == null) { failure ?: "voice validation failed" }
                 GearslipLog.i("voice: downloaded ${engine.label}")
                 state.value = State.Ready
             } catch (e: Exception) {

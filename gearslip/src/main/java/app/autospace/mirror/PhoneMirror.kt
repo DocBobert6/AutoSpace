@@ -260,7 +260,7 @@ object PhoneMirror {
         // wrong phone control at any zoom. On the direct path there is
         // no transform, so the legacy maps apply (and agree with
         // mapDisplay at zoom 1 / pan 0 anyway).
-        val p = if (rendererActive) {
+        val p = (if (rendererActive) {
             MirrorGeometry.mapDisplay(
                 x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat(),
                 MirrorDisplayState.fill, MirrorDisplayState.zoom,
@@ -270,7 +270,7 @@ object PhoneMirror {
             MirrorGeometry.mapFill(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())
         } else {
             MirrorGeometry.mapFit(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())
-        } ?: return null
+        }) ?: return null
         return PointF(p.x, p.y)
     }
 }
