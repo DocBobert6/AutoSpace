@@ -50,6 +50,9 @@ import kotlinx.coroutines.withContext
 fun PhoneAppsScreen() {
     val context = LocalContext.current
     val iconFrac by CarSettings.iconSize.collectAsState()
+    // Phase 7: screen-sharing tiles share the launcher's tile-size slider
+    // (50%-150%, 88dp height floor) and the kit panel colour.
+    val tileFrac by CarSettings.tileSize.collectAsState()
     val apps by produceState(initialValue = PhoneApps.cached() ?: emptyList(), context) {
         value = PhoneApps.cached() ?: withContext(Dispatchers.IO) { PhoneApps.installed(context).also { PhoneApps.warm(context) } }
     }
@@ -67,14 +70,14 @@ fun PhoneAppsScreen() {
         // Frost tiles — icons larger than a phone's, never smaller. The
         // touch-relay warning above is unchanged.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = (144f * iconFrac).coerceAtLeast(96f).dp),
+            columns = GridCells.Adaptive(minSize = (144f * tileFrac).coerceAtLeast(96f).dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(apps) { app ->
-                PhoneAppTile(app, iconFrac) { PhoneMirror.open(context, app.packageName) }
+                PhoneAppTile(app, iconFrac, tileFrac) { PhoneMirror.open(context, app.packageName) }
             }
         }
     }
@@ -110,11 +113,11 @@ private fun TouchRelayWarning() {
 }
 
 @Composable
-private fun PhoneAppTile(app: PhoneApp, iconFrac: Float = 1f, onClick: () -> Unit) {
+private fun PhoneAppTile(app: PhoneApp, iconFrac: Float = 1f, tileFrac: Float = 1f, onClick: () -> Unit) {
     GsIconBox(
         onClick = onClick,
-        modifier = Modifier.height(152.dp),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
+        modifier = Modifier.height((152f * tileFrac).coerceAtLeast(88f).dp),
+        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
     ) {
         Column(

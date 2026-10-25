@@ -52,9 +52,10 @@ fun BrowserListsSheet(
                 onClick = onClose,
             ),
         )
+        // Phase 7 kit sheet: solid surfaceContainerLow, 28dp corners.
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
             modifier = Modifier.fillMaxWidth().padding(16.dp),
         ) {
             Column(

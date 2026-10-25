@@ -15,6 +15,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.Icons
@@ -54,7 +61,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
@@ -174,52 +180,32 @@ internal fun rememberAllEntries(): List<Entry> {
     }
 }
 
-/** The launcher's groups, in the order they're laid out. */
-private enum class AppGroup { PHONE, MAPS, MUSIC, MESSAGING, WEB, SCREEN_SHARING, OTHER, SETTINGS, EXIT }
-
-private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
-    entry.builtIn?.let {
-        return when (it) {
-            BuiltInApps.Phone -> AppGroup.PHONE
-            BuiltInApps.Web -> AppGroup.WEB
-            BuiltInApps.ScreenSharing -> AppGroup.SCREEN_SHARING
-            BuiltInApps.MapsMirrored -> AppGroup.MAPS
-            BuiltInApps.Exit -> AppGroup.EXIT
-            else -> AppGroup.SETTINGS
-        }
-    }
-    if (entry.media != null) return AppGroup.MUSIC
-    if (entry.messaging != null) return AppGroup.MESSAGING
-    val app = entry.template ?: return AppGroup.OTHER
-    // A media app's "· Browse" tile sits next to its player.
-    if (app.component.packageName in mediaPackages) return AppGroup.MUSIC
-    return when (app.kind) {
-        "calling" -> AppGroup.PHONE
-        "navigation", "poi", "parking", "charging" -> AppGroup.MAPS
-        // Template-only media apps may have no legacy browser/player tile to identify them.
-        "media" -> AppGroup.MUSIC
-        "messaging" -> AppGroup.MESSAGING
-        "settings" -> AppGroup.SETTINGS
-        else -> AppGroup.OTHER
-    }
-}
-
 /**
- * The launcher's tiles in the order they're drawn: grouped by [AppGroup], alphabetical inside a
- * group with Settings last of all, then with the driver's own moves from [custom] laid over it.
- * Moved apps only trade places among themselves, so an app installed later still lands in its group.
+ * The launcher's order, Phase 7 (Robert 2026-10-24 23:58): NO categories.
+ * One flat list, alphabetical by label by default. The driver's own moves
+ * from [custom] are kept as a stored order; an app installed later (or one
+ * not in the stored order) is inserted at its alphabetical position in the
+ * current list, so a moved app stays moved and a new app lands alphabetically.
+ * After any Move/drag, the full current order is stored, so later loads
+ * reproduce it exactly. The pinned row is NOT a category — pinning is a user
+ * choice shown as its own row, kept deliberately (see CarLauncher).
  */
 internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: List<String>): List<Entry> {
     val shown = all.filter { it.builtIn !== BuiltInApps.VehicleData || showVehicleData }
-    val mediaPackages = shown.mapNotNull { it.media?.component?.packageName }.toSet()
-    val grouped = shown.sortedWith(
-        compareBy<Entry>({ groupOf(it, mediaPackages) }, { it.builtIn === BuiltInApps.Settings }, { it.label.lowercase() }),
-    )
-    if (custom.isEmpty()) return grouped
-    val rank = custom.withIndex().associate { (i, id) -> id to i }
-    fun Entry.rank() = componentId?.let { rank[it] }
-    val moved = grouped.filter { it.rank() != null }.sortedBy { it.rank() }.iterator()
-    return grouped.map { if (it.rank() != null) moved.next() else it }
+    val alpha = shown.sortedBy { it.label.lowercase() }
+    if (custom.isEmpty()) return alpha
+    val byId = alpha.associateBy { it.componentId }
+    val customIds = custom.toSet()
+    val ordered = custom.mapNotNull { byId[it] }.toMutableList()
+    // New or unlisted apps slot in alphabetically against the current list.
+    for (entry in alpha) {
+        if (entry.componentId in customIds) continue
+        val at = ordered.indexOfFirst { it.label.lowercase() > entry.label.lowercase() }
+        if (at < 0) ordered += entry else ordered.add(at, entry)
+    }
+    // Entries with no component id cannot be stored in an order; they keep
+    // their alphabetical place at the end of the stored list's tail.
+    return ordered
 }
 
 /** An app by the id a pin or the running list knows it by, built-in or installed. */
@@ -249,22 +235,35 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
     entry.messaging?.let { navigator.messages(it.packageName, it.label) }
 }
 
-/** Sections of the launcher grid: consecutive runs of one group along the ordered list.
- * Splitting on group change (rather than regrouping) keeps the driver's custom order
- * exactly — a group can reappear after a moved tile. */
-private fun AppGroup.title(): String = when (this) {
-    AppGroup.PHONE -> "Phone"
-    AppGroup.MAPS -> "Maps"
-    AppGroup.MUSIC -> "Music"
-    AppGroup.MESSAGING -> "Messaging"
-    AppGroup.WEB -> "Web"
-    AppGroup.SCREEN_SHARING -> "Screen sharing"
-    AppGroup.SETTINGS -> "Settings"
-    AppGroup.EXIT -> "Exit"
-    AppGroup.OTHER -> "Other"
+/** Long-press-drag state for one launcher tile: which tile is held, how far the finger has moved it. */
+private class LauncherDragState {
+    var draggedId: String? by mutableStateOf(null)
+    var offset: Offset by mutableStateOf(Offset.Zero)
+    var moved: Boolean by mutableStateOf(false)
+    fun reset() {
+        draggedId = null
+        offset = Offset.Zero
+        moved = false
+    }
+
+    /** Index in the grid of the visible tile nearest the dragged tile's finger position, or -1. */
+    fun dropTarget(gridState: androidx.compose.foundation.lazy.grid.LazyGridState): Int {
+        val id = draggedId ?: return -1
+        val visible = gridState.layoutInfo.visibleItemsInfo
+        val held = visible.firstOrNull { it.key == id } ?: return -1
+        val finger = Offset(
+            held.offset.x + held.size.width / 2f + offset.x,
+            held.offset.y + held.size.height / 2f + offset.y,
+        )
+        return visible.minByOrNull { item ->
+            val c = Offset(item.offset.x + item.size.width / 2f, item.offset.y + item.size.height / 2f)
+            (c - finger).getDistance()
+        }?.index ?: -1
+    }
 }
 
-/** The app launcher: every app as an icon grid, grouped Phone, Maps, Music, Messaging, Web, Screen sharing, Settings. */
+/** The app launcher: every app as one flat alphabetical grid (Phase 7 — no categories). */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CarLauncher() {
     val context = LocalContext.current
@@ -289,30 +288,44 @@ fun CarLauncher() {
     }
 
     val appOrder by CarSettings.appOrder.collectAsState()
-    // Icon-size slider (Phase 6): 1.0 is the Phase 6 large size. Grid width
-    // follows the icon but never below 96dp, and tile height never shrinks,
-    // so the tap area stays a car target even with the icon hidden at 0%.
+    // Icon-size slider (Phase 6): 1.0 is the Phase 6 large size, 0 hides the
+    // icon; the tile, its label and its tap area stay, so a tile is never lost
+    // by shrinking it. Tile-size slider (Phase 7): 1.0 is the Phase 6 large
+    // tile size; the grid width and tile height follow it (floors below keep
+    // every tile a car target), while the icon keeps its own size.
     val iconFrac by CarSettings.iconSize.collectAsState()
-    val launcherGridMin = (168f * iconFrac).coerceAtLeast(96f).dp
+    val tileFrac by CarSettings.tileSize.collectAsState()
+    val launcherGridMin = (168f * tileFrac).coerceAtLeast(96f).dp
     val ordered = launcherOrder(all, showVehicleData, appOrder)
-    val mediaPackages = remember(all) { all.mapNotNull { it.media?.component?.packageName }.toSet() }
 
     // Search, through the car's own keyboard: tapping the search row opens it, typing
     // filters tiles by label, submitting or dismissing closes it again.
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     val filtered = if (query.isBlank()) ordered else ordered.filter { it.label.contains(query, ignoreCase = true) }
-    // Sections, not a flat row list: the grid's items(list, span = ...) overload
-    // mis-resolves in this Compose version (CI: count overload picked, span arity
-    // error), so headers go through item(span = ...) and tiles through plain items().
-    val sections = remember(filtered, mediaPackages) {
-        val out = mutableListOf<Pair<AppGroup, MutableList<Tile>>>()
-        for (entry in filtered) {
-            val group = groupOf(entry, mediaPackages)
-            if (out.isEmpty() || out.last().first != group) out += group to mutableListOf()
-            out.last().second += tileOf(entry)
-        }
-        out
+
+    // Long-press-drag reorder (Phase 7): a tile held and moved lifts and
+    // follows the finger; on drop it takes the nearest tile's place and the
+    // full order is persisted, so it stays moved across restarts. A long
+    // press released without moving still opens the app's menu (pin, move,
+    // close). Dragging is off while searching, so a filtered tile cannot be
+    // dropped at a filtered index — long-press there opens the menu instead.
+    // The grid does not scroll mid-drag; a drop lands on a visible tile.
+    val gridState = rememberLazyGridState()
+    val drag = remember { LauncherDragState() }
+    val dragThresholdPx = with(LocalDensity.current) { 12.dp.toPx() }
+    val canDrag = query.isBlank()
+    fun commitDrop() {
+        val id = drag.draggedId
+        val target = drag.dropTarget(gridState)
+        drag.reset()
+        if (id == null || target < 0) return
+        val ids = ordered.mapNotNull { it.componentId }.toMutableList()
+        val from = ids.indexOf(id)
+        if (from < 0 || from == target) return
+        ids.removeAt(from)
+        ids.add(target.coerceIn(0, ids.size), id)
+        CarSettings.setAppOrder(ids)
     }
 
     // Pinned apps (from the nav bar's pin set) get their own row on top, so the
@@ -342,30 +355,48 @@ fun CarLauncher() {
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac) }
+                items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac, tileFrac) }
             }
         }
         // Phase 6, phone-drawer language scaled UP for the car: search at the
         // top, a clean icon grid with the label underneath, neutral Frost
-        // tiles — but icons larger than a phone's, never smaller. Groups,
-        // search and the pinned row are unchanged behaviour.
+        // tiles — but icons larger than a phone's, never smaller. Phase 7:
+        // one flat list, no group headers; search and the pinned row are
+        // unchanged behaviour (pinned is a user choice, not a category).
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = launcherGridMin),
+            state = gridState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            for ((group, sectionTiles) in sections) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Text(
-                        group.title(),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
-                    )
-                }
-                items(sectionTiles) { tile -> AppTile(tile, iconFrac) }
+            items(filtered, key = { it.componentId ?: it.label }) { entry ->
+                val tile = tileOf(entry)
+                val id = entry.componentId
+                val dragging = drag.draggedId == id && id != null
+                AppTile(
+                    tile = tile,
+                    iconFrac = iconFrac,
+                    tileFrac = tileFrac,
+                    modifier = Modifier.animateItem(),
+                    dragEnabled = canDrag && id != null,
+                    dragOffset = if (dragging) drag.offset else Offset.Zero,
+                    dragAlpha = if (dragging) 0.85f else 1f,
+                    onDragStart = { if (id != null) { drag.draggedId = id; drag.offset = Offset.Zero; drag.moved = false } },
+                    onDrag = { amount ->
+                        drag.offset += amount
+                        if (drag.offset.getDistance() > dragThresholdPx) drag.moved = true
+                    },
+                    onDragEnd = {
+                        if (drag.moved) commitDrop()
+                        else {
+                            drag.reset()
+                            tile.onLongClick?.invoke()
+                        }
+                    },
+                    onDragCancel = { drag.reset() },
+                )
             }
         }
         if (searching) {
@@ -379,14 +410,14 @@ fun CarLauncher() {
     }
 }
 
-/** A compact pinned-app tile for the launcher's pinned row. */
+/** A compact pinned-app tile for the launcher's pinned row. Phase 7: kit panel colour, tile-size scaled, 72dp floor. */
 @Composable
-private fun PinnedTile(tile: Tile, iconFrac: Float = 1f) {
+private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
-        modifier = Modifier.size(112.dp),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
+        modifier = Modifier.size((112f * tileFrac).coerceAtLeast(72f).dp),
+        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
     ) {
         Column(
@@ -400,7 +431,7 @@ private fun PinnedTile(tile: Tile, iconFrac: Float = 1f) {
                     BrokenBadge(
                         20.dp,
                         Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
-                            .border(2.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                            .border(2.dp, MaterialTheme.colorScheme.surfaceContainerLow, CircleShape),
                     )
                 }
             }
@@ -423,39 +454,73 @@ private fun BrokenBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier = 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppTile(tile: Tile, iconFrac: Float = 1f) {
+private fun AppTile(
+    tile: Tile,
+    iconFrac: Float = 1f,
+    tileFrac: Float = 1f,
+    modifier: Modifier = Modifier,
+    dragEnabled: Boolean = false,
+    dragOffset: Offset = Offset.Zero,
+    dragAlpha: Float = 1f,
+    onDragStart: () -> Unit = {},
+    onDrag: (Offset) -> Unit = {},
+    onDragEnd: () -> Unit = {},
+    onDragCancel: () -> Unit = {},
+) {
     // Phase 6: 20dp card radius (Notscape ladder), taller tile for the
-    // larger icon, so the label is never crowded.
+    // larger icon, so the label is never crowded. Phase 7: kit panel colour
+    // (surfaceContainerLow on the plain backdrop) and tile-size scaling with
+    // an 88dp height floor, so a small tile is still a car target.
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
-    // A long press opens the app's menu (pin, close) - the same gesture everywhere apps are
-    // shown, here and on the nav bar. GsIconBox marks it in the theme's style.
-    GsIconBox(
-        onClick = tile.onClick,
-        onLongClick = tile.onLongClick,
-        modifier = Modifier.height(176.dp),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = shape,
+    // When drag is enabled, the tile's own long-press is NOT wired into
+    // GsIconBox: the drag detector owns the long press, and a release without
+    // movement opens the menu through onDragEnd instead. Otherwise a drag
+    // would also pop the menu open mid-move.
+    val dragModifier = if (dragEnabled) {
+        Modifier.pointerInput(Unit) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { onDragStart() },
+                onDrag = { change, amount -> change.consume(); onDrag(amount) },
+                onDragEnd = { onDragEnd() },
+                onDragCancel = { onDragCancel() },
+            )
+        }
+    } else Modifier
+    Box(
+        dragModifier.graphicsLayer {
+            translationX = dragOffset.x
+            translationY = dragOffset.y
+            alpha = dragAlpha
+        },
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Column(
-                Modifier.fillMaxSize().padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box {
-                    TileIcon(tile, 80.dp * iconFrac)
-                    if (tile.broken) {
-                        // Pinned to the icon's lower corner, ringed in the tile's colour so it
-                        // reads as sitting on top of the icon.
-                        BrokenBadge(
-                            22.dp,
-                            Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
-                                .border(2.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-                        )
+        GsIconBox(
+            onClick = tile.onClick,
+            onLongClick = if (dragEnabled) null else tile.onLongClick,
+            modifier = modifier.height((176f * tileFrac).coerceAtLeast(88f).dp),
+            colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
+            shape = shape,
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Box {
+                        TileIcon(tile, 80.dp * iconFrac)
+                        if (tile.broken) {
+                            // Pinned to the icon's lower corner, ringed in the tile's colour so it
+                            // reads as sitting on top of the icon.
+                            BrokenBadge(
+                                22.dp,
+                                Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.surfaceContainerLow, CircleShape),
+                            )
+                        }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    TileLabel(tile)
                 }
-                Spacer(Modifier.height(10.dp))
-                TileLabel(tile)
             }
         }
     }

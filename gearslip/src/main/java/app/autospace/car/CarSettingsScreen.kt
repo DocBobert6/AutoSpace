@@ -3,6 +3,7 @@ package app.autospace.car
 
 import app.autospace.car.theme.*
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +51,8 @@ import kotlinx.coroutines.withContext
 fun CarSettingsScreen() {
     val scale by CarSettings.scale.collectAsState()
     val iconSize by CarSettings.iconSize.collectAsState()
+    val tileSize by CarSettings.tileSize.collectAsState()
+    val darkType by CarSettings.darkModeType.collectAsState()
     val open by CarSettings.openOnConnect.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
@@ -75,9 +78,15 @@ fun CarSettingsScreen() {
         value = withContext(Dispatchers.Default) { CertSummary.read(context) }
     }
 
+    // Phase 7 grouped-kit page: bright cards (surfaceBright) on the soft tinted
+    // backdrop (surfaceContainerLow) — full-width cards for a landscape car
+    // screen, vertical scrolling, controls kept at car size. In light mode this
+    // also fixes white-on-white: white cards on the #F2F2F7 tint, not tinted
+    // cards on a white page.
     Column(
         Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -100,44 +109,91 @@ fun CarSettingsScreen() {
         // the first 20%-100% ask). Finer than the Size presets above, which
         // stay exactly as they are. 0% hides the icon; the tile, its label
         // and its tap area stay, so a tile is never lost by shrinking it.
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Icon size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-            Row(
-                Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text("0%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                GsSeekBar(
-                    fraction = iconSize,
-                    onSeek = { CarSettings.setIconSize(it) },
-                    modifier = Modifier.weight(1f),
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Icon size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("0%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    GsSeekBar(
+                        fraction = (iconSize),
+                        onSeek = { CarSettings.setIconSize(it) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("100%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    "${(iconSize * 100).roundToInt()}% — icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text("100%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(
-                "${(iconSize * 100).roundToInt()}% — icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        }
+
+        // Tile size (Phase 7): 50%-150%, default 100% = the Phase 6 large tile
+        // size. The tile graphic shrinks with it, but the tap area never drops
+        // below a car target — launcher tiles floor at 88dp high, pinned tiles
+        // at 72dp — and the grid reflows with size. Applies to launcher tiles
+        // and to screen-sharing (PhoneApps) tiles.
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tile size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("50%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    GsSeekBar(
+                        fraction = (tileSize - 0.5f),
+                        onSeek = { CarSettings.setTileSize(0.5f + it) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text("150%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    "${(tileSize * 100).roundToInt()}% — tiles and their grid; icons keep their own size above.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         ChoiceRow(
             "App theme",
             listOf(
-                AppTheme.PHONE to "Follow phone",
+                AppTheme.FOLLOW_SYSTEM to "Follow system",
                 AppTheme.LIGHT to "Light",
                 AppTheme.DARK to "Dark",
+                AppTheme.MATERIAL_YOU to "Material You",
                 AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
                 AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
             ),
             theme,
         ) { CarSettings.setAppTheme(it) }
         Text(
-            "Light and Dark are plain neutral themes, no wallpaper colours. " +
-                "Material You Light / Dark use the phone's wallpaper colours, " +
-                "forced to that variant. Follow phone uses the phone's " +
-                "wallpaper colours and follows its light/dark.",
+            "Follow system is the plain neutral theme following the phone's " +
+                "light/dark. Light and Dark are plain neutral themes, no " +
+                "wallpaper colours. Material You follows the phone's wallpaper " +
+                "colours and light/dark; Material You Light / Dark use the " +
+                "phone's wallpaper colours, forced to that variant.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        ChoiceRow(
+            "Dark mode",
+            listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "OLED"),
+            darkType,
+        ) { CarSettings.setDarkModeType(it) }
+        Text(
+            "Regular dark uses dark-grey surfaces, no pure black. OLED dark " +
+                "uses pure-black backgrounds with dark-grey surfaces. Applies " +
+                "to plain Dark, Material You Dark, and the dark variant of " +
+                "both Follow options, in every style.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -298,22 +354,26 @@ fun CarSettingsScreen() {
 
 @Composable
 private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            options.forEach { (value, label) ->
-                val on = value == selected
-                val scheme = MaterialTheme.colorScheme
-                GsIconBox(
-                    onClick = { onSelect(value) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(64.dp),
-                    colors = if (on) GsColors(scheme.primaryContainer, scheme.onPrimaryContainer)
-                    else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
-                    latched = on,
-                ) {
-                    Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+    // Phase 7: every choice row is its own grouped card (surfaceBright on the
+    // page's tinted backdrop), so settings read as Notscape's grouped lists.
+    GsGroupedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                options.forEach { (value, label) ->
+                    val on = value == selected
+                    val scheme = MaterialTheme.colorScheme
+                    GsIconBox(
+                        onClick = { onSelect(value) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(64.dp),
+                        colors = if (on) GsColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+                        else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
+                        latched = on,
+                    ) {
+                        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = if (on) FontWeight.Bold else FontWeight.Normal)
+                    }
                 }
             }
         }
@@ -350,11 +410,8 @@ private fun ExperimentalFeatureRow(
     warning: Boolean = false,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    // Phase 7: grouped card, like ChoiceRow — no more flat tinted rows.
+    GsGroupedCard(Modifier.fillMaxWidth()) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -387,8 +444,9 @@ private fun WebPageSetting() {
         Text("Web page", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         Surface(
             onClick = { editing = !editing },
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            // Phase 7 kit: bright grouped-card colour, 20dp radius.
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceBright,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(

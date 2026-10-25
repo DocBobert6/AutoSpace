@@ -111,26 +111,31 @@ fun CarUi() {
     val mediaApp by CarServices.mediaApp.collectAsState()
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
     val appContext = LocalContext.current.applicationContext
+    val darkType by CarSettings.darkModeType.collectAsState()
     val dark = when (appTheme) {
-        AppTheme.PHONE -> phoneDark
+        AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
         AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
         AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK -> true
     }
-    // Theme set (2026-10-24 22:32, Notscape 0.0.946's split): plain Light /
-    // Dark use the neutral scheme below for EVERY style (the wallpaper-
+    // Theme set, Phase 7 (Robert 2026-10-24 23:58, correcting the 22:32 five):
+    // Follow system = PLAIN scheme following the phone's light/dark; Plain
+    // Light / Dark = the neutral scheme below for EVERY style (the wallpaper-
     // dynamic scheme washed Frost tiles pale peach in Phases 1–5, and plain
-    // means plain here); Material You Light / Dark use the dynamic schemes
-    // forced to that variant; Follow phone uses the dynamic scheme following
-    // the phone's light/dark — except Frost, which stays neutral-only under
-    // Follow phone exactly as Phase 6 made it. Browser PAGES stay unthemed
+    // means plain here); Material You = dynamic scheme following the phone;
+    // Material You Light / Dark = dynamic schemes forced to that variant.
+    // The old PHONE value migrated to MATERIAL_YOU on load, so no stored
+    // install changes look from this split. Dark mode type (Regular vs OLED)
+    // applies to plain Dark, Material You Dark, and the dark variant of both
+    // Follow options, across all styles. Browser PAGES stay unthemed
     // (Phase 3 correction) — this scheme is chrome only, and it flows into
     // the video player chrome too (its black scrims over video are untouched).
     val colors = when (appTheme) {
-        AppTheme.LIGHT, AppTheme.DARK -> neutralFrostScheme(dark)
+        AppTheme.LIGHT, AppTheme.DARK, AppTheme.FOLLOW_SYSTEM -> neutralFrostScheme(dark, darkType == DarkModeType.OLED)
         AppTheme.MATERIAL_YOU_LIGHT -> dynamicLightColorScheme(appContext)
-        AppTheme.MATERIAL_YOU_DARK -> dynamicDarkColorScheme(appContext)
-        AppTheme.PHONE -> if (uiThemeId == "frost") neutralFrostScheme(dark)
-        else if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)
+        AppTheme.MATERIAL_YOU_DARK -> if (darkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
+        AppTheme.MATERIAL_YOU -> if (dark) {
+            if (darkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
+        } else dynamicLightColorScheme(appContext)
     }
     val base = LocalDensity.current
     val insets by CarEnvironment.insets.collectAsState()
@@ -328,7 +333,7 @@ private fun CarSafetyWizard(onDone: () -> Unit) {
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = MaterialTheme.shapes.extraLarge,
+                shape = RoundedCornerShape(28.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -937,15 +942,40 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
 }
 
 /**
+ * Dynamic dark, OLED-forced (Phase 7): the dynamic accent and content colours
+ * are kept exactly, and ONLY backgrounds/surfaces are forced — background,
+ * surface and surfaceDim to pure black #000000, surfaceContainerLow and
+ * surfaceContainer and surfaceVariant to #1C1C1E, surfaceBright to #2C2C2E.
+ * Dynamic dark + Regular is left untouched: its surfaces are already dark
+ * grey, not black, which is what Regular means.
+ */
+private fun oledDynamicDark(context: android.content.Context): androidx.compose.material3.ColorScheme {
+    val black = androidx.compose.ui.graphics.Color.Black
+    val c1c = androidx.compose.ui.graphics.Color(0xFF1C1C1E)
+    val c2c = androidx.compose.ui.graphics.Color(0xFF2C2C2E)
+    return dynamicDarkColorScheme(context).copy(
+        background = black,
+        surface = black,
+        surfaceDim = black,
+        surfaceContainerLow = c1c,
+        surfaceContainer = c1c,
+        surfaceVariant = c1c,
+        surfaceBright = c2c,
+    )
+}
+
+/**
  * The shared plain scheme (Notscape Phase A tokens, car-adapted): since the
  * 2026-10-24 22:32 theme correction this is Light/Dark for every style, not
- * just Frost — see CarUi above for the five-way mapping.
+ * just Frost — see CarUi above for the six-way mapping.
  * neutral system backgrounds, label black/white, secondary label ~60%, accent
  * only on primary/selected controls (system blue). Deliberately NOT the
  * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
- * Under Follow phone, Frost still uses this; other styles use the dynamic scheme.
+ * [oled] picks the dark surface family: OLED = pure-black backgrounds with
+ * #1C1C1E/#2C2C2E surfaces (pre-Phase-7 dark); Regular = dark-grey
+ * backgrounds, no pure black anywhere.
  */
-private fun neutralFrostScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.compose.material3.ColorScheme {
     val white = androidx.compose.ui.graphics.Color.White
     val black = androidx.compose.ui.graphics.Color.Black
     return if (!dark) androidx.compose.material3.lightColorScheme(
@@ -972,7 +1002,7 @@ private fun neutralFrostScheme(dark: Boolean): androidx.compose.material3.ColorS
         error = androidx.compose.ui.graphics.Color(0xFFFF3B30),
         onError = white,
         surfaceTint = white,
-    ) else androidx.compose.material3.darkColorScheme(
+    ) else if (oled) androidx.compose.material3.darkColorScheme(
         primary = androidx.compose.ui.graphics.Color(0xFF0A84FF),
         onPrimary = white,
         primaryContainer = androidx.compose.ui.graphics.Color(0xFF003A6B),
@@ -996,6 +1026,31 @@ private fun neutralFrostScheme(dark: Boolean): androidx.compose.material3.ColorS
         error = androidx.compose.ui.graphics.Color(0xFFFF453A),
         onError = white,
         surfaceTint = black,
+    ) else androidx.compose.material3.darkColorScheme(
+        // Regular dark: the same tokens, one step up — no pure black anywhere.
+        primary = androidx.compose.ui.graphics.Color(0xFF0A84FF),
+        onPrimary = white,
+        primaryContainer = androidx.compose.ui.graphics.Color(0xFF003A6B),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
+        secondary = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
+        onSecondary = black,
+        background = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        onBackground = white,
+        surface = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        onSurface = white,
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF48484A),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
+        surfaceDim = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        outline = androidx.compose.ui.graphics.Color(0xFF38383A),
+        outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
+        error = androidx.compose.ui.graphics.Color(0xFFFF453A),
+        onError = white,
+        surfaceTint = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
     )
 }
 

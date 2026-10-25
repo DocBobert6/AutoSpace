@@ -34,6 +34,12 @@ data class ControlLook(
     val bottomShadeOnLight: Float = 0f,
     /** Alpha of the thin highlight along the top rim, fading out down the sides; 0 for none. */
     val rimAlpha: Float = 0f,
+    /**
+     * Alpha of Notscape's 0.5dp hairline (outline colour) around the control, 0 for none.
+     * Phase 7: Frost wears the hairline exactly as FrostKit's frostBar does, alongside its
+     * shadow and gradient — Phase 6 had only the rim, which is a white fade, not an outline.
+     */
+    val hairlineAlpha: Float = 0f,
     /** A solid darker base under the button, like a keycap; 0 for none. */
     val lip: Dp = 0.dp,
     /** How far a soft drop shadow falls below the button; 0 for none. Its blur is twice this. */
@@ -120,31 +126,21 @@ object GsThemes {
         control = ControlLook(holdMarker = HoldMarkerStyle.DOT),
     )
 
-    /** Pure Material 3: standard corner, tonal surfaces, no keycap/bevel/shadow. */
-    val Material = GsTheme(
-        id = "material",
-        name = "Material",
-        control = ControlLook(
-            corner = 16.dp,
-            pressedDim = 0.12f,
-            pressedScale = 1f,
-            holdMarker = HoldMarkerStyle.DOT,
-        ),
-    )
-
     /**
-     * Frost (AutoSpace default, Phase 6): Notscape Mariner's final solid-frost
+     * Frost (AutoSpace default, Phase 7): Notscape Mariner's final solid-frost
      * recipe, not a live blur. Notscape shipped Haze backdrop blur in Phase A
      * and then REMOVED it entirely (0.0.63, Robert's ruling) — and a blur pass
      * cannot capture the surfaces that matter most here anyway (SurfaceView /
      * Media3 video, and the H.264 car stream, which smears any blur). Depth
      * therefore comes from a near-solid surface (alpha 0.97, lighter at the
-     * top), a soft shadow, and a hairline rim — the same three cues that make
-     * Notscape's floating bars read as frost. Cards use the 20dp radius from
-     * that kit's concentric ladder. The neutral palette itself lives in
-     * CarUi's Frost-only colour scheme: Frost surfaces must be neutral
-     * system backgrounds, never the wallpaper-dynamic colour, which is what
-     * washed Phase 1–5 Frost tiles flat pale peach.
+     * top), a 6dp shadow, and a 0.5dp hairline at outline @0.45 — FrostKit's
+     * frostBar, in that order. Phase 6 had only a 2dp shadow and a white rim,
+     * which is why Frost read as flat; the 6dp shadow and the true hairline
+     * are the Phase 7 correction. Cards use the 20dp radius from that kit's
+     * concentric ladder. The neutral palette itself lives in CarUi's plain
+     * colour scheme: plain Frost surfaces must be neutral system backgrounds,
+     * never the wallpaper-dynamic colour, which is what washed Phase 1–5
+     * Frost tiles flat pale peach.
      */
     val Frost = GsTheme(
         id = "frost",
@@ -153,7 +149,8 @@ object GsThemes {
             corner = 20.dp,
             topLight = 0.06f,
             rimAlpha = 0.35f,
-            shadow = 2.dp,
+            hairlineAlpha = 0.45f,
+            shadow = 6.dp,
             shadowAlpha = 0.30f,
             containerAlpha = 0.97f,
             pressedDim = 0.14f,
@@ -163,7 +160,8 @@ object GsThemes {
                 corner = 20.dp,
                 topLight = 0.04f,
                 rimAlpha = 0.30f,
-                shadow = 2.dp,
+                hairlineAlpha = 0.45f,
+                shadow = 6.dp,
                 shadowAlpha = 0.25f,
                 containerAlpha = 0.97f,
                 pressedDim = 0.10f,
@@ -174,8 +172,12 @@ object GsThemes {
     )
 
     val default = Frost
+    // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
+    // redundant with the App theme's Material You, and its pure-Material-3 look
+    // (16dp corner, DOT hold marker) was effectively the same as Flat. Existing
+    // users stored on "material" land on Frost via byId's fallback, as logged.
     // Classic = Flat / Tactile / Keycap, kept unchanged for existing users.
-    val builtIn = listOf(Material, Frost, Flat, Tactile, Keycap)
+    val builtIn = listOf(Frost, Flat, Tactile, Keycap)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

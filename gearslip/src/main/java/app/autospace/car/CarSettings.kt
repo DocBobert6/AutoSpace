@@ -15,8 +15,27 @@ enum class Units { AUTO, IMPERIAL, METRIC }
 
 /** Where a new message shows: [NAV_BAR] turns the clock button into it, [CARD] floats a card top right. */
 
-/** The car UI's own colours. Separate from [NightMode], which is about the light outside (the map). */
-enum class AppTheme { PHONE, LIGHT, DARK, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK }
+/**
+ * The car UI's own colours. Separate from [NightMode], which is about the light outside (the map).
+ * Phase 7 (Robert 2026-10-24 23:58): FOLLOW_SYSTEM is the plain scheme following the phone's
+ * light/dark; MATERIAL_YOU is the dynamic scheme following the phone's light/dark. The old
+ * PHONE value was dynamic-following-the-phone, i.e. exactly MATERIAL_YOU, so stored PHONE
+ * values migrate to MATERIAL_YOU on load (see init) rather than silently falling back to plain.
+ */
+enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK }
+
+/**
+ * What a dark theme's backgrounds are made of. REGULAR = dark-grey surfaces
+ * (#1C1C1E/#2C2C2E family, no pure-black background); OLED = pure-black #000000
+ * backgrounds with #1C1C1E/#2C2C2E surfaces (the dark look AutoSpace shipped
+ * before Phase 7, kept as the default so existing installs do not change look).
+ * Applies to plain Dark, Material You Dark, and the dark variant of both Follow
+ * options, across all styles. For dynamic dark + OLED, the dynamic accent and
+ * content colours are kept and only backgrounds/surfaces are forced to black
+ * (see CarUi's oledDynamicDark); dynamic dark + Regular is left untouched,
+ * since the dynamic dark scheme's surfaces are already dark grey, not black.
+ */
+enum class DarkModeType { REGULAR, OLED }
 
 /** How screen sharing fits the phone into the car frame: Fill crops, Fit letterboxes. */
 enum class MirrorFit { FILL, FIT }
@@ -49,6 +68,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
+    private const val KEY_DARK_TYPE = "car_dark_type"
+    private const val KEY_TILE_SIZE = "car_tile_size"
     private const val KEY_PLAYER_SPEED = "car_player_speed"
     private const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
     private const val KEY_SUB_FONT = "car_sub_font"
@@ -73,6 +94,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     private val scaleFlow = MutableStateFlow(1f)
     private val iconSizeFlow = MutableStateFlow(1f)
+    private val tileSizeFlow = MutableStateFlow(1f)
+    private val darkTypeFlow = MutableStateFlow(DarkModeType.OLED)
     private val openFlow = MutableStateFlow(HOME)
     private val nightFlow = MutableStateFlow(NightMode.AUTO)
     private val pipeAudioFlow = MutableStateFlow(true)
@@ -83,8 +106,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val lastMediaFlow = MutableStateFlow<String?>(null)
     private val autoplayFlow = MutableStateFlow(false)
     private val playerTitleFlow = MutableStateFlow(false)
-    private val themeFlow = MutableStateFlow(AppTheme.PHONE)
+    private val themeFlow = MutableStateFlow(AppTheme.FOLLOW_SYSTEM)
     val appTheme: StateFlow<AppTheme> = themeFlow
+    /** Dark-mode surface type; see [DarkModeType]. Default OLED preserves the pre-Phase-7 dark look. */
+    val darkModeType: StateFlow<DarkModeType> = darkTypeFlow
     private val brightnessFlow = MutableStateFlow(1f)
 
     /**
@@ -177,6 +202,13 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val scale: StateFlow<Float> = scaleFlow
     /** App-icon size fraction, 0..1: 1.0 is the Phase 6 large size, 0 hides the icon. Tiles do not shrink with it. */
     val iconSize: StateFlow<Float> = iconSizeFlow
+    /**
+     * Tile size fraction, 0.5..1.5 (Phase 7): 1.0 is the Phase 6 large tile size.
+     * The tile graphic shrinks with it, but never below a car-usable tap area —
+     * launcher tiles floor at 88dp high, pinned tiles at 72dp, and the grid
+     * reflows with size. Labels stay readable; the tap area is the tile itself.
+     */
+    val tileSize: StateFlow<Float> = tileSizeFlow
     val openOnConnect: StateFlow<String> = openFlow
     val nightMode: StateFlow<NightMode> = nightFlow
 
@@ -254,9 +286,21 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
         lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
         lastMediaFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA, "").ifEmpty { null }
-        themeFlow.value = runCatching {
-            AppTheme.valueOf(AppSettings.getString(app, KEY_THEME, AppTheme.PHONE.name))
-        }.getOrDefault(AppTheme.PHONE)
+        // Phase 7 migration: the old PHONE value was dynamic-following-the-phone,
+        // which is exactly the new MATERIAL_YOU — migrate it (and persist the
+        // migrated value) instead of falling back to plain and changing the look.
+        // Unknown values fall back to FOLLOW_SYSTEM, the plain follow-system theme.
+        val storedTheme = AppSettings.getString(app, KEY_THEME, AppTheme.FOLLOW_SYSTEM.name)
+        themeFlow.value = when (storedTheme) {
+            "PHONE" -> AppTheme.MATERIAL_YOU.also {
+                AppSettings.putString(app, KEY_THEME, AppTheme.MATERIAL_YOU.name)
+            }
+            else -> runCatching { AppTheme.valueOf(storedTheme) }.getOrDefault(AppTheme.FOLLOW_SYSTEM)
+        }
+        darkTypeFlow.value = runCatching {
+            DarkModeType.valueOf(AppSettings.getString(app, KEY_DARK_TYPE, DarkModeType.OLED.name))
+        }.getOrDefault(DarkModeType.OLED)
+        tileSizeFlow.value = AppSettings.getString(app, KEY_TILE_SIZE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
         uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
         brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
         mirrorFitFlow.value = runCatching {
@@ -300,6 +344,17 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         val v = value.coerceIn(0f, 1f)
         iconSizeFlow.value = v
         AppSettings.putString(app, KEY_ICON_SIZE, v.toString())
+    }
+
+    fun setTileSize(value: Float) {
+        val v = value.coerceIn(0.5f, 1.5f)
+        tileSizeFlow.value = v
+        AppSettings.putString(app, KEY_TILE_SIZE, v.toString())
+    }
+
+    fun setDarkModeType(type: DarkModeType) {
+        darkTypeFlow.value = type
+        AppSettings.putString(app, KEY_DARK_TYPE, type.name)
     }
 
     fun setOpenOnConnect(id: String) {

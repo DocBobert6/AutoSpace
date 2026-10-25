@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -189,6 +190,37 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
             ),
         )
     }
+    // Phase 7: the phone-microphone choice as its own onboarding step, in
+    // GuidePage style (title, explanation, badge icon, content slot) — NOT
+    // gated on the permission above, so it stays reachable even when
+    // RECORD_AUDIO is already granted (the permission page itself is skipped
+    // outright in that case). Same persisted setting as car Settings
+    // (CarSettings.phoneMicForVoice, default off); toggling in either place
+    // reflects in the other, since both read the same flow.
+    add(
+        GuidePage(
+            title = "Car microphone.",
+            explanation = "If your car's microphone doesn't work, AutoSpace can listen " +
+                "through the phone's microphone instead, for voice commands and " +
+                "voice replies. This does NOT affect phone calls.",
+            icon = { MicIcon(it) },
+            optional = true,
+            content = {
+                val phoneMic by CarSettings.phoneMicForVoice.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Use phone microphone for voice commands",
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = phoneMic, onCheckedChange = CarSettings::setPhoneMicForVoice)
+                }
+            },
+        ),
+    )
     if (!granted(context, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))) {
         add(
             GuidePage(

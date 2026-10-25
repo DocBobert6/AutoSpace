@@ -147,6 +147,11 @@ fun Modifier.gsSurface(
         if (look.rimAlpha > 0f) {
             m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), shape)
         }
+        // Notscape FrostKit's hairline: a true 0.5dp outline at 0.45 alpha, on top of the
+        // rim fade, so the edge reads on any background — not just on dark ones.
+        if (look.hairlineAlpha > 0f) {
+            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = look.hairlineAlpha), shape)
+        }
         if (!latched && (look.bevelTop > 0f || look.bevelBottom > 0f)) {
             m = m.border(
                 1.dp,

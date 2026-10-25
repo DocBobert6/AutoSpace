@@ -214,9 +214,10 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>)
             ),
         contentAlignment = Alignment.Center,
     ) {
+        // Phase 7 kit dialog: solid sheet colour, 28dp corners.
         Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
             // Swallows taps on the card itself, so only the scrim around it dismisses.
             modifier = Modifier
                 .widthIn(max = 420.dp)
