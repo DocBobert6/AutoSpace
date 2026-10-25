@@ -48,6 +48,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_APP_ORDER = "car_app_order"
     private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
+    private const val KEY_PHONE_MIC = "car_phone_mic_voice"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
@@ -95,6 +96,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val appOrderFlow = MutableStateFlow<List<String>>(emptyList())
     private val experimentalFeaturesFlow = MutableStateFlow(false)
     private val systemSpeechFlow = MutableStateFlow(false)
+    private val phoneMicFlow = MutableStateFlow(false)
     private val carSensorsFlow = MutableStateFlow(false)
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
@@ -208,6 +210,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     /** Listen with the phone's own speech service instead of Gearslip's on-device model. */
     val systemSpeech: StateFlow<Boolean> = systemSpeechFlow
+    /** Voice commands/replies use the phone mic even when the car has one. Default off; calls unaffected. */
+    val phoneMicForVoice: StateFlow<Boolean> = phoneMicFlow
 
     /**
      * Vehicle data is experimental and off by default: the launcher's tile for it, and the
@@ -262,6 +266,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             .split(",").filter { it.isNotEmpty() }
         experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
+        phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
@@ -369,6 +374,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setSystemSpeech(on: Boolean) {
         systemSpeechFlow.value = on
         AppSettings.putString(app, KEY_SYSTEM_SPEECH, on.toString())
+    }
+
+    fun setPhoneMicForVoice(on: Boolean) {
+        phoneMicFlow.value = on
+        AppSettings.putString(app, KEY_PHONE_MIC, on.toString())
     }
 
     fun setCarSensorsEnabled(on: Boolean) {

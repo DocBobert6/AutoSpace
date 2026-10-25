@@ -65,6 +65,7 @@ fun CarSettingsScreen() {
     val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
+    val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
     val display by CarEnvironment.display.collectAsState()
     val vehicle by CarEnvironment.vehicle.collectAsState()
     val mirrorFit by CarSettings.mirrorFit.collectAsState()
@@ -200,6 +201,19 @@ fun CarSettingsScreen() {
                 "none, so AutoSpace keeps using its own.",
             checked = systemSpeech,
         ) { CarSettings.setSystemSpeech(it) }
+
+        // Phone microphone for voice commands (approved 2026-10-24 22:19):
+        // for a car whose built-in mic is broken. Voice commands and voice
+        // replies only — this does NOT affect phone calls, which keep the
+        // car's audio route exactly as before.
+        ExperimentalFeatureRow(
+            title = "Use phone microphone for voice commands",
+            description = "Voice commands and voice replies listen through the phone's " +
+                "microphone instead of the car's, even when the car has one. " +
+                "Turn this on if the car's microphone doesn't work. This does " +
+                "NOT affect phone calls.",
+            checked = phoneMicForVoice,
+        ) { CarSettings.setPhoneMicForVoice(it) }
 
         WebPageSetting()
 

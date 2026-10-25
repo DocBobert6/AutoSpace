@@ -151,10 +151,37 @@ fun WebApp(content: String) {
                 GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, shape = androidx.compose.foundation.shape.CircleShape)
                 GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(content) }, shape = androidx.compose.foundation.shape.CircleShape)
                 GsButton(
-                    onClick = { addressText = currentUrl; addressEditing = true },
+                    // A tap while already editing must NOT re-seed from
+                    // currentUrl — that wiped whatever was typed so far.
+                    onClick = { if (!addressEditing) { addressText = currentUrl; addressEditing = true } },
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    // While editing, show what is actually being typed:
+                    // the live addressText with a caret, not currentUrl
+                    // (the old behaviour made every keypress invisible,
+                    // since CarKeyboard itself draws keys, not a field).
+                    // Long text shows its tail, so the newest keystroke
+                    // stays visible instead of hiding behind an ellipsis.
+                    if (addressEditing) {
+                        if (addressText.isEmpty()) {
+                            Text(
+                                "Type an address or search…",
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        } else {
+                            val shown = if (addressText.length <= 40) addressText
+                                else "…" + addressText.takeLast(38)
+                            Text(
+                                shown + "▏",
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else {
+                        Text(currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                    }
                 }
                 GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true }, shape = androidx.compose.foundation.shape.CircleShape)
             }
@@ -269,9 +296,10 @@ fun WebApp(content: String) {
                     )
                 }
             }
-            // Address keyboard (Phase 3.4): submitting navigates; dismissing keeps
-            // the current page. The address pill always shows the current URL, so a
-            // dismissed edit loses nothing.
+            // Address keyboard (Phase 3.4, fixed Phase 6): submitting navigates;
+            // dismissing keeps the current page. While editing, the pill above
+            // shows the live addressText with a caret, so every keypress is
+            // visible; a dismissed edit simply reverts the pill to the URL.
             if (addressEditing) {
                 CarKeyboard(
                     text = addressText,

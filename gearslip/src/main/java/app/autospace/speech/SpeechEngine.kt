@@ -14,6 +14,7 @@ import android.os.Looper
 import android.os.SystemClock
 import app.autospace.GearslipLog
 import app.autospace.audio.CarMic
+import app.autospace.car.CarSettings
 import com.k2fsa.sherpa.onnx.EndpointConfig
 import com.k2fsa.sherpa.onnx.EndpointRule
 import com.k2fsa.sherpa.onnx.FeatureConfig
@@ -38,7 +39,8 @@ import kotlin.math.max
  * hears names and places far better than one that has to keep up. The phrase is held in memory
  * for that and nowhere else, and dropped as soon as it's read.
  *
- * Audio comes from the car's microphone, or the phone's when the car has none or sends nothing.
+ * Audio comes from the car's microphone, or the phone's when the car has none or sends nothing,
+ * or always the phone's when the phone-microphone setting is on (CarSettings.phoneMicForVoice).
  * Everything runs on one worker thread; callbacks arrive on the main thread.
  */
 object SpeechEngine {
@@ -192,7 +194,13 @@ object SpeechEngine {
         onPartial: (String) -> Unit,
         onStopped: () -> Unit,
     ): String {
-        val mic = carMic() ?: phoneMic()
+        // Phone-mic setting (Phase 6): skip the car microphone entirely —
+        // do not even start it — and use the phone's directly. Both voice
+        // paths (CarAssistant commands and VoiceReply replies) funnel through
+        // this one selection point, so both honour the setting. When off,
+        // behaviour is exactly as before: car mic first, phone mic if the
+        // car has none, sends an unusable format, or sends nothing in 1.5s.
+        val mic = if (CarSettings.phoneMicForVoice.value) phoneMic() else carMic() ?: phoneMic()
         val s = r.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)

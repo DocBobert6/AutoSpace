@@ -140,6 +140,17 @@ in the local worktree; it can be added later by a git push from a local clone.
   but the tile, its label, and its large car tap area stay usable. The
   Normal / Large / Extra-large Size presets are unchanged — the slider
   is the finer, independent control.
+- New features: a persisted "Use phone microphone for voice commands"
+  toggle in car Settings (default off; car mic preferred when it works).
+  When on, SpeechEngine skips the car's microphone entirely and listens
+  through the phone's microphone for voice commands and voice replies.
+  This does NOT affect phone calls, whose audio routing is untouched.
+- Bug fix: the browser address pill now shows the address being typed,
+  live, with a caret (placeholder when empty) while the car keyboard is
+  open — previously it always showed the current URL, so typing looked
+  like it did nothing — and tapping the pill mid-edit no longer wipes
+  what was typed. Submit still navigates (URL loads, other text searches
+  no-AI DuckDuckGo); dismiss keeps the current page.
 
 ## Unreleased (Phase 5 — Regression / release prep)
 - First release will be a BETA (Robert, 2026-10-24), not a stable release:
