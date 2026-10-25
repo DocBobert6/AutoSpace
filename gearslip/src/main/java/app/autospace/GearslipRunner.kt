@@ -9,12 +9,10 @@ import app.autospace.car.LocationCheck
 import app.autospace.car.CarBluetooth
 import app.autospace.car.ClusterNav
 import app.autospace.car.DirectionsVoice
-import app.autospace.car.CarAssistant
 import app.autospace.car.CarEnvironment
 import app.autospace.car.CarKeys
 import app.autospace.car.CarSensors
 import app.autospace.car.CarServices
-import app.autospace.car.CarSettings
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.FutureTask

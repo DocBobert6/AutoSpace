@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.location.LocationManager
 import android.provider.CalendarContract
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -34,8 +33,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.GearslipLog
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -44,7 +41,6 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 /**
  * Opened from the nav bar clock: the current weather, the week's calendar and the phone's

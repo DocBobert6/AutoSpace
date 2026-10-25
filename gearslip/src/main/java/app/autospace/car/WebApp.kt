@@ -214,12 +214,11 @@ fun WebApp(content: String) {
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
-    // Phase 8 strict popup blocking (Notscape's model, car-adapted — no
-    // tabs exist here, so an opened popup loads in the main view instead
-    // of a new window, and Back is the way back from it):
+    // Phase 8 strict popup blocking (Notscape's model, car-adapted):
     // strict ON by default; a blocked target is captured (up to 5, in
     // arrival order) and offered from a frost-panel notice; a per-site
-    // Allow loads it in the main view; a per-site Block always silences
+    // Allow loads it in the tab that opened it (Phase 10 tabs; popups
+    // never open a new tab on their own); a per-site Block always silences
     // it with no notice. Captured transport WebViews are never shown —
     // they exist only to learn the popup's URL — and are destroyed when
     // the notice is cleared.

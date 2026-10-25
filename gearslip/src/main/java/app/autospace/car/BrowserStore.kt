@@ -75,8 +75,9 @@ object BrowserStore {
     // Strict = window.open / target=_blank never opens a window silently;
     // blocked targets are captured and offered from a notice instead.
     // Per site, allowPopups and blockPopups are mutually exclusive, like
-    // Notscape's SiteSetting: allow = popups load (in the main view, since
-    // the car browser has no tabs); block = blocked silently, no notice;
+    // Notscape's SiteSetting: allow = popups load (in the tab that opened
+    // them, since the car browser never opens a popup tab on its own);
+    // block = blocked silently, no notice;
     // neither = the strict default (capture + notice).
     /** One site's popup setting: allow, block-always, or the strict default. */
     enum class PopupSetting { STRICT, ALLOW, BLOCK }
