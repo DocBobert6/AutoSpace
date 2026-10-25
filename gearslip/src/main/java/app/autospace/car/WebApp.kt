@@ -115,10 +115,23 @@ private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? =
     var view: WebView? = null
 }
 
+/**
+ * A URL the browser should open instead of its launch payload, set once by the voice
+ * assistant's "search for X" command and consumed by the next [WebApp] composition. The
+ * browser itself takes no URL parameter (its launch payload is [ProjectedContent]), so a
+ * pending URL is the least invasive way to hand it one without changing the navigator.
+ */
+object BrowserLaunch {
+    @Volatile var pendingUrl: String? = null
+}
+
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
     val context = LocalContext.current
+    // Consumed once, on first composition: a voice search lands here, a normal open does not.
+    val voiceUrl = remember { BrowserLaunch.pendingUrl?.also { BrowserLaunch.pendingUrl = null } }
+    val startUrl = voiceUrl ?: if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
@@ -132,8 +145,8 @@ fun WebApp(content: String) {
         mutableStateListOf(
             BrowserTab(
                 0,
-                if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL,
-                rawHtml = if (content.startsWith("http")) null else content,
+                startUrl,
+                rawHtml = if (voiceUrl == null && !content.startsWith("http")) content else null,
             )
         )
     }
@@ -150,7 +163,7 @@ fun WebApp(content: String) {
     // Phase 3.4 state: address editing, lists, fullscreen video, and JS
     // dialogs — all in-composition, never real windows. Per-tab state
     // (URL, history, progress, error, media) lives on BrowserTab now.
-    var addressText by remember { mutableStateOf(if (content.startsWith("http")) content else "") }
+    var addressText by remember { mutableStateOf(if (startUrl.startsWith("http")) startUrl else "") }
     var addressEditing by remember { mutableStateOf(false) }
     // Phase 10 select-all: true from the moment the pill is tapped until
     // the first keypress (see the address keyboard below). Address-only:

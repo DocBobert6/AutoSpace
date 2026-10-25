@@ -173,8 +173,13 @@ object DirectionsVoice {
         }
     }
 
+    /** The last direction actually spoken, for the assistant's "repeat that" command. */
+    @Volatile var lastSpoken: String? = null
+        private set
+
     /** Newest wins: a prompt still waiting when the next one arrives is already out of date. */
     private fun say(text: String) {
+        lastSpoken = text
         val id = ++latest
         speaker.execute {
             if (id != latest) return@execute

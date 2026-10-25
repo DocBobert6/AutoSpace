@@ -258,3 +258,28 @@ in the local worktree; it can be added later by a git push from a local clone.
   only because it was the old implicit default. Until Parakeet v2 is
   downloaded, the final read falls back to the live words; Canary can
   be re-picked in Settings at any time.
+
+## Unreleased (Assistant commands expansion)
+- The voice assistant understands more, in the same keyword style (no
+  language model): answer / hang up a call, cancel / never mind,
+  volume up / down / mute / unmute (media stream), brightness up /
+  down / brightness percent, stop navigation, how far / ETA / arrival
+  time, repeat the last direction, speak-directions and phone/car-mic
+  toggles, start / stop screen sharing, search for X (no-AI DuckDuckGo
+  in the browser), read my messages, text X that Y, phone battery,
+  call emergency services, and remind me in X minutes (a local timer).
+- Two honest limits, stated in the replies themselves: ending an
+  active call needs the dialer — AutoSpace can answer a ringing call
+  and decline one inside the call-screening window, but it cannot hang
+  up an active call, so "hang up" opens the phone screen instead; and
+  a new message can only be sent by replying to a thread that already
+  exists, so "text X that Y" works when X has messaged before and says
+  so plainly when there is no thread to reply to.
+- Emergency calls never dial straight away: "call emergency services"
+  asks out loud for confirmation, and only a spoken yes within
+  30 seconds dials 911; anything else, or an expired window, cancels.
+- "Stop" on its own still pauses the music. The assistant's cancel
+  words are "cancel", "never mind", "stop speaking" and "stop talking";
+  "stop navigation" and "stop screen sharing" are checked before the
+  music command so they do not pause it by accident.
+- The "what can you do" help list now includes every new command.
