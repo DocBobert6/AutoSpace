@@ -130,6 +130,10 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.core)
+    // BrightnessMedium (and other newer Material icons) live only in the extended
+    // set; the core set froze at the original icon set, which is why two core-only
+    // guesses for this button failed CI before this line was added.
+    implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     // Used from the host side, not the app side: Gearslip renders other apps' templates rather
