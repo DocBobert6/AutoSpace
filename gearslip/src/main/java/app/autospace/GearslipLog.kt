@@ -44,6 +44,24 @@ object GearslipLog {
     private val live = ArrayDeque<String>()
     private val liveVersion = MutableStateFlow(0)
 
+    /**
+     * Line sinks, for the one-shot launch voice trace (VoiceTrace):
+     * a sink sees every formatted line exactly as the live buffer and
+     * the file do. Sinks run on the logging thread, must never throw
+     * (a throwing sink is dropped from the call, never from the set —
+     * the set is only changed by add/remove), and must do as little
+     * work as possible; the trace sink only appends to a bounded list.
+     */
+    private val sinks = mutableSetOf<(String) -> Unit>()
+
+    fun addSink(sink: (String) -> Unit) {
+        synchronized(sinks) { sinks.add(sink) }
+    }
+
+    fun removeSink(sink: (String) -> Unit) {
+        synchronized(sinks) { sinks.remove(sink) }
+    }
+
     val version: StateFlow<Int> = liveVersion
 
     fun init(context: Context) {
@@ -188,6 +206,8 @@ object GearslipLog {
             live.addLast(line)
             while (live.size > MAX_LIVE_LINES) live.removeFirst()
         }
+        val currentSinks = synchronized(sinks) { sinks.toList() }
+        currentSinks.forEach { runCatching { it(line) } }
         liveVersion.update { it + 1 }
         val target = file ?: return
         io.execute {

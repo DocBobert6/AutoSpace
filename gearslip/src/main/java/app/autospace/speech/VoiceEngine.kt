@@ -171,8 +171,19 @@ object VoiceEngine {
      */
     private fun generateKokoro(app: Context, voice: VoiceModels.KokoroVoice, text: String): GeneratedAudio? {
         val engine = kokoro(app, voice) ?: run {
-            GearslipLog.w("voice: kokoro engine unavailable at generate (see load line above)")
-            lastFailure = "kokoro engine unavailable"
+            // 2026-10-25, stage-preservation fix (Robert's 16:14 report:
+            // previews showed "engine unavailable" for BOTH engines while
+            // Settings read Downloaded): kokoro()/piper() ALWAYS record
+            // the specific reason they returned null — "load refused:
+            // <reason>" or "load failed <Class>" — and the old code here
+            // overwrote it with the generic "engine unavailable", which
+            // destroyed exactly the evidence the diagnostic build was
+            // meant to surface. A null engine now keeps the load stage
+            // it arrived with; the generic wording is only a fallback
+            // for a null that somehow recorded no stage at all.
+            val stage = lastFailure ?: "kokoro engine unavailable"
+            GearslipLog.w("voice: kokoro engine unavailable at generate (load stage: $stage)")
+            lastFailure = stage
             return null
         }
         return classifyGenerate("kokoro ${voice.id}") { engine.generate(text, voice.sid, 1.0f) }
@@ -180,8 +191,13 @@ object VoiceEngine {
 
     private fun generatePiper(app: Context, text: String): GeneratedAudio? {
         val engine = piper(app) ?: run {
-            GearslipLog.w("voice: piper engine unavailable at generate (see load line above)")
-            lastFailure = "piper engine unavailable"
+            // Same stage-preservation as generateKokoro above: piper()
+            // records "load refused" / "load failed <Class>" before
+            // returning null, and overwriting that with the generic
+            // wording hid whether native creation threw or refused.
+            val stage = lastFailure ?: "piper engine unavailable"
+            GearslipLog.w("voice: piper engine unavailable at generate (load stage: $stage)")
+            lastFailure = stage
             return null
         }
         return classifyGenerate("piper") { engine.generate(text, 0, 1.0f) }
@@ -288,7 +304,13 @@ object VoiceEngine {
             )
             GearslipLog.i("voice: native load begin kokoro")
             return runCatching { OfflineTts(config) }.onFailure {
-                GearslipLog.w("voice: kokoro failed to load: ${it.message}")
+                // The class IS the clue here: a require() in the
+                // binding's init (native creation returned a null
+                // pointer) surfaces as IllegalArgumentException, an
+                // ORT failure as its own class — and the old line
+                // logged only the message, so the class was lost
+                // unless the caller happened to read lastFailure.
+                GearslipLog.w("voice: kokoro failed to load: ${it.javaClass.simpleName}: ${it.message}")
                 lastFailure = "kokoro load failed ${it.javaClass.simpleName}"
             }.onSuccess {
                 GearslipLog.i("voice: native load end kokoro")
@@ -325,7 +347,8 @@ object VoiceEngine {
             )
             GearslipLog.i("voice: native load begin piper")
             return runCatching { OfflineTts(config) }.onFailure {
-                GearslipLog.w("voice: piper failed to load: ${it.message}")
+                // Same class-in-the-line fix as kokoro() above.
+                GearslipLog.w("voice: piper failed to load: ${it.javaClass.simpleName}: ${it.message}")
                 lastFailure = "piper load failed ${it.javaClass.simpleName}"
             }.onSuccess {
                 GearslipLog.i("voice: native load end piper")
@@ -418,8 +441,22 @@ object VoiceEngine {
             return true
         }
         val app = context.applicationContext
-        if (voice != null && !VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)) return false
-        if (voice == null && !VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) return false
+        // 2026-10-25 launch-trace requirement: a preview tap must
+        // leave a line even when nothing follows it — otherwise a tap
+        // the gate refuses is indistinguishable from a tap that never
+        // arrived, and the trace cannot tell "tap ignored" from
+        // "generate failed". The readiness at tap time is part of the
+        // line, so a gate refusal names itself.
+        val tapReady = if (voice != null) {
+            VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)
+        } else {
+            VoiceModels.isReady(app, VoiceModels.Engine.PIPER)
+        }
+        GearslipLog.i("voice: preview tap ${voice?.id ?: "piper"} ready=$tapReady")
+        if (!tapReady) {
+            GearslipLog.w("voice: preview not started ${voice?.id ?: "piper"} not ready")
+            return false
+        }
         val myGeneration = generation.incrementAndGet()
         playExecutor.execute {
             val audio = synthesizePreview(app, voice, text)

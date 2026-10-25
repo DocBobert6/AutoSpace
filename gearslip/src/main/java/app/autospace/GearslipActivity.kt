@@ -149,6 +149,11 @@ class GearslipActivity : ComponentActivity(), Projection {
         GearslipLog.init(this)
         GearslipLog.installCrashHandler()
         GearslipLog.i("AutoSpace ready")
+        // One-shot launch voice trace: only when armed in phone
+        // Settings, and only on this fresh process start — the armed
+        // flag plus VoiceTrace's own guard keep later onCreate calls
+        // from restarting the 45-second window.
+        app.autospace.speech.VoiceTrace.beginIfArmed(this)
         app.autospace.wireless.WirelessLink.onConnected = { socket ->
             runOnUiThread { startWireless(socket) }
         }

@@ -478,6 +478,9 @@ private fun VoiceSettings() {
                 if (previewing == key) previewing = null
             },
         )
+        // Same not-started surfacing as the phone picker: a refused
+        // preview used to end as nothing at all.
+        if (!started) previewError = "engine not downloaded"
         previewing = if (started) key else null
     }
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import app.autospace.car.CarSettings
 import app.autospace.speech.VoiceEngine
 import app.autospace.speech.VoiceModels
+import app.autospace.speech.VoiceTrace
 
 /**
  * Which speech model the voice assistant listens with, and downloading it. Each is fetched once
@@ -134,6 +135,11 @@ internal fun SpokenVoiceSection() {
                 if (previewing == key) previewing = null
             },
         )
+        // playPreview returns false only when that engine is not
+        // ready — previously that ended as nothing at all (no error
+        // line, no message), which the trace's tap line now also
+        // distinguishes from a generate failure. Say so on the row.
+        if (!started) previewError = "engine not downloaded"
         previewing = if (started) key else null
     }
     SettingsSection(title = "Voice: spoken voice") {
@@ -154,6 +160,48 @@ internal fun SpokenVoiceSection() {
             previewing = previewing,
             onPreview = { togglePreview("piper", null) },
         )
+        SettingsDivider()
+        // One-shot 45-second launch voice trace (Robert, 2026-10-25):
+        // arm it here, force-stop the app, open it fresh, and try the
+        // voice previews inside the first 45 seconds. At 45 seconds it
+        // writes itself to Downloads/AutoSpace and switches itself
+        // off — it never records perpetually or re-arms on its own.
+        // It records engine stages, file states and error classes
+        // ONLY: never spoken text, messages, contacts, numbers, or
+        // microphone audio, and nothing is uploaded.
+        var traceArmed by remember { mutableStateOf(VoiceTrace.isArmed(context)) }
+        Text(
+            "Record launch trace (next launch, 45 seconds)",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        Text(
+            if (traceArmed) {
+                "Trace armed — force-stop AutoSpace, open it fresh, and try a voice preview " +
+                    "within 45 seconds. The trace file appears in Downloads/AutoSpace, " +
+                    "then the recording switches itself off."
+            } else {
+                "Arms a one-time 45-second recording from the next fresh launch, so a " +
+                    "preview failure leaves a readable record of every step it took. " +
+                    "It records engine stages, file states and error types only — never " +
+                    "spoken text, messages, contacts, numbers, or microphone audio — " +
+                    "and nothing is uploaded."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        if (traceArmed) {
+            OutlinedButton(
+                onClick = { VoiceTrace.disarm(context); traceArmed = false },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            ) { Text("Cancel trace") }
+        } else {
+            OutlinedButton(
+                onClick = { VoiceTrace.arm(context); traceArmed = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            ) { Text("Arm launch trace") }
+        }
         previewError?.let { reason ->
             Text(
                 "Preview failed: $reason.",

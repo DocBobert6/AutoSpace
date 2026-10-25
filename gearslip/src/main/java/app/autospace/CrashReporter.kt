@@ -166,8 +166,16 @@ object CrashReporter {
     private fun fileStamp(): String =
         SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
+    /**
+     * The content filter without the tail truncation: the launch
+     * voice trace reuses exactly this predicate (not a copy) so a
+     * report and a trace can never drift apart on what they drop.
+     */
+    internal fun filterContentLines(lines: List<String>): List<String> =
+        lines.filter { line -> TAIL_FILTERS.none { line.contains(it) } }
+
     private fun filteredTail(tail: List<String>): List<String> =
-        tail.filter { line -> TAIL_FILTERS.none { line.contains(it) } }.takeLast(TAIL_LINES)
+        filterContentLines(tail).takeLast(TAIL_LINES)
 
     private fun buildText(app: Context, kind: String, detail: String, tail: List<String>): String {
         val kept = filteredTail(tail)
