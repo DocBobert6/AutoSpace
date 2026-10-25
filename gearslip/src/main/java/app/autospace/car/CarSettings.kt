@@ -37,6 +37,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_AUTOPLAY = "car_autoplay"
     private const val KEY_PLAYER_TITLE = "car_player_title"
     private const val KEY_THEME = "car_app_theme"
+    private const val KEY_BRIGHTNESS = "car_brightness"
     private const val KEY_UI_THEME = "car_ui_theme"
     private const val KEY_PINNED = "car_pinned_apps"
     private const val KEY_APP_ORDER = "car_app_order"
@@ -70,6 +71,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val playerTitleFlow = MutableStateFlow(false)
     private val themeFlow = MutableStateFlow(AppTheme.PHONE)
     val appTheme: StateFlow<AppTheme> = themeFlow
+    private val brightnessFlow = MutableStateFlow(1f)
+
+    /**
+     * The car screen's brightness, 0..1, as a fraction of the head unit's backlight.
+     * 1f is the head unit's own maximum — this slider cannot brighten past it, it can
+     * only dim. A value the driver sets always wins: nothing auto-dims over it, and it
+     * persists across drives. The phone's brightness does not affect the projected
+     * virtual display, which is why this control exists at all.
+     */
+    val brightness: StateFlow<Float> = brightnessFlow
     private val uiThemeFlow = MutableStateFlow(GsThemes.default.id)
 
     /** Id of the [GsTheme] controls are drawn in; an unknown id falls back to the default. */
@@ -221,6 +232,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             AppTheme.valueOf(AppSettings.getString(app, KEY_THEME, AppTheme.PHONE.name))
         }.getOrDefault(AppTheme.PHONE)
         uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
+        brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
         playerTitleFlow.value = AppSettings.getString(app, KEY_PLAYER_TITLE, "false") == "true"
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
@@ -270,6 +282,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setAppTheme(theme: AppTheme) {
         themeFlow.value = theme
         AppSettings.putString(app, KEY_THEME, theme.name)
+    }
+
+    /** Persists a driver-set brightness; clamped so the screen can never go fully black. */
+    fun setBrightness(value: Float) {
+        brightnessFlow.value = value.coerceIn(0.05f, 1f)
+        AppSettings.putString(app, KEY_BRIGHTNESS, brightnessFlow.value.toString())
     }
 
     fun setUiTheme(id: String) {

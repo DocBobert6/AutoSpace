@@ -35,6 +35,7 @@ import app.autospace.host.CarAppConnection
 import app.autospace.host.display
 import app.autospace.host.text
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -277,6 +278,15 @@ fun CarUi() {
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())
                 if (safetyWarningSeen) CarWhatsNew()
+                // Brightness dim, over everything except the brightness sheet itself:
+                // a black overlay with no input handling, so touches pass straight
+                // through to the screen below and audio is untouched. The sheet is
+                // drawn after it, so it stays undimmed and tappable.
+                val brightness by CarSettings.brightness.collectAsState()
+                if (brightness < 1f) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - brightness)))
+                }
+                if (BrightnessSheetVisibility.state.value) BrightnessSheet()
                 }
             }
           }
@@ -499,6 +509,11 @@ private fun CarNavBar(navigator: CarNavigator) {
                     }
                 }
 
+                // Brightness, one tap to the slider sheet: the phone's brightness does
+                // not reach the projected display, so this is the only brightness
+                // control the driver has.
+                GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
+                Spacer(Modifier.width(6.dp))
                 // Weather no longer has its own chip - the temperature alone (no icon, no room
                 // for one) sits where "Night"/"Day" used to, freeing a whole chip's width for the
                 // Home button above.

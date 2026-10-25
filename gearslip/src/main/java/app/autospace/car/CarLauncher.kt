@@ -239,14 +239,9 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
     entry.messaging?.let { navigator.messages(it.packageName, it.label) }
 }
 
-/** One row of the launcher grid: either a group header or a tile. Headers are emitted
- * wherever the group changes along the ordered list, so the driver's custom order is
- * never regrouped behind their back — a group can reappear after a moved tile. */
-private sealed interface LauncherRow {
-    data class Header(val group: AppGroup) : LauncherRow
-    data class App(val tile: Tile) : LauncherRow
-}
-
+/** Sections of the launcher grid: consecutive runs of one group along the ordered list.
+ * Splitting on group change (rather than regrouping) keeps the driver's custom order
+ * exactly — a group can reappear after a moved tile. */
 private fun AppGroup.title(): String = when (this) {
     AppGroup.PHONE -> "Phone"
     AppGroup.MAPS -> "Maps"
@@ -292,13 +287,15 @@ fun CarLauncher() {
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
     val filtered = if (query.isBlank()) ordered else ordered.filter { it.label.contains(query, ignoreCase = true) }
-    val rows = remember(filtered, mediaPackages) {
-        val out = mutableListOf<LauncherRow>()
-        var last: AppGroup? = null
+    // Sections, not a flat row list: the grid's items(list, span = ...) overload
+    // mis-resolves in this Compose version (CI: count overload picked, span arity
+    // error), so headers go through item(span = ...) and tiles through plain items().
+    val sections = remember(filtered, mediaPackages) {
+        val out = mutableListOf<Pair<AppGroup, MutableList<Tile>>>()
         for (entry in filtered) {
             val group = groupOf(entry, mediaPackages)
-            if (group != last) { out += LauncherRow.Header(group); last = group }
-            out += LauncherRow.App(tileOf(entry))
+            if (out.isEmpty() || out.last().first != group) out += group to mutableListOf()
+            out.last().second += tileOf(entry)
         }
         out
     }
@@ -340,16 +337,16 @@ fun CarLauncher() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(rows, span = { _, row -> if (row is LauncherRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { row ->
-                when (row) {
-                    is LauncherRow.Header -> Text(
-                        row.group.title(),
+            for ((group, sectionTiles) in sections) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Text(
+                        group.title(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                     )
-                    is LauncherRow.App -> AppTile(row.tile)
                 }
+                items(sectionTiles) { tile -> AppTile(tile) }
             }
         }
         if (searching) {

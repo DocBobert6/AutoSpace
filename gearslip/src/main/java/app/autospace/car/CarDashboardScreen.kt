@@ -22,8 +22,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
+import androidx.compose.material.icons.filled.BrightnessMedium
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsIconBox
+import app.autospace.car.theme.GsIconButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -60,7 +62,9 @@ fun CarDashboardScreen() {
             .padding(horizontal = 24.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-        ScreenHeader("Today")
+        ScreenHeader("Today") {
+            GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
+        }
         WeatherCard(context)
         AgendaCard(context)
         NotificationsSection()
