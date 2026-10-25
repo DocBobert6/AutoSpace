@@ -21,6 +21,14 @@ class VoiceTraceTest {
     }
 
     @Test
+    fun buildTagIsPinnedAndNonBlank() {
+        // Round 7 tripwire: the tag must change on every push (see
+        // VoiceTrace.BUILD_TAG). A push that forgets to bump it fails
+        // here instead of shipping traces no one can attribute.
+        assertEquals("r7", VoiceTrace.BUILD_TAG)
+    }
+
+    @Test
     fun traceFilterDropsContentLinesAndKeepsStageLines() {
         val kept = CrashReporter.filterContentLines(
             listOf(

@@ -52,6 +52,21 @@ object VoiceTrace {
     /** Exactly 45 seconds from launch, as Robert asked. */
     const val WINDOW_MS = 45_000L
 
+    /**
+     * Per-build label, bumped by hand on EVERY push, so a trace file
+     * can never again be mistaken for another build's: versionName
+     * and versionCode never change across debug builds, and round 7
+     * proved a trace without a build tag is unattributable — the
+     * 18:03 trace fingerprinted as 6122a199 only by which markers it
+     * lacked (tap lines present, load-end lines present, playback
+     * lines absent), while its sender believed it ran the drain
+     * build. The tag is printed in every trace header and logged at
+     * window start; the matching test below pins its value, so a
+     * push that forgets to bump it fails CI instead of shipping an
+     * ambiguous trace. NEVER reuse a tag value across pushes.
+     */
+    const val BUILD_TAG = "r7"
+
     private const val PREFS = "voice_trace"
     private const val KEY_ARMED = "armed"
     private const val MAX_LINES = 8000
@@ -109,6 +124,7 @@ object VoiceTrace {
         header = buildHeader(appCtx)
         GearslipLog.addSink(sink)
         GearslipLog.i("voice: launch trace started — recording 45 seconds from launch")
+        GearslipLog.i("voice: launch trace build $BUILD_TAG")
         main.postDelayed({ export() }, WINDOW_MS)
     }
 
@@ -122,6 +138,7 @@ object VoiceTrace {
             appendLine("AutoSpace launch voice trace — 45 seconds from fresh launch")
             appendLine("Written: ${stamp()} (epoch ${System.currentTimeMillis()})")
             appendLine("App: $version")
+        appendLine("Build tag: $BUILD_TAG")
             appendLine("Device: $device")
             appendLine("Local only: this file was never uploaded anywhere.")
             appendLine("Records engine stages, file states and error classes ONLY — never spoken text,")

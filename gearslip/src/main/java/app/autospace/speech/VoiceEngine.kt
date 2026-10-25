@@ -461,12 +461,32 @@ object VoiceEngine {
         playExecutor.execute {
             val audio = synthesizePreview(app, voice, text)
             if (myGeneration != generation.get() || audio == null) {
+                // Round 7: this branch used to end with no log line
+                // at all — onDone only — so a preview superseded
+                // between render and playback (or a null render
+                // without a stage) was indistinguishable in a trace
+                // from playback never being attempted. Name it.
+                if (audio == null) {
+                    GearslipLog.w(
+                        "voice: preview ${voice?.id ?: "piper"} no audio " +
+                            "(stage: ${lastFailure ?: "unknown"})",
+                    )
+                } else {
+                    GearslipLog.w(
+                        "voice: preview ${voice?.id ?: "piper"} superseded before playback",
+                    )
+                }
                 if (myGeneration == generation.get()) {
                     main.post { onError(lastFailure ?: "unknown voice failure") }
                 }
                 main.post(onDone)
                 return@execute
             }
+            // Round 7: explicit entry marker, so a trace can tell
+            // "playback never entered" apart from "playback ran
+            // silently" even if playAudio's own first line is ever
+            // bypassed by an early return.
+            GearslipLog.i("voice: preview ${voice?.id ?: "piper"} playback begin")
             playAudio(
                 audio, myGeneration, onDone, notifyOnInterrupt = true,
                 onSilent = { onError(lastFailure ?: "playback failed") },
