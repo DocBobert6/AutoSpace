@@ -167,6 +167,23 @@ fun WebApp(content: String) {
     // DisposableEffect below), this is the belt-and-braces half.
     val immersive by BrowserImmersiveState.immersive.collectAsState()
     LaunchedEffect(Unit) { BrowserImmersiveState.exit() }
+    // Scroll-hide (Robert 2026-10-25 06:20 redirect): the address
+    // bar row — and ONLY it — follows the active tab's WebView
+    // scroll, in BOTH modes. Scroll down past the threshold hides
+    // it, scroll up past the threshold shows it again, and it
+    // always reappears at the top of the page. The deltas live in
+    // a plain remembered holder, not State: scroll events fire
+    // rapidly, and only the hide/show flips need recomposition.
+    // Session state only, never persisted; leaving the browser
+    // drops the whole composition, so nothing survives an entry.
+    var barHiddenByScroll by remember { mutableStateOf(false) }
+    val barScrollThresholdPx = remember { (24f * context.resources.displayMetrics.density).toInt().coerceAtLeast(1) }
+    val scrollHideAccum = remember { object { var down = 0; var up = 0 } }
+    fun resetBarScrollHide() {
+        barHiddenByScroll = false
+        scrollHideAccum.down = 0
+        scrollHideAccum.up = 0
+    }
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
@@ -213,12 +230,14 @@ fun WebApp(content: String) {
         addressEditing = false
         addressSelected = false
         tabsOpen = false
+        resetBarScrollHide()
     }
     fun switchTab(tab: BrowserTab) {
         activeTabId = tab.id
         addressEditing = false
         addressSelected = false
         tabsOpen = false
+        resetBarScrollHide()
     }
     fun closeTab(tab: BrowserTab) {
         if (tabs.size == 1) {
@@ -229,12 +248,14 @@ fun WebApp(content: String) {
             tab.loadError = null
             tab.title = null
             tabsOpen = false
+            resetBarScrollHide()
             return
         }
         val idx = tabs.indexOf(tab)
         tabs.remove(tab)
         if (tab.id == activeTabId) {
             activeTabId = tabs[(idx - 1).coerceAtLeast(0)].id
+            resetBarScrollHide()
         }
         // Destroy after composition has detached it (posted, not now:
         // this tab's AndroidView may still be composed this frame).
@@ -379,6 +400,42 @@ fun WebApp(content: String) {
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
         fullscreenView = null
+    }
+    // Scroll-hide decision (Robert 2026-10-25 06:20): called on
+    // the main thread for the ACTIVE tab only — a background
+    // tab's scroll never moves the bar. Down accumulates until
+    // the 24dp threshold, then the bar hides (only once past
+    // the threshold position too, so a non-scrolling page —
+    // scrollY pinned at 0 — keeps the bar visible); up
+    // accumulates the same way before the bar returns, so tiny
+    // direction jitters mid-scroll cannot flicker it; scrollY 0
+    // always restores it. While the car keyboard is open
+    // (address edit, or a page field being typed) or any
+    // sheet/dialog/notice/video/gate is up, scrolls change
+    // nothing — a scroll under an overlay must not flip the
+    // bar, and the bar cannot be reached to open a sheet while
+    // it is hidden, so sheets never open from a hidden bar.
+    fun onWebScroll(tabId: Int, scrollY: Int, oldScrollY: Int) {
+        if (tabId != activeTabId) return
+        if (scrollY == 0) {
+            resetBarScrollHide()
+            return
+        }
+        if (addressEditing || fieldText != null || settingsMenuOpen || tabsOpen ||
+            sheetOpen || listsOpen || jsDialog != null || showPopupNotice ||
+            fullscreenView != null || gateOpen) return
+        val delta = scrollY - oldScrollY
+        if (delta > 0) {
+            scrollHideAccum.up = 0
+            scrollHideAccum.down += delta
+            if (scrollHideAccum.down >= barScrollThresholdPx && scrollY >= barScrollThresholdPx) {
+                barHiddenByScroll = true
+            }
+        } else if (delta < 0) {
+            scrollHideAccum.down = 0
+            scrollHideAccum.up += -delta
+            if (scrollHideAccum.up >= barScrollThresholdPx) barHiddenByScroll = false
+        }
     }
 
     // Popup notice auto-dismiss (Notscape's 12,000 ms, restarted when a
@@ -679,9 +736,10 @@ fun WebApp(content: String) {
                 // frost circle in the bar row, same target size as
                 // the tabs/saved buttons, so it is present wherever
                 // the bar sits (top or bottom — browserBar is
-                // shared). Tapping it enters immersive; it is
-                // hidden with the bar while immersive, and the
-                // floating exit pill is the way back (never a tap
+                // shared) and whenever the bar is shown (the bar
+                // scroll-hides in both modes, see onWebScroll).
+                // Tapping it enters immersive; the floating exit
+                // pill is the on-screen way back (never a tap
                 // toggle — a tap on the page is a link click).
                 Box(
                     Modifier.size(44.dp)
@@ -703,10 +761,13 @@ fun WebApp(content: String) {
             // a settings-menu button; leaving the browser is the menu's
             // Close browser button, or BACK stepping through page
             // history first (see the back interceptor). Immersive
-            // fullscreen (Robert 2026-10-25) skips the header AND
-            // the bar, leaving the weight(1f) page WebView to fill
-            // the whole frame — the page reflows to its new size,
-            // nothing is stretched or cropped.
+            // fullscreen (Robert 2026-10-25, bar rule redirected
+            // 06:20) skips the header, leaving the weight(1f) page
+            // WebView to fill the frame — the page reflows to its
+            // new size, nothing is stretched or cropped — but the
+            // bar STAYS VISIBLE on immersive entry and hides only
+            // on scroll down (see onWebScroll); in normal mode the
+            // header stays and only the bar scroll-hides.
             if (!immersive) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -723,7 +784,7 @@ fun WebApp(content: String) {
                     GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
                 }
             }
-            if (!barBottom && !immersive) browserBar()
+            if (!barBottom && !barHiddenByScroll) browserBar()
             // Phase 10 tabs: only the active tab's WebView is composed,
             // keyed by tab id so switching disposes one AndroidView and
             // composes the next. The factory returns a tab's EXISTING
@@ -742,6 +803,16 @@ fun WebApp(content: String) {
                             settings.loadWithOverviewMode = true
                             settings.useWideViewPort = true
                             val tab = activeTab
+                            // Scroll-hide (Robert 2026-10-25 06:20):
+                            // the tab's own scroll drives only the
+                            // bar row (see onWebScroll). The listener
+                            // rides this WebView, so a tab switch
+                            // (re-attach reuses the same view) keeps
+                            // it, and leaving the browser destroys
+                            // the view with it.
+                            setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                                mainHandler.post { onWebScroll(tab.id, scrollY, oldScrollY) }
+                            }
                             webViewClient = BrowserClient(
                                 ring = ring,
                                 onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
@@ -749,6 +820,12 @@ fun WebApp(content: String) {
                                     mainHandler.post {
                                         tab.foundMedia.clear()
                                         tab.loadError = null
+                                        // A new page load restores
+                                        // the bar (active tab only;
+                                        // in immersive mode the
+                                        // header/nav bar stay hidden
+                                        // until immersive exit).
+                                        if (tab.id == activeTabId) resetBarScrollHide()
                                     }
                                 },
                                 onHistory = { url, back, forward ->
@@ -832,7 +909,7 @@ fun WebApp(content: String) {
                     onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
                 )
             }
-            if (barBottom && !immersive) browserBar()
+            if (barBottom && !barHiddenByScroll) browserBar()
             if (!addressEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
