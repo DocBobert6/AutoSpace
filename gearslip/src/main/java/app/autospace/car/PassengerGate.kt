@@ -39,9 +39,13 @@ import app.autospace.car.theme.GsSheetSurface
  *
  * Deliberately NOT persisted: there is no setting, no "don't ask
  * again", and nothing survives a drive. The caller owns the
- * per-entry state — [onPassenger] means "allowed for this entry",
- * [onDriving] means "the driver is driving" — and must re-ask on
- * every entry while moving. In-composition overlay, never a real
+ * per-session state — [onPassenger] means "allowed until this
+ * surface closes", [onDriving] means "the driver is driving" —
+ * and must re-ask on every fresh entry while moving. Stops do NOT
+ * clear the allowance (corrected 2026-10-25: the old rule cleared
+ * it on every stop, so a passenger was re-asked at every red
+ * light); a stop only closes a gate that is still open and
+ * unanswered. In-composition overlay, never a real
  * window: real popup windows crash on this virtual display, the
  * same reason JS dialogs and the browser settings menu are
  * in-composition overlays.

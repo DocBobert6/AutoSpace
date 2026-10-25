@@ -314,16 +314,27 @@ fun WebApp(content: String) {
     LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
     LaunchedEffect(barBottom) { resetBarScrollHide() }
     var settingsMenuOpen by remember { mutableStateOf(false) }
-    // Passenger gate (Robert 2026-10-25 05:40): per-entry, never
-    // persisted — no setting, no "don't ask again". CarMotion is
-    // polled like the player does (1 s; GPS only updates every 2 s).
+    // Passenger gate (Robert 2026-10-25 05:40; rule corrected
+    // 2026-10-25 after the every-stop re-ask report): the allowance
+    // lasts the whole browser session — from entering the browser
+    // until it closes — and is NEVER persisted. Stopping does NOT
+    // clear it: the old code cleared passengerAllowed whenever
+    // CarMotion said "not moving", so every red light re-asked a
+    // passenger who had already answered. Now a stop only closes a
+    // gate that is still open and unanswered; a granted allowance
+    // survives any number of stops, and a fresh entry (the screen
+    // recomposes from scratch, passengerAllowed back to false)
+    // re-asks, as it must. Answering "Yes" is NOT an allowance — it
+    // closes the browser outright — so the next entry still gates.
+    // CarMotion is polled like the player does (1 s; GPS only
+    // updates every 2 s).
     val moving by produceState(CarMotion.moving) {
         while (true) { value = CarMotion.moving; delay(1_000) }
     }
     var gateOpen by remember { mutableStateOf(false) }
     var passengerAllowed by remember { mutableStateOf(false) }
     LaunchedEffect(moving) {
-        if (!moving) { passengerAllowed = false; gateOpen = false }
+        if (!moving) { gateOpen = false }
         else if (!passengerAllowed) { gateOpen = true }
     }
     // Immersive + keyboard: an address cannot be edited while the

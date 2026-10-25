@@ -380,14 +380,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     val moving by produceState(CarMotion.moving) {
         while (true) { value = CarMotion.moving; delay(1_000) }
     }
-    // Passenger gate, same per-entry, never-persisted rule as the
-    // browser's: stopping clears the allowance, so moving again
-    // re-asks; answering "Yes" just leaves passengerAllowed false,
+    // Passenger gate, same per-session, never-persisted rule as
+    // the browser's (corrected 2026-10-25: stopping does NOT clear
+    // the allowance, so moving again does not re-ask a passenger
+    // who already answered; answering "Yes" just leaves
+    // passengerAllowed false,
     // which drops the player into the audio-only branch below.
     var gateOpen by remember { mutableStateOf(false) }
     var passengerAllowed by remember { mutableStateOf(false) }
     LaunchedEffect(moving) {
-        if (!moving) { passengerAllowed = false; gateOpen = false }
+        if (!moving) { gateOpen = false }
         else if (!passengerAllowed) { gateOpen = true }
     }
     val position by produceState(0L to C.TIME_UNSET) {

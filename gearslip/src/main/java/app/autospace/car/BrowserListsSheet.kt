@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +31,23 @@ import app.autospace.car.theme.GsTone
  * style as the media-finder sheet (no real Dialog window on this virtual
  * display). Tapping an entry loads it; bookmarking the current page and
  * clearing history live here too, so the bar stays to one row.
+ *
+ * 2026-10-25 reachability fix — the actual break behind "the page
+ * is unreachable": this sheet's Column did NOT scroll, and its two
+ * lists were LazyColumns weighted inside that wrap-content Column.
+ * The unweighted rows alone (title, bookmark button, the whole
+ * Popups section, section titles, Close) already exceed a car
+ * screen's sheet space, so the weighted lists were measured at
+ * ~0 height and History + Close were clipped off-screen entirely.
+ * Both tap entries (the bar's Star button, the settings menu's
+ * "Saved & history" row) DID open the sheet — what opened simply
+ * could not be reached. Now the whole sheet scrolls (like the
+ * settings menu) and the lists are plain Columns inside it: history
+ * is capped at 50 and bookmarks at 200 in BrowserStore, so eager
+ * rows cost nothing here, and every row — including Close — is
+ * reachable by scrolling on any screen height. No nested
+ * LazyColumn-in-scroll-Column, which Compose forbids in spirit
+ * (the inner list would lose its bounds).
  */
 @Composable
 fun BrowserListsSheet(
@@ -64,7 +81,7 @@ fun BrowserListsSheet(
             start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
         )) {
             Column(
-                Modifier.fillMaxWidth().padding(20.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
@@ -123,11 +140,11 @@ fun BrowserListsSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(bookmarks, key = { "b:$it" }) { url ->
+                        bookmarks.forEach { url ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -154,11 +171,11 @@ fun BrowserListsSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        items(history, key = { "h:$it" }) { url ->
+                        history.forEach { url ->
                             GsButton(onClick = { onLoad(url) }, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
                                 Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
