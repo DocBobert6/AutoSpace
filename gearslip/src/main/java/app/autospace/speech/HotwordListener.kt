@@ -51,8 +51,6 @@ object HotwordListener {
     /** Alias kept so drivers who learned the old name are not stranded. */
     const val PHRASE_ALIAS = "hey gearslip"
 
-    private val PHRASES = listOf(PHRASE_MAIN, PHRASE_ALIAS)
-
     private const val RATE = 16_000
     private const val CHUNK = 1_600 // 100 ms, as in SpeechEngine
     /** Unchanged transcript this long means the utterance is over: start a fresh one. */
@@ -118,6 +116,7 @@ object HotwordListener {
     fun start(context: Context) {
         if (running) return
         running = true
+        GearslipLog.i("hotword: loop started")
         val gen = ++generation
         val app = context.applicationContext
         SpeechModels.init(app)
@@ -126,7 +125,9 @@ object HotwordListener {
 
     /** Stops the loop and closes the microphone; the loop thread exits on its own. */
     fun stop() {
+        if (!running) return
         running = false
+        GearslipLog.i("hotword: loop stopped")
     }
 
     /**
@@ -143,13 +144,31 @@ object HotwordListener {
     }
 
     /**
-     * The phrase at the start of [cleaned] text, or null. The phrase must be the whole
+     * The wake phrase at the start of [cleaned] text, or null. The phrase must be the whole
      * text or be followed by a space: "hey autospacex" is not a trigger, and neither is
      * a phrase that only appears later in the sentence. Pure, so it is unit-tested
      * without a microphone.
+     *
+     * Brand names are the trap here (2026-10-25): a speech model does not have to spell
+     * them the way the app does. "AutoSpace" is two common words to a recognizer, so
+     * real transcripts say "hey auto space" at least as often as "hey autospace", and
+     * "Gearslip" likewise splits into "gear slip". The matcher therefore accepts every
+     * spelling the model can produce for each phrase, with the same start-of-utterance
+     * and whole-word boundary rules for each spelling: "hey auto spacex" and
+     * "hey auto spacecraft" still do not trigger, because neither spelling is followed
+     * by a space there.
      */
-    internal fun findHotword(cleaned: String): String? =
-        PHRASES.firstOrNull { cleaned == it || cleaned.startsWith("$it ") }
+    internal fun findHotword(cleaned: String): String? {
+        for ((phrase, spellings) in PHRASE_SPELLINGS) {
+            if (spellings.any { cleaned == it || cleaned.startsWith("$it ") }) return phrase
+        }
+        return null
+    }
+
+    private val PHRASE_SPELLINGS: List<Pair<String, List<String>>> = listOf(
+        PHRASE_MAIN to listOf(PHRASE_MAIN, "hey auto space"),
+        PHRASE_ALIAS to listOf(PHRASE_ALIAS, "hey gear slip"),
+    )
 
     private fun gatesPass(app: Context): Boolean {
         if (!CarSettings.hotword.value) return false
@@ -160,14 +179,43 @@ object HotwordListener {
         return SpeechModels.isReady(app, SpeechModels.selected.value)
     }
 
+    /**
+     * Which gate is blocking the loop, or null when all pass. Logged on change only
+     * (2026-10-25): the old loop slept in total silence whenever a gate failed, so a
+     * blocked loop looked exactly like a deaf one and no trace could tell them apart.
+     * The reason names the gate, never any speech: no transcript is ever logged here.
+     */
+    private fun gateReason(app: Context): String? {
+        if (!CarSettings.hotword.value) return "hotword switch off"
+        if (!sessionCheck()) return "no car session"
+        if (suspendCheck()) return "assistant busy or call active"
+        if (SpeechEngine.listeningActive) return "button-press listen active"
+        if (app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return "microphone permission missing"
+        if (!SpeechModels.isReady(app, SpeechModels.selected.value)) return "Kroko listening model not ready"
+        return null
+    }
+
+    @Volatile private var lastGateReason: String? = null
+
+    /** Logs a blocking gate the first time it appears; silence while it persists. */
+    private fun logGate(app: Context) {
+        val reason = gateReason(app)
+        if (reason != lastGateReason) {
+            lastGateReason = reason
+            if (reason != null) GearslipLog.w("hotword: waiting ($reason)")
+        }
+    }
+
     private fun loop(app: Context, gen: Int) {
         var recognizer: OnlineRecognizer? = null
         try {
             while (running && gen == generation) {
                 if (!gatesPass(app)) {
+                    logGate(app)
                     Thread.sleep(POLL_MS)
                     continue
                 }
+                lastGateReason = null
                 if (recognizer == null) {
                     recognizer = loadRecognizer(app)
                     if (recognizer == null) {
@@ -204,7 +252,7 @@ object HotwordListener {
                 }
                 var liveMic = opened.first
                 holdingMic = true
-                GearslipLog.i("hotword: listening for \"Hey AutoSpace\"")
+                GearslipLog.i("hotword: listening for \"Hey AutoSpace\" via ${opened.second}")
                 try {
                     liveMic = runStream(recognizer, liveMic, opened.second)
                 } catch (t: Throwable) {
@@ -218,6 +266,7 @@ object HotwordListener {
                 Thread.sleep(TRIGGER_COOLDOWN_MS)
             }
         } finally {
+            GearslipLog.i("hotword: loop exited")
             runCatching { recognizer?.release() }
         }
     }

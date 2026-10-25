@@ -78,8 +78,18 @@ object CarServices {
         // never opens the microphone; a real session sets it before CarUi composes.
         app.autospace.speech.HotwordListener.configure(
             sessionCheck = { CarEnvironment.isRunning },
+            // Suspended only while the assistant is actively busy or a call is live.
+            // ERROR is deliberately not a suspension (2026-10-25): it is a settled
+            // state, not activity — the old `phase != IDLE` check kept the hotword
+            // dead for the rest of a session after any listen error ("Didn't catch
+            // that", a silent render, no voice), while a button press could still
+            // start the assistant from ERROR. cancel() is otherwise the only way
+            // out of ERROR, and it runs only at session shutdown.
             suspendCheck = {
-                CarAssistant.state.value.phase != CarAssistant.Phase.IDLE ||
+                val phase = CarAssistant.state.value.phase
+                phase == CarAssistant.Phase.LISTENING ||
+                    phase == CarAssistant.Phase.THINKING ||
+                    phase == CarAssistant.Phase.SPEAKING ||
                     app.autospace.call.CarCalls.state.value is app.autospace.call.CallUiState.Active
             },
             onHotword = { CarAssistant.start() },

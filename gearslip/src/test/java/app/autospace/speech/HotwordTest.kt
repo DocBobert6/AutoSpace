@@ -25,6 +25,25 @@ class HotwordTest {
     }
 
     @Test
+    fun splitBrandNamesTrigger() {
+        // A speech model spells brand names as common words: "AutoSpace" comes
+        // out as "auto space", "Gearslip" as "gear slip". Both must trigger.
+        assertEquals(HotwordListener.PHRASE_MAIN, HotwordListener.findHotword("hey auto space"))
+        assertEquals(
+            HotwordListener.PHRASE_MAIN,
+            HotwordListener.findHotword("hey auto space navigate to the nearest gas station"),
+        )
+        assertEquals(HotwordListener.PHRASE_ALIAS, HotwordListener.findHotword("hey gear slip"))
+    }
+
+    @Test
+    fun splitLookalikesNeverTrigger() {
+        assertNull(HotwordListener.findHotword("hey auto spacex"))
+        assertNull(HotwordListener.findHotword("hey auto spacecraft"))
+        assertNull(HotwordListener.findHotword("hey gear slipstream"))
+    }
+
+    @Test
     fun bareHeyNeverTriggers() {
         assertNull(HotwordListener.findHotword("hey"))
         assertNull(HotwordListener.findHotword("hey there"))
