@@ -2,6 +2,7 @@ package app.autospace.car
 
 import app.autospace.car.theme.*
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -60,9 +61,21 @@ object CarKeyboardVisibility {
  * period, and submit — the shape a driver already knows from their phone. Shift shows the
  * Gboard arrow (⇧) and fills with the primary colour while active; letters render uppercase
  * while shifted. Backspace stays a row above the space bar, so a fumbled reach for space
- * never lands on delete instead. Keys stay large (44dp floor), with no long-press, no
- * prediction, and no suggestion strip: the Gboard shape is kept, the phone's small targets
+ * never lands on delete instead. Keys stay large (44dp floor), with no
+ * prediction and no suggestion strip: the Gboard shape is kept, the phone's small targets
  * and smart features are not.
+ *
+ * Long-press (2026-10-25, Robert): letter keys carry Gboard's
+ * shortcuts, painted small at the key's top-right corner — Q-P hold
+ * 1-0, A-L hold @ # $ _ & - + ( ), Z-M hold * " ' : ; ! ?. A
+ * long-press inserts the hint character and leaves shift exactly as
+ * it was (a long-press never consumes or sets shift); a tap still
+ * inserts the letter and consumes shift as before. No double
+ * insertion: the key uses combinedClickable, so a long-press
+ * suppresses the tap that would otherwise follow it. Symbols mode
+ * is unchanged (its keys carry no hints), and there is deliberately
+ * no emoji key: the bottom row stays symbols/comma/space/period/
+ * dismiss/submit, as decided 2026-10-25.
  *
  * [onDismiss] is null wherever there's no keyboard-shown state independent of the screen itself
  * (a search template, sign-in) - there, the header's own back action is the only way out and no
@@ -119,7 +132,10 @@ fun CarKeyboard(
                         if (staggered) Spacer(Modifier.weight(0.5f))
                         row.forEach { key ->
                             val label = if (shifted && !symbols) key.uppercase() else key
-                            Key(label, Modifier.weight(1f)) {
+                            val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
+                            Key(label, Modifier.weight(1f), hint = hint, onLongClick = hint?.let {
+                                { onTextChange(text + it) }
+                            }) {
                                 onTextChange(text + label)
                                 shifted = false
                             }
@@ -140,7 +156,10 @@ fun CarKeyboard(
                     }
                     rows.last().forEach { key ->
                         val label = if (shifted && !symbols) key.uppercase() else key
-                        Key(label, Modifier.weight(1f)) {
+                        val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
+                        Key(label, Modifier.weight(1f), hint = hint, onLongClick = hint?.let {
+                            { onTextChange(text + it) }
+                        }) {
                             onTextChange(text + label)
                             shifted = false
                         }
@@ -180,9 +199,17 @@ fun CarKeyboard(
 }
 
 @Composable
-private fun Key(label: String, modifier: Modifier = Modifier, active: Boolean = false, onClick: () -> Unit) {
+private fun Key(
+    label: String,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    hint: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     GsIconBox(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.height(LocalKeyHeight.current),
         colors = if (active) {
             GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
@@ -191,17 +218,31 @@ private fun Key(label: String, modifier: Modifier = Modifier, active: Boolean = 
         },
         shape = RoundedCornerShape(8.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
+        Box(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            }
+            // Gboard-style hint: small, top-right, never competing with
+            // the letter itself. Shown only where a hint exists (letter
+            // keys in letters mode); symbols keys carry none.
+            if (hint != null) {
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp),
+                )
+            }
         }
     }
 }
@@ -257,6 +298,22 @@ private val LETTER_ROWS = listOf(
     "qwertyuiop".map { it.toString() },
     "asdfghjkl".map { it.toString() },
     "zxcvbnm".map { it.toString() },
+)
+
+/**
+ * Gboard's long-press shortcuts for the letter keys, exactly as
+ * Robert listed them 2026-10-25: Q-P hold digits 1-0, A-L hold
+ * @ # $ _ & - + ( ), Z-M hold * " ' : ; ! ?. Keys are lowercase
+ * here (the rows store lowercase); the hint is inserted verbatim,
+ * never shifted.
+ */
+private val LONG_PRESS_HINTS = mapOf(
+    "q" to "1", "w" to "2", "e" to "3", "r" to "4", "t" to "5",
+    "y" to "6", "u" to "7", "i" to "8", "o" to "9", "p" to "0",
+    "a" to "@", "s" to "#", "d" to "$", "f" to "_", "g" to "&",
+    "h" to "-", "j" to "+", "k" to "(", "l" to ")",
+    "z" to "*", "x" to "\"", "c" to "'", "v" to ":", "b" to ";",
+    "n" to "!", "m" to "?",
 )
 
 private val SYMBOL_ROWS = listOf(
