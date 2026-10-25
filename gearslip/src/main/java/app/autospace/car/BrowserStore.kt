@@ -3,6 +3,7 @@ package app.autospace.car
 import android.content.Context
 import app.autospace.AppSettings
 import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Persisted browser bookmarks + history (Phase 3.4), stored as JSON arrays in
