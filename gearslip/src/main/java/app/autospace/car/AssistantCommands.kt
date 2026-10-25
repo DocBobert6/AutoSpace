@@ -497,7 +497,7 @@ object AssistantCommands {
     private fun timerCommand(heard: String): String? {
         if (heard == "cancel timer" || heard == "cancel the timer") {
             val handler = timerHandler ?: return "No timer is running."
-            handler.removeCallbacks(timerRunnable)
+            timerRunnable?.let { handler.removeCallbacks(it) }
             timerHandler = null
             timerRunnable = null
             return "Timer cancelled."
@@ -509,7 +509,7 @@ object AssistantCommands {
                 ?.groupValues?.get(1)?.toIntOrNull()?.times(60)
             ?: return null
         if (minutes <= 0 || minutes > 240) return "I can time up to 4 hours."
-        timerHandler?.removeCallbacks(timerRunnable)
+        timerRunnable?.let { timerHandler?.removeCallbacks(it) }
         val handler = Handler(Looper.getMainLooper())
         val runnable = Runnable {
             timerHandler = null
