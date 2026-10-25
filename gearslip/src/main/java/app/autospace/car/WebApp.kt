@@ -1,13 +1,23 @@
 package app.autospace.car
 
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.URLUtil
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.car.app.CarToast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +25,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -26,11 +42,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.material3.Text
 import app.autospace.GearslipLog
+import app.autospace.ProjectedContent
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.GsProgressBar
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -55,6 +75,7 @@ import org.json.JSONObject
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
+    val context = LocalContext.current
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
@@ -68,15 +89,40 @@ fun WebApp(content: String) {
             foundMedia.add(0, FoundMedia(url, title?.takeIf { it.isNotBlank() }))
         }
     }
+    // Phase 3.4 state: navigation, progress, errors, address editing, lists,
+    // fullscreen video, and JS dialogs — all in-composition, never real windows.
+    var currentUrl by remember { mutableStateOf(content) }
+    var canGoBack by remember { mutableStateOf(false) }
+    var canGoForward by remember { mutableStateOf(false) }
+    var progress by remember { mutableStateOf(0) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var addressText by remember { mutableStateOf(if (content.startsWith("http")) content else "") }
+    var addressEditing by remember { mutableStateOf(false) }
+    var listsOpen by remember { mutableStateOf(false) }
+    var bookmarks by remember { mutableStateOf<List<String>>(emptyList()) }
+    var historyList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var fullscreenView by remember { mutableStateOf<View?>(null) }
+    var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
+    var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
+    fun refreshLists() {
+        bookmarks = BrowserStore.bookmarks(context)
+        historyList = BrowserStore.history(context)
+    }
+    fun hideFullscreen() {
+        fullscreenCallback?.onCustomViewHidden()
+        fullscreenCallback = null
+        fullscreenView = null
+    }
 
-    DisposableEffect(web) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView) {
         navigator.backInterceptor = {
-            val view = web
-            if (view != null && view.canGoBack()) {
-                view.goBack()
-                true
-            } else {
-                false
+            when {
+                fullscreenView != null -> { hideFullscreen(); true }
+                jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
+                sheetOpen -> { sheetOpen = false; true }
+                listsOpen -> { listsOpen = false; true }
+                web != null && web!!.canGoBack() -> { web!!.goBack(); true }
+                else -> false
             }
         }
         onDispose { navigator.backInterceptor = null }
@@ -86,6 +132,33 @@ fun WebApp(content: String) {
         Column(Modifier.fillMaxSize()) {
             // Back steps through the page's history first (the interceptor above), then leaves.
             ScreenHeader("Browser", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            // Address/search bar + navigation (Phase 3.4, item 1): every control is a
+            // Gs control on Material You colours, like the rest of AutoSpace chrome.
+            // Tapping the address pill opens the car keyboard; submitting navigates
+            // (a URL loads, anything else searches no-AI DuckDuckGo).
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = canGoBack)
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = canGoForward)
+                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() })
+                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(content) })
+                GsButton(
+                    onClick = { addressText = currentUrl; addressEditing = true },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true })
+            }
+            // Progress bar (Phase 3.4, item 2): only while a page is actually loading.
+            if (progress in 1..99) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+                    GsProgressBar(progress / 100f, Modifier.weight(1f))
+                }
+            }
             // Finder button (Phase 3.2): shown only when media was actually detected
             // on the current page. A GsButton, so it follows the app theme like all chrome.
             if (foundMedia.isNotEmpty()) {
@@ -110,8 +183,55 @@ fun WebApp(content: String) {
                         webViewClient = BrowserClient(
                             ring = ring,
                             onMedia = { url, title -> mainHandler.post { addMedia(url, title) } },
-                            onPageStart = { mainHandler.post { foundMedia.clear() } },
+                            onPageStart = {
+                                mainHandler.post {
+                                    foundMedia.clear()
+                                    loadError = null
+                                }
+                            },
+                            onHistory = { url, back, forward ->
+                                mainHandler.post {
+                                    currentUrl = url
+                                    canGoBack = back
+                                    canGoForward = forward
+                                    BrowserStore.recordHistory(context, url)
+                                }
+                            },
+                            onMainFrameError = { message ->
+                                mainHandler.post { loadError = message }
+                            },
                         )
+                        webChromeClient = BrowserChrome(
+                            onProgress = { p -> mainHandler.post { progress = p } },
+                            onShowFullscreen = { view, callback ->
+                                mainHandler.post {
+                                    fullscreenView = view
+                                    fullscreenCallback = callback
+                                }
+                            },
+                            onHideFullscreen = { mainHandler.post { hideFullscreen() } },
+                            onJsDialog = { dialog -> mainHandler.post { jsDialog = dialog } },
+                        )
+                        val downloadOwner = this
+                        setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                            // Phase 3.4, item 4: downloads go to the phone Downloads
+                            // folder with a started/failed notice, instead of silently
+                            // doing nothing (the old behaviour).
+                            runCatching {
+                                val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                                val request = DownloadManager.Request(Uri.parse(url))
+                                    .setTitle(filename)
+                                    .setDescription("Downloaded from the car browser")
+                                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                                context.getSystemService(DownloadManager::class.java)?.enqueue(request)
+                                GearslipLog.i("car browser download started: $filename")
+                                CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
+                            }.onFailure { e ->
+                                GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+                                CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
+                            }
+                        })
                         addJavascriptInterface(
                             FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
                             "GearslipField",
@@ -128,20 +248,107 @@ fun WebApp(content: String) {
                 update = { it.settings.isAlgorithmicDarkeningAllowed = false },
                 onRelease = { it.destroy() },
             )
-            fieldText?.let { text ->
+            if (!addressEditing) {
+                fieldText?.let { text ->
+                    CarKeyboard(
+                        text = text,
+                        onTextChange = { updated ->
+                            fieldText = updated
+                            web?.evaluateJavascript(setFieldValueJs(updated), null)
+                        },
+                        onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
+                        onDismiss = {
+                            fieldText = null
+                            web?.evaluateJavascript(BLUR_FIELD_JS, null)
+                        },
+                    )
+                }
+            }
+            // Address keyboard (Phase 3.4): submitting navigates; dismissing keeps
+            // the current page. The address pill always shows the current URL, so a
+            // dismissed edit loses nothing.
+            if (addressEditing) {
                 CarKeyboard(
-                    text = text,
-                    onTextChange = { updated ->
-                        fieldText = updated
-                        web?.evaluateJavascript(setFieldValueJs(updated), null)
+                    text = addressText,
+                    onTextChange = { addressText = it },
+                    onSubmit = {
+                        addressEditing = false
+                        web?.loadUrl(ProjectedContent.navigateUrl(addressText))
                     },
-                    onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
-                    onDismiss = {
-                        fieldText = null
-                        web?.evaluateJavascript(BLUR_FIELD_JS, null)
-                    },
+                    onDismiss = { addressEditing = false },
                 )
             }
+        }
+        // Friendly error page (Phase 3.4, item 2): replaces the log-only error.
+        // The WebView stays composed underneath, so Retry just reloads it.
+        if (loadError != null) {
+            Box(
+                Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "This page couldn't load",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    Text(
+                        loadError ?: "",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = { loadError = null; web?.reload() }) { Text("Retry") }
+                        GsButton(onClick = { loadError = null; web?.goBack() }) { Text("Go back") }
+                    }
+                }
+            }
+        }
+        if (listsOpen) {
+            BrowserListsSheet(
+                bookmarks = bookmarks,
+                history = historyList,
+                currentUrl = currentUrl,
+                isBookmarked = BrowserStore.isBookmarked(context, currentUrl),
+                onLoad = { url ->
+                    listsOpen = false
+                    web?.loadUrl(url)
+                },
+                onBookmarkToggle = {
+                    if (BrowserStore.isBookmarked(context, currentUrl)) {
+                        BrowserStore.removeBookmark(context, currentUrl)
+                    } else {
+                        BrowserStore.addBookmark(context, currentUrl)
+                    }
+                    refreshLists()
+                },
+                onRemoveBookmark = { url ->
+                    BrowserStore.removeBookmark(context, url)
+                    refreshLists()
+                },
+                onClearHistory = {
+                    BrowserStore.clearHistory(context)
+                    refreshLists()
+                },
+                onClose = { listsOpen = false },
+            )
+        }
+        // Fullscreen video (Phase 3.4, item 3): the WebView's custom view fills the
+        // car frame; Back (or the page) hides it via the chrome callbacks.
+        fullscreenView?.let { view ->
+            Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
+                AndroidView(factory = { _ -> view }, modifier = Modifier.fillMaxSize())
+            }
+        }
+        jsDialog?.let { dialog ->
+            JsDialogOverlay(
+                dialog = dialog,
+                onDismiss = { jsDialog = null },
+            )
         }
         if (sheetOpen) {
             MediaFinderSheet(
@@ -169,6 +376,8 @@ private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
     private val onPageStart: () -> Unit,
+    private val onHistory: (String, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    private val onMainFrameError: (String) -> Unit = {},
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -184,6 +393,15 @@ private class BrowserClient(
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         onPageStart()
+    }
+
+    // Main-frame history updates (Phase 3.4): the one reliable place to learn the
+    // current URL and Back/Forward state, and to record history (subframe loads
+    // never reach here, so history stays clean).
+    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+        if (view != null && url != null) {
+            onHistory(url, view.canGoBack(), view.canGoForward())
+        }
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
@@ -206,12 +424,142 @@ private class BrowserClient(
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
         if (request?.isForMainFrame == true) {
             GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode} ${error?.description}")
+            onMainFrameError("Could not load ${request.url}. ${error?.description ?: "Check the connection and try again."}")
         }
     }
 
     override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
         if (request?.isForMainFrame == true) {
             GearslipLog.w("car web page HTTP ${response?.statusCode} for ${request.url}")
+        }
+    }
+}
+
+/**
+ * WebChromeClient for the car browser (Phase 3.4, item 3): load progress,
+ * fullscreen video, and JS dialogs. Dialogs are reported to Compose and drawn
+ * as in-composition overlays ([JsDialogOverlay]) — never as real Dialog
+ * windows, which crash on this virtual display.
+ */
+private class BrowserChrome(
+    private val onProgress: (Int) -> Unit,
+    private val onShowFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
+    private val onHideFullscreen: () -> Unit,
+    private val onJsDialog: (JsDialogState) -> Unit,
+) : WebChromeClient() {
+    override fun onProgressChanged(view: WebView?, newProgress: Int) {
+        onProgress(newProgress)
+    }
+
+    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+        if (view != null && callback != null) onShowFullscreen(view, callback)
+    }
+
+    override fun onHideCustomView() {
+        onHideFullscreen()
+    }
+
+    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+        if (result == null) return false
+        onJsDialog(JsDialogState.Alert(message ?: "", result))
+        return true
+    }
+
+    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+        if (result == null) return false
+        onJsDialog(JsDialogState.Confirm(message ?: "", result))
+        return true
+    }
+
+    override fun onJsPrompt(
+        view: WebView?,
+        url: String?,
+        message: String?,
+        defaultValue: String?,
+        result: JsPromptResult?,
+    ): Boolean {
+        if (result == null) return false
+        onJsDialog(JsDialogState.Prompt(message ?: "", defaultValue ?: "", result))
+        return true
+    }
+}
+
+/** A JS dialog waiting for the driver, with its result object to answer through. */
+private sealed interface JsDialogState {
+    val message: String
+    fun confirm() {}
+    fun cancel() {}
+
+    data class Alert(override val message: String, private val result: JsResult) : JsDialogState {
+        override fun confirm() { result.confirm() }
+        override fun cancel() { result.cancel() }
+    }
+
+    data class Confirm(override val message: String, private val result: JsResult) : JsDialogState {
+        override fun confirm() { result.confirm() }
+        override fun cancel() { result.cancel() }
+    }
+
+    data class Prompt(
+        override val message: String,
+        val defaultValue: String,
+        private val result: JsPromptResult,
+    ) : JsDialogState {
+        fun confirmWith(value: String) { result.confirm(value) }
+        override fun cancel() { result.cancel() }
+    }
+}
+
+/** In-composition JS dialog overlay: message, car keyboard for prompts, Gs buttons. */
+@Composable
+private fun JsDialogOverlay(dialog: JsDialogState, onDismiss: () -> Unit) {
+    var promptText by remember(dialog) { mutableStateOf((dialog as? JsDialogState.Prompt)?.defaultValue ?: "") }
+    Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            androidx.compose.material3.Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = MaterialTheme.shapes.extraLarge,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(dialog.message, style = MaterialTheme.typography.bodyLarge)
+                    if (dialog is JsDialogState.Prompt) {
+                        Text(promptText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        when (dialog) {
+                            is JsDialogState.Alert -> {
+                                GsButton(onClick = { dialog.confirm(); onDismiss() }, modifier = Modifier.weight(1f)) { Text("OK") }
+                            }
+                            is JsDialogState.Confirm -> {
+                                GsButton(onClick = { dialog.confirm(); onDismiss() }, modifier = Modifier.weight(1f)) { Text("OK") }
+                                GsButton(onClick = { dialog.cancel(); onDismiss() }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                            }
+                            is JsDialogState.Prompt -> {
+                                GsButton(onClick = { dialog.confirmWith(promptText); onDismiss() }, modifier = Modifier.weight(1f)) { Text("OK") }
+                                GsButton(onClick = { dialog.cancel(); onDismiss() }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                            }
+                        }
+                    }
+                }
+            }
+            if (dialog is JsDialogState.Prompt) {
+                CarKeyboard(
+                    text = promptText,
+                    onTextChange = { promptText = it },
+                    onSubmit = { dialog.confirmWith(promptText); onDismiss() },
+                    onDismiss = { dialog.cancel(); onDismiss() },
+                )
+            }
         }
     }
 }
