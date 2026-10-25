@@ -61,7 +61,11 @@ object AssistantCommands {
 
     private suspend fun allEntries(context: Context): List<Entry> {
         val vehicleData = CarSettings.experimentalFeaturesEnabled.value && CarSettings.carSensorsEnabled.value
-        val builtIn = BuiltInApps.entries.filter { it.builtIn !== BuiltInApps.VehicleData || vehicleData }
+        val mapsInstalled = context.packageManager.getLaunchIntentForPackage(MAPS_PACKAGE_NAME) != null
+        val builtIn = BuiltInApps.entries.filter {
+            (it.builtIn !== BuiltInApps.VehicleData || vehicleData) &&
+                (it.builtIn !== BuiltInApps.MapsMirrored || mapsInstalled)
+        }
         return builtIn + (LauncherCache.entries ?: withContext(Dispatchers.IO) { LauncherCache.load(context) })
     }
 

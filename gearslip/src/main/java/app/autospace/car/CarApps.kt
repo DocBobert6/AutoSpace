@@ -2,6 +2,7 @@ package app.autospace.car
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
@@ -27,6 +28,9 @@ object CarApps {
         },
         CarApp("phone", "Screen sharing", Icons.Filled.Share) {
             PhoneAppsScreen()
+        },
+        CarApp("maps-mirrored", "Maps (mirrored)", Icons.Filled.Place) {
+            MapsMirrorScreen()
         },
         CarApp("dialer", "Phone", Icons.Filled.Call) {
             PhoneDialerScreen()
