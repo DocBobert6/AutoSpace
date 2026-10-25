@@ -154,6 +154,17 @@ class CarNavigator(startId: String) {
         if (backInterceptor?.invoke() == true) return
         if (stack.size > 1) stack.removeAt(stack.lastIndex)
     }
+
+    /**
+     * Back that skips the interceptor: the browser's menu "Close browser"
+     * must leave the screen even when the page still has history — the
+     * normal back() would step back a page instead. Nothing else uses
+     * this; every other back path goes through the interceptor so open
+     * sheets, dialogs and fullscreen video close first.
+     */
+    fun forceBack() {
+        if (stack.size > 1) stack.removeAt(stack.lastIndex)
+    }
 }
 
 val LocalCarNavigator = staticCompositionLocalOf<CarNavigator> { error("no CarNavigator provided") }

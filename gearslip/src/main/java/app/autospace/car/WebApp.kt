@@ -23,15 +23,18 @@ import android.webkit.WebViewClient
 import androidx.car.app.CarToast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -40,8 +43,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -56,7 +61,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -241,6 +248,14 @@ fun WebApp(content: String) {
     // opening a captured popup loads it in its originating tab too and
     // switches to it. Popups never open a new tab on their own.
     var popupTabId by remember { mutableStateOf<Int?>(null) }
+    // Audit/browser build: address bar position (Notscape's barPosition,
+    // persisted in BrowserStore; default top, the position AutoSpace has
+    // always used) and the settings menu that replaced the ScreenHeader
+    // exit arrow (Robert 2026-10-25 04:43). The menu is a kit sheet, not
+    // a DropdownMenu: real popup windows crash on this virtual display,
+    // the same reason JS dialogs are in-composition overlays.
+    var barBottom by remember { mutableStateOf(BrowserStore.barAtBottom(context)) }
+    var settingsMenuOpen by remember { mutableStateOf(false) }
     fun openFirstPopup() {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
@@ -253,8 +268,43 @@ fun WebApp(content: String) {
             capturedPopupViews.clear()
         }
     }
-    fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {
-        if (allowed) {
+    // Audit/browser build, Notscape's "Open all": the first captured URL
+    // loads in its originating tab (as Open once does); every further
+    // URL opens as a NEW tab — but only because the driver explicitly
+    // tapped Open all, never on a popup's own initiative, which is what
+    // the never-a-new-tab rule forbids. The new tabs are not switched
+    // to; the driver lands back on the originating tab.
+    fun openAllPopups() {
+        val urls = pendingPopups.toList()
+        if (urls.isEmpty()) return
+        val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
+        origin.view?.loadUrl(urls.first())
+        if (origin.id != activeTabId) activeTabId = origin.id
+        urls.drop(1).forEach { url -> tabs.add(BrowserTab(nextTabId++, url)) }
+        clearPendingPopups()
+    }
+    // Audit/browser build, Notscape's popunder guard (see PopunderHosts
+    // for why the host set is built-in rather than filter-derived).
+    // Deliberately independent of the global strict switch, exactly as
+    // Notscape's guard is: a popunder is never an "allowed popup", it
+    // is the swap trick, so strict-off does not let it through — only a
+    // per-site Block silences it entirely (no notice), like window.open.
+    fun capturePopunder(url: String, pageHost: String) {
+        if (BrowserStore.popupSetting(context, pageHost) == BrowserStore.PopupSetting.BLOCK) {
+            GearslipLog.i("car browser popunder dropped silently for $pageHost (block always)")
+            return
+        }
+        if (url !in pendingPopups && pendingPopups.size < 5) {
+            pendingPopups.add(url)
+            popupHost = pageHost
+            popupTabId = activeTab.id
+            showPopupNotice = true
+            GearslipLog.i("car browser popunder captured for $pageHost")
+        } else {
+            GearslipLog.i("car browser popunder over cap for $pageHost, dropped")
+        }
+    }
+    fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {        if (allowed) {
             runCatching { transport.destroy() }
             tab.view?.loadUrl(url)
             if (tab.id != activeTabId) activeTabId = tab.id
@@ -300,12 +350,19 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen) {
         navigator.backInterceptor = {
             when {
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
                 showPopupNotice -> { clearPendingPopups(); true }
+                // Head-unit BACK closes the settings menu first, then the
+                // other overlays, then steps back a page, then — only
+                // when the page has no history left — exits the browser
+                // (the interceptor returning false lets navigator.back()
+                // pop the screen). The menu's Close browser button is
+                // the only path that exits regardless of page history.
+                settingsMenuOpen -> { settingsMenuOpen = false; true }
                 tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
@@ -316,18 +373,22 @@ fun WebApp(content: String) {
         onDispose { navigator.backInterceptor = null }
     }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
-            // Back steps through the page's history first (the interceptor above), then leaves.
-            ScreenHeader("Browser", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    // Audit/browser build: the bar as one local composable, so the
+    // same Notscape bar can sit at the top or the bottom (see
+    // BrowserStore.barAtBottom). Column order below is header, [top
+    // bar], page, [bottom bar], keyboards — so a bottom bar always
+    // sits ABOVE CarKeyboard while typing, never behind it.
+    val browserBar: @Composable () -> Unit = {
             // Address/search bar + navigation (Phase 3.4, item 1).
             // Tapping the address pill opens the car keyboard; submitting
             // navigates (a URL loads, anything else searches no-AI
-            // DuckDuckGo). Phase 6, Notscape capsule language
-            // (car-adapted): circular frosted nav buttons grouped around
-            // the URL pill, inset 12dp from the edges. Unlike Notscape's
-            // phone bar, nothing collapses here — Back/Forward/Reload/
-            // Home stay reachable while driving.
+            // DuckDuckGo). Audit/browser build, Notscape capsule language:
+            // nav buttons in one frost capsule, the URL pill as its own
+            // frost capsule with the load progress filling it, the tabs
+            // button as Notscape's frost box with the count inside.
+            // Unlike Notscape's phone bar, nothing collapses here —
+            // Back/Forward/Reload/Home stay reachable while driving, and
+            // every target stays 44dp or larger.
             // Phase 10, slimmer + Notscape-like: 44dp circular buttons
             // (Notscape's 44dp), a slimmer 44dp frost URL pill, tighter
             // padding (12dp sides, 2dp vertical, 6dp gaps), load
@@ -344,13 +405,48 @@ fun WebApp(content: String) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = activeTab.canGoBack, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = activeTab.canGoForward, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                // Notscape's floating capsule group: Back/Forward in one
+                // frost capsule (Notscape hides the group when there is
+                // no history; the car keeps it always visible, because a
+                // target that vanishes while driving is worse than a
+                // disabled one — the disabled state is shown instead).
+                // Reload/Home ride in the same capsule so the whole bar
+                // is two frost groups + pill, as in Notscape.
+                Row(
+                    Modifier.frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BarNavButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, activeTab.canGoBack)
+                    BarNavButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, activeTab.canGoForward)
+                    BarNavButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, true)
+                    BarNavButton(Icons.Filled.Home, "Home", { web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL) }, true)
+                }
                 Box(
                     Modifier.weight(1f).height(44.dp)
                         .frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp)
+                        // Notscape's pill swipe: a horizontal drag over
+                        // the pill switches tabs (90px threshold, as in
+                        // Notscape); a tap without drag still edits, as
+                        // before. Swiping stays within the tab list and
+                        // never creates or closes a tab.
+                        .pointerInput(activeTabId, tabs.size) {
+                            var dragTotal = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragTotal = 0f },
+                                onHorizontalDrag = { _, amount -> dragTotal += amount },
+                                onDragEnd = {
+                                    val idx = tabs.indexOfFirst { it.id == activeTabId }
+                                    val target = when {
+                                        dragTotal < -90f && idx in 0 until tabs.size - 1 -> tabs[idx + 1]
+                                        dragTotal > 90f && idx > 0 -> tabs[idx - 1]
+                                        else -> null
+                                    }
+                                    if (target != null) switchTab(target)
+                                    dragTotal = 0f
+                                },
+                                onDragCancel = { dragTotal = 0f },
+                            )
+                        }
                         .clickable {
                             // Tapping the pill selects all: starting an
                             // edit seeds from the active tab's URL and
@@ -366,20 +462,27 @@ fun WebApp(content: String) {
                     contentAlignment = Alignment.CenterStart,
                 ) {
                     // Notscape pill fill: the load progress washes
-                    // across the pill behind the text while loading, as
-                    // a fraction-width primary wash from the start edge.
+                    // across the pill behind the text while loading, in
+                    // the theme's onSurface ink (Notscape 0.0.63 onward:
+                    // the accent-blue fill read as leftover teal, so the
+                    // fill is a neutral onSurface gradient that fades
+                    // out at its leading edge).
                     if (activeTab.progress in 1..99) {
                         Box(
                             Modifier.height(44.dp)
                                 .fillMaxWidth(activeTab.progress / 100f)
                                 .background(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                                    Brush.horizontalGradient(
+                                        0f to MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
+                                        0.7f to MaterialTheme.colorScheme.onSurface.copy(alpha = 0.30f),
+                                        1f to MaterialTheme.colorScheme.onSurface.copy(alpha = 0f),
+                                    ),
                                     androidx.compose.foundation.shape.RoundedCornerShape(50),
                                 ),
                         )
                     }
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
@@ -447,7 +550,17 @@ fun WebApp(content: String) {
                 // the bar is gone.
                 if (activeTab.foundMedia.isNotEmpty()) {
                     Box(contentAlignment = Alignment.TopEnd) {
-                        GsIconButton(Icons.Filled.PlayArrow, "Media on this page", { sheetOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                        Box(
+                            Modifier.size(44.dp)
+                                .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                                .clickable { sheetOpen = true },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.PlayArrow, "Media on this page",
+                                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                            )
+                        }
                         Box(
                             Modifier.size(20.dp)
                                 .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
@@ -462,25 +575,67 @@ fun WebApp(content: String) {
                         }
                     }
                 }
-                // Tabs (Phase 10): count badge always shown (never zero
-                // tabs); the switcher sheet holds New tab + the list.
-                Box(contentAlignment = Alignment.TopEnd) {
-                    GsIconButton(Icons.Filled.Tab, "Tabs", { tabsOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                // Tabs (Phase 10, Notscape's tab button): a 44dp frost
+                // box holding the count on a small surface (25dp, 8dp
+                // radius) — the count is always shown, never zero tabs;
+                // the switcher sheet holds New tab + the list.
+                Box(
+                    Modifier.size(44.dp)
+                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .clickable { tabsOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box(
-                        Modifier.size(20.dp)
-                            .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+                        Modifier.size(25.dp)
+                            .background(
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.14f),
+                                androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
                             "${tabs.size}",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
-                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                Box(
+                    Modifier.size(44.dp)
+                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .clickable { refreshLists(); listsOpen = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Filled.Star, "Saved & history",
+                        tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                    )
+                }
             }
+    }
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Audit/browser build: the ScreenHeader exit arrow is GONE
+            // (Robert 2026-10-25 04:43). The header is now the title +
+            // a settings-menu button; leaving the browser is the menu's
+            // Close browser button, or BACK stepping through page
+            // history first (see the back interceptor).
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Browser",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
+            }
+            if (!barBottom) browserBar()
             // Phase 10 tabs: only the active tab's WebView is composed,
             // keyed by tab id so switching disposes one AndroidView and
             // composes the next. The factory returns a tab's EXISTING
@@ -518,6 +673,9 @@ fun WebApp(content: String) {
                                 },
                                 onMainFrameError = { message ->
                                     mainHandler.post { tab.loadError = message }
+                                },
+                                onPopunder = { url, host ->
+                                    mainHandler.post { capturePopunder(url, host) }
                                 },
                             )
                             webChromeClient = BrowserChrome(
@@ -586,6 +744,7 @@ fun WebApp(content: String) {
                     onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
                 )
             }
+            if (barBottom) browserBar()
             if (!addressEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
@@ -676,6 +835,30 @@ fun WebApp(content: String) {
                 }
             }
         }
+        if (settingsMenuOpen) {
+            BrowserSettingsMenu(
+                barBottom = barBottom,
+                onBarPosition = { bottom ->
+                    BrowserStore.setBarAtBottom(context, bottom)
+                    barBottom = bottom
+                },
+                popupStrict = popupStrict,
+                onPopupStrict = { strict ->
+                    BrowserStore.setPopupStrict(context, strict)
+                    popupStrict = strict
+                },
+                popupSetting = popupSettingForHost,
+                onPopupSetting = { setting ->
+                    BrowserStore.setPopupSetting(context, hostOf(activeTab.currentUrl), setting)
+                    popupSettingForHost = setting
+                },
+                currentHost = hostOf(activeTab.currentUrl),
+                onOpenLists = { settingsMenuOpen = false; refreshLists(); listsOpen = true },
+                onOpenTabs = { settingsMenuOpen = false; tabsOpen = true },
+                onCloseMenu = { settingsMenuOpen = false },
+                onCloseBrowser = { settingsMenuOpen = false; navigator.forceBack() },
+            )
+        }
         if (listsOpen) {
             BrowserListsSheet(
                 bookmarks = bookmarks,
@@ -731,15 +914,24 @@ fun WebApp(content: String) {
         }
         // Phase 8 popup notice (Notscape's popup notice, car-sized): a frost
         // panel floating over the page — NOT a Gs sheet — naming the site
-        // and offering Open popup (first captured URL, into its
-        // originating tab — Phase 10 tabs; popups never open a new tab),
-        // Block always for this site, and Dismiss.
+        // and offering Open once / Open all (Notscape's buttons), Allow
+        // popups for this site (Notscape's whitelist-then-open), Block
+        // always for this site, and Dismiss. Open once / Open all load
+        // into the originating tab (Open all adds further URLs as new
+        // tabs only on the explicit tap — see openAllPopups); popups
+        // never open a new tab on their own. Audit/browser build: the
+        // notice rides on the opposite edge from a bottom bar (top,
+        // below the header) so it never sits under the bar or keyboard.
         if (showPopupNotice && pendingPopups.isNotEmpty()) {
             val host = popupHost?.takeIf { it.isNotBlank() }
                 ?: hostOf(pendingPopups.first()).takeIf { it.isNotBlank() }
                 ?: "this site"
             val count = pendingPopups.size
-            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+            Box(
+                Modifier.fillMaxSize()
+                    .padding(start = 16.dp, end = 16.dp, top = if (barBottom) 88.dp else 16.dp, bottom = 16.dp),
+                contentAlignment = if (barBottom) Alignment.TopCenter else Alignment.BottomCenter,
+            ) {
                 Column(
                     Modifier.fillMaxWidth().frostBar(RoundedCornerShape(28.dp), 6.dp).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -756,7 +948,18 @@ fun WebApp(content: String) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    GsButton(onClick = { openFirstPopup() }, modifier = Modifier.fillMaxWidth()) { Text("Open popup") }
+                    if (count > 1) {
+                        GsButton(onClick = { openAllPopups() }, modifier = Modifier.fillMaxWidth()) { Text("Open all ($count)") }
+                    }
+                    GsButton(onClick = { openFirstPopup() }, modifier = Modifier.fillMaxWidth()) { Text("Open once") }
+                    GsButton(
+                        onClick = {
+                            BrowserStore.setPopupSetting(context, host, BrowserStore.PopupSetting.ALLOW)
+                            popupSettingForHost = BrowserStore.PopupSetting.ALLOW
+                            openFirstPopup()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Allow popups for this site") }
                     GsButton(
                         onClick = {
                             BrowserStore.setPopupSetting(context, host, BrowserStore.PopupSetting.BLOCK)
@@ -792,6 +995,151 @@ fun WebApp(content: String) {
                 onNewTab = { newTab() },
                 onClose = { tabsOpen = false },
             )
+        }
+    }
+}
+
+/**
+ * One button inside the browser's Notscape frost capsule: a plain
+ * 44dp IconButton with a 24dp onSurface icon (Notscape's bar buttons
+ * wear the frost material itself, not a Gs control). A disabled button
+ * dims its icon instead of vanishing, so the bar never reshapes while
+ * driving.
+ */
+@Composable
+private fun BarNavButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean,
+) {
+    androidx.compose.material3.IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.size(44.dp),
+    ) {
+        androidx.compose.material3.Icon(
+            icon, label,
+            tint = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+/**
+ * The browser's settings menu (audit/browser build): a regular-browser
+ * menu in content — every setting the browser can change, plus Close.
+ * A kit sheet, not a DropdownMenu, because real popup windows crash on
+ * this virtual display. Rows are checkable where they hold a choice;
+ * the selected row is bold on primary, the Phase 10 selected language.
+ */
+@Composable
+private fun BrowserSettingsMenu(
+    barBottom: Boolean,
+    onBarPosition: (Boolean) -> Unit,
+    popupStrict: Boolean,
+    onPopupStrict: (Boolean) -> Unit,
+    popupSetting: BrowserStore.PopupSetting,
+    onPopupSetting: (BrowserStore.PopupSetting) -> Unit,
+    currentHost: String,
+    onOpenLists: () -> Unit,
+    onOpenTabs: () -> Unit,
+    onCloseMenu: () -> Unit,
+    onCloseBrowser: () -> Unit,
+) {
+    @Composable
+    fun MenuRow(label: String, checked: Boolean, onClick: () -> Unit) {
+        Row(
+            Modifier.fillMaxWidth()
+                .background(
+                    if (checked) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                )
+                .clickable { onClick() }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (checked) {
+                androidx.compose.material3.Icon(
+                    Icons.Filled.Check, null,
+                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp),
+                )
+                Spacer(Modifier.width(12.dp))
+            } else {
+                Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (checked) androidx.compose.ui.text.font.FontWeight.Bold
+                else androidx.compose.ui.text.font.FontWeight.Normal,
+                color = if (checked) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    @Composable
+    fun MenuSection(title: String) {
+        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+    }
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Box(
+            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)).clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                onClick = onCloseMenu,
+            ),
+        )
+        app.autospace.car.theme.GsSheetSurface(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Browser settings", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    GsIconButton(Icons.Filled.Close, "Close settings", onCloseMenu, size = 56.dp, iconSize = 28.dp)
+                }
+                MenuSection("Address bar")
+                MenuRow("At the top", !barBottom) { onBarPosition(false) }
+                MenuRow("At the bottom", barBottom) { onBarPosition(true) }
+                Text(
+                    "At the bottom, the bar sits above the keyboard while typing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuSection("Popups")
+                MenuRow(
+                    if (popupStrict) "Strict popup blocking: On" else "Strict popup blocking: Off",
+                    popupStrict,
+                ) { onPopupStrict(!popupStrict) }
+                if (currentHost.isNotBlank()) {
+                    MenuSection("Popups for $currentHost")
+                    MenuRow("Strict default", popupSetting == BrowserStore.PopupSetting.STRICT) {
+                        onPopupSetting(BrowserStore.PopupSetting.STRICT)
+                    }
+                    MenuRow("Allow", popupSetting == BrowserStore.PopupSetting.ALLOW) {
+                        onPopupSetting(BrowserStore.PopupSetting.ALLOW)
+                    }
+                    MenuRow("Block always", popupSetting == BrowserStore.PopupSetting.BLOCK) {
+                        onPopupSetting(BrowserStore.PopupSetting.BLOCK)
+                    }
+                }
+                MenuSection("Browser")
+                MenuRow("Saved & history", false) { onOpenLists() }
+                MenuRow("Tabs", false) { onOpenTabs() }
+                GsButton(onClick = onCloseBrowser, modifier = Modifier.fillMaxWidth()) { Text("Close browser") }
+            }
         }
     }
 }
@@ -892,6 +1240,7 @@ private class BrowserClient(
     private val onPageStart: () -> Unit,
     private val onHistory: (String, Boolean, Boolean) -> Unit = { _, _, _ -> },
     private val onMainFrameError: (String) -> Unit = {},
+    private val onPopunder: (String, String) -> Unit = { _, _ -> },
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -903,6 +1252,32 @@ private class BrowserClient(
 
     override fun onLoadResource(view: WebView?, url: String?) {
         if (url != null && VideoUrl.isPlayableUrl(url)) onMedia(url, null)
+    }
+
+    // Audit/browser build, Notscape's popunder guard (0.0.962), logic
+    // verbatim: a script-driven main-frame hop with no user gesture,
+    // aimed at a known popunder host, is captured like a blocked popup
+    // instead of loaded. Typed addresses never reach here (loadUrl
+    // skips this callback) and tapped links carry a gesture. The host
+    // test is PopunderHosts' built-in set — Notscape's set is derived
+    // from filter lists AutoSpace does not have (see PopunderHosts).
+    // Returning false for everything else preserves the previous
+    // behaviour exactly (WebView handles http(s) itself).
+    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+        val url = request?.url?.toString()
+        if (request?.isForMainFrame == true && request.hasGesture() == false && url != null &&
+            (url.startsWith("http://") || url.startsWith("https://"))
+        ) {
+            val targetHost = runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+            val hereHost = runCatching { Uri.parse(view?.url ?: "").host ?: "" }.getOrDefault("")
+            if (targetHost.isNotEmpty() && targetHost != hereHost &&
+                PopunderHosts.isDocumentHost(targetHost)
+            ) {
+                onPopunder(url, hereHost)
+                return true
+            }
+        }
+        return false
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {

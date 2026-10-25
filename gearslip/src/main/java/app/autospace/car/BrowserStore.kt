@@ -17,6 +17,8 @@ object BrowserStore {
     private const val KEY_HISTORY = "browser_history"
     /** Global strict popup blocking, ON by default (Phase 8, Notscape's popupStrict). */
     const val KEY_POPUP_STRICT = "browser_popup_strict"
+    /** Address bar position (audit/browser build, Notscape's barPosition): "top" or "bottom". */
+    private const val KEY_BAR_POSITION = "browser_bar_position"
     /** Per-site popup settings, JSON object host -> {"allow": bool, "block": bool}. */
     private const val KEY_POPUP_SITES = "browser_popup_sites"
     private const val MAX_HISTORY = 50
@@ -134,4 +136,16 @@ object BrowserStore {
 
     fun popupBlockAlways(context: Context, host: String): Boolean =
         popupSetting(context, host) == PopupSetting.BLOCK
+
+    // ---- Address bar position (audit/browser build, Notscape's barPosition) ----
+    // Default "top" (the position AutoSpace has always used); "bottom" moves
+    // the bar below the page, and the WebApp column order (page, bar,
+    // keyboard) lifts it above CarKeyboard while typing instead of
+    // hiding it behind the keyboard.
+    fun barAtBottom(context: Context): Boolean =
+        AppSettings.getString(context, KEY_BAR_POSITION, "top") == "bottom"
+
+    fun setBarAtBottom(context: Context, bottom: Boolean) {
+        AppSettings.putString(context, KEY_BAR_POSITION, if (bottom) "bottom" else "top")
+    }
 }
