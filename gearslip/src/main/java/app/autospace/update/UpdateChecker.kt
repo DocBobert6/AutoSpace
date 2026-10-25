@@ -177,9 +177,9 @@ object UpdateChecker {
                     key = "gearslip-update",
                     id = CarNotifications.nextId(),
                     packageName = app.packageName,
-                    appLabel = "Gearslip",
-                    title = "Gearslip ${release.version} is out",
-                    text = "Update in the Gearslip app or from GitHub",
+                    appLabel = "AutoSpace",
+                    title = "AutoSpace ${release.version} is out",
+                    text = "Update in the AutoSpace app or from GitHub",
                     postedAt = System.currentTimeMillis(),
                     icon = runCatching { app.packageManager.getApplicationIcon(app.packageName).toBitmap(96, 96) }.getOrNull(),
                     reply = null,
@@ -211,7 +211,7 @@ object UpdateChecker {
         )
         val notification = NotificationCompat.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("Gearslip ${release.version} is out")
+            .setContentTitle("AutoSpace ${release.version} is out")
             .setContentText("Tap to update.")
             .setContentIntent(open)
             .setAutoCancel(true)
@@ -257,7 +257,7 @@ object UpdateChecker {
         flow.value = State.Downloading(release, 0f)
         Thread({
             val dir = updatesDir(app).apply { deleteRecursively(); mkdirs() }
-            val apk = File(dir, "Gearslip-${release.version}.apk")
+            val apk = File(dir, "AutoSpace-${release.version}.apk")
             flow.value = runCatching {
                 fetchApk(release, apk)
                 GearslipLog.i("update: downloaded ${release.version}")
@@ -304,7 +304,7 @@ object UpdateChecker {
             connectTimeout = 15_000
             readTimeout = 15_000
             setRequestProperty("Accept", "application/vnd.github+json")
-            setRequestProperty("User-Agent", "Gearslip/${BuildConfig.VERSION_NAME}")
+            setRequestProperty("User-Agent", "AutoSpace/${BuildConfig.VERSION_NAME}")
         }
         try {
             if (conn.responseCode == 404) return null // no stable release yet
@@ -344,7 +344,7 @@ object UpdateChecker {
         val conn = (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 30_000
-            setRequestProperty("User-Agent", "Gearslip/${BuildConfig.VERSION_NAME}")
+            setRequestProperty("User-Agent", "AutoSpace/${BuildConfig.VERSION_NAME}")
         }
         try {
             if (conn.responseCode !in 200..299) error("GitHub answered ${conn.responseCode}")

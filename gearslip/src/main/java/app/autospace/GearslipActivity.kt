@@ -135,7 +135,7 @@ class GearslipActivity : ComponentActivity(), Projection {
 
         GearslipLog.init(this)
         GearslipLog.installCrashHandler()
-        GearslipLog.i("Gearslip ready")
+        GearslipLog.i("AutoSpace ready")
         app.autospace.wireless.WirelessLink.onConnected = { socket ->
             runOnUiThread { startWireless(socket) }
         }
@@ -325,7 +325,7 @@ class GearslipActivity : ComponentActivity(), Projection {
         // Switched off in Settings: the system shouldn't route the car here at all, but if it
         // does, leave the accessory alone.
         if (!AppSettings.gearslipEnabled(this)) {
-            GearslipLog.i("accessory attached, but Gearslip is switched off - not connecting")
+            GearslipLog.i("accessory attached, but AutoSpace is switched off - not connecting")
             return
         }
         val accessory = intent.getParcelableExtra(UsbManager.EXTRA_ACCESSORY, UsbAccessory::class.java)
@@ -352,7 +352,7 @@ class GearslipActivity : ComponentActivity(), Projection {
         val pfd = manager.openAccessory(accessory)
         if (pfd == null) {
             GearslipLog.e("openAccessory returned null - the session was claimed by someone else")
-            SessionStatus.failed("Accessory unavailable", "Another app claimed the USB accessory before Gearslip could open it.")
+            SessionStatus.failed("Accessory unavailable", "Another app claimed the USB accessory before AutoSpace could open it.")
             return
         }
         descriptor = pfd
@@ -372,7 +372,7 @@ class GearslipActivity : ComponentActivity(), Projection {
     private fun startWireless(socket: java.net.Socket) {
         closeAccessory(stopWireless = false)
         if (!AppSettings.gearslipEnabled(this)) {
-            GearslipLog.i("wireless: Gearslip is switched off - not connecting")
+            GearslipLog.i("wireless: AutoSpace is switched off - not connecting")
             runCatching { socket.close() }
             return
         }

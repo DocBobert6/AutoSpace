@@ -105,7 +105,7 @@ fun MediaScreen(app: MediaApp, onExit: () -> Unit) {
                     CarMedia.Phase.REJECTED -> when (rejection) {
                         CarMedia.Rejection.NEEDS_NOTIFICATION_ACCESS -> Notice(
                             "${app.label} keeps its library to itself.",
-                            "Gearslip can still control it once it has Notification access on the phone. " +
+                            "AutoSpace can still control it once it has Notification access on the phone. " +
                                 "Allow it under Settings > Notifications > Notification access.",
                             action = "Open on phone" to {
                                 val app = context.applicationContext
@@ -118,12 +118,12 @@ fun MediaScreen(app: MediaApp, onExit: () -> Unit) {
                         )
                         CarMedia.Rejection.NEEDS_APP_RUNNING -> Notice(
                             "${app.label} isn't running.",
-                            "${app.label} plays through Gearslip's own player, but only while it's " +
+                            "${app.label} plays through AutoSpace's own player, but only while it's " +
                                 "open on the phone. Open it once and it keeps playing here in the car.",
                             action = "Open ${app.label}" to { media.launchAndConnect(app) },
                         )
                         CarMedia.Rejection.REFUSED -> Notice(
-                            "${app.label} would not let Gearslip browse it.",
+                            "${app.label} would not let AutoSpace browse it.",
                             "Some media apps only accept Google's own host.",
                         )
                     }
@@ -608,7 +608,7 @@ private fun QueuePanel(queue: List<QueueTrack>, now: NowPlaying, media: CarMedia
             Notice(
                 "Nothing queued.",
                 "${if (now.title.isEmpty()) "Nothing playing" else "Only what's already playing"} - " +
-                    "not every app tells Gearslip what comes next.",
+                    "not every app tells AutoSpace what comes next.",
             )
         } else {
             LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {

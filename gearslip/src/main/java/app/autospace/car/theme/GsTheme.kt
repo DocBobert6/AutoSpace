@@ -66,10 +66,10 @@ data class ControlLook(
     val holdMarker: HoldMarkerStyle = HoldMarkerStyle.PEEL,
     /**
      * Multiplier for a control container's alpha. 1f is opaque (every Classic/Material look).
-     * Frost uses <1f so surfaces read as glass over whatever sits behind them (art, a
-     * header image, the nav strip) — never as live blur over the video stream, which the
-     * H.264 compression would smear and which costs phone heat. If a blur pass ever proves
-     * expensive, Frost still reads correctly from translucency + scrim alone.
+     * Frost uses 0.97f — near-solid, per Notscape's solid-frost recipe (Phase 6):
+     * the surface reads as frost from its gradient + shadow + hairline, never from
+     * a live blur over the video stream, which the H.264 compression would smear
+     * and which costs phone heat.
      */
     val containerAlpha: Float = 1f,
     /** Replaces this look when the UI is light, for effects that only work on one background. */
@@ -133,25 +133,39 @@ object GsThemes {
     )
 
     /**
-     * Frost (AutoSpace default): Material 3 + translucent surfaces + a top rim highlight.
-     * No shadow, bevel, lip or sink — depth comes from translucency. Blur is deliberately
-     * NOT part of ControlLook: it is only ever applied to small static backdrops (see
-     * the player art treatment), never to live controls over the video stream.
+     * Frost (AutoSpace default, Phase 6): Notscape Mariner's final solid-frost
+     * recipe, not a live blur. Notscape shipped Haze backdrop blur in Phase A
+     * and then REMOVED it entirely (0.0.63, Robert's ruling) — and a blur pass
+     * cannot capture the surfaces that matter most here anyway (SurfaceView /
+     * Media3 video, and the H.264 car stream, which smears any blur). Depth
+     * therefore comes from a near-solid surface (alpha 0.97, lighter at the
+     * top), a soft shadow, and a hairline rim — the same three cues that make
+     * Notscape's floating bars read as frost. Cards use the 20dp radius from
+     * that kit's concentric ladder. The neutral palette itself lives in
+     * CarUi's Frost-only colour scheme: Frost surfaces must be neutral
+     * system backgrounds, never the wallpaper-dynamic colour, which is what
+     * washed Phase 1–5 Frost tiles flat pale peach.
      */
     val Frost = GsTheme(
         id = "frost",
         name = "Frost",
         control = ControlLook(
-            corner = 24.dp,
-            rimAlpha = 0.18f,
-            containerAlpha = 0.78f,
+            corner = 20.dp,
+            topLight = 0.06f,
+            rimAlpha = 0.35f,
+            shadow = 2.dp,
+            shadowAlpha = 0.30f,
+            containerAlpha = 0.97f,
             pressedDim = 0.14f,
             pressedScale = 0.98f,
             holdMarker = HoldMarkerStyle.DOT,
             light = ControlLook(
-                corner = 24.dp,
-                rimAlpha = 0.12f,
-                containerAlpha = 0.82f,
+                corner = 20.dp,
+                topLight = 0.04f,
+                rimAlpha = 0.30f,
+                shadow = 2.dp,
+                shadowAlpha = 0.25f,
+                containerAlpha = 0.97f,
                 pressedDim = 0.10f,
                 pressedScale = 0.98f,
                 holdMarker = HoldMarkerStyle.DOT,

@@ -134,7 +134,7 @@ fun CarSettingsScreen() {
             pipeAudio,
         ) { CarSettings.setPipeAudio(it) }
         Text(
-            "USB sends the phone's sound through Gearslip. Android asks to share your screen each " +
+            "USB sends the phone's sound through AutoSpace. Android asks to share your screen each " +
                 "drive, and a few apps block it. Bluetooth plays as the phone normally would, and " +
                 "Android never asks.",
             style = MaterialTheme.typography.bodySmall,
@@ -159,7 +159,7 @@ fun CarSettingsScreen() {
             speakDirections,
         ) { CarSettings.setSpeakDirections(it) }
         Text(
-            "Gearslip reads each turn aloud through the car's speakers, and the music dips while it " +
+            "AutoSpace reads each turn aloud through the car's speakers, and the music dips while it " +
                 "speaks. Turn it off if your map app's own voice already plays in the car.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -167,9 +167,9 @@ fun CarSettingsScreen() {
 
         ExperimentalFeatureRow(
             title = "Use the phone's speech recognition",
-            description = "Listens through the phone's own speech service instead of Gearslip's. On " +
+            description = "Listens through the phone's own speech service instead of AutoSpace's. On " +
                 "most phones that's Google's, which may send your voice to Google. GrapheneOS has " +
-                "none, so Gearslip keeps using its own.",
+                "none, so AutoSpace keeps using its own.",
             checked = systemSpeech,
         ) { CarSettings.setSystemSpeech(it) }
 

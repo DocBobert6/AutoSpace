@@ -90,7 +90,7 @@ fun CertSetupScreen(onDone: () -> Unit) {
                 if (installed) {
                     "Cars accept only Google-issued certificates, and you have one loaded."
                 } else {
-                    "Cars accept only Google-issued certificates. Gearslip doesn't include one, so choose where yours comes from."
+                    "Cars accept only Google-issued certificates. AutoSpace doesn't include one, so choose where yours comes from."
                 },
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,

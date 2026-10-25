@@ -99,7 +99,7 @@ fun RecommendedAppsScreen(onBack: () -> Unit) {
 internal const val SHOW_RECOMMENDED_APPS = false
 
 internal const val RECOMMENDED_INTRO =
-    "These free apps run on Gearslip's car screen. Each button opens the app's page on GitHub."
+    "These free apps run on AutoSpace's car screen. Each button opens the app's page on GitHub."
 
 /** The same green as the launcher's "works" check. */
 private val INSTALLED_GREEN = Color(0xFF43A047)

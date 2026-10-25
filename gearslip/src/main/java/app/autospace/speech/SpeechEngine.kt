@@ -47,7 +47,7 @@ object SpeechEngine {
     const val NOT_LOADED = "The speech model didn't load."
 
     /** Said when the chosen model hasn't been downloaded yet. */
-    const val NOT_DOWNLOADED = "Download a voice model in Gearslip's settings on the phone first."
+    const val NOT_DOWNLOADED = "Download a voice model in AutoSpace's settings on the phone first."
 
     private const val RATE = 16_000
     private const val CHUNK = 1_600 // 100 ms

@@ -43,7 +43,7 @@ object VoiceHelp {
         "Call…" to "A contact by name",
         "Open…" to "Any app, like Browser, Phone, or Screen sharing",
         "Exit" to "Back to the car's own screen",
-        "Go home · Open apps · Settings" to "Move around Gearslip",
+        "Go home · Open apps · Settings" to "Move around AutoSpace",
         "What time is it · Weather" to "The time, or the forecast",
         "Help" to "This list",
     )

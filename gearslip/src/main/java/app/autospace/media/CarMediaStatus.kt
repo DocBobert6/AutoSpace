@@ -69,7 +69,7 @@ class CarMediaStatus(
         // Nothing to say while stopped, beyond saying so once.
         if (state == STATE_STOPPED && sentState == STATE_STOPPED) return
         if (state == STATE_PAUSED && sentState == STATE_PAUSED) return
-        val source = CarServices.mediaApp.value?.label ?: "Gearslip"
+        val source = CarServices.mediaApp.value?.label ?: "AutoSpace"
         val seconds = if (active) (now!!.currentPosition() / 1000).coerceAtLeast(0) else 0
         sendOnChannel(
             MSG_STATUS,

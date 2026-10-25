@@ -121,7 +121,7 @@ internal fun AboutLinkRows() {
     SettingsRow(
         "Join the chat on Matrix",
         Modifier.clickable { GearslipLinks.open(context, GearslipLinks.MATRIX) },
-        subtitle = "Talk with other drivers about cars, apps, and Gearslip",
+        subtitle = "Talk with other drivers about cars, apps, and AutoSpace",
         icon = Icons.AutoMirrored.Filled.Send,
         trailing = arrow,
     )
@@ -129,7 +129,7 @@ internal fun AboutLinkRows() {
     SettingsRow(
         "Source code",
         Modifier.clickable { GearslipLinks.open(context, GearslipLinks.SOURCE) },
-        subtitle = "Read or change Gearslip's code under the AGPL",
+        subtitle = "Read or change AutoSpace's code under the AGPL",
         icon = Icons.Filled.Build,
         trailing = arrow,
     )

@@ -88,7 +88,7 @@ fun MapsMirrorScreen() {
                 ) {
                     Icon(Icons.Filled.Warning, contentDescription = null)
                     Text(
-                        "Touch is off. Enable Gearslip under Settings > Accessibility on the phone.",
+                        "Touch is off. Enable AutoSpace under Settings > Accessibility on the phone.",
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )

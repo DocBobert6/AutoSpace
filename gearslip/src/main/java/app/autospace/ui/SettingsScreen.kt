@@ -183,12 +183,12 @@ private fun ConnectionSection() {
     var enabled by remember { mutableStateOf(AppSettings.gearslipEnabled(context)) }
     SettingsSection("Connection") {
         SettingsRow(
-            "Use Gearslip in the car",
+            "Use AutoSpace in the car",
             Modifier.toggleable(enabled, role = Role.Switch) {
                 enabled = it
                 AppSettings.setGearslipEnabled(context, it)
             },
-            subtitle = if (enabled) "Gearslip answers when you plug into a car" else "Off: Android Auto can take the connection instead",
+            subtitle = if (enabled) "AutoSpace answers when you plug into a car" else "Off: Android Auto can take the connection instead",
             icon = Icons.Filled.Settings,
             trailing = { Switch(checked = enabled, onCheckedChange = null) },
         )
@@ -224,7 +224,7 @@ private fun HelpSection(onOpenHelp: () -> Unit, onOpenCarPreview: () -> Unit, on
         SettingsRow(
             "Live logs",
             Modifier.clickable(onClick = onOpenLogs),
-            subtitle = "What Gearslip and the car are saying to each other",
+            subtitle = "What AutoSpace and the car are saying to each other",
             icon = Icons.AutoMirrored.Filled.List,
             trailing = { Arrow() },
         )
@@ -340,7 +340,7 @@ private fun CertificateSection() {
                     }
                 }
             },
-            subtitle = "The certificate the open-source aasdk project publishes on GitHub. Gearslip doesn't include one",
+            subtitle = "The certificate the open-source aasdk project publishes on GitHub. AutoSpace doesn't include one",
             icon = Icons.Filled.Refresh,
         )
         SettingsDivider()

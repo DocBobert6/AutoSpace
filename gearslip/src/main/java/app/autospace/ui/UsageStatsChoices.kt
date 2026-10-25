@@ -56,7 +56,7 @@ import app.autospace.stats.UsageStats
 internal const val USAGE_STATS_TITLE = "Help show which cars work"
 
 private const val INTRO_START =
-    "Turn this on, and Gearslip sends a short note when you open it and after each drive. "
+    "Turn this on, and AutoSpace sends a short note when you open it and after each drive. "
 private const val INTRO_PRIVACY =
     "The note holds no name, account, or location. A random number counts your phone once, and the server keeps no IP address."
 private const val INTRO_END =

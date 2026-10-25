@@ -64,7 +64,7 @@ internal fun WirelessButton() {
 
     if (denied) {
         Text(
-            "Gearslip needs Bluetooth and nearby Wi-Fi access for this.",
+            "AutoSpace needs Bluetooth and nearby Wi-Fi access for this.",
             style = MaterialTheme.typography.bodyMedium,
         )
         // Once Android stops asking, the only way back is the app's own permission settings.

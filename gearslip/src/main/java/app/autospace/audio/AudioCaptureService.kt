@@ -228,7 +228,7 @@ class AudioCaptureService : Service() {
         )
         return Notification.Builder(this, CHANNEL)
             .setContentTitle("Playing to the car")
-            .setContentText("Gearslip is sending a media app's audio to the car.")
+            .setContentText("AutoSpace is sending a media app's audio to the car.")
             .setSmallIcon(android.R.drawable.ic_lock_silent_mode_off)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())

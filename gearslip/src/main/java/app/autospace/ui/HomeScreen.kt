@@ -92,7 +92,7 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "Gearslip",
+                            "AutoSpace",
                             style = MaterialTheme.typography.displayLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,

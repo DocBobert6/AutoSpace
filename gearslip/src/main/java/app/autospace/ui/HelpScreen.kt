@@ -48,11 +48,11 @@ private class Step(
 )
 
 private val FIRST_DRIVE = listOf(
-    Step("Turn off Android Auto.", "Disable or uninstall the Android Auto app, so the car talks to Gearslip instead."),
+    Step("Turn off Android Auto.", "Disable or uninstall the Android Auto app, so the car talks to AutoSpace instead."),
     Step("Load a certificate.", "In Settings, download one or import your own."),
     Step(
         "Allow the microphone.",
-        "Android won't let an app pass music to the car without it. Gearslip listens only when " +
+        "Android won't let an app pass music to the car without it. AutoSpace listens only when " +
             "you tap the mic or press the talk button on your wheel.",
     ),
 )
@@ -60,17 +60,17 @@ private val FIRST_DRIVE = listOf(
 private fun inTheCar(onRequestCallScreening: () -> Unit) = listOf(
     Step(
         "Plug in, or connect wirelessly.",
-        "Gearslip opens by itself when the car connects. For wireless, pair the phone with the " +
+        "AutoSpace opens by itself when the car connects. For wireless, pair the phone with the " +
             "car first, then tap Connect wirelessly on Home.",
     ),
     Step(
         "Pair over Bluetooth for calls.",
-        "Calls play through the car once your phone and the car are paired. Gearslip offers to " +
+        "Calls play through the car once your phone and the car are paired. AutoSpace offers to " +
             "pair the first time you plug in.",
     ),
     Step(
         "Answer calls from the car screen.",
-        "Set Gearslip as your caller ID and spam app. Without it, calls still ring, but only " +
+        "Set AutoSpace as your caller ID and spam app. Without it, calls still ring, but only " +
             "the phone can answer them.",
         buttonLabel = "Set up",
         onClick = onRequestCallScreening,
@@ -86,7 +86,7 @@ private val USB_AUDIO = listOf(
     ),
     Step(
         "Keep notifications readable.",
-        "Android hides what notifications say while it shares audio. Run this too, and Gearslip " +
+        "Android hides what notifications say while it shares audio. Run this too, and AutoSpace " +
             "lifts that only while music goes to the car.",
         command = "adb shell pm grant ${BuildConfig.APPLICATION_ID} android.permission.WRITE_SECURE_SETTINGS",
     ),
@@ -125,7 +125,7 @@ fun HelpScreen(onBack: () -> Unit, onRequestCallScreening: () -> Unit) {
             SettingsSection("Which cars work") {
                 Text(
                     "Most cars work. Starting around 2020, some cars added newer security " +
-                        "standards that reject Gearslip's certificate, and Gearslip can't run in those cars.",
+                        "standards that reject AutoSpace's certificate, and AutoSpace can't run in those cars.",
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
                 )

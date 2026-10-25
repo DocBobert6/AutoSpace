@@ -115,7 +115,14 @@ fun CarUi() {
         AppTheme.LIGHT -> false
         AppTheme.DARK -> true
     }
-    val colors = if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)
+    // Phase 6: Frost is neutral-only. The wallpaper-dynamic scheme washed every
+    // Frost tile pale peach in Phases 1–5; Frost now gets Notscape's neutral
+    // system backgrounds (light #FFFFFF/#F2F2F7, dark #000000/#1C1C1E/#2C2C2E)
+    // with accent reserved for primary/selected controls. Every other style
+    // keeps the dynamic Material You scheme exactly as before, and browser
+    // PAGES stay unthemed (Phase 3 correction) — this scheme is chrome only.
+    val colors = if (uiThemeId == "frost") neutralFrostScheme(dark)
+    else if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)
     val base = LocalDensity.current
     val insets by CarEnvironment.insets.collectAsState()
     val navigator = remember { CarNavigator(CarSettings.openOnConnect.value) }
@@ -318,7 +325,7 @@ private fun CarSafetyWizard(onDone: () -> Unit) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Drive safely", style = ChromeType.headline, fontWeight = FontWeight.Bold)
                     Text(
-                        "Gearslip is unofficial software: it is not made or reviewed by any " +
+                        "AutoSpace is unofficial software: it is not made or reviewed by any " +
                             "carmaker, and it can fail without warning.",
                         style = ChromeType.body,
                     )
@@ -378,7 +385,7 @@ private fun AppWontStart(app: String, onBack: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("$app doesn't work with Gearslip yet.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text("$app doesn't work with AutoSpace yet.", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(
             "It didn't start. Some apps only run on Google's Android Auto.",
             style = MaterialTheme.typography.bodyLarge,
@@ -918,6 +925,67 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
         }
         drawPath(bolt, tint)
     }
+}
+
+/**
+ * Phase 6, Frost-only neutral scheme (Notscape Phase A tokens, car-adapted):
+ * neutral system backgrounds, label black/white, secondary label ~60%, accent
+ * only on primary/selected controls (system blue). Deliberately NOT the
+ * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
+ * Other styles never see this function.
+ */
+private fun neutralFrostScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+    val white = androidx.compose.ui.graphics.Color.White
+    val black = androidx.compose.ui.graphics.Color.Black
+    return if (!dark) androidx.compose.material3.lightColorScheme(
+        primary = androidx.compose.ui.graphics.Color(0xFF007AFF),
+        onPrimary = white,
+        primaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFF001D36),
+        secondary = androidx.compose.ui.graphics.Color(0xFF5A5A5E),
+        onSecondary = white,
+        background = white,
+        onBackground = black,
+        surface = white,
+        onSurface = black,
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFFF2F2F7),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF6E6E73),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFFF2F2F7),
+        surfaceContainer = white,
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFFF2F2F7),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFFE5E5EA),
+        surfaceBright = white,
+        surfaceDim = androidx.compose.ui.graphics.Color(0xFFF2F2F7),
+        outline = androidx.compose.ui.graphics.Color(0xFFC6C6C8),
+        outlineVariant = androidx.compose.ui.graphics.Color(0xFFE5E5EA),
+        error = androidx.compose.ui.graphics.Color(0xFFFF3B30),
+        onError = white,
+        surfaceTint = white,
+    ) else androidx.compose.material3.darkColorScheme(
+        primary = androidx.compose.ui.graphics.Color(0xFF0A84FF),
+        onPrimary = white,
+        primaryContainer = androidx.compose.ui.graphics.Color(0xFF003A6B),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
+        secondary = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
+        onSecondary = black,
+        background = black,
+        onBackground = white,
+        surface = black,
+        onSurface = white,
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceDim = black,
+        outline = androidx.compose.ui.graphics.Color(0xFF38383A),
+        outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
+        error = androidx.compose.ui.graphics.Color(0xFFFF453A),
+        onError = white,
+        surfaceTint = black,
+    )
 }
 
 /** Stands in for the phone's vibration motor on the car screen: does nothing. */

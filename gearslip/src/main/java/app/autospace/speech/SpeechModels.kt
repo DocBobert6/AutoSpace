@@ -60,7 +60,7 @@ object SpeechModels {
             filesAt = "punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d",
         ),
         CANARY(
-            Role.FINAL, "canary-180m-en", "Canary", "Recommended. Quick, and hears names and places well. Knows English, Spanish, German and French; Gearslip listens in English for now. NVIDIA NeMo, CC BY 4.0", 198,
+            Role.FINAL, "canary-180m-en", "Canary", "Recommended. Quick, and hears names and places well. Knows English, Spanish, German and French; AutoSpace listens in English for now. NVIDIA NeMo, CC BY 4.0", 198,
             "sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
             "encoder.int8.onnx", "decoder.int8.onnx", "", modelType = "canary",
         ),

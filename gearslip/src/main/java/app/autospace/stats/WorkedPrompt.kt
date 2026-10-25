@@ -111,5 +111,5 @@ object WorkedPrompt {
         }
     }
 
-    const val TITLE_START = "Gearslip worked with "
+    const val TITLE_START = "AutoSpace worked with "
 }

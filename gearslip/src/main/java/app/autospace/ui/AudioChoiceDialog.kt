@@ -61,7 +61,7 @@ fun MicBlockedDialog(onOpenSettings: () -> Unit, onDismiss: () -> Unit) {
         text = {
             Text(
                 "Android lets an app send other apps' sound to the car only if it has the " +
-                    "microphone permission. It's turned off for Gearslip, so music plays on the " +
+                    "microphone permission. It's turned off for AutoSpace, so music plays on the " +
                     "phone. Turn it on under Permissions, then Microphone.",
             )
         },

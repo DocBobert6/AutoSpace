@@ -124,7 +124,7 @@ internal fun AccessBanner(onOpen: () -> Unit) {
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null)
             Text(
-                "Notifications are off. Allow Gearslip under Settings > Notifications > Notification access on the phone.",
+                "Notifications are off. Allow AutoSpace under Settings > Notifications > Notification access on the phone.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )

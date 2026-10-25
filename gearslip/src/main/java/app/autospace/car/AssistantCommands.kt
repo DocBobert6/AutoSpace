@@ -305,7 +305,7 @@ object AssistantCommands {
                 ?: return null
             ).replace(Regex(" (?:on|at) (?:their |his |her )?(?:mobile|cell|phone|home|work)$"), "").trim()
         if (name.isBlank()) return "Who should I call?"
-        if (!hasCallPermissions(context)) return "Gearslip needs the phone and contacts permissions first, from the phone screen."
+        if (!hasCallPermissions(context)) return "AutoSpace needs the phone and contacts permissions first, from the phone screen."
 
         val match = withContext(Dispatchers.IO) {
             loadContacts(context).firstOrNull { it.name.lowercase().contains(name) }

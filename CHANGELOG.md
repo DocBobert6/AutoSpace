@@ -91,6 +91,47 @@ in the local worktree; it can be added later by a git push from a local clone.
   of Maps is used. The native-promotion spike is still owed in a real car
   session (see BUILD_LOG Phase 4); until it passes, native Maps is "not proven".
 
+## Unreleased (Phase 6 — Frost / modern UI refresh)
+- Improvements: Frost is rebuilt on Notscape Mariner's final solid-frost
+  recipe — near-solid neutral surfaces (light #FFFFFF/#F2F2F7, dark
+  #000000/#1C1C1E/#2C2C2E), a lighter top edge, a soft shadow, and a
+  hairline rim, with 20dp cards and 28dp sheets — instead of the flat
+  translucent wash that read as pale peach. Frost no longer takes the
+  wallpaper-dynamic colour at all; accent is reserved for primary/selected
+  controls. Material, Flat, Tactile, and Keycap are unchanged, and browser
+  pages stay unthemed.
+- Improvements: the video player is rebuilt in Notscape's AVKit language —
+  a top gradient bar (close, centred title, overflow with Restart and
+  Close), a centre cluster of circular frosted buttons (−10s / big
+  play-pause / +10s, replacing −30s/+30s), and a bottom scrubber with
+  elapsed on the left and remaining on the right. Controls auto-hide
+  ~3.5s after the last touch while playing, tap the video to bring them
+  back, and never hide while paused or while driving. Video stays
+  parked-only with audio continuing; controls over video use gradient
+  scrims, never blur, because the player surface cannot be captured.
+- Improvements: browser chrome uses circular frosted nav buttons grouped
+  around the URL pill, inset from the edges; Back/Forward/Reload/Home
+  stay reachable at all times (nothing collapses while driving).
+- Improvements: the apps page and the screen-sharing app-selection page
+  use phone-drawer language scaled up for the car — search at the top,
+  a clean icon grid with the label underneath, neutral Frost tiles.
+  Launcher icons grow 64dp → 80dp (tiles 148dp → 176dp high, grid
+  136dp → 168dp, pinned 96dp/44dp → 112dp/56dp); screen-sharing icons
+  grow 52dp → 72dp (tiles 120dp → 152dp high, grid 108dp → 144dp).
+  Grouping, search, the pinned row, and the touch-relay warning are
+  unchanged.
+- Improvements: user-visible strings now say AutoSpace throughout —
+  onboarding, settings, help, error and notification text — instead of
+  the upstream name. Upstream's version history in Changelog.kt is
+  deliberately left untouched, as are class/log identifiers, the
+  self-signed certificate name, the Android Auto host label, and
+  request User-Agents.
+- Honest limits: Frost here is solid-frost, not live backdrop blur.
+  Notscape removed its Haze blur entirely (0.0.63) and a blur pass cannot
+  capture the car video surfaces anyway; the gradient/shadow/hairline
+  recipe is what reads as frost on a compressed car stream. Visual
+  acceptance on the phone preview and in the car is still owed.
+
 ## Unreleased (Phase 5 — Regression / release prep)
 - First release will be a BETA (Robert, 2026-10-24), not a stable release:
   beta labelling in the release notes, prerelease marking on the GitHub

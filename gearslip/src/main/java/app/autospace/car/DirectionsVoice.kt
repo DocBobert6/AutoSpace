@@ -220,7 +220,7 @@ object DirectionsVoice {
             return
         }
         val pcm = Wav.read(file)?.let { Wav.convert(it, sink.sampleRate, sink.channels) } ?: run {
-            GearslipLog.w("guidance: text-to-speech gave audio Gearslip can't read")
+            GearslipLog.w("guidance: text-to-speech gave audio AutoSpace can't read")
             return
         }
         stream(sink, pcm)

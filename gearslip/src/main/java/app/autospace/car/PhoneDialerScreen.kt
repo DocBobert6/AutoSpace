@@ -151,7 +151,7 @@ fun PhoneDialerScreen() {
 private fun MissingPermission(context: Context) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            "Gearslip needs the Phone and Contacts permissions to dial from here. Grant them " +
+            "AutoSpace needs the Phone and Contacts permissions to dial from here. Grant them " +
                 "from the app's settings.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

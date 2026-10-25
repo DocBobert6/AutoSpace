@@ -60,12 +60,16 @@ fun PhoneAppsScreen() {
             Spacer(Modifier.height(12.dp))
         }
 
+        // Phase 6, phone-drawer language scaled UP for the car: search-style
+        // header above, clean icon grid with the label underneath, neutral
+        // Frost tiles — icons larger than a phone's, never smaller. The
+        // touch-relay warning above is unchanged.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = 144.dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(apps) { app ->
                 PhoneAppTile(app) { PhoneMirror.open(context, app.packageName) }
@@ -94,7 +98,7 @@ private fun TouchRelayWarning() {
         ) {
             Icon(Icons.Filled.Warning, contentDescription = null)
             Text(
-                "Touch is off. Enable Gearslip under Settings > Accessibility on the phone.",
+                "Touch is off. Enable AutoSpace under Settings > Accessibility on the phone.",
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
@@ -107,17 +111,17 @@ private fun TouchRelayWarning() {
 private fun PhoneAppTile(app: PhoneApp, onClick: () -> Unit) {
     GsIconBox(
         onClick = onClick,
-        modifier = Modifier.height(120.dp),
+        modifier = Modifier.height(152.dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
     ) {
         Column(
-            Modifier.fillMaxSize().padding(8.dp),
+            Modifier.fillMaxSize().padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(52.dp)) }
-            Spacer(Modifier.height(8.dp))
+            app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(72.dp)) }
+            Spacer(Modifier.height(10.dp))
             Text(
                 app.label,
                 style = MaterialTheme.typography.labelLarge,

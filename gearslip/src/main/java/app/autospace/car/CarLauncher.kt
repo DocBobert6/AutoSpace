@@ -335,17 +335,21 @@ fun CarLauncher() {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 items(pinned) { entry -> PinnedTile(tileOf(entry)) }
             }
         }
+        // Phase 6, phone-drawer language scaled UP for the car: search at the
+        // top, a clean icon grid with the label underneath, neutral Frost
+        // tiles — but icons larger than a phone's, never smaller. Groups,
+        // search and the pinned row are unchanged behaviour.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 136.dp),
+            columns = GridCells.Adaptive(minSize = 168.dp),
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(20.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             for ((group, sectionTiles) in sections) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -376,17 +380,17 @@ private fun PinnedTile(tile: Tile) {
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
-        modifier = Modifier.size(96.dp),
+        modifier = Modifier.size(112.dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = MaterialTheme.shapes.extraLarge,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
     ) {
         Column(
-            Modifier.fillMaxSize().padding(6.dp),
+            Modifier.fillMaxSize().padding(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
             Box {
-                TileIcon(tile, 44.dp)
+                TileIcon(tile, 56.dp)
                 if (tile.broken) {
                     BrokenBadge(
                         20.dp,
@@ -408,26 +412,28 @@ private fun BrokenBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier = 
         modifier.size(size).background(Color(0xFFD32F2F), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Close, contentDescription = "Doesn't work with Gearslip", tint = Color.White, modifier = Modifier.size(size * 0.66f))
+        Icon(Icons.Filled.Close, contentDescription = "Doesn't work with AutoSpace", tint = Color.White, modifier = Modifier.size(size * 0.66f))
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AppTile(tile: Tile) {
-    val shape = MaterialTheme.shapes.extraLarge
+    // Phase 6: 20dp card radius (Notscape ladder), taller tile for the
+    // larger icon, so the label is never crowded.
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
     // A long press opens the app's menu (pin, close) - the same gesture everywhere apps are
     // shown, here and on the nav bar. GsIconBox marks it in the theme's style.
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
-        modifier = Modifier.height(148.dp),
+        modifier = Modifier.height(176.dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
         shape = shape,
     ) {
         Box(Modifier.fillMaxSize()) {
             Column(
-                Modifier.fillMaxSize().padding(8.dp),
+                Modifier.fillMaxSize().padding(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -443,7 +449,7 @@ private fun AppTile(tile: Tile) {
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 TileLabel(tile)
             }
         }
@@ -451,7 +457,7 @@ private fun AppTile(tile: Tile) {
 }
 
 @Composable
-private fun TileIcon(tile: Tile, size: androidx.compose.ui.unit.Dp = 64.dp) {
+private fun TileIcon(tile: Tile, size: androidx.compose.ui.unit.Dp = 80.dp) {
     when {
         tile.icon != null -> Image(tile.icon, contentDescription = null, modifier = Modifier.size(size))
         tile.glyph != null -> Icon(tile.glyph, contentDescription = null, modifier = Modifier.size(size))

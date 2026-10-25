@@ -192,10 +192,10 @@ class CarAppConnection(private val context: Context) {
      * name one that only Google's own Android Auto host holds, and no other app can be granted.
      */
     private fun explainBindFailure(component: ComponentName, error: Throwable?): String {
-        if (error !is SecurityException) return "the app would not let Gearslip connect"
+        if (error !is SecurityException) return "the app would not let AutoSpace connect"
         val needed = runCatching { context.packageManager.getServiceInfo(component, 0).permission }.getOrNull()
         return if (needed != null) {
-            "It only accepts Google's own Android Auto: its service requires the permission $needed, which Gearslip can't hold."
+            "It only accepts Google's own Android Auto: its service requires the permission $needed, which AutoSpace can't hold."
         } else {
             "It only accepts Google's own Android Auto host."
         }
@@ -209,10 +209,10 @@ class CarAppConnection(private val context: Context) {
         GearslipLog.w("host: $step failed: type=${failure.errorType}\n${failure.stackTrace.lineSequence().take(6).joinToString("\n")}")
         // The Car App Library's own host check: the app keeps a list of hosts it trusts by signature.
         if (firstLine.contains("Unrecognized host")) {
-            return "It only trusts hosts on its own allow-list (Google's Android Auto and a few others), and Gearslip isn't on it."
+            return "It only trusts hosts on its own allow-list (Google's Android Auto and a few others), and AutoSpace isn't on it."
         }
         val kind = when (failure.errorType) {
-            androidx.car.app.FailureResponse.SECURITY_EXCEPTION -> "It rejected Gearslip as a host"
+            androidx.car.app.FailureResponse.SECURITY_EXCEPTION -> "It rejected AutoSpace as a host"
             androidx.car.app.FailureResponse.ILLEGAL_STATE_EXCEPTION -> "It reported a state error"
             androidx.car.app.FailureResponse.INVALID_PARAMETER_EXCEPTION -> "It reported an invalid parameter"
             else -> "It failed"
@@ -366,7 +366,7 @@ class CarAppConnection(private val context: Context) {
         val app = carApp ?: return
         update { it.copy(phase = Phase.RUNNING, detail = "connected") }
         GearslipLog.verdict(
-            "${component?.packageName} accepted Gearslip as a template host",
+            "${component?.packageName} accepted AutoSpace as a template host",
             "Handshake completed at car API level ${_status.value.apiLevel}.",
         )
 

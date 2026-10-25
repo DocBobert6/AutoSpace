@@ -209,11 +209,11 @@ fun IntroScreen(onDone: () -> Unit) {
             IntroStep.WIRELESS -> BadgeStep(c, ::cq, ::cqSp, c.secondaryC, "Wireless.",
                 "If your car does wireless Android Auto, pair once and leave the cable at home.", step) { WifiIcon(c.onSecondaryC) }
             IntroStep.KNOBS -> BadgeStep(c, ::cq, ::cqSp, c.tertiaryC, "Knobs work.",
-                "Turn, push, done. No touchscreen? Gearslip doesn't need one anymore.", step) { DialIcon(c.onTertiaryC) }
+                "Turn, push, done. No touchscreen? AutoSpace doesn't need one anymore.", step) { DialIcon(c.onTertiaryC) }
             IntroStep.VOICE -> VoiceStep(c, ::cq, ::cqSp, step)
             IntroStep.GRAPHENE -> BadgeStep(c, ::cq, ::cqSp, c.secondaryC, "Protections back on.",
-                "On GrapheneOS, Gearslip no longer needs exploit protection compatibility mode. If you " +
-                    "turned it on for Gearslip, turn it off to get full protection back.", step,
+                "On GrapheneOS, AutoSpace no longer needs exploit protection compatibility mode. If you " +
+                    "turned it on for AutoSpace, turn it off to get full protection back.", step,
                 action = "Open app settings" to {
                     runCatching {
                         context.startActivity(
@@ -224,15 +224,15 @@ fun IntroScreen(onDone: () -> Unit) {
                 outlined = true,
             ) { ShieldIcon(c.onSecondaryC, c.secondaryC) }
             IntroStep.THANKS -> BadgeStep(c, ::cq, ::cqSp, c.tertiaryC, "Thank you.",
-                "Thanks to your usage notes, Gearslip is confirmed to work in cars newer than 2020. " +
+                "Thanks to your usage notes, AutoSpace is confirmed to work in cars newer than 2020. " +
                     "Each note shows which cars work and which still fail, so I know what to fix next.", step,
                 action = "See which cars work" to { GearslipLinks.open(context, GearslipLinks.CARS) },
                 outlined = true,
                 secondAction = "Support on Liberapay" to { GearslipLinks.open(context, GearslipLinks.LIBERAPAY) },
             ) { HeartIcon(c.onTertiaryC) }
             IntroStep.CHAT -> BadgeStep(c, ::cq, ::cqSp, c.primaryC, "Come say hi.",
-                "Gearslip has a chat room on Matrix. Talk with other drivers about cars, apps, and " +
-                    "where Gearslip is headed.", step,
+                "AutoSpace has a chat room on Matrix. Talk with other drivers about cars, apps, and " +
+                    "where AutoSpace is headed.", step,
                 action = "Join on Matrix" to { GearslipLinks.open(context, GearslipLinks.MATRIX) },
                 outlined = true,
             ) { ChatIcon(c.onPrimaryC, c.primaryC) }

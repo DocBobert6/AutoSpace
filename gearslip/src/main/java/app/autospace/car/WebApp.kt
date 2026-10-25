@@ -137,22 +137,26 @@ fun WebApp(content: String) {
             // Gs control on Material You colours, like the rest of AutoSpace chrome.
             // Tapping the address pill opens the car keyboard; submitting navigates
             // (a URL loads, anything else searches no-AI DuckDuckGo).
+            // Phase 6, Notscape capsule language (car-adapted): circular
+            // frosted nav buttons grouped around the URL pill, inset 12dp
+            // from the edges. Unlike Notscape's phone bar, nothing collapses
+            // here — Back/Forward/Reload/Home stay reachable while driving.
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = canGoBack)
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = canGoForward)
-                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() })
-                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(content) })
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = canGoBack, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = canGoForward, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(content) }, shape = androidx.compose.foundation.shape.CircleShape)
                 GsButton(
                     onClick = { addressText = currentUrl; addressEditing = true },
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
-                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true })
+                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true }, shape = androidx.compose.foundation.shape.CircleShape)
             }
             // Progress bar (Phase 3.4, item 2): only while a page is actually loading.
             if (progress in 1..99) {

@@ -42,7 +42,7 @@ import app.autospace.SessionStatus
 import app.autospace.update.UpdateChecker
 import app.autospace.update.UpdateChecker.State
 
-private const val UNPLUG_FIRST = "Unplug from the car to install. Installing closes Gearslip."
+private const val UNPLUG_FIRST = "Unplug from the car to install. Installing closes AutoSpace."
 
 /** Shown on Home once a newer version is found; hidden otherwise. */
 @Composable
@@ -64,7 +64,7 @@ fun UpdateCard() {
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(Modifier.fillMaxWidth().padding(20.dp)) {
-            Text("Gearslip ${release.version} is out", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text("AutoSpace ${release.version} is out", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
             when (val s = state) {
                 is State.Downloading -> {
@@ -107,7 +107,7 @@ fun UpdateCard() {
 
 /** What the update check found, in a line. */
 private fun statusLine(state: State): String = when (state) {
-    State.Idle -> if (BuildConfig.DEBUG) "Debug builds check only when you tap Check now" else "Gearslip checks once a day"
+    State.Idle -> if (BuildConfig.DEBUG) "Debug builds check only when you tap Check now" else "AutoSpace checks once a day"
     State.Checking -> "Checking…"
     State.UpToDate -> "You have the latest version"
     is State.Available -> "Version ${state.release.version} is out"
