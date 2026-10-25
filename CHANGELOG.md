@@ -244,3 +244,17 @@ in the local worktree; it can be added later by a git push from a local clone.
   2 seconds of audio) should render in roughly 2–4 seconds on first use
   and faster once warm — the car test on Robert's Pixel 10a is the real
   check, and Piper renders far faster than Kokoro if Kokoro feels slow.
+
+## Unreleased (Listening defaults — Parakeet v2)
+- The default final listening model is now Parakeet TDT 0.6B v2
+  ("Parakeet large", 631 MB, NVIDIA NeMo, CC BY 4.0) instead of Canary
+  180M. Onboarding's one-tap voice pair is now Kroko (live words) +
+  Parakeet v2 (final words), 699 MB together, and the "Recommended"
+  label moves from Canary to Parakeet v2. Kroko live is unchanged.
+- Canary 180M stays available as an option in Settings; it is no longer
+  the default and it is not removed. A final-model choice you already
+  made explicitly is never overridden — only drivers who never chose
+  get the new default, including drivers who previously had Canary
+  only because it was the old implicit default. Until Parakeet v2 is
+  downloaded, the final read falls back to the live words; Canary can
+  be re-picked in Settings at any time.

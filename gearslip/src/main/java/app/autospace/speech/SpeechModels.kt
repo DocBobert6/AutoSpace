@@ -60,12 +60,12 @@ object SpeechModels {
             filesAt = "punitd/sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8/resolve/66a4fa70643dc7ce25c9b38b2f87e1b35ddad33d",
         ),
         CANARY(
-            Role.FINAL, "canary-180m-en", "Canary", "Recommended. Quick, and hears names and places well. Knows English, Spanish, German and French; AutoSpace listens in English for now. NVIDIA NeMo, CC BY 4.0", 198,
+            Role.FINAL, "canary-180m-en", "Canary", "Quick, and hears names and places well. Knows English, Spanish, German and French; AutoSpace listens in English for now. NVIDIA NeMo, CC BY 4.0", 198,
             "sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
             "encoder.int8.onnx", "decoder.int8.onnx", "", modelType = "canary",
         ),
         PARAKEET_LARGE(
-            Role.FINAL, "parakeet-0.6b-en", "Parakeet large", "Hears names best, but slower and three times the size. NVIDIA NeMo, CC BY 4.0", 631,
+            Role.FINAL, "parakeet-0.6b-en", "Parakeet large", "Recommended. Hears names best, but slower and three times the size. NVIDIA NeMo, CC BY 4.0", 631,
             "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
             "encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", modelType = "nemo_transducer",
         ),
@@ -75,8 +75,8 @@ object SpeechModels {
         val files get() = listOf(encoder, decoder, joiner, "tokens.txt").filter { it.isNotEmpty() }
     }
 
-    /** What setup offers in one tap: Kroko for the live words, Canary for the final ones. */
-    val RECOMMENDED = listOf(Model.KROKO, Model.CANARY)
+    /** What setup offers in one tap: Kroko for the live words, Parakeet v2 for the final ones. */
+    val RECOMMENDED = listOf(Model.KROKO, Model.PARAKEET_LARGE)
 
     fun downloadRecommended(context: Context) = RECOMMENDED.forEach { download(context, it) }
 
@@ -106,9 +106,14 @@ object SpeechModels {
     fun init(context: Context) {
         val id = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_MODEL, null)
         _selected.value = Model.entries.firstOrNull { it.id == id && it.role == Role.LIVE } ?: Model.KROKO
-        // Canary is the default. A driver who never chose but already has Parakeet large keeps it.
+        // Parakeet v2 is the default. A stored choice is never overridden: only a
+        // driver who never chose gets the new default — including one who previously
+        // had Canary only because it was the old implicit default. Until Parakeet is
+        // downloaded, the final read falls back to the live words (SpeechEngine
+        // returns null for a final model that isn't ready); Canary stays selectable
+        // in Settings for anyone who wants it back.
         val finalId = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_FINAL, null)
-            ?: if (isReady(context, Model.PARAKEET_LARGE) && !isReady(context, Model.CANARY)) Model.PARAKEET_LARGE.id else Model.CANARY.id
+            ?: Model.PARAKEET_LARGE.id
         _final.value = Model.entries.firstOrNull { it.id == finalId && it.role == Role.FINAL }
         Model.entries.forEach { m -> if (isReady(context, m)) states.getValue(m).value = State.Ready }
         // Models an older build offered and this one doesn't: hundreds of MB nobody can use. A
