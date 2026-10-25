@@ -79,6 +79,10 @@ fun BrightnessSheet() {
                     ThemeChoice("Light", theme == AppTheme.LIGHT) { CarSettings.setAppTheme(AppTheme.LIGHT) }
                     ThemeChoice("Dark", theme == AppTheme.DARK) { CarSettings.setAppTheme(AppTheme.DARK) }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChoice("Material You Light", theme == AppTheme.MATERIAL_YOU_LIGHT) { CarSettings.setAppTheme(AppTheme.MATERIAL_YOU_LIGHT) }
+                    ThemeChoice("Material You Dark", theme == AppTheme.MATERIAL_YOU_DARK) { CarSettings.setAppTheme(AppTheme.MATERIAL_YOU_DARK) }
+                }
                 Text("Night mode (maps)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Auto", night == NightMode.AUTO) { CarSettings.setNightMode(NightMode.AUTO) }

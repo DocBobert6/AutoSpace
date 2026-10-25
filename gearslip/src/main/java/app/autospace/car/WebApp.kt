@@ -388,7 +388,11 @@ fun WebApp(content: String) {
                 items = foundMedia,
                 onOpen = { item ->
                     sheetOpen = false
-                    navigator.videoPlayer(item.url, item.title)
+                    navigator.videoPlayer(
+                        foundMedia.map { it.url },
+                        foundMedia.map { it.title },
+                        foundMedia.indexOf(item).coerceAtLeast(0),
+                    )
                 },
                 onClose = { sheetOpen = false },
             )

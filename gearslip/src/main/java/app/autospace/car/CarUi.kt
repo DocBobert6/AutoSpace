@@ -98,7 +98,8 @@ import java.util.Date
 /**
  * The whole car screen: the current screen on top, the nav bar along the bottom.
  *
- * Colours follow the phone's theme (Material You). The size setting scales everything by
+ * Colours follow AppTheme: plain Light/Dark are neutral, Material You Light/Dark and
+ * Follow phone use the phone's wallpaper colours. The size setting scales everything by
  * changing the density, so text, icons and touch targets grow together.
  */
 @Composable
@@ -112,17 +113,25 @@ fun CarUi() {
     val appContext = LocalContext.current.applicationContext
     val dark = when (appTheme) {
         AppTheme.PHONE -> phoneDark
-        AppTheme.LIGHT -> false
-        AppTheme.DARK -> true
+        AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
+        AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK -> true
     }
-    // Phase 6: Frost is neutral-only. The wallpaper-dynamic scheme washed every
-    // Frost tile pale peach in Phases 1–5; Frost now gets Notscape's neutral
-    // system backgrounds (light #FFFFFF/#F2F2F7, dark #000000/#1C1C1E/#2C2C2E)
-    // with accent reserved for primary/selected controls. Every other style
-    // keeps the dynamic Material You scheme exactly as before, and browser
-    // PAGES stay unthemed (Phase 3 correction) — this scheme is chrome only.
-    val colors = if (uiThemeId == "frost") neutralFrostScheme(dark)
-    else if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)
+    // Theme set (2026-10-24 22:32, Notscape 0.0.946's split): plain Light /
+    // Dark use the neutral scheme below for EVERY style (the wallpaper-
+    // dynamic scheme washed Frost tiles pale peach in Phases 1–5, and plain
+    // means plain here); Material You Light / Dark use the dynamic schemes
+    // forced to that variant; Follow phone uses the dynamic scheme following
+    // the phone's light/dark — except Frost, which stays neutral-only under
+    // Follow phone exactly as Phase 6 made it. Browser PAGES stay unthemed
+    // (Phase 3 correction) — this scheme is chrome only, and it flows into
+    // the video player chrome too (its black scrims over video are untouched).
+    val colors = when (appTheme) {
+        AppTheme.LIGHT, AppTheme.DARK -> neutralFrostScheme(dark)
+        AppTheme.MATERIAL_YOU_LIGHT -> dynamicLightColorScheme(appContext)
+        AppTheme.MATERIAL_YOU_DARK -> dynamicDarkColorScheme(appContext)
+        AppTheme.PHONE -> if (uiThemeId == "frost") neutralFrostScheme(dark)
+        else if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)
+    }
     val base = LocalDensity.current
     val insets by CarEnvironment.insets.collectAsState()
     val navigator = remember { CarNavigator(CarSettings.openOnConnect.value) }
@@ -251,7 +260,7 @@ fun CarUi() {
                                     CarScreen.VehicleData -> VehicleDataScreen()
                                     is CarScreen.Notifications -> NotificationsScreen(screen.replyTo)
                                     is CarScreen.Messages -> MessagesScreen(screen.packageName)
-                                    is CarScreen.VideoPlayer -> VideoPlayerScreen(url = screen.url, title = screen.title, onClose = { navigator.back() })
+                                    is CarScreen.VideoPlayer -> VideoPlayerScreen(urls = screen.urls, titles = screen.titles, startIndex = screen.index, onClose = { navigator.back() })
                                     is CarScreen.App -> CarApps.find(screen.id)?.content?.invoke()
                                 }
                             }
@@ -928,11 +937,13 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
 }
 
 /**
- * Phase 6, Frost-only neutral scheme (Notscape Phase A tokens, car-adapted):
+ * The shared plain scheme (Notscape Phase A tokens, car-adapted): since the
+ * 2026-10-24 22:32 theme correction this is Light/Dark for every style, not
+ * just Frost — see CarUi above for the five-way mapping.
  * neutral system backgrounds, label black/white, secondary label ~60%, accent
  * only on primary/selected controls (system blue). Deliberately NOT the
  * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
- * Other styles never see this function.
+ * Under Follow phone, Frost still uses this; other styles use the dynamic scheme.
  */
 private fun neutralFrostScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     val white = androidx.compose.ui.graphics.Color.White

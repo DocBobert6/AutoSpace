@@ -34,7 +34,8 @@ sealed interface CarScreen {
     data class Messages(val packageName: String) : CarScreen
 
     /** A playable URL handed over from the browser's media finder. Not a media-app session. */
-    data class VideoPlayer(val url: String, val title: String? = null) : CarScreen
+    /** Queue from the media finder; prev/next show only when size > 1. */
+    data class VideoPlayer(val urls: List<String>, val titles: List<String?>, val index: Int) : CarScreen
 
     /** [replyTo] is a notification key to open straight into its reply pane. */
     data class Notifications(val replyTo: String? = null) : CarScreen
@@ -119,7 +120,7 @@ class CarNavigator(startId: String) {
 
     fun media() { push(CarScreen.Media, "Media") }
 
-    fun videoPlayer(url: String, title: String? = null) { push(CarScreen.VideoPlayer(url, title), "Video") }
+    fun videoPlayer(urls: List<String>, titles: List<String?>, index: Int) { push(CarScreen.VideoPlayer(urls, titles, index), "Video") }
 
     fun browse(label: String) { push(CarScreen.Browse, label) }
 

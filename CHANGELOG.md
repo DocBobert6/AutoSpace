@@ -140,6 +140,43 @@ in the local worktree; it can be added later by a git push from a local clone.
   but the tile, its label, and its large car tap area stay usable. The
   Normal / Large / Extra-large Size presets are unchanged — the slider
   is the finer, independent control.
+- New features: five App theme options (Notscape 0.0.946's split): plain
+  Light and plain Dark use the neutral scheme for every style (no wallpaper
+  colours); Material You Light / Dark use the phone's wallpaper colours
+  forced to that variant; Follow phone uses the wallpaper colours and
+  follows the phone's light/dark (Frost stays neutral-only under Follow
+  phone, as before). Offered in car Settings and in the brightness sheet.
+  NightMode and browser pages are unchanged.
+- New features: the video player is now Notscape Mariner's browser video
+  player, ported into the car — top capsule (Close + Stop; no phone PiP,
+  Close player is the car equivalent), centre circles (prev/next only with
+  a queue, skip, big play-pause, car-sized 72/96/60dp), bottom title +
+  options capsule over a slim scrubber with elapsed / negative remaining
+  (LIVE kept). Options capsule, one row at a time: listen mode (headphones
+  presentation, zoom reset, auto-hide off, audio continues while driving),
+  audio-track picker, video-quality picker (player renditions, or HLS
+  master variants with Auto + exact bitrate pin; a single file shows no
+  picker), subtitle picker with Off, scaling pill row, speed cycle
+  0.5/0.75/1/1.25/1.5/2x (persisted), sleep cycle 0/10/20/30/60 min
+  (pauses at expiry). Scaling: Fit/Stretch/Fill/Crop (Crop = cover +
+  1.25x) from an AspectRatio button tinted when not Fit, on a TextureView
+  surface so transforms apply; pinch 1x–3x, drag-to-pan only while zoomed
+  >1x, two-finger pinch always zooms, centre double-tap resets, zoom
+  resets on track/mode change and on entering listen mode; hold-to-scan
+  and side double-tap seek included. Buffering shows the cycling play
+  fill (tween 1600, Reverse) with skip buttons hidden behind spacers, and
+  an 8s stall watchdog re-prepares in place at the current position, max
+  2 per item, then a named stall error. Skip seconds is a persisted
+  setting (default 10, Settings row 5/10/15/30/60s; baked glyphs at 5/10/30,
+  curved arrow + seconds otherwise). The finder now hands the player its
+  whole media list as a queue. Subtitle styling plumbing is ported
+  (font/size/colour/background/edge, system typefaces only); the Settings
+  page that would set those values is the one follow-up, so until then
+  subtitles keep the system caption style. Not ported, by car rule:
+  downloader, phone PiP, phone brightness/volume drags, horizontal
+  drag-seek (scrubber + skip cover it); the old overflow menu and its
+  Restart row are gone (Close + Stop + scrubber cover them), and the
+  driving branch shows transport only.
 - New features: a persisted "Use phone microphone for voice commands"
   toggle in car Settings (default off; car mic preferred when it works).
   When on, SpeechEngine skips the car's microphone entirely and listens

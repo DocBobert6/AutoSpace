@@ -16,7 +16,7 @@ enum class Units { AUTO, IMPERIAL, METRIC }
 /** Where a new message shows: [NAV_BAR] turns the clock button into it, [CARD] floats a card top right. */
 
 /** The car UI's own colours. Separate from [NightMode], which is about the light outside (the map). */
-enum class AppTheme { PHONE, LIGHT, DARK }
+enum class AppTheme { PHONE, LIGHT, DARK, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK }
 
 /** How screen sharing fits the phone into the car frame: Fill crops, Fit letterboxes. */
 enum class MirrorFit { FILL, FIT }
@@ -49,6 +49,13 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
+    private const val KEY_PLAYER_SPEED = "car_player_speed"
+    private const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
+    private const val KEY_SUB_FONT = "car_sub_font"
+    private const val KEY_SUB_SIZE = "car_sub_size"
+    private const val KEY_SUB_COLOR = "car_sub_color"
+    private const val KEY_SUB_BG = "car_sub_bg"
+    private const val KEY_SUB_EDGE = "car_sub_edge"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
@@ -97,6 +104,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val experimentalFeaturesFlow = MutableStateFlow(false)
     private val systemSpeechFlow = MutableStateFlow(false)
     private val phoneMicFlow = MutableStateFlow(false)
+    private val playerSpeedFlow = MutableStateFlow(1f)
+    private val playerSkipSecFlow = MutableStateFlow(10)
     private val carSensorsFlow = MutableStateFlow(false)
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
@@ -212,6 +221,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val systemSpeech: StateFlow<Boolean> = systemSpeechFlow
     /** Voice commands/replies use the phone mic even when the car has one. Default off; calls unaffected. */
     val phoneMicForVoice: StateFlow<Boolean> = phoneMicFlow
+    /** Video player speed, persisted (Notscape playerSpeed). */
+    val playerSpeed: StateFlow<Float> = playerSpeedFlow
+    /** Video player skip interval in seconds, persisted (Notscape playerSkipSec). */
+    val playerSkipSec: StateFlow<Int> = playerSkipSecFlow
 
     /**
      * Vehicle data is experimental and off by default: the launcher's tile for it, and the
@@ -267,6 +280,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
+        playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
+        playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
@@ -380,6 +395,33 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         phoneMicFlow.value = on
         AppSettings.putString(app, KEY_PHONE_MIC, on.toString())
     }
+
+    fun setPlayerSpeed(speed: Float) {
+        playerSpeedFlow.value = speed
+        AppSettings.putString(app, KEY_PLAYER_SPEED, speed.toString())
+    }
+
+    fun setPlayerSkipSec(sec: Int) {
+        playerSkipSecFlow.value = sec
+        AppSettings.putString(app, KEY_PLAYER_SKIP_SEC, sec.toString())
+    }
+
+    /**
+     * Subtitle styling values (Notscape subFont/subSize/subColor/subBg/
+     * subEdge). No Settings UI writes them yet — that page is the reported
+     * follow-up — so until then every read returns its default and the
+     * player's subtitle view keeps the system caption style untouched,
+     * exactly as Notscape does when nothing is set. Guarded: the player
+     * screen can compose before init in principle, and must never crash.
+     */
+    fun subtitleSetting(key: String, default: String): String = runCatching {
+        AppSettings.getString(app, key, default)
+    }.getOrDefault(default)
+    fun subtitleFont(): String = subtitleSetting(KEY_SUB_FONT, "")
+    fun subtitleSize(): String = subtitleSetting(KEY_SUB_SIZE, "")
+    fun subtitleColor(): String = subtitleSetting(KEY_SUB_COLOR, "")
+    fun subtitleBg(): String = subtitleSetting(KEY_SUB_BG, "")
+    fun subtitleEdge(): String = subtitleSetting(KEY_SUB_EDGE, "")
 
     fun setCarSensorsEnabled(on: Boolean) {
         carSensorsFlow.value = on

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PlayerView on a TextureView so the video can be pinch-zoomed and
+     panned with real view transforms (a SurfaceView does not follow
+     its parent's scale/translation). Controller stays off: the player
+     draws its own Compose chrome. Mirrors Notscape's player_view.xml. -->
+<androidx.media3.ui.PlayerView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    app:surface_type="texture_view"
+    app:use_controller="false" />

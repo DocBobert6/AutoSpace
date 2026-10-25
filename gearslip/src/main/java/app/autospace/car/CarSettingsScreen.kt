@@ -66,6 +66,7 @@ fun CarSettingsScreen() {
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
     val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
+    val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
     val display by CarEnvironment.display.collectAsState()
     val vehicle by CarEnvironment.vehicle.collectAsState()
     val mirrorFit by CarSettings.mirrorFit.collectAsState()
@@ -123,9 +124,23 @@ fun CarSettingsScreen() {
 
         ChoiceRow(
             "App theme",
-            listOf(AppTheme.PHONE to "Follow phone", AppTheme.LIGHT to "Light", AppTheme.DARK to "Dark"),
+            listOf(
+                AppTheme.PHONE to "Follow phone",
+                AppTheme.LIGHT to "Light",
+                AppTheme.DARK to "Dark",
+                AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
+                AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
+            ),
             theme,
         ) { CarSettings.setAppTheme(it) }
+        Text(
+            "Light and Dark are plain neutral themes, no wallpaper colours. " +
+                "Material You Light / Dark use the phone's wallpaper colours, " +
+                "forced to that variant. Follow phone uses the phone's " +
+                "wallpaper colours and follows its light/dark.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         ChoiceRow(
             "Theme",
@@ -231,6 +246,19 @@ fun CarSettingsScreen() {
                 "to exit. Fit shows the whole phone with bars; tap a bar to exit. A portrait " +
                 "phone on a landscape car crops heavily in Fill — Fit looks better there. " +
                 "Applies the next time screen sharing starts.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        ChoiceRow(
+            "Video skip seconds",
+            listOf(5 to "5s", 10 to "10s", 15 to "15s", 30 to "30s", 60 to "60s"),
+            playerSkipSec,
+        ) { CarSettings.setPlayerSkipSec(it) }
+        Text(
+            "How far the video player's skip buttons jump. The player shows " +
+                "the matching glyph at 5/10/30 seconds and a curved arrow " +
+                "with the seconds everywhere else.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
