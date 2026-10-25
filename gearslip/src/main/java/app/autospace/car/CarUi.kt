@@ -111,6 +111,11 @@ fun CarUi() {
     // Phase 9 immersive player: CarUi reads the player's published
     // controls visibility and hides the nav bar with it (see below).
     val playerControlsVisible by PlayerImmersiveState.controlsVisible.collectAsState()
+    // Browser immersive fullscreen (Robert 2026-10-25): same
+    // pattern — the browser publishes, CarUi hides the nav bar
+    // with it, but only while the browser itself is the active
+    // screen (see browserImmersiveHide below).
+    val browserImmersive by BrowserImmersiveState.immersive.collectAsState()
     // Phase 9 mirror immersive: while mirroring, no AutoSpace chrome
     // may be drawn over the phone video. In a real car this is already
     // the case — showMirror stops the projector and the mirror owns
@@ -320,7 +325,13 @@ fun CarUi() {
                     // had to be lifted here; the video stays full-bleed.
                     val keyboardVisible by CarKeyboardVisibility.state
                     val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
-                    if (!keyboardVisible && !playerImmersiveHide && !mirrorActive) CarNavBar(navigator)
+                    // Browser immersive: same hide, extended, not
+                    // restructured — the nav bar goes only while
+                    // the browser is the active screen AND its
+                    // immersive state is set; leaving the browser
+                    // clears that state, so the bar returns.
+                    val browserImmersiveHide = screen is CarScreen.App && screen.id == "web" && browserImmersive
+                    if (!keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !mirrorActive) CarNavBar(navigator)
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())

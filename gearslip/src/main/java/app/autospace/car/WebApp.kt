@@ -45,8 +45,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -78,6 +81,7 @@ import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -134,6 +138,22 @@ object BrowserLaunch {
     @Volatile var pendingUrl: String? = null
 }
 
+/**
+ * Browser immersive fullscreen (Robert 2026-10-25), following the
+ * PlayerImmersiveState pattern: the browser publishes here, CarUi
+ * reads it to hide the nav bar. Per-entry session state, never
+ * persisted as a setting: WebApp clears it on entry and on leaving,
+ * so a later entry never starts immersive, and a hidden bar can
+ * never outlive the browser. This is page fullscreen, NOT the
+ * WebChromeClient fullscreen-video overlay (fullscreenView) — a
+ * video's custom view keeps its own behaviour and BACK order.
+ */
+object BrowserImmersiveState {
+    val immersive = MutableStateFlow(false)
+    fun enter() { immersive.value = true }
+    fun exit() { immersive.value = false }
+}
+
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
@@ -141,6 +161,12 @@ fun WebApp(content: String) {
     // Consumed once, on first composition: a voice search lands here, a normal open does not.
     val voiceUrl = remember { BrowserLaunch.pendingUrl?.also { BrowserLaunch.pendingUrl = null } }
     val startUrl = voiceUrl ?: if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL
+    // Browser immersive fullscreen (Robert 2026-10-25): read the
+    // published flow so header/bar/pill follow it, and never start
+    // immersive on entry — leaving the browser clears it (see the
+    // DisposableEffect below), this is the belt-and-braces half.
+    val immersive by BrowserImmersiveState.immersive.collectAsState()
+    LaunchedEffect(Unit) { BrowserImmersiveState.exit() }
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
@@ -270,6 +296,15 @@ fun WebApp(content: String) {
         if (!moving) { passengerAllowed = false; gateOpen = false }
         else if (!passengerAllowed) { gateOpen = true }
     }
+    // Immersive + keyboard: an address cannot be edited while the
+    // bar is hidden, so opening the address keyboard (tapping the
+    // pill to edit) exits immersive and restores the bar. The bar
+    // is unreachable while immersive, so this is a guard for any
+    // path that starts an edit — the bar is back and usable for
+    // typing, with the bottom-bar-above-keyboard order unchanged.
+    LaunchedEffect(addressEditing) {
+        if (addressEditing) BrowserImmersiveState.exit()
+    }
     fun openFirstPopup() {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
@@ -361,10 +396,13 @@ fun WebApp(content: String) {
             // Leaving the browser destroys every tab's WebView (pre-tab
             // behaviour for the single WebView); switching tabs does not.
             tabs.forEach { runCatching { it.view?.destroy() } }
+            // Leaving clears immersive session state, so a later
+            // entry never starts immersive (never persisted).
+            BrowserImmersiveState.exit()
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -385,6 +423,12 @@ fun WebApp(content: String) {
                 tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
+                // Immersive exit sits here, after every overlay
+                // above and before page history: head-unit BACK
+                // exits immersive FIRST, and only a second BACK
+                // steps back a page. Never a tap toggle — a tap
+                // on the page is a link click.
+                immersive -> { BrowserImmersiveState.exit(); true }
                 web != null && web!!.canGoBack() -> { web!!.goBack(); true }
                 else -> false
             }
@@ -631,6 +675,25 @@ fun WebApp(content: String) {
                         tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
                     )
                 }
+                // Immersive fullscreen (Robert 2026-10-25): a 44dp
+                // frost circle in the bar row, same target size as
+                // the tabs/saved buttons, so it is present wherever
+                // the bar sits (top or bottom — browserBar is
+                // shared). Tapping it enters immersive; it is
+                // hidden with the bar while immersive, and the
+                // floating exit pill is the way back (never a tap
+                // toggle — a tap on the page is a link click).
+                Box(
+                    Modifier.size(44.dp)
+                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .clickable { BrowserImmersiveState.enter() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    androidx.compose.material3.Icon(
+                        Icons.Filled.OpenInFull, "Enter fullscreen",
+                        tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                    )
+                }
             }
     }
     Box(Modifier.fillMaxSize()) {
@@ -639,22 +702,28 @@ fun WebApp(content: String) {
             // (Robert 2026-10-25 04:43). The header is now the title +
             // a settings-menu button; leaving the browser is the menu's
             // Close browser button, or BACK stepping through page
-            // history first (see the back interceptor).
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Browser",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
+            // history first (see the back interceptor). Immersive
+            // fullscreen (Robert 2026-10-25) skips the header AND
+            // the bar, leaving the weight(1f) page WebView to fill
+            // the whole frame — the page reflows to its new size,
+            // nothing is stretched or cropped.
+            if (!immersive) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Browser",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
+                }
             }
-            if (!barBottom) browserBar()
+            if (!barBottom && !immersive) browserBar()
             // Phase 10 tabs: only the active tab's WebView is composed,
             // keyed by tab id so switching disposes one AndroidView and
             // composes the next. The factory returns a tab's EXISTING
@@ -763,7 +832,7 @@ fun WebApp(content: String) {
                     onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
                 )
             }
-            if (barBottom) browserBar()
+            if (barBottom && !immersive) browserBar()
             if (!addressEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
@@ -819,6 +888,46 @@ fun WebApp(content: String) {
                         addressSelected = false
                     },
                 )
+            }
+        }
+        // Immersive fullscreen exit pill (Robert 2026-10-25): a
+        // small floating pill over the page's top-end corner,
+        // always reachable, never part of the page content — a
+        // tap here is the on-screen way out (tap-to-toggle is
+        // forbidden: a tap on the page is a link click). The
+        // surrounding Box draws nothing and takes no touches, so
+        // page taps pass straight through everywhere but the
+        // pill itself. Drawn before the error/menu/gate/video
+        // overlays below, so those still cover it when active,
+        // and the passenger gate still appears first while moving.
+        if (immersive) {
+            Box(
+                Modifier.fillMaxSize().padding(12.dp),
+                contentAlignment = Alignment.TopEnd,
+            ) {
+                Box(
+                    Modifier.height(44.dp)
+                        .frostBar(RoundedCornerShape(50), 6.dp)
+                        .clickable { BrowserImmersiveState.exit() }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.FullscreenExit, "Exit fullscreen",
+                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                        )
+                        Text(
+                            "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
             }
         }
         // Friendly error page (Phase 3.4, item 2): replaces the log-only error.
