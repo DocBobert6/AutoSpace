@@ -216,3 +216,31 @@ in the local worktree; it can be added later by a git push from a local clone.
   a release signing key, and the beta version number itself — all need
   Robert (car testing on his 2019 Altima, a key kept out of the repo, and his
   go-ahead). No beta release has been published from this work.
+
+## Unreleased (Voice — Kokoro-82M + Piper)
+- New feature: AutoSpace now speaks with Kokoro-82M (hexgrad, Apache-2.0),
+  entirely on the phone, for assistant replies, read-aloud messages, and
+  spoken directions — the same voice for all three. System TTS is removed
+  from the spoken path: there are no other voice options and no other
+  engines. Piper (en_US-amy-medium, MIT) is the fallback when Kokoro
+  isn't downloaded or a synthesis fails.
+- Settings > Voice offers all 53 Kokoro voices from the downloaded
+  kokoro-multi-lang-v1_0 model, grouped by language, with American Adam
+  (am_adam, sid 11) as the default. A new choice takes effect on the next
+  spoken prompt. Piper always speaks as Amy.
+- Neither voice ships in the APK. Settings > Voice downloads Kokoro
+  (model + voices + tokens + espeak-ng-data, about 350 MB) and Piper
+  (about 68 MB) once, into the app's own storage, with progress and
+  delete/re-download. If neither is downloaded, assistant replies show
+  "No voice downloaded yet. Download Kokoro or Piper in Settings first."
+  in the overlay, and a turn that can't be spoken is logged and skipped —
+  AutoSpace stays silent rather than borrowing the phone's voice.
+- Listening is unchanged (sherpa-onnx listening models, phone-mic toggle,
+  Bluetooth audio, and calls are all untouched), and spoken directions
+  still stream to the car's GUIDANCE directions sink, never the phone
+  speaker. Synthesis-time figures are estimates, not a phone benchmark:
+  on published sherpa-onnx CPU figures Kokoro runs around real time on
+  older phones, so a short turn ("Turn left onto Main Street", roughly
+  2 seconds of audio) should render in roughly 2–4 seconds on first use
+  and faster once warm — the car test on Robert's Pixel 10a is the real
+  check, and Piper renders far faster than Kokoro if Kokoro feels slow.

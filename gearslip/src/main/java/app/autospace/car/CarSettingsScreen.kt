@@ -4,6 +4,7 @@ package app.autospace.car
 import app.autospace.car.theme.*
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,8 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.RadioButton
+import app.autospace.speech.VoiceModels
+import app.autospace.speech.VoiceModels.Engine
+import app.autospace.speech.VoiceModels.State
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -285,10 +289,13 @@ fun CarSettingsScreen() {
         ) { CarSettings.setSpeakDirections(it) }
         Text(
             "AutoSpace reads each turn aloud through the car's speakers, and the music dips while it " +
-                "speaks. Turn it off if your map app's own voice already plays in the car.",
+                "speaks. Turn it off if your map app's own voice already plays in the car. It needs " +
+                "a downloaded voice below.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        VoiceSettings()
 
         ExperimentalFeatureRow(
             title = "Use the phone's speech recognition",
@@ -374,6 +381,141 @@ fun CarSettingsScreen() {
                 Text("What's new", style = MaterialTheme.typography.titleMedium)
             }
         }
+        }
+    }
+}
+
+/**
+ * The spoken voice: downloads for Kokoro and Piper, and the Kokoro voice
+ * picker (American Adam by default). There are no other voice options —
+ * system TTS and other engines were removed, not hidden. If neither model
+ * is downloaded, assistant replies and spoken directions stay silent, and
+ * this section is where the driver fixes that.
+ */
+@Composable
+private fun VoiceSettings() {
+    val context = LocalContext.current
+    remember { VoiceModels.init(context) }
+    val kokoroState by VoiceModels.state(Engine.KOKORO).collectAsState()
+    val piperState by VoiceModels.state(Engine.PIPER).collectAsState()
+    val selectedVoice by VoiceModels.selectedVoice.collectAsState()
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        GsSectionHeader("Voice")
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "AutoSpace speaks with Kokoro-82M, entirely on this phone — no system voice, " +
+                        "no other engines. Kokoro speaks first, in the voice picked below; Piper " +
+                        "(Amy) speaks only when Kokoro isn't downloaded or fails. Kokoro is " +
+                        "Apache-2.0 (hexgrad); Piper's voice is MIT (rhasspy/piper-voices). " +
+                        "Downloads are one-time and live in the app's own storage, not the APK.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                VoiceEngineRow(Engine.KOKORO, kokoroState) {
+                    when (kokoroState) {
+                        State.Ready -> VoiceModels.delete(context, Engine.KOKORO)
+                        is State.Downloading -> VoiceModels.delete(context, Engine.KOKORO)
+                        else -> VoiceModels.download(context, Engine.KOKORO)
+                    }
+                }
+                VoiceEngineRow(Engine.PIPER, piperState) {
+                    when (piperState) {
+                        State.Ready -> VoiceModels.delete(context, Engine.PIPER)
+                        is State.Downloading -> VoiceModels.delete(context, Engine.PIPER)
+                        else -> VoiceModels.download(context, Engine.PIPER)
+                    }
+                }
+                if (kokoroState is State.Missing && piperState is State.Missing) {
+                    Text(
+                        "No voice downloaded yet: assistant replies and spoken directions will stay silent " +
+                            "until Kokoro or Piper is downloaded above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+        GsSectionHeader("Kokoro voice")
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Applies to Kokoro speech; Piper always speaks as Amy. A new choice takes " +
+                        "effect on the next spoken prompt.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // Grouped by language, in the model's sid order, so the list
+                // reads as voices rather than 53 undifferentiated ids.
+                var lastLanguage: String? = null
+                VoiceModels.KOKORO_VOICES.forEach { voice ->
+                    if (voice.language != lastLanguage) {
+                        lastLanguage = voice.language
+                        Text(
+                            voice.language,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { VoiceModels.selectVoice(context, voice) }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        RadioButton(selected = voice == selectedVoice, onClick = null)
+                        Text(
+                            voice.id + if (voice == VoiceModels.DEFAULT_VOICE) " (default)" else "",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (voice == selectedVoice) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceEngineRow(engine: Engine, state: State, onAction: () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("${engine.label} · ${engine.downloadMb} MB", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    when (val s = state) {
+                        State.Ready -> "Downloaded. ${engine.detail}"
+                        is State.Downloading -> "Downloading, ${s.percent}%"
+                        is State.Failed -> "Download failed: ${s.reason}"
+                        State.Missing -> engine.detail
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            GsButton(
+                onClick = onAction,
+                tone = GsTone.Tonal,
+                modifier = Modifier.height(48.dp),
+            ) {
+                Text(
+                    when (state) {
+                        State.Ready -> "Delete"
+                        is State.Downloading -> "Cancel"
+                        else -> "Download"
+                    },
+                )
+            }
+        }
+        (state as? State.Downloading)?.let {
+            LinearProgressIndicator(progress = { it.percent / 100f }, modifier = Modifier.fillMaxWidth())
         }
     }
 }

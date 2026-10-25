@@ -9,21 +9,24 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import androidx.core.content.ContextCompat
 import app.autospace.call.CallUiState
 import app.autospace.call.CarCalls
 import app.autospace.speech.SpeechEngine
+import app.autospace.speech.VoiceEngine
 import app.autospace.speech.VoiceFocus
+import app.autospace.speech.VoiceModels
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * A voice assistant: Gearslip's own [SpeechEngine] (whisper.cpp) to listen, the system's
- * [TextToSpeech] to answer. Listening used to go through the system's [SpeechRecognizer] alone,
- * but many phones have no recognizer at all (GrapheneOS ships only text-to-speech), so the
- * system one is now just the fallback for when the bundled engine can't run.
+ * A voice assistant: Gearslip's own [SpeechEngine] to listen, [VoiceEngine]
+ * (Kokoro, with Piper as fallback) to answer. Listening used to go through
+ * the system's [SpeechRecognizer] alone, but many phones have no recognizer
+ * at all (GrapheneOS ships only text-to-speech), so the system one is now
+ * just the fallback for when the bundled engine can't run. Speaking has no
+ * system fallback at all: if neither voice model is downloaded, the
+ * assistant says so in the overlay instead of borrowing the phone's voice.
  *
  * Listening and speaking live here; deciding what a command *means* is [AssistantCommands], kept
  * separate because it needs a [CarNavigator] and a frame to act on, neither of which this object
@@ -51,13 +54,10 @@ object CarAssistant {
 
     private var appContext: Context? = null
     private var recognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
 
     fun init(context: Context) {
         appContext = context.applicationContext
-        if (tts != null) return
-        tts = TextToSpeech(appContext) { status -> ttsReady = status == TextToSpeech.SUCCESS }
+        appContext?.let(VoiceModels::init)
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -88,7 +88,7 @@ object CarAssistant {
             _state.value = State(Phase.ERROR, reply = "Voice commands work once the call ends.")
             return
         }
-        tts?.stop()
+        VoiceEngine.stop()
         _state.value = State(Phase.LISTENING)
         listenOnce(
             onListening = { _state.value = _state.value.copy(ready = true) },
@@ -105,39 +105,37 @@ object CarAssistant {
     /** Closes the overlay from wherever it's showing: mid-listen, mid-think, or after speaking. */
     fun cancel() {
         releaseRecognizer()
-        tts?.stop()
+        VoiceEngine.stop()
         _pendingCommand.value = null
         _state.value = State(Phase.IDLE)
     }
 
     /**
      * Called once [pendingCommand] has been turned into an answer - from [CarUi], the one place
-     * that actually has a [CarNavigator] to have acted on it with.
+     * that actually has a [CarNavigator] to have acted on it with. With no
+     * voice model downloaded, the overlay says so and points at Settings
+     * instead of leaving the driver waiting on silence.
      */
     fun reply(text: String) {
         _pendingCommand.value = null
-        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text)
-
-        val engine = tts
-        if (engine == null || !ttsReady || text.isBlank()) {
+        val context = appContext
+        if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
             return
         }
-        appContext?.let(VoiceFocus::acquire)
-        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
-            override fun onDone(utteranceId: String?) {
-                VoiceFocus.release()
-                _state.value = _state.value.copy(phase = Phase.IDLE)
-            }
-            @Deprecated("Deprecated in Java, no replacement on this API level")
-            override fun onError(utteranceId: String?) {
-                VoiceFocus.release()
-                _state.value = _state.value.copy(phase = Phase.IDLE)
-            }
-            override fun onStop(utteranceId: String?, interrupted: Boolean) { VoiceFocus.release() }
-        })
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "gearslip-assistant")
+        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text)
+        val started = VoiceEngine.play(context, text) {
+            VoiceFocus.release()
+            _state.value = _state.value.copy(phase = Phase.IDLE)
+        }
+        if (started) {
+            VoiceFocus.acquire(context)
+        } else {
+            _state.value = State(
+                Phase.ERROR,
+                reply = "No voice downloaded yet. Download Kokoro or Piper in Settings first.",
+            )
+        }
     }
 
     /**
@@ -145,25 +143,23 @@ object CarAssistant {
      * [onDone] on the main thread - straight away if speech isn't available.
      */
     fun say(text: String, onDone: () -> Unit) {
-        val engine = tts
         val context = appContext
-        if (engine == null || context == null || !ttsReady || text.isBlank()) {
+        if (context == null || text.isBlank()) {
             mainHandler.post(onDone)
             return
         }
-        VoiceFocus.acquire(context)
-        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
-            override fun onDone(utteranceId: String?) { VoiceFocus.release(); mainHandler.post(onDone) }
-            @Deprecated("Deprecated in Java, no replacement on this API level")
-            override fun onError(utteranceId: String?) { VoiceFocus.release(); mainHandler.post(onDone) }
-            // Stopped part way: whoever stopped it has already moved on.
-            override fun onStop(utteranceId: String?, interrupted: Boolean) { VoiceFocus.release() }
-        })
-        engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "gearslip-say")
+        val started = VoiceEngine.play(context, text) {
+            VoiceFocus.release()
+            mainHandler.post(onDone)
+        }
+        if (started) {
+            VoiceFocus.acquire(context)
+        } else {
+            mainHandler.post(onDone)
+        }
     }
 
-    fun stopSpeaking() { tts?.stop() }
+    fun stopSpeaking() { VoiceEngine.stop() }
 
     /**
      * Listens once, the same way the assistant does, and hands back what was said without acting
@@ -269,8 +265,6 @@ object CarAssistant {
 
     fun shutdown() {
         releaseRecognizer()
-        tts?.shutdown()
-        tts = null
-        ttsReady = false
+        VoiceEngine.unload()
     }
 }

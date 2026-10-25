@@ -1,22 +1,15 @@
 package app.autospace.car
 
 import android.content.Context
-import android.os.Bundle
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import androidx.car.app.model.CarText
 import androidx.car.app.model.Distance
 import androidx.car.app.navigation.model.Maneuver
 import androidx.car.app.navigation.model.Step
 import app.autospace.GearslipLog
 import app.autospace.audio.AudioLink
-import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
+import app.autospace.speech.VoiceEngine
+import app.autospace.speech.VoiceModels
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /**
@@ -26,8 +19,10 @@ import kotlin.math.roundToInt
  * Gearslip without root, and which the phone mutes while USB audio runs. So Gearslip reads the
  * same turn the instrument cluster gets ([NavTurn]) and says it itself: once when the turn comes
  * up, again a kilometre or so out on a long stretch, and once more just before it. The words are
- * rendered with the phone's text-to-speech to a file, never played on the phone, and streamed to
- * the car, which ducks the music under them the way it does for real Android Auto.
+ * rendered with AutoSpace's own voice ([VoiceEngine]: Kokoro, Piper as fallback), never played
+ * on the phone, and streamed to the car, which ducks the music under them the way it does for
+ * real Android Auto. With neither voice model downloaded, a turn goes unspoken and the log says
+ * so — there is no system voice left to fall back to.
  *
  * Nothing spoken is logged: road names are where the driver is going.
  */
@@ -36,9 +31,6 @@ object DirectionsVoice {
     private enum class Stage { FAR, PREPARED, DONE }
 
     private var appContext: Context? = null
-    private var tts: TextToSpeech? = null
-    @Volatile private var ttsReady = false
-    private val pending = ConcurrentHashMap<String, CountDownLatch>()
 
     @Volatile private var link: AudioLink? = null
     @Volatile private var running = false
@@ -49,16 +41,8 @@ object DirectionsVoice {
     private var stage = Stage.DONE
 
     fun init(context: Context) {
-        if (tts != null) return
         appContext = context.applicationContext
-        tts = TextToSpeech(appContext) { status -> ttsReady = status == TextToSpeech.SUCCESS }.apply {
-            setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) { pending.remove(utteranceId)?.countDown() }
-                @Deprecated("Deprecated in Java, no replacement on this API level")
-                override fun onError(utteranceId: String?) { pending.remove(utteranceId)?.countDown() }
-            })
-        }
+        appContext?.let(VoiceModels::init)
     }
 
     /** The car opened its directions sink: start following the map app's turns. */
@@ -199,28 +183,10 @@ object DirectionsVoice {
     }
 
     private fun play(text: String, id: Int) {
-        val engine = tts ?: return
         val context = appContext ?: return
         val sink = link ?: return
-        if (!ttsReady) {
-            GearslipLog.w("guidance: text-to-speech isn't ready, a turn went unspoken")
-            return
-        }
-        val file = File(context.cacheDir, "directions.wav")
-        val utterance = "gearslip-directions-$id"
-        val done = CountDownLatch(1)
-        pending[utterance] = done
-        if (engine.synthesizeToFile(text, Bundle(), file, utterance) != TextToSpeech.SUCCESS) {
-            pending.remove(utterance)
-            return
-        }
-        if (!done.await(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)) {
-            pending.remove(utterance)
-            GearslipLog.w("guidance: text-to-speech took too long, a turn went unspoken")
-            return
-        }
-        val pcm = Wav.read(file)?.let { Wav.convert(it, sink.sampleRate, sink.channels) } ?: run {
-            GearslipLog.w("guidance: text-to-speech gave audio AutoSpace can't read")
+        val pcm = VoiceEngine.synthesizeForSink(context, text, sink.sampleRate, sink.channels) ?: run {
+            GearslipLog.w("guidance: no voice downloaded, a turn went unspoken")
             return
         }
         stream(sink, pcm)
@@ -255,72 +221,11 @@ object DirectionsVoice {
 
     private fun CarText?.text() = this?.toString().orEmpty()
 
-    /** 16-bit PCM from the WAV text-to-speech writes, reshaped for the car's sink. */
-    private object Wav {
-        class Pcm(val samples: ShortArray, val rate: Int, val channels: Int)
-
-        fun read(file: File): Pcm? {
-            val bytes = file.readBytes()
-            if (bytes.size < 12 || String(bytes, 0, 4) != "RIFF" || String(bytes, 8, 4) != "WAVE") return null
-            val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-            var pos = 12
-            var rate = 0
-            var channels = 0
-            var bits = 0
-            while (pos + 8 <= bytes.size) {
-                val name = String(bytes, pos, 4)
-                val size = buf.getInt(pos + 4)
-                val body = pos + 8
-                // Some engines write a streaming WAV with a zero or oversized data length.
-                val end = if (size <= 0 || body + size > bytes.size) bytes.size else body + size
-                when (name) {
-                    "fmt " -> {
-                        channels = buf.getShort(body + 2).toInt()
-                        rate = buf.getInt(body + 4)
-                        bits = buf.getShort(body + 14).toInt()
-                    }
-                    "data" -> {
-                        if (bits != 16 || rate <= 0 || channels <= 0) return null
-                        val samples = ShortArray((end - body) / 2)
-                        buf.position(body)
-                        buf.asShortBuffer().get(samples, 0, samples.size)
-                        return Pcm(samples, rate, channels)
-                    }
-                }
-                pos = end + (end and 1)
-            }
-            return null
-        }
-
-        /** Mixes to mono, resamples linearly, then copies to each of the car's channels. */
-        fun convert(pcm: Pcm, rate: Int, channels: Int): ByteArray {
-            val frames = pcm.samples.size / pcm.channels
-            val mono = FloatArray(frames) { f ->
-                var sum = 0f
-                for (c in 0 until pcm.channels) sum += pcm.samples[f * pcm.channels + c]
-                sum / pcm.channels
-            }
-            val outFrames = (frames.toLong() * rate / pcm.rate).toInt()
-            val out = ByteBuffer.allocate(outFrames * channels * 2).order(ByteOrder.LITTLE_ENDIAN)
-            val step = pcm.rate.toDouble() / rate
-            for (i in 0 until outFrames) {
-                val at = i * step
-                val j = at.toInt().coerceAtMost(frames - 1)
-                val next = (j + 1).coerceAtMost(frames - 1)
-                val v = mono[j] + (mono[next] - mono[j]) * (at - j).toFloat()
-                val s = v.roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-                repeat(channels) { out.putShort(s) }
-            }
-            return out.array()
-        }
-    }
-
     private const val TICK_MS = 500L
     private const val NEAR_SECONDS = 12L
     private const val NEAR_METERS = 120
     private const val PREPARE_FROM_METERS = 2_500
     private const val PREPARE_AT_METERS = 1_000
     private const val LEAD_MS = 100L
-    private const val SYNTH_TIMEOUT_S = 10L
     private val ORDINALS = listOf("first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth")
 }
