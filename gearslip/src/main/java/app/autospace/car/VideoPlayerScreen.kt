@@ -113,14 +113,19 @@ import kotlinx.coroutines.withContext
  * the screen (no background audio after leaving it; that would need a
  * hoisted player + session, a separate phase).
  *
- * Parked-only video, audio may continue (locked decision): while [CarMotion]
- * says the car is moving, the video surface is removed from composition and
- * an audio-only placeholder shows instead — no video frame reaches the head
- * unit, audio keeps playing from the same player. Re-attaching on stop
- * resumes video at the current audio position. Honest limit, inherited from
- * CarMotion: with no location permission or no recent GPS fix it answers
- * "not moving", so a missing signal never hides video — this player is
- * fail-open, by design.
+ * Passenger-gated video (Robert 2026-10-25 05:40, explicitly
+ * REVERSING the old locked parked-only decision for the passenger
+ * case only): while [CarMotion] says the car is moving, entering
+ * the player shows the "Are you driving?" gate (see PassengerGate);
+ * "Yes" falls back to the audio-only branch below, "I'm a
+ * passenger" shows the video picture while moving. The gate is
+ * per-entry and never persisted, and it re-appears on a
+ * parked→moving transition while video is showing. When the car
+ * stops, video returns to the normal layout without re-asking.
+ * Honest limits, unchanged: with no location permission or no
+ * recent GPS fix CarMotion answers "not moving", so the gate does
+ * not appear (fail-open, by design), and the app cannot verify
+ * the tapper is actually a passenger on a driver-visible screen.
  *
  * Car adaptations to Notscape's player (only these; everything else ports
  * as-is): touch targets stay car-large (centre circles 72/96/60dp, not
@@ -374,6 +379,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // 1 s here (GPS only updates every 2 s) keeps video-blanking lag to ~1–3 s.
     val moving by produceState(CarMotion.moving) {
         while (true) { value = CarMotion.moving; delay(1_000) }
+    }
+    // Passenger gate, same per-entry, never-persisted rule as the
+    // browser's: stopping clears the allowance, so moving again
+    // re-asks; answering "Yes" just leaves passengerAllowed false,
+    // which drops the player into the audio-only branch below.
+    var gateOpen by remember { mutableStateOf(false) }
+    var passengerAllowed by remember { mutableStateOf(false) }
+    LaunchedEffect(moving) {
+        if (!moving) { passengerAllowed = false; gateOpen = false }
+        else if (!passengerAllowed) { gateOpen = true }
     }
     val position by produceState(0L to C.TIME_UNSET) {
         while (true) {
@@ -684,8 +699,10 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 }
             }
         }
-    } else if (moving) {
+    } else if (moving && !passengerAllowed) {
         // Audio-only placeholder: no surface attached, so no video frame is sent.
+        // This is the "Yes, I'm driving" branch of the passenger gate
+        // (and the whole branch, before the gate existed).
         // Controls stay visible and reachable while driving — they control audio.
         // The options capsule is parked chrome; driving shows transport only.
         Column(Modifier.fillMaxSize()) {
@@ -1120,6 +1137,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 }
             }
         }
+    }
+    // Passenger gate, emitted after the branch so it draws above the
+    // video, the audio-only placeholder and the error screen alike.
+    // "Yes" is NOT onClose: it keeps the player open on the
+    // audio-only branch; only "I'm a passenger" shows the picture.
+    if (gateOpen) {
+        PassengerGateDialog(
+            onDriving = { gateOpen = false },
+            onPassenger = { passengerAllowed = true; gateOpen = false },
+        )
     }
 }
 

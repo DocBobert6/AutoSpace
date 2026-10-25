@@ -57,6 +57,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +76,7 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.frostBar
+import app.autospace.notify.CarMotion
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
@@ -256,6 +258,18 @@ fun WebApp(content: String) {
     // the same reason JS dialogs are in-composition overlays.
     var barBottom by remember { mutableStateOf(BrowserStore.barAtBottom(context)) }
     var settingsMenuOpen by remember { mutableStateOf(false) }
+    // Passenger gate (Robert 2026-10-25 05:40): per-entry, never
+    // persisted — no setting, no "don't ask again". CarMotion is
+    // polled like the player does (1 s; GPS only updates every 2 s).
+    val moving by produceState(CarMotion.moving) {
+        while (true) { value = CarMotion.moving; delay(1_000) }
+    }
+    var gateOpen by remember { mutableStateOf(false) }
+    var passengerAllowed by remember { mutableStateOf(false) }
+    LaunchedEffect(moving) {
+        if (!moving) { passengerAllowed = false; gateOpen = false }
+        else if (!passengerAllowed) { gateOpen = true }
+    }
     fun openFirstPopup() {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
@@ -350,9 +364,14 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen) {
         navigator.backInterceptor = {
             when {
+                // Passenger gate first: head-unit BACK while the gate is
+                // up is the "Yes, I'm driving" answer — the browser
+                // closes, it does not just dismiss the gate and leave
+                // the browser open behind it.
+                gateOpen -> { gateOpen = false; navigator.forceBack(); true }
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
                 showPopupNotice -> { clearPendingPopups(); true }
@@ -994,6 +1013,15 @@ fun WebApp(content: String) {
                 onCloseTab = { closeTab(it) },
                 onNewTab = { newTab() },
                 onClose = { tabsOpen = false },
+            )
+        }
+        // Passenger gate, last so it draws above every sheet, dialog
+        // and the keyboard: the scrim swallows touches, so nothing
+        // behind it is reachable until Yes or I'm a passenger is tapped.
+        if (gateOpen) {
+            PassengerGateDialog(
+                onDriving = { gateOpen = false; navigator.forceBack() },
+                onPassenger = { passengerAllowed = true; gateOpen = false },
             )
         }
     }

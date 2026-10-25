@@ -308,3 +308,23 @@ in the local worktree; it can be added later by a git push from a local clone.
   tapping again stops it, leaving the page stops it, and a new preview
   or assistant reply stops the one playing. The Piper row previews as
   Amy. A preview button is disabled until its engine is downloaded.
+
+## Unreleased (Passenger gates — browser + video)
+- REVERSAL (Robert, 2026-10-25): the locked "video parked-only,
+  audio may continue" rule is reversed for the passenger case only.
+  Entering the browser or the video player while the car is moving
+  (CarMotion GPS speed over ~7 km/h) now shows an "Are you driving?"
+  dialog with a smaller disclaimer that browsing or watching video
+  while driving is dangerous and could result in an accident, injury,
+  or even death, and not to drive and browse or watch video. "Yes"
+  closes the browser, or falls back to the audio-only player branch
+  with the picture hidden and audio continuing; "I'm a passenger"
+  opens the browser normally, or shows the video picture while
+  moving. The gate is per-entry and never persisted — no setting,
+  no "don't ask again", nothing survives a drive — and it re-appears
+  on a parked-to-moving transition while a surface is already open.
+  When the car stops, video returns to the normal layout without
+  re-asking. Honest limits: CarMotion fails open (no GPS fix or
+  permission means "not moving", so the gate may not appear), and
+  the app cannot verify the tapper is actually a passenger on a
+  driver-visible screen — the gate is an honesty gate.
