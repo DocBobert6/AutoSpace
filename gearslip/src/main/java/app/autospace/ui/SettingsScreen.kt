@@ -123,6 +123,11 @@ fun SettingsScreen(
             HelpSection(onOpenHelp, onOpenCarPreview, onOpenLogs)
             CarAudioSection()
             VoiceModelSection()
+            // Spoken voice, alongside the listening models above — not instead of
+            // them: those turn speech into text for voice commands, this one turns
+            // text into speech for replies and directions. Same VoiceModels state
+            // as car Settings, so either place reflects the other.
+            SpokenVoiceSection()
             if (SHOW_RECOMMENDED_APPS) AppsSection(onOpenRecommendedApps)
             SettingsSection(
                 "Usage notes",

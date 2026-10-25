@@ -1,6 +1,7 @@
 package app.autospace.ui
 
 import app.autospace.speech.SpeechModels
+import app.autospace.speech.VoiceModels
 
 import androidx.compose.material3.MaterialTheme
 
@@ -355,6 +356,36 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         )
     }
 
+    // --- Spoken voice: its own step, right after the listening one, and NOT a
+    // replacement for it. The page above is the voice AutoSpace listens with
+    // (speech into text); this one is the voice it speaks with (text into
+    // speech) — Kokoro first, Piper as fallback. One tap downloads both, the
+    // way the listening page downloads both its models, and the page is
+    // skipped once either spoken voice is on the phone.
+    if (!VoiceModels.isReady(context, VoiceModels.Engine.KOKORO) &&
+        !VoiceModels.isReady(context, VoiceModels.Engine.PIPER)
+    ) {
+        add(
+            GuidePage(
+                title = "Spoken voice.",
+                explanation = "The voice AutoSpace answers and reads directions in: Kokoro-82M " +
+                    "first, in American Adam unless you pick another voice in Settings, " +
+                    "with Piper (Amy) as the fallback. Entirely on this phone — no " +
+                    "system voice, no other engines. It needs " +
+                    "${VoiceModels.Engine.KOKORO.downloadMb + VoiceModels.Engine.PIPER.downloadMb} MB, " +
+                    "downloaded once. Use Wi-Fi if you can.",
+                icon = glyph(Icons.Filled.PlayArrow),
+                optional = true,
+                actionLabel = "Download voices",
+                onAction = {
+                    VoiceModels.download(context, VoiceModels.Engine.KOKORO)
+                    VoiceModels.download(context, VoiceModels.Engine.PIPER)
+                },
+                content = { SpokenVoiceDownloadStatus() },
+            ),
+        )
+    }
+
     // --- Optional: each is skipped once its actual effect is already in place --------
     if (!hasProjectMediaOp(context)) {
         add(
@@ -434,6 +465,28 @@ private fun VoiceDownloadStatus() {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         progress?.let { LinearProgressIndicator(progress = { it / 100f }, modifier = Modifier.fillMaxWidth()) }
         line?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+/** How the spoken-voice download is going, one line per engine. */
+@Composable
+private fun SpokenVoiceDownloadStatus() {
+    val context = LocalContext.current
+    LaunchedEffect(Unit) { VoiceModels.init(context) }
+    val kokoro by VoiceModels.state(VoiceModels.Engine.KOKORO).collectAsState()
+    val piper by VoiceModels.state(VoiceModels.Engine.PIPER).collectAsState()
+    fun line(engine: VoiceModels.Engine, state: VoiceModels.State): String = when (state) {
+        VoiceModels.State.Ready -> "${engine.label} is ready."
+        is VoiceModels.State.Downloading -> "${engine.label}: downloading, ${state.percent}%."
+        is VoiceModels.State.Failed -> "${engine.label} didn't finish: ${state.reason}. Tap Download voices to try again."
+        VoiceModels.State.Missing -> "${engine.label} not downloaded yet."
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(line(VoiceModels.Engine.KOKORO, kokoro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(line(VoiceModels.Engine.PIPER, piper), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (kokoro is VoiceModels.State.Ready || piper is VoiceModels.State.Ready) {
+            Text("Spoken voice is ready.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
