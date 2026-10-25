@@ -67,4 +67,70 @@ class OfflineTtsBindingTest {
             assertNotNull(name, Class.forName(name))
         }
     }
+
+    // Round 4 (2026-10-25 launch trace: 9 previews, every one dying
+    // on "Failed to get field ID for lmFlow"): the .so's
+    // GetOfflineTtsConfig converts the WHOLE ModelConfig regardless of
+    // which engine is used, and EVERY field lookup in it throws
+    // RuntimeException on a null field ID (disassembly of the lmFlow
+    // site: GetFieldID at 0x5991f4, null check, log, ThrowNew) — the
+    // round-2 "leaf gaps tolerated" claim was wrong for this path.
+    // The full audit of that conversion (field + signature pairs in
+    // order from 0x593e30) found exactly three gaps: Pocket's eight
+    // real fields, Supertonic's seven real fields, and ruleFars on
+    // OfflineTtsConfig. These tests fail on the old binding (fields
+    // absent) and pass on the fixed one.
+
+    @Test
+    fun pocketCarriesItsRealFields() {
+        val cls = Class.forName("com.k2fsa.sherpa.onnx.OfflineTtsPocketModelConfig")
+        val fields = cls.declaredFields.associateBy { it.name }
+        for (name in listOf(
+            "lmFlow", "lmMain", "encoder", "decoder",
+            "textConditioner", "vocabJson", "tokenScoresJson",
+        )) {
+            val field = fields[name]
+            assertNotNull("missing Pocket field: $name", field)
+            assertEquals("java.lang.String", field!!.type.name)
+        }
+        val capacity = fields["voiceEmbeddingCacheCapacity"]
+        assertNotNull("missing Pocket field: voiceEmbeddingCacheCapacity", capacity)
+        assertEquals("int", capacity!!.type.name)
+    }
+
+    @Test
+    fun supertonicCarriesItsRealFields() {
+        val cls = Class.forName("com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig")
+        val fields = cls.declaredFields.associateBy { it.name }
+        for (name in listOf(
+            "durationPredictor", "textEncoder", "vectorEstimator",
+            "vocoder", "ttsJson", "unicodeIndexer", "voiceStyle",
+        )) {
+            val field = fields[name]
+            assertNotNull("missing Supertonic field: $name", field)
+            assertEquals("java.lang.String", field!!.type.name)
+        }
+    }
+
+    @Test
+    fun configCarriesRuleFars() {
+        val field = Class.forName("com.k2fsa.sherpa.onnx.OfflineTtsConfig")
+            .getDeclaredField("ruleFars")
+        assertEquals("java.lang.String", field.type.name)
+    }
+
+    @Test
+    fun modelConfigCarriesAllSubConfigsAndTopFields() {
+        val fields = OfflineTtsModelConfig::class.java.declaredFields
+            .associateBy { it.name }
+        for (name in listOf(
+            "vits", "matcha", "kokoro", "kitten",
+            "zipvoice", "pocket", "supertonic",
+        )) {
+            assertNotNull("missing ModelConfig field: $name", fields[name])
+        }
+        assertEquals("int", fields["numThreads"]!!.type.name)
+        assertEquals("boolean", fields["debug"]!!.type.name)
+        assertEquals("java.lang.String", fields["provider"]!!.type.name)
+    }
 }

@@ -17,9 +17,32 @@
 // (whose binding class names all match) kept working. Do NOT rename this
 // class back to the lowercase spelling: the capital V is what the .so
 // looks up. The encoder/decoder/scale fields below complete the class
-// for the same reason — a missing leaf field is tolerated by the JNI
-// (it logs "Failed to get field ID"), but the class itself must exist
-// under the exact name, and the fields are cheap insurance.
+// for the same reason.
+// CORRECTION, 2026-10-25 round 4 (Robert's launch trace: every preview
+// dying on "Failed to get field ID for lmFlow"): the claim above that
+// "a missing leaf field is tolerated" is WRONG for this .so's
+// GetOfflineTtsConfig. Disassembly of libsherpa-onnx-jni.so proves
+// every field lookup in that conversion follows load -> GetFieldID ->
+// null field ID -> log "Failed to get field ID for '%s'" -> throw
+// RuntimeException (lmFlow site: 0x5991f4 GetFieldID, 0x59920c null
+// check, 0x599260 log, then ThrowNew). A missing field is FATAL, not
+// tolerated, which is why one gap killed both engines and why the fix
+// had to audit the WHOLE conversion, not one field. That audit
+// (field-name + signature pairs in conversion order, 0x593e30
+// onwards) found exactly three gaps, all fixed here: Pocket's eight
+// real fields, Supertonic's seven real fields, and ruleFars on
+// OfflineTtsConfig. Every other field the .so reads (Vits: model,
+// lexicon, tokens, dataDir, noiseScale, noiseScaleW, lengthScale;
+// Matcha: acousticModel, vocoder, lexicon, tokens, dataDir,
+// noiseScale, lengthScale; Kokoro: model, voices, tokens, lexicon,
+// lang, dataDir, lengthScale; ZipVoice: tokens, encoder, decoder,
+// vocoder, dataDir, lexicon, featScale, tShift, targetRms,
+// guidanceScale; Kitten: model, voices, tokens, dataDir, lengthScale;
+// ModelConfig: all seven sub-configs + numThreads + debug +
+// provider; OfflineTtsConfig: model + ruleFsts + ruleFars +
+// maxNumSentences; GenerationConfig: sid + speed + silenceScale) is
+// present in this binding; the generic extra fields on the older
+// sub-configs are inert (JNI reads by name) and are kept.
 // GeneratedAudio's constructor shape (FloatArray, Int) is what the JNI layer
 // builds, so keep it exactly.
 package com.k2fsa.sherpa.onnx
@@ -113,33 +136,45 @@ data class OfflineTtsZipVoiceModelConfig(
 )
 
 data class OfflineTtsPocketModelConfig(
-    var model: String = "",
-    var voices: String = "",
-    var tokens: String = "",
-    var dataDir: String = "",
-    var dictDir: String = "",
-    var lexicon: String = "",
-    var lang: String = "",
-    var lengthScale: Float = 1.0f,
-    var noiseScale: Float = 0.667f,
-    var noiseScaleW: Float = 0.8f,
-    var acousticModel: String = "",
-    var vocoder: String = "",
+    // Pocket's REAL fields (2026-10-25 round 4: Robert's launch trace
+    // showed every preview dying on "Failed to get field ID for
+    // lmFlow"). The vendored .so's GetOfflineTtsConfig reads these
+    // eight fields off the Pocket sub-config — proven by disassembling
+    // libsherpa-onnx-jni.so itself (Pocket descriptor load at
+    // 0x5991a4, then GetFieldID for lmFlow with signature
+    // Ljava/lang/String; at 0x5991f4, null field ID -> log ->
+    // RuntimeException). The previous generic fields (model, voices,
+    // tokens, ...) were NEVER read by the .so for Pocket, so the class
+    // existed but every load died on the first real field. The same
+    // disassembly audited the whole ModelConfig conversion (see the
+    // header note): Pocket and Supertonic were the only sub-configs
+    // with missing fields, plus ruleFars on OfflineTtsConfig.
+    var lmFlow: String = "",
+    var lmMain: String = "",
+    var encoder: String = "",
+    var decoder: String = "",
+    var textConditioner: String = "",
+    var vocabJson: String = "",
+    var tokenScoresJson: String = "",
+    var voiceEmbeddingCacheCapacity: Int = 50,
 )
 
 data class OfflineTtsSupertonicModelConfig(
-    var model: String = "",
-    var voices: String = "",
-    var tokens: String = "",
-    var dataDir: String = "",
-    var dictDir: String = "",
-    var lexicon: String = "",
-    var lang: String = "",
-    var lengthScale: Float = 1.0f,
-    var noiseScale: Float = 0.667f,
-    var noiseScaleW: Float = 0.8f,
-    var acousticModel: String = "",
+    // Supertonic's REAL fields (same 2026-10-25 round-4 audit of the
+    // .so's GetOfflineTtsConfig: Supertonic descriptor load at
+    // 0x59a484, then GetFieldID for each of these seven String fields
+    // in order). The previous generic fields were never read by the
+    // .so for Supertonic — left behind Pocket in conversion order, so
+    // its gaps would have surfaced as the NEXT fatal field lookup once
+    // Pocket was fixed. Fixed in the same change, not left for a
+    // third trace.
+    var durationPredictor: String = "",
+    var textEncoder: String = "",
+    var vectorEstimator: String = "",
     var vocoder: String = "",
+    var ttsJson: String = "",
+    var unicodeIndexer: String = "",
+    var voiceStyle: String = "",
 )
 
 data class OfflineTtsModelConfig(
@@ -159,6 +194,10 @@ data class OfflineTtsConfig(
     var model: OfflineTtsModelConfig = OfflineTtsModelConfig(),
     var maxNumSentences: Int = 1,
     var ruleFsts: String = "",
+    // ruleFars (round-4 audit: the .so's GetOfflineTtsConfig reads
+    // ruleFsts, then ruleFars, then maxNumSentences — the binding
+    // lacked ruleFars, a third fatal gap behind Pocket/Supertonic).
+    var ruleFars: String = "",
 )
 
 data class GenerationConfig(
