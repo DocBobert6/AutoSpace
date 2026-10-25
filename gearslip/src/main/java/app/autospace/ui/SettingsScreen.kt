@@ -128,6 +128,9 @@ fun SettingsScreen(
             // text into speech for replies and directions. Same VoiceModels state
             // as car Settings, so either place reflects the other.
             SpokenVoiceSection()
+            // Call speaker, same state as car Settings: a call-audio choice, not a
+            // voice model, so it gets its own section rather than joining the above.
+            CallSpeakerSection()
             if (SHOW_RECOMMENDED_APPS) AppsSection(onOpenRecommendedApps)
             SettingsSection(
                 "Usage notes",

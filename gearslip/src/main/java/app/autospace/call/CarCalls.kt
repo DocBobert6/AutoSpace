@@ -44,10 +44,12 @@ object CarCalls {
 
     private var telephony: TelephonyManager? = null
     private var watcher: TelephonyCallback? = null
+    private var appContext: Context? = null
     private var pendingRespond: ((allow: Boolean) -> Unit)? = null
     private var ringingCaller: Caller? = null
 
     fun start(context: Context) {
+        if (appContext == null) appContext = context.applicationContext
         if (watcher != null) return
         if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return
         val manager = context.getSystemService(TelephonyManager::class.java) ?: return
@@ -64,6 +66,7 @@ object CarCalls {
         runCatching { telephony?.unregisterTelephonyCallback(callback) }
         telephony = null
         watcher = null
+        appContext?.let { CallSpeakerRoute.onCallEnded(it) }
         pendingRespond = null
         ringingCaller = null
         _state.value = CallUiState.None
@@ -72,11 +75,13 @@ object CarCalls {
     private fun onPhoneState(state: Int) {
         when (state) {
             TelephonyManager.CALL_STATE_IDLE -> {
+                appContext?.let { CallSpeakerRoute.onCallEnded(it) }
                 pendingRespond = null
                 ringingCaller = null
                 _state.value = CallUiState.None
             }
             TelephonyManager.CALL_STATE_OFFHOOK -> {
+                appContext?.let { CallSpeakerRoute.onCallActive(it) }
                 pendingRespond = null
                 _state.value = CallUiState.Active(ringingCaller)
             }

@@ -222,6 +222,37 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
             },
         ),
     )
+    // Call speaker (2026-10-25): its own onboarding step, NOT gated on any
+    // permission, so it stays reachable even when every permission is already
+    // granted — the same reason the "Car microphone" page above is ungated.
+    // Same persisted setting as car Settings (CarSettings.callSpeaker,
+    // default off); toggling in either place reflects in the other.
+    add(
+        GuidePage(
+            title = "Calls on speaker.",
+            explanation = "If your car's microphone doesn't work, calls can go through the " +
+                "phone's speaker instead of the car's Bluetooth — so the caller hears " +
+                "you through the phone's microphone. This affects phone calls only, " +
+                "not voice commands or music, and the speaker is restored when the " +
+                "call ends. The car's Bluetooth may still take the call back.",
+            icon = { MicIcon(it) },
+            optional = true,
+            content = {
+                val callSpeaker by CarSettings.callSpeaker.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Answer calls on the phone speaker",
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Switch(checked = callSpeaker, onCheckedChange = CarSettings::setCallSpeaker)
+                }
+            },
+        ),
+    )
     if (!granted(context, arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))) {
         add(
             GuidePage(

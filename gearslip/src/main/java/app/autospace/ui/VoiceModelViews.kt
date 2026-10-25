@@ -189,6 +189,37 @@ internal fun SpokenVoiceSection() {
     }
 }
 
+/**
+ * Call speaker: the same persisted switch as car Settings, so either place reflects the
+ * other. Calls only — this section is about a call-audio choice, not a voice model, and
+ * it deliberately sits apart from the listening/spoken sections for that reason.
+ */
+@Composable
+internal fun CallSpeakerSection() {
+    SettingsSection(title = "Calls: speaker") {
+        val callSpeaker by CarSettings.callSpeaker.collectAsState()
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Answer calls on the phone speaker", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "When a call starts, its audio goes to the phone's speaker instead " +
+                        "of the car's Bluetooth route, so the caller hears you through " +
+                        "the phone's microphone. Phone calls only — not voice commands, " +
+                        "the assistant, or music. Off by default, applies from the next " +
+                        "call, and the speaker is restored when the call ends. If the " +
+                        "car's Bluetooth takes the call back, this cannot override it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = callSpeaker, onCheckedChange = { CarSettings.setCallSpeaker(it) })
+        }
+    }
+}
+
 @Composable
 private fun SpokenEngineRow(engine: VoiceModels.Engine, state: VoiceModels.State) {
     val context = LocalContext.current

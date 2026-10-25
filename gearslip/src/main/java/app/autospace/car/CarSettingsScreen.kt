@@ -74,6 +74,7 @@ fun CarSettingsScreen() {
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
     val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
     val hotword by CarSettings.hotword.collectAsState()
+    val callSpeaker by CarSettings.callSpeaker.collectAsState()
     val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
     val display by CarEnvironment.display.collectAsState()
     val vehicle by CarEnvironment.vehicle.collectAsState()
@@ -332,6 +333,24 @@ fun CarSettingsScreen() {
                 "nothing you say leaves the phone.",
             checked = hotword,
         ) { CarSettings.setHotword(it) }
+
+        // Call speaker (2026-10-25): calls only, off by default, next to the
+        // phone-mic row it pairs with. When a call starts, audio moves to the
+        // phone's speaker — so the caller hears the phone's microphone, not a
+        // broken car microphone — and the previous speaker state is restored
+        // when the call ends. Voice commands, assistant speech, and media are
+        // untouched. The car's Bluetooth may reassert its route, which this
+        // cannot override; that is a car-test result, not a setting failure.
+        ExperimentalFeatureRow(
+            title = "Answer calls on the phone speaker",
+            description = "When a call starts, its audio goes to the phone's speaker instead " +
+                "of the car's Bluetooth route, so the caller hears you through the " +
+                "phone's microphone. This affects phone calls only — not voice " +
+                "commands, the assistant, or music — applies from the next call, " +
+                "and the speaker is restored when the call ends. If the car's " +
+                "Bluetooth takes the call back, this setting cannot override it.",
+            checked = callSpeaker,
+        ) { CarSettings.setCallSpeaker(it) }
 
         WebPageSetting()
 

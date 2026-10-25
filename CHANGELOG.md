@@ -283,3 +283,16 @@ in the local worktree; it can be added later by a git push from a local clone.
   "stop navigation" and "stop screen sharing" are checked before the
   music command so they do not pause it by accident.
 - The "what can you do" help list now includes every new command.
+
+## Unreleased (Call speaker option)
+- New toggle, off by default, in car Settings (next to the phone-mic
+  row), phone Settings ("Calls: speaker"), and onboarding ("Calls on
+  speaker."): when a call starts, its audio goes to the phone's speaker
+  instead of the car's Bluetooth route, so the caller hears you through
+  the phone's microphone. The speaker is restored when the call ends.
+  Phone calls only — voice commands, the assistant, and music are
+  untouched, and it applies from the next call.
+- Honest limit, stated on the setting itself: the call's audio route
+  belongs to Telecom and the system dialer, which AutoSpace is not, so
+  if the car's Bluetooth takes the call back, this setting cannot
+  override it. Whether it wins on a given car is a car-test result.
