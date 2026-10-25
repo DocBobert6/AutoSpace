@@ -580,23 +580,87 @@ object VoiceEngine {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
             currentTrack = track
-            track.play()
-            var offset = 0
-            while (offset < shorts.size && myGeneration == generation.get()) {
-                val written = track.write(shorts, offset, shorts.size - offset)
-                // Round 3: a stalled write used to break out of the loop
-                // with failed still false, so a reply ended in silence
-                // with no onSilent and no log line — a fourth silent
-                // branch beside generate-threw, generate-empty, and
-                // load refusal. A stall is a playback failure: log it
-                // with its position and fail through onSilent/onError.
-                if (written <= 0) {
-                    GearslipLog.w("voice: playback write stalled at $offset/${shorts.size} (returned $written)")
-                    lastFailure = "playback write stalled"
-                    failed = true
-                    break
+            if (track.state != AudioTrack.STATE_INITIALIZED) {
+                // A dead track accepts no audio and its writes fail
+                // silently into the stall branch below; name it here
+                // instead of letting the stall line take the blame.
+                GearslipLog.w("voice: playback track not initialized (state ${track.state})")
+                lastFailure = "playback track not initialized"
+                failed = true
+            } else {
+                // Round 6 observability: amplitude of what is about
+                // to play, so a future silent trace can tell a
+                // tiny-amplitude render from a playback loss. The
+                // digital-silence check already guarantees the render
+                // is not all zero (both preview and assistant paths
+                // classify through classifyGenerate); this line says
+                // how loud non-zero actually is.
+                var peak = 0f
+                var sumSq = 0.0
+                for (s in audio.samples) {
+                    val a = kotlin.math.abs(s)
+                    if (a > peak) peak = a
+                    sumSq += (s * s).toDouble()
                 }
-                offset += written
+                val rms = if (audio.samples.isEmpty()) 0.0
+                    else kotlin.math.sqrt(sumSq / audio.samples.size)
+                var peakShort = 0
+                for (s in shorts) {
+                    val a = kotlin.math.abs(s.toInt())
+                    if (a > peakShort) peakShort = a
+                }
+                GearslipLog.i(
+                    "voice: playback start rate=${audio.rate} frames=${shorts.size} " +
+                        "durationMs=${shorts.size * 1000 / audio.rate} " +
+                        "peak=$peak rms=$rms peakShort=$peakShort",
+                )
+                track.play()
+                var offset = 0
+                while (offset < shorts.size && myGeneration == generation.get()) {
+                    val written = track.write(shorts, offset, shorts.size - offset)
+                    // Round 3: a stalled write used to break out of the loop
+                    // with failed still false, so a reply ended in silence
+                    // with no onSilent and no log line — a fourth silent
+                    // branch beside generate-threw, generate-empty, and
+                    // load refusal. A stall is a playback failure: log it
+                    // with its position and fail through onSilent/onError.
+                    if (written <= 0) {
+                        GearslipLog.w("voice: playback write stalled at $offset/${shorts.size} (returned $written)")
+                        lastFailure = "playback write stalled"
+                        failed = true
+                        break
+                    }
+                    offset += written
+                }
+                GearslipLog.i("voice: playback wrote $offset/${shorts.size} frames")
+                if (!failed && offset >= shorts.size && myGeneration == generation.get()) {
+                    // Round 6 fix: STREAM writes return once the data
+                    // is BUFFERED, not once it is PLAYED. The old code
+                    // fell straight into the finally block's stop() +
+                    // release() milliseconds after the write loop, so
+                    // the hardware never got the clip's seconds of
+                    // real time — successful writes, onDone fired,
+                    // button unlocked, volume up, no Bluetooth, and
+                    // still no sound. Wait for the playback head to
+                    // reach the last frame (or the timeout) before
+                    // anything stops or releases the track. An
+                    // interrupt (newer speech, Stop tap) still ends
+                    // the wait at once via the generation check.
+                    val drainStart = System.currentTimeMillis()
+                    val deadline = drainStart + drainTimeoutMs(shorts.size, audio.rate)
+                    var head = track.playbackHeadPosition
+                    while (head < shorts.size && myGeneration == generation.get() &&
+                        System.currentTimeMillis() < deadline
+                    ) {
+                        Thread.sleep(20)
+                        head = track.playbackHeadPosition
+                    }
+                    val timedOut = System.currentTimeMillis() >= deadline && head < shorts.size
+                    GearslipLog.i(
+                        "voice: playback drained head=$head/${shorts.size} " +
+                            "waitedMs=${System.currentTimeMillis() - drainStart} timedOut=$timedOut",
+                    )
+                }
             }
         } catch (e: Exception) {
             GearslipLog.w("voice: playback failed: ${e.message}")
@@ -618,6 +682,15 @@ object VoiceEngine {
         ShortArray(samples.size) { i ->
             (samples[i] * 32767f).toInt().coerceIn(-32768, 32767).toShort()
         }
+
+    /**
+     * How long the post-write drain wait may run for a clip: the clip's
+     * own duration plus 3 seconds of slack for scheduling and hardware
+     * start-up. A drain that runs past this is logged as timed out
+     * rather than hanging playback forever.
+     */
+    internal fun drainTimeoutMs(frames: Int, rate: Int): Long =
+        if (rate <= 0) 3000L else frames * 1000L / rate + 3000L
 
     /** Mixes to mono, resamples linearly, copies to each channel — as DirectionsVoice did from WAV. */
     internal fun resample(samples: FloatArray, srcRate: Int, dstRate: Int, channels: Int): ByteArray {

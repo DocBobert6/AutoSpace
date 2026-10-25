@@ -73,4 +73,12 @@ class VoiceEngineTest {
         assertTrue(pcm[0] == 0.toByte() && pcm[1] == 0.toByte())
         assertTrue(pcm[4] == pcm[6] && pcm[5] == pcm[7])
     }
+
+    @Test
+    fun drainTimeoutIsClipDurationPlusThreeSeconds() {
+        // A 2-second clip at 24 kHz may drain for 5 seconds, no longer.
+        assertEquals(5000L, VoiceEngine.drainTimeoutMs(48000, 24000))
+        // A degenerate rate never yields a zero or negative timeout.
+        assertEquals(3000L, VoiceEngine.drainTimeoutMs(48000, 0))
+    }
 }
