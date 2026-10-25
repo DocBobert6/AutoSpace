@@ -12,6 +12,7 @@ import app.autospace.host.clockTime
 import app.autospace.host.remainingTime
 import app.autospace.notify.CarNotification
 import app.autospace.notify.CarNotifications
+import app.autospace.speech.VoiceEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -93,9 +94,19 @@ object VoiceReply {
         CarAssistant.stopSpeaking()
         main.removeCallbacksAndMessages(SEND_TOKEN)
         val nid = ++run
+        // Round 3, same honesty rule as the assistant overlay: only a
+        // load failure points at the files; a generate/playback
+        // failure names its stage, since the files passed validation.
+        val reason = VoiceEngine.lastFailure
+        val error = when {
+            reason == null -> "Couldn't speak that aloud — the voice render produced no audio."
+            reason.contains("load") || reason.contains("unavailable") ->
+                "Couldn't speak that aloud. Check the voice files in Settings."
+            else -> "Couldn't speak that aloud — voice render failed ($reason)."
+        }
         _state.value = _state.value.copy(
             phase = Phase.ERROR,
-            error = "Couldn't speak that aloud. Check the voice files in Settings.",
+            error = error,
             until = SystemClock.uptimeMillis() + LINGER_MS,
             span = LINGER_MS,
             held = 0f,

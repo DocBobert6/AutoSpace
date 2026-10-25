@@ -7,6 +7,7 @@ import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import app.autospace.GearslipLog
+import com.k2fsa.sherpa.onnx.GeneratedAudio
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
@@ -71,6 +72,20 @@ object VoiceEngine {
     private var piper: OfflineTts? = null
     private val generation = AtomicInteger(0)
     @Volatile private var currentTrack: AudioTrack? = null
+
+    /**
+     * Round-3 diagnosis (2026-10-25): the last synthesis/playback
+     * failure, as engine + stage + voice id only — never spoken text.
+     * Previews used to swallow every failure as pure silence and the
+     * assistant overlay blamed the voice files for every silent render,
+     * so a failure whose cause was NOT the files was undiagnosable
+     * from the device. Callers read this at onSilent/onError time to
+     * name the real stage; it is cleared on any successful render so
+     * a stale failure can never mislabel a later silence.
+     */
+    @Volatile
+    var lastFailure: String? = null
+        private set
 
     /**
      * Drops loaded engines (a voice was deleted or changed) and stops playback.
@@ -142,6 +157,59 @@ object VoiceEngine {
         return VoiceModels.espeakLang(voice) in ALLOWED_ESPEAK_LANGS
     }
 
+    /**
+     * Round-3 diagnosis (2026-10-25): a native generate can fail in
+     * visibly different ways, and the old code collapsed them all —
+     * a throw and an empty render shared one "synthesis failed" line
+     * (assistant path) or no line at all (preview path), and a buffer
+     * of exact zeros counted as success and played as nothing. Each
+     * branch here logs its own line and records [lastFailure], so a
+     * silent preview or reply names its stage instead of blaming the
+     * voice files. Null on any failure; a render with real samples
+     * on success. The engine-unavailable branch means the load line
+     * just above already said why (refused, or failed to load).
+     */
+    private fun generateKokoro(app: Context, voice: VoiceModels.KokoroVoice, text: String): GeneratedAudio? {
+        val engine = kokoro(app, voice) ?: run {
+            GearslipLog.w("voice: kokoro engine unavailable at generate (see load line above)")
+            lastFailure = "kokoro engine unavailable"
+            return null
+        }
+        return classifyGenerate("kokoro ${voice.id}") { engine.generate(text, voice.sid, 1.0f) }
+    }
+
+    private fun generatePiper(app: Context, text: String): GeneratedAudio? {
+        val engine = piper(app) ?: run {
+            GearslipLog.w("voice: piper engine unavailable at generate (see load line above)")
+            lastFailure = "piper engine unavailable"
+            return null
+        }
+        return classifyGenerate("piper") { engine.generate(text, 0, 1.0f) }
+    }
+
+    private fun classifyGenerate(tag: String, generate: () -> GeneratedAudio): GeneratedAudio? {
+        val audio = try {
+            generate()
+        } catch (e: Exception) {
+            // A JNI null return surfaces here as NullPointerException,
+            // an UnsatisfiedLinkError as itself: the class IS the clue.
+            GearslipLog.w("voice: $tag generate threw ${e.javaClass.simpleName}: ${e.message}")
+            lastFailure = "$tag generate threw ${e.javaClass.simpleName}"
+            return null
+        }
+        if (audio.samples.isEmpty() || audio.sampleRate <= 0) {
+            GearslipLog.w("voice: $tag generate empty (samples=${audio.samples.size} rate=${audio.sampleRate})")
+            lastFailure = "$tag generate empty"
+            return null
+        }
+        if (audio.samples.all { it == 0f }) {
+            GearslipLog.w("voice: $tag generate digital silence (${audio.samples.size} samples all zero)")
+            lastFailure = "$tag digital silence"
+            return null
+        }
+        return audio
+    }
+
     private fun synthesizeNow(app: Context, text: String): Synthesized? {
         if (VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)) {
             val voice = VoiceModels.selectedVoice.value
@@ -153,9 +221,10 @@ object VoiceEngine {
                 // never spoken text): if this generate kills the process,
                 // the begin line without an end line names the step.
                 GearslipLog.i("voice: native generate begin kokoro ${voice.id}")
-                val audio = runCatching { kokoro(app, voice)?.generate(text, voice.sid, 1.0f) }.getOrNull()
+                val audio = generateKokoro(app, voice, text)
                 GearslipLog.i("voice: native generate end kokoro ${voice.id}")
-                if (audio != null && audio.samples.isNotEmpty() && audio.sampleRate > 0) {
+                if (audio != null) {
+                    lastFailure = null
                     GearslipLog.i(
                         "voice: kokoro ${voice.id} spoke ${audio.samples.size * 1000 / audio.sampleRate} ms " +
                             "of audio in ${System.currentTimeMillis() - started} ms",
@@ -168,9 +237,10 @@ object VoiceEngine {
         if (VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) {
             val started = System.currentTimeMillis()
             GearslipLog.i("voice: native generate begin piper")
-            val audio = runCatching { piper(app)?.generate(text, 0, 1.0f) }.getOrNull()
+            val audio = generatePiper(app, text)
             GearslipLog.i("voice: native generate end piper")
-            if (audio != null && audio.samples.isNotEmpty() && audio.sampleRate > 0) {
+            if (audio != null) {
+                lastFailure = null
                 GearslipLog.i(
                     "voice: piper spoke ${audio.samples.size * 1000 / audio.sampleRate} ms " +
                         "of audio in ${System.currentTimeMillis() - started} ms",
@@ -199,6 +269,7 @@ object VoiceEngine {
             // would exclude the files entirely.
             VoiceModels.validationFailure(app, VoiceModels.Engine.KOKORO)?.let {
                 GearslipLog.w("voice: kokoro load refused: $it")
+                lastFailure = "kokoro load refused"
                 return null
             }
             GearslipLog.i("voice: load check ${VoiceModels.loadCheck(app, VoiceModels.Engine.KOKORO)}")
@@ -218,6 +289,7 @@ object VoiceEngine {
             GearslipLog.i("voice: native load begin kokoro")
             return runCatching { OfflineTts(config) }.onFailure {
                 GearslipLog.w("voice: kokoro failed to load: ${it.message}")
+                lastFailure = "kokoro load failed ${it.javaClass.simpleName}"
             }.onSuccess {
                 GearslipLog.i("voice: native load end kokoro")
             }.getOrNull()?.also {
@@ -236,6 +308,7 @@ object VoiceEngine {
             // never reach a native load that can exit the process.
             VoiceModels.validationFailure(app, VoiceModels.Engine.PIPER)?.let {
                 GearslipLog.w("voice: piper load refused: $it")
+                lastFailure = "piper load refused"
                 return null
             }
             GearslipLog.i("voice: load check ${VoiceModels.loadCheck(app, VoiceModels.Engine.PIPER)}")
@@ -253,6 +326,7 @@ object VoiceEngine {
             GearslipLog.i("voice: native load begin piper")
             return runCatching { OfflineTts(config) }.onFailure {
                 GearslipLog.w("voice: piper failed to load: ${it.message}")
+                lastFailure = "piper load failed ${it.javaClass.simpleName}"
             }.onSuccess {
                 GearslipLog.i("voice: native load end piper")
             }.getOrNull()?.also { piper = it }
@@ -323,7 +397,22 @@ object VoiceEngine {
      * the row's playing state clears instead of sticking. Stop a preview
      * with [stop], the same call that stops assistant speech.
      */
-    fun playPreview(context: Context, text: String, voice: VoiceModels.KokoroVoice?, onDone: () -> Unit): Boolean {
+    /**
+     * [onError] is new in round 3: a preview used to end every failure
+     * as pure silence (onDone only, no message, no log line), which is
+     * exactly the symptom on the current build. A failure now reports
+     * its recorded stage ([lastFailure]) here, on the main thread, so
+     * the row can say why instead of going quiet; an interrupted
+     * preview (the user tapped Stop, or a reply took over) still ends
+     * quietly through onDone alone, as before.
+     */
+    fun playPreview(
+        context: Context,
+        text: String,
+        voice: VoiceModels.KokoroVoice?,
+        onDone: () -> Unit,
+        onError: (String) -> Unit = {},
+    ): Boolean {
         if (text.isBlank()) {
             main.post(onDone)
             return true
@@ -335,10 +424,16 @@ object VoiceEngine {
         playExecutor.execute {
             val audio = synthesizePreview(app, voice, text)
             if (myGeneration != generation.get() || audio == null) {
+                if (myGeneration == generation.get()) {
+                    main.post { onError(lastFailure ?: "unknown voice failure") }
+                }
                 main.post(onDone)
                 return@execute
             }
-            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = true)
+            playAudio(
+                audio, myGeneration, onDone, notifyOnInterrupt = true,
+                onSilent = { onError(lastFailure ?: "playback failed") },
+            )
         }
         return true
     }
@@ -358,13 +453,15 @@ object VoiceEngine {
                 if (voice != null) {
                     if (!validKokoroVoice(voice)) {
                         GearslipLog.w("voice: preview voice ${voice.id} sid ${voice.sid} is not valid")
+                        lastFailure = "preview voice ${voice.id} not valid"
                         null
                     } else {
                         val started = System.currentTimeMillis()
                         GearslipLog.i("voice: native generate begin preview ${voice.id}")
-                        val generated = kokoro(app, voice)?.generate(text, voice.sid, 1.0f)
+                        val generated = generateKokoro(app, voice, text)
                         GearslipLog.i("voice: native generate end preview ${voice.id}")
-                        if (generated != null && generated.samples.isNotEmpty() && generated.sampleRate > 0) {
+                        if (generated != null) {
+                            lastFailure = null
                             GearslipLog.i(
                                 "voice: preview ${voice.id} rendered " +
                                     "${generated.samples.size * 1000 / generated.sampleRate} ms " +
@@ -375,9 +472,10 @@ object VoiceEngine {
                     }
                 } else {
                     GearslipLog.i("voice: native generate begin preview piper")
-                    val generated = piper(app)?.generate(text, 0, 1.0f)
+                    val generated = generatePiper(app, text)
                     GearslipLog.i("voice: native generate end preview piper")
-                    if (generated != null && generated.samples.isNotEmpty() && generated.sampleRate > 0) {
+                    if (generated != null) {
+                        lastFailure = null
                         GearslipLog.i(
                             "voice: preview piper rendered " +
                                 "${generated.samples.size * 1000 / generated.sampleRate} ms",
@@ -385,6 +483,9 @@ object VoiceEngine {
                         Synthesized(generated.samples, generated.sampleRate, "piper")
                     } else null
                 }
+            }.onFailure {
+                GearslipLog.w("voice: preview synthesis threw ${it.javaClass.simpleName}: ${it.message}")
+                lastFailure = "preview threw ${it.javaClass.simpleName}"
             }.getOrNull()
         }
         return try {
@@ -413,6 +514,7 @@ object VoiceEngine {
         // and fail through the same path as a failed synthesis.
         if (audio.rate <= 0 || audio.rate > 96_000 || audio.samples.isEmpty()) {
             GearslipLog.w("voice: refusing playback of unusable audio (rate ${audio.rate})")
+            lastFailure = "playback refused unusable audio"
             if (myGeneration == generation.get()) {
                 main.post(onDone)
                 main.post(onSilent)
@@ -445,11 +547,23 @@ object VoiceEngine {
             var offset = 0
             while (offset < shorts.size && myGeneration == generation.get()) {
                 val written = track.write(shorts, offset, shorts.size - offset)
-                if (written <= 0) break
+                // Round 3: a stalled write used to break out of the loop
+                // with failed still false, so a reply ended in silence
+                // with no onSilent and no log line — a fourth silent
+                // branch beside generate-threw, generate-empty, and
+                // load refusal. A stall is a playback failure: log it
+                // with its position and fail through onSilent/onError.
+                if (written <= 0) {
+                    GearslipLog.w("voice: playback write stalled at $offset/${shorts.size} (returned $written)")
+                    lastFailure = "playback write stalled"
+                    failed = true
+                    break
+                }
                 offset += written
             }
         } catch (e: Exception) {
             GearslipLog.w("voice: playback failed: ${e.message}")
+            lastFailure = "playback threw ${e.javaClass.simpleName}"
             failed = true
         } finally {
             track?.let {

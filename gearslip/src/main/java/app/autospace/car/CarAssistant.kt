@@ -154,16 +154,25 @@ object CarAssistant {
             releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)
         }, onSilent = {
-            // 2026-10-25: a render that starts (engines Ready) but
-            // produces nothing used to close the overlay in silence.
-            // Say so, and point at the files: a corrupt set now fails
-            // validation at load instead of crashing in native code,
-            // but a render can still fail, and that must be visible.
-            _state.value = State(
-                Phase.ERROR,
-                reply = "Couldn't speak that reply. Check the voice files in Settings — " +
-                    "delete and re-download Kokoro or Piper if they look incomplete.",
-            )
+            // 2026-10-25 round 3: the old text blamed the voice files
+            // for every silent render — but onSilent fires only after
+            // an engine passed validation (play() returns false when
+            // none is Ready), so for a generate/playback failure the
+            // files are verified good and re-downloading them cannot
+            // help. Name the recorded stage instead; keep the files
+            // pointer only for a load failure, where the files
+            // genuinely are the suspect, and stay neutral when no
+            // stage was recorded rather than blaming the files.
+            val reason = VoiceEngine.lastFailure
+            val message = when {
+                reason == null -> "Couldn't speak that reply — the voice render produced no audio."
+                reason.contains("load") || reason.contains("unavailable") ->
+                    "Couldn't speak that reply. Check the voice files in Settings — " +
+                        "delete and re-download Kokoro or Piper if they look incomplete."
+                else -> "Couldn't speak that reply — voice render failed ($reason). " +
+                    "The voice files passed validation, so re-downloading them won't help."
+            }
+            _state.value = State(Phase.ERROR, reply = message)
         })
         if (started) {
             acquireSpeechFocus(context)

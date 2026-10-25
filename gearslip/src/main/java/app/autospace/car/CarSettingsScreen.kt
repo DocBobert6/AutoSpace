@@ -455,6 +455,9 @@ private fun VoiceSettings() {
     // plays the fixed GPS phrase in that voice through VoiceEngine.
     var previewing by remember { mutableStateOf<String?>(null) }
     val previewingNow = rememberUpdatedState(previewing)
+    // Round 3: a failed preview used to end as pure silence, so the
+    // row shows the recorded failure stage instead of going quiet.
+    var previewError by remember { mutableStateOf<String?>(null) }
     // Leaving this section stops a preview in flight; the guard reads the
     // live value so an assistant reply playing on its own is untouched.
     DisposableEffect(Unit) {
@@ -466,9 +469,15 @@ private fun VoiceSettings() {
             previewing = null
             return
         }
-        val started = VoiceEngine.playPreview(context, VoiceModels.PREVIEW_PHRASE, voice) {
-            if (previewing == key) previewing = null
-        }
+        previewError = null
+        val started = VoiceEngine.playPreview(
+            context, VoiceModels.PREVIEW_PHRASE, voice,
+            onDone = { if (previewing == key) previewing = null },
+            onError = { reason ->
+                previewError = reason
+                if (previewing == key) previewing = null
+            },
+        )
         previewing = if (started) key else null
     }
 
@@ -503,6 +512,13 @@ private fun VoiceSettings() {
                         is State.Downloading -> VoiceModels.delete(context, Engine.PIPER)
                         else -> VoiceModels.download(context, Engine.PIPER)
                     }
+                }
+                previewError?.let { reason ->
+                    Text(
+                        "Preview failed: $reason.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
                 if (kokoroState is State.Missing && piperState is State.Missing) {
                     Text(

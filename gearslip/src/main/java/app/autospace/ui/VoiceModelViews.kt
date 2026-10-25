@@ -113,6 +113,9 @@ internal fun SpokenVoiceSection() {
     // never writes the selection, only plays the fixed GPS phrase.
     var previewing by remember { mutableStateOf<String?>(null) }
     val previewingNow = rememberUpdatedState(previewing)
+    // Round 3: a failed preview used to end as pure silence, so the
+    // row shows the recorded failure stage instead of going quiet.
+    var previewError by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         onDispose { if (previewingNow.value != null) VoiceEngine.stop() }
     }
@@ -122,9 +125,15 @@ internal fun SpokenVoiceSection() {
             previewing = null
             return
         }
-        val started = VoiceEngine.playPreview(context, VoiceModels.PREVIEW_PHRASE, voice) {
-            if (previewing == key) previewing = null
-        }
+        previewError = null
+        val started = VoiceEngine.playPreview(
+            context, VoiceModels.PREVIEW_PHRASE, voice,
+            onDone = { if (previewing == key) previewing = null },
+            onError = { reason ->
+                previewError = reason
+                if (previewing == key) previewing = null
+            },
+        )
         previewing = if (started) key else null
     }
     SettingsSection(title = "Voice: spoken voice") {
@@ -145,6 +154,14 @@ internal fun SpokenVoiceSection() {
             previewing = previewing,
             onPreview = { togglePreview("piper", null) },
         )
+        previewError?.let { reason ->
+            Text(
+                "Preview failed: $reason.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
         if (kokoroState is VoiceModels.State.Missing && piperState is VoiceModels.State.Missing) {
             Text(
                 "No voice downloaded yet: assistant replies and spoken directions will stay silent " +
