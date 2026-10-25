@@ -333,9 +333,13 @@ fun CarLauncher() {
     val pinned = remember(pinnedIds, all) { pinnedIds.mapNotNull { findEntry(it) } }
 
     Column(Modifier.fillMaxSize()) {
+        // Closed search pill: height 56dp with horizontal margins only. GsButton
+        // enforces a 48dp minimum height plus 20dp of vertical content padding,
+        // so an extra 12dp of vertical padding on top of a fixed 56dp height
+        // squeezed the content slot below what its text needs and clipped it.
         GsButton(
             onClick = { searching = true },
-            modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 20.dp, vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(56.dp),
             tone = GsTone.Neutral,
         ) {
             Icon(Icons.Filled.Search, contentDescription = null)

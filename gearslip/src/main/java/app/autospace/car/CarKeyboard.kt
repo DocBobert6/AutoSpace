@@ -4,6 +4,7 @@ import app.autospace.car.theme.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -53,9 +54,15 @@ object CarKeyboardVisibility {
  * the same reasons, so this does too - large keys, no long-press, no prediction.
  *
  * It is a pure function of [text]: every key reports the new string and holds no state beyond
- * which layer is showing. Laid out like a PC's QWERTY keyboard rather than a phone's: shift and
- * backspace flank the letter block (top-right and bottom-left of it, same as a physical board),
- * not the space bar, so a fumbled reach for space never lands on delete instead.
+ * which layer is showing. Laid out like Gboard (a phone keyboard) rather than a PC's: the
+ * second letter row is staggered half a key in, shift and backspace sit at the ends of the
+ * bottom letter row, and the bottom row is the symbols toggle, comma, a wide space bar,
+ * period, and submit — the shape a driver already knows from their phone. Shift shows the
+ * Gboard arrow (⇧) and fills with the primary colour while active; letters render uppercase
+ * while shifted. Backspace stays a row above the space bar, so a fumbled reach for space
+ * never lands on delete instead. Keys stay large (44dp floor), with no long-press, no
+ * prediction, and no suggestion strip: the Gboard shape is kept, the phone's small targets
+ * and smart features are not.
  *
  * [onDismiss] is null wherever there's no keyboard-shown state independent of the screen itself
  * (a search template, sign-in) - there, the header's own back action is the only way out and no
@@ -106,6 +113,10 @@ fun CarKeyboard(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        // Gboard stagger: the 9-key second letter row sits half a key
+                        // in from each edge; symbol rows (10 keys) run full width.
+                        val staggered = !symbols && row.size == 9
+                        if (staggered) Spacer(Modifier.weight(0.5f))
                         row.forEach { key ->
                             val label = if (shifted && !symbols) key.uppercase() else key
                             Key(label, Modifier.weight(1f)) {
@@ -113,17 +124,19 @@ fun CarKeyboard(
                                 shifted = false
                             }
                         }
+                        if (staggered) Spacer(Modifier.weight(0.5f))
                     }
                 }
 
-                // The bottom letter row: shift and backspace bookend it, exactly where a physical
-                // keyboard puts them relative to the letter block, not down beside the space bar.
+                // The bottom letter row: shift and backspace bookend it, exactly
+                // where Gboard puts them — shift bottom-left, backspace
+                // bottom-right of the letter block, not down beside the space bar.
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (!symbols) {
-                        Key(if (shifted) "SHIFT" else "shift", Modifier.weight(1.6f)) { shifted = !shifted }
+                        Key("⇧", Modifier.weight(1.6f), active = shifted) { shifted = !shifted }
                     }
                     rows.last().forEach { key ->
                         val label = if (shifted && !symbols) key.uppercase() else key
@@ -137,15 +150,25 @@ fun CarKeyboard(
                     }
                 }
 
-                // Control row: no backspace here - it stays with the letters above, not next to the
-                // key most likely to be hit right after it by mistake. Search/enter takes the
-                // bottom-right corner, where a thumb expects it; dismiss (when offered) sits left of it.
+                // Control row: Gboard's bottom row — symbols toggle, comma,
+                // wide space, period, then dismiss (when offered) and submit
+                // in the bottom-right corner, where a thumb expects it. Comma
+                // and period are letters-mode only (the symbols layer already
+                // carries them) and, like space, do not consume the shift.
+                // No backspace here: it stays with the letters above, not next
+                // to the key most likely to be hit right after it by mistake.
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Key(if (symbols) "abc" else "?123", Modifier.weight(1.4f)) { symbols = !symbols }
+                    if (!symbols) {
+                        Key(",", Modifier.weight(1f)) { onTextChange("$text,") }
+                    }
                     Key("space", Modifier.weight(if (onDismiss != null) 3.2f else 4f)) { onTextChange("$text ") }
+                    if (!symbols) {
+                        Key(".", Modifier.weight(1f)) { onTextChange("$text.") }
+                    }
                     if (onDismiss != null) {
                         DismissKey(onDismiss, Modifier.weight(1.4f))
                     }
@@ -157,11 +180,15 @@ fun CarKeyboard(
 }
 
 @Composable
-private fun Key(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun Key(label: String, modifier: Modifier = Modifier, active: Boolean = false, onClick: () -> Unit) {
     GsIconBox(
         onClick = onClick,
         modifier = modifier.height(LocalKeyHeight.current),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
+        colors = if (active) {
+            GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
+        } else {
+            GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
+        },
         shape = RoundedCornerShape(8.dp),
     ) {
         Row(
