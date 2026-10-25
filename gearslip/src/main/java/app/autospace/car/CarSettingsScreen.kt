@@ -465,7 +465,8 @@ private fun VoiceSettings() {
                     "AutoSpace speaks with Kokoro-82M, entirely on this phone — no system voice, " +
                         "no other engines. Kokoro speaks first, in the voice picked below; Piper " +
                         "(Amy) speaks only when Kokoro isn't downloaded or fails. Kokoro is " +
-                        "Apache-2.0 (hexgrad); Piper's voice is MIT (rhasspy/piper-voices). " +
+                        "Apache-2.0 (hexgrad); Piper's voice is MIT (rhasspy/piper-voices); " +
+                    "espeak-ng phonemization is GPL-3.0. " +
                         "Downloads are one-time and live in the app's own storage, not the APK.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

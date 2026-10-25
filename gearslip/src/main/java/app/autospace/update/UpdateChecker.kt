@@ -30,7 +30,7 @@ import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Looks for a newer Gearslip on GitHub and installs it through Android's own installer.
+ * Looks for a newer AutoSpace on GitHub and installs it through Android's own installer.
  *
  * Which releases count depends on the driver's channel. Stable takes only GitHub's "latest"
  * release, which leaves out pre-releases and drafts. Beta adds pre-releases tagged "beta", and
@@ -81,13 +81,13 @@ object UpdateChecker {
     /** Newest first, pre-releases included. Ten covers any run of betas between two releases. */
     private const val ALL = "https://api.github.com/repos/DocBobert6/AutoSpace/releases?per_page=10"
 
-    /** Set when the driver tapped Install but first had to allow installs from Gearslip. */
+    /** Set when the driver tapped Install but first had to allow installs from AutoSpace. */
     @Volatile private var installWhenAllowed = false
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
-     * Whether Gearslip checks on its own, and tells the driver what it finds on the phone and the
+     * Whether AutoSpace checks on its own, and tells the driver what it finds on the phone and the
      * car screen. On by default: the check sends nothing about the phone.
      */
     fun autoCheckEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_AUTO, true)
@@ -122,7 +122,7 @@ object UpdateChecker {
     private fun dueForCheck(context: Context) =
         !BuildConfig.DEBUG && autoCheckEnabled(context) && System.currentTimeMillis() - prefs(context).getLong(KEY_CHECKED_AT, 0) >= DAY_MS
 
-    /** Gearslip came to the front: check if a day has passed, and finish an install that waited on permission. */
+    /** AutoSpace came to the front: check if a day has passed, and finish an install that waited on permission. */
     fun onAppOpened(context: Context) {
         val current = flow.value
         if (installWhenAllowed && current is State.Ready && context.packageManager.canRequestPackageInstalls()) {
@@ -198,7 +198,7 @@ object UpdateChecker {
         else -> savedRelease(app)
     }
 
-    /** Posts "Gearslip X is out"; tapping it opens the app, where the Home card has the button. */
+    /** Posts "AutoSpace X is out"; tapping it opens the app, where the Home card has the button. */
     private fun notify(context: Context, release: Release): Boolean {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -273,12 +273,12 @@ object UpdateChecker {
 
     /**
      * Hands the downloaded APK to Android's installer. The first time, Android wants the driver to
-     * allow installs from Gearslip; that opens its settings page, and the install carries on when
+     * allow installs from AutoSpace; that opens its settings page, and the install carries on when
      * they come back.
      */
     fun install(context: Context) {
         val ready = flow.value as? State.Ready ?: return
-        // Installing closes Gearslip, which would drop the car screen mid-drive.
+        // Installing closes AutoSpace, which would drop the car screen mid-drive.
         if (carConnected) return
         val pm = context.packageManager
         if (!pm.canRequestPackageInstalls()) {

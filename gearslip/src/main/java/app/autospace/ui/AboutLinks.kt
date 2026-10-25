@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 
-/** Where Gearslip lives outside the app: support, the chat room, and the code. */
+/** Where AutoSpace lives outside the app: support, the chat room, and the code. */
 internal object GearslipLinks {
     const val BUY_ME_A_COFFEE = "https://buymeacoffee.com/seb3thehacker"
     const val LIBERAPAY = "https://liberapay.com/Seb3thehacker"
@@ -135,7 +135,9 @@ internal fun AboutLinkRows() {
     SettingsRow(
         "Voice credits",
         subtitle = "Speech recognition by sherpa-onnx (Apache 2.0), with Kroko ASR by Banafo " +
-            "(CC BY-SA 4.0), and Parakeet and Canary by NVIDIA (CC BY 4.0)",
+            "(CC BY-SA 4.0), and Parakeet and Canary by NVIDIA (CC BY 4.0). " +
+            "Spoken voice by Kokoro-82M (Hexgrad, Apache 2.0), with Piper voices " +
+            "(MIT) as fallback, and espeak-ng phonemization (GPL-3.0)",
         icon = Icons.Filled.Favorite,
     )
 }

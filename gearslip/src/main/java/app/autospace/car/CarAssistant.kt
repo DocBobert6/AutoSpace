@@ -34,6 +34,30 @@ import kotlinx.coroutines.flow.StateFlow
  */
 object CarAssistant {
 
+    /**
+     * Whether a reply()/say() acquire of [VoiceFocus] is still owed a
+     * release. VoiceEngine.play deliberately does NOT fire onDone when
+     * speech is interrupted (a stale onDone would clobber a newer
+     * reply's SPEAKING state), so an interrupted reply/say used to leak
+     * exactly one focus hold and the music never resumed. The helpers
+     * below close that gap: every new acquire first releases a stranded
+     * hold, and every path that stops speech (cancel, listen, "stop
+     * speaking") releases one too.
+     */
+    private var speechFocusHeld = false
+
+    private fun acquireSpeechFocus(context: Context) {
+        if (speechFocusHeld) VoiceFocus.release()
+        VoiceFocus.acquire(context)
+        speechFocusHeld = true
+    }
+
+    private fun releaseSpeechFocus() {
+        if (!speechFocusHeld) return
+        speechFocusHeld = false
+        VoiceFocus.release()
+    }
+
     enum class Phase { IDLE, LISTENING, THINKING, SPEAKING, ERROR }
 
     data class State(
@@ -89,6 +113,7 @@ object CarAssistant {
             return
         }
         VoiceEngine.stop()
+        releaseSpeechFocus()
         _state.value = State(Phase.LISTENING)
         listenOnce(
             onListening = { _state.value = _state.value.copy(ready = true) },
@@ -106,6 +131,7 @@ object CarAssistant {
     fun cancel() {
         releaseRecognizer()
         VoiceEngine.stop()
+        releaseSpeechFocus()
         _pendingCommand.value = null
         _state.value = State(Phase.IDLE)
     }
@@ -125,11 +151,11 @@ object CarAssistant {
         }
         _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text)
         val started = VoiceEngine.play(context, text) {
-            VoiceFocus.release()
+            releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)
         }
         if (started) {
-            VoiceFocus.acquire(context)
+            acquireSpeechFocus(context)
         } else {
             _state.value = State(
                 Phase.ERROR,
@@ -149,17 +175,20 @@ object CarAssistant {
             return
         }
         val started = VoiceEngine.play(context, text) {
-            VoiceFocus.release()
+            releaseSpeechFocus()
             mainHandler.post(onDone)
         }
         if (started) {
-            VoiceFocus.acquire(context)
+            acquireSpeechFocus(context)
         } else {
             mainHandler.post(onDone)
         }
     }
 
-    fun stopSpeaking() { VoiceEngine.stop() }
+    fun stopSpeaking() {
+        VoiceEngine.stop()
+        releaseSpeechFocus()
+    }
 
     /**
      * Listens once, the same way the assistant does, and hands back what was said without acting

@@ -48,6 +48,22 @@ android {
     }
 
     signingConfigs {
+        // A committed DEBUG key (debug.keystore, standard debug credentials).
+        // Debug keys are not production secrets; this one exists so CI
+        // debug builds all carry the same signature and install over each
+        // other. Without it Gradle generates a fresh debug keystore on
+        // every ephemeral runner and Android refuses each new build as an
+        // update, forcing an uninstall. The release key is never committed
+        // and is untouched by this: it still comes only from
+        // keystore.properties, and debug uses it when it is present (both
+        // builds declare the car template permission, and Android refuses
+        // a second app declaring it under a different key).
+        create("debug") {
+            storeFile = project.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         // Declared only when the properties file is present, so a clone without the key still
         // builds debug; assembleRelease then falls back to unsigned rather than failing here.
         if (keystoreProperties.getProperty("storeFile") != null) {
@@ -72,7 +88,7 @@ android {
         // permission, and Android refuses a second app declaring it under a different key.
         debug {
             applicationIdSuffix = ".dev"
-            signingConfigs.findByName("release")?.let { signingConfig = it }
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
             manifestPlaceholders["appLabel"] = "AutoSpace Debug"
             // -Pr8 shrinks a debug build like a release one, to test R8 in the debug install.
             if (project.hasProperty("r8")) {

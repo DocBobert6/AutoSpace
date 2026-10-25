@@ -36,6 +36,20 @@ import java.util.concurrent.atomic.AtomicInteger
  * voice did (USB pipe or Bluetooth) and never the phone speaker alone.
  * Nothing spoken is ever logged: only the engine, the audio length, and
  * the synthesis time.
+ *
+ * Threading invariant (preview-crash fix, 2026-10-25): EVERY native
+ * sherpa-onnx call — creating an OfflineTts, generating audio, and
+ * releasing one — runs on [synthExecutor], and only there. Previews used
+ * to generate on the playback thread while assistant speech generated on
+ * the synth thread, so two threads could generate on the same cached
+ * instance at once, and [unload] could release an instance mid-generate
+ * (tap Preview, then tap a voice radio to select it, or delete an
+ * engine, while the preview was still rendering). A native crash there
+ * kills the whole process — no Java exception, no dialog, the app just
+ * closes — which is what the phone Settings preview did. Serializing
+ * through one thread removes both races at the root; [unload] enqueues
+ * its release on the same thread so it can only run between generates,
+ * never during one.
  */
 object VoiceEngine {
 
@@ -58,15 +72,25 @@ object VoiceEngine {
     private val generation = AtomicInteger(0)
     @Volatile private var currentTrack: AudioTrack? = null
 
-    /** Drops loaded engines (a voice was deleted or changed) and stops playback. */
+    /**
+     * Drops loaded engines (a voice was deleted or changed) and stops playback.
+     * Playback stops at once; the release itself is enqueued on the synth
+     * thread, behind any generate already running or queued, so an engine
+     * is never released mid-generate. A later synthesis recreates its
+     * engine on demand (the synth queue is FIFO, so it always runs after
+     * this release), and a generate queued before this release still
+     * finishes on the old instance first.
+     */
     fun unload() {
         stop()
-        synchronized(lock) {
-            runCatching { kokoro?.release() }
-            runCatching { piper?.release() }
-            kokoro = null
-            kokoroLang = null
-            piper = null
+        synthExecutor.execute {
+            synchronized(lock) {
+                runCatching { kokoro?.release() }
+                runCatching { piper?.release() }
+                kokoro = null
+                kokoroLang = null
+                piper = null
+            }
         }
     }
 
@@ -245,7 +269,28 @@ object VoiceEngine {
         if (voice == null && !VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) return false
         val myGeneration = generation.incrementAndGet()
         playExecutor.execute {
-            val audio = runCatching {
+            val audio = synthesizePreview(app, voice, text)
+            if (myGeneration != generation.get() || audio == null) {
+                main.post(onDone)
+                return@execute
+            }
+            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = true)
+        }
+        return true
+    }
+
+    /**
+     * Renders a preview in exactly one voice, on the synth thread like
+     * every other generate, and waited on for at most [SYNTH_TIMEOUT_S]
+     * seconds — a preview used to generate unbounded on the playback
+     * thread, so a stuck native render wedged every later preview and
+     * every assistant reply queued behind it on that thread. Null when
+     * the engine can't render (the caller posts [onDone] either way, so
+     * the row never sticks on "Stop").
+     */
+    private fun synthesizePreview(app: Context, voice: VoiceModels.KokoroVoice?, text: String): Synthesized? {
+        val future: Future<Synthesized?> = synthExecutor.submit<Synthesized?> {
+            runCatching {
                 if (voice != null) {
                     val started = System.currentTimeMillis()
                     val generated = kokoro(app, voice)?.generate(text, voice.sid, 1.0f)
@@ -268,13 +313,16 @@ object VoiceEngine {
                     } else null
                 }
             }.getOrNull()
-            if (myGeneration != generation.get() || audio == null) {
-                main.post(onDone)
-                return@execute
-            }
-            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = true)
         }
-        return true
+        return try {
+            future.get(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            GearslipLog.w("voice: preview synthesis timed out after ${SYNTH_TIMEOUT_S}s")
+            null
+        } catch (e: Exception) {
+            GearslipLog.w("voice: preview synthesis failed: ${e.message}")
+            null
+        }
     }
 
     /** The shared AudioTrack playback loop for [play] and [playPreview]. */
