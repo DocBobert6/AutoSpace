@@ -53,9 +53,21 @@ object GsKit {
     val PillShape = RoundedCornerShape(50)
     val DialogShape = RoundedCornerShape(28.dp)
 
-    /** The floating-bar gradient: near-solid, lighter at the top. */
+    /**
+     * The floating-bar gradient: near-solid, lighter at the top.
+     * Phase 10 OLED: the surface IS black there, so a surface-colour
+     * gradient would be invisible on a black background — OLED frost
+     * is instead a white-alpha gradient over black (0.10 -> 0.04),
+     * lighter at the top, plus the 0.5dp hairline. Same frost language,
+     * visible on black; non-OLED is unchanged.
+     */
     @Composable
-    fun brush(): Brush = Brush.verticalGradient(
+    fun brush(): Brush = if (LocalOledDark.current) Brush.verticalGradient(
+        listOf(
+            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f),
+            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.04f)
+        )
+    ) else Brush.verticalGradient(
         listOf(
             MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
             MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
@@ -92,12 +104,13 @@ fun Modifier.frostBar(shape: Shape = GsKit.PillShape, elevation: Dp = 6.dp): Mod
         .border(0.5.dp, GsKit.hairline(), shape)
 
 /**
- * True when the current scheme is OLED black (provided by CarUi): every
- * surface token is pure #000000, so a card on its backdrop is invisible
- * unless it draws an edge. Kit cards and sheets then get a 0.5dp hairline
- * outline (outline @0.45, the kit hairline) instead of a grey fill — that
- * outline, plus text, is what separates panels in OLED mode. Off, cards
- * are exactly as before (no border at all).
+ * True when the current scheme is OLED black (provided by CarUi):
+ * Phase 10, every surface token is pure #000000, so a card on its
+ * backdrop is invisible unless it draws an edge. Kit cards and sheets
+ * then get a 0.5dp hairline outline (outline @0.45, the kit hairline)
+ * instead of a grey fill — that outline, plus the white-alpha frost
+ * gradient (see brush()), plus text, is what separates panels in
+ * OLED mode. Off, cards are exactly as before (no border at all).
  */
 val LocalOledDark = compositionLocalOf { false }
 

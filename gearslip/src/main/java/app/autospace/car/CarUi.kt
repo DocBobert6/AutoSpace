@@ -990,12 +990,36 @@ private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = MaterialT
  * is left untouched: its surfaces are already dark grey, not black,
  * which is what Regular means.
  */
+/**
+ * Phase 10, perfecting OLED (supersedes Phase 9's grey OLED): OLED is
+ * black-black — background AND every surface token #000000, plain and
+ * dynamic alike — so it reads visibly different from Regular dark's
+ * grey family instead of differing by background only. Separation
+ * comes from frost (GsKit.brush() is a white-alpha gradient over black
+ * in OLED mode, since a surface-colour gradient is invisible on black)
+ * plus the 0.5dp hairline (LocalOledDark borders on kit cards/sheets),
+ * NOT from grey fills. Dynamic accent and content colours are
+ * retained exactly (primary/secondary/tertiary and their containers),
+ * and text is lifted (onSurfaceVariant #C7C7CC) for contrast on black.
+ * Video controls keep frost + theme colour in OLED (playerCapsule).
+ */
 private fun oledDynamicDark(context: android.content.Context): androidx.compose.material3.ColorScheme {
     val black = androidx.compose.ui.graphics.Color.Black
     return dynamicDarkColorScheme(context).copy(
         background = black,
+        surface = black,
+        surfaceVariant = black,
+        surfaceContainerLowest = black,
+        surfaceContainerLow = black,
+        surfaceContainer = black,
+        surfaceContainerHigh = black,
+        surfaceContainerHighest = black,
+        surfaceBright = black,
         surfaceDim = black,
         surfaceTint = black,
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFC7C7CC),
+        outline = androidx.compose.ui.graphics.Color(0xFF38383A),
+        outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
     )
 }
 
@@ -1006,14 +1030,14 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
  * neutral system backgrounds, label black/white, secondary label ~60%, accent
  * only on primary/selected controls (system blue). Deliberately NOT the
  * wallpaper-dynamic scheme: dynamic colour is what turned Frost tiles peach.
- * [oled] picks the dark surface family (Phase 9, correcting Phase 8):
- * OLED = pure-black BACKGROUND with surfaces DARK but not black
- * (#1C1C1E/#2C2C2E family, onSurfaceVariant lifted to #C7C7CC for
- * contrast on black), so the frost gradient and hairline still
- * separate surfaces from the background instead of everything
- * blending into one black field (Phase 8) or reading as grey blocks
- * (Phase 7, which never blackened the background properly); Regular
- * = dark-grey backgrounds, no pure black anywhere.
+ * [oled] picks the dark surface family (Phase 10, perfecting Phase 9):
+ * OLED = background AND all surfaces pure #000000, plain and dynamic
+ * alike, so OLED reads black against Regular's grey family (Phase 9's
+ * grey #1C1C1E/#2C2C2E OLED surfaces read no different from Regular
+ * under a dynamic theme). Separation is by frost (a white-alpha
+ * gradient over black, see GsKit.brush()) plus the 0.5dp hairline,
+ * with onSurfaceVariant lifted to #C7C7CC for contrast on black;
+ * Regular = dark-grey backgrounds, no pure black anywhere.
  */
 private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.compose.material3.ColorScheme {
     val white = androidx.compose.ui.graphics.Color.White
@@ -1051,16 +1075,16 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
         onSecondary = black,
         background = black,
         onBackground = white,
-        surface = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surface = black,
         onSurface = white,
-        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
+        surfaceVariant = black,
         onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFC7C7CC),
-        surfaceContainerLowest = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
-        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF1C1C1E),
-        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
-        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
-        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF3A3A3C),
-        surfaceBright = androidx.compose.ui.graphics.Color(0xFF2C2C2E),
+        surfaceContainerLowest = black,
+        surfaceContainerLow = black,
+        surfaceContainer = black,
+        surfaceContainerHigh = black,
+        surfaceContainerHighest = black,
+        surfaceBright = black,
         surfaceDim = black,
         outline = androidx.compose.ui.graphics.Color(0xFF38383A),
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),

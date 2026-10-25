@@ -21,21 +21,30 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.car.app.CarToast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -57,7 +66,6 @@ import app.autospace.ProjectedContent
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsPanelCard
-import app.autospace.car.theme.GsProgressBar
 import app.autospace.car.theme.frostBar
 import kotlinx.coroutines.delay
 import org.json.JSONArray
@@ -81,6 +89,31 @@ import org.json.JSONObject
  * (their own prefers-color-scheme dark modes still work naturally). The only page injection
  * kept is the focus ring (an accessibility outline, not a theme).
  */
+/**
+ * One browser tab (Phase 10): its own WebView, its own history (the
+ * WebView holds it), its own current URL / Back-Forward state /
+ * progress / error / found media / title. The WebView lives in [view]
+ * for as long as WebApp is composed — switching tabs detaches it from
+ * its AndroidView WITHOUT destroying it (AndroidView's onRelease is a
+ * no-op here on purpose), and switching back re-attaches the same
+ * instance, so a tab's page, scroll and history survive a switch.
+ * Leaving the browser entirely destroys every tab's WebView (the
+ * WebApp DisposableEffect), which matches the pre-tab behaviour where
+ * leaving destroyed the single WebView. [rawHtml] is only for a launch
+ * payload that is not a URL (the old loadDataWithBaseURL path); new
+ * tabs always start at no-AI DuckDuckGo.
+ */
+private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? = null) {
+    var title by mutableStateOf<String?>(null)
+    var currentUrl by mutableStateOf(initialUrl)
+    var canGoBack by mutableStateOf(false)
+    var canGoForward by mutableStateOf(false)
+    var progress by mutableStateOf(0)
+    var loadError by mutableStateOf<String?>(null)
+    val foundMedia = mutableStateListOf<FoundMedia>()
+    var view: WebView? = null
+}
+
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
@@ -88,26 +121,80 @@ fun WebApp(content: String) {
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
-    // Media found on the current page (Phase 3.2), deduplicated by URL, newest first.
-    val foundMedia = remember { mutableStateListOf<FoundMedia>() }
     var sheetOpen by remember { mutableStateOf(false) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    fun addMedia(url: String, title: String?) {
+    // Phase 10 tabs: the tab list + active id live in composition (see
+    // BrowserTab). The first tab is the launch payload; every later tab
+    // starts at no-AI DuckDuckGo. Tabs are never zero: closing the last
+    // tab resets it to a fresh start page in place (see closeTab).
+    val tabs = remember {
+        mutableStateListOf(
+            BrowserTab(
+                0,
+                if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL,
+                rawHtml = if (content.startsWith("http")) null else content,
+            )
+        )
+    }
+    var nextTabId by remember { mutableStateOf(1) }
+    var activeTabId by remember { mutableStateOf(0) }
+    val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
+    var tabsOpen by remember { mutableStateOf(false) }
+    fun addMedia(tab: BrowserTab, url: String, title: String?) {
         if (!VideoUrl.isPlayableUrl(url)) return
-        if (foundMedia.none { it.url == url }) {
-            foundMedia.add(0, FoundMedia(url, title?.takeIf { it.isNotBlank() }))
+        if (tab.foundMedia.none { it.url == url }) {
+            tab.foundMedia.add(0, FoundMedia(url, title?.takeIf { it.isNotBlank() }))
         }
     }
-    // Phase 3.4 state: navigation, progress, errors, address editing, lists,
-    // fullscreen video, and JS dialogs — all in-composition, never real windows.
-    var currentUrl by remember { mutableStateOf(content) }
-    var canGoBack by remember { mutableStateOf(false) }
-    var canGoForward by remember { mutableStateOf(false) }
-    var progress by remember { mutableStateOf(0) }
-    var loadError by remember { mutableStateOf<String?>(null) }
+    // Phase 3.4 state: address editing, lists, fullscreen video, and JS
+    // dialogs — all in-composition, never real windows. Per-tab state
+    // (URL, history, progress, error, media) lives on BrowserTab now.
     var addressText by remember { mutableStateOf(if (content.startsWith("http")) content else "") }
     var addressEditing by remember { mutableStateOf(false) }
+    // Phase 10 select-all: true from the moment the pill is tapped until
+    // the first keypress (see the address keyboard below). Address-only:
+    // page-field editing (fieldText) has no selection state and is
+    // untouched by this.
+    var addressSelected by remember { mutableStateOf(false) }
     var listsOpen by remember { mutableStateOf(false) }
+    fun newTab() {
+        val tab = BrowserTab(nextTabId++, ProjectedContent.DEFAULT_URL)
+        tabs.add(tab)
+        activeTabId = tab.id
+        addressEditing = false
+        addressSelected = false
+        tabsOpen = false
+    }
+    fun switchTab(tab: BrowserTab) {
+        activeTabId = tab.id
+        addressEditing = false
+        addressSelected = false
+        tabsOpen = false
+    }
+    fun closeTab(tab: BrowserTab) {
+        if (tabs.size == 1) {
+            // Never zero tabs: reset the last tab to a fresh start page
+            // in its existing WebView instead of removing it.
+            tab.view?.loadUrl(ProjectedContent.DEFAULT_URL)
+            tab.foundMedia.clear()
+            tab.loadError = null
+            tab.title = null
+            tabsOpen = false
+            return
+        }
+        val idx = tabs.indexOf(tab)
+        tabs.remove(tab)
+        if (tab.id == activeTabId) {
+            activeTabId = tabs[(idx - 1).coerceAtLeast(0)].id
+        }
+        // Destroy after composition has detached it (posted, not now:
+        // this tab's AndroidView may still be composed this frame).
+        val v = tab.view
+        tab.view = null
+        mainHandler.post { runCatching { v?.destroy() } }
+    }
+    // Keep the Back/Home/Reload pointer on the active tab's WebView.
+    LaunchedEffect(activeTabId) { web = activeTab.view }
     var bookmarks by remember { mutableStateOf<List<String>>(emptyList()) }
     var historyList by remember { mutableStateOf<List<String>>(emptyList()) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
@@ -136,24 +223,33 @@ fun WebApp(content: String) {
         capturedPopupViews.forEach { runCatching { it.destroy() } }
         capturedPopupViews.clear()
     }
+    // Phase 10 popup behaviour, unchanged except for tabs: an allowed
+    // popup loads in the tab that opened it (and switches to it), and
+    // opening a captured popup loads it in its originating tab too and
+    // switches to it. Popups never open a new tab on their own.
+    var popupTabId by remember { mutableStateOf<Int?>(null) }
     fun openFirstPopup() {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
-        web?.loadUrl(url)
+        val tab = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
+        tab.view?.loadUrl(url)
+        if (tab.id != activeTabId) activeTabId = tab.id
         if (pendingPopups.isEmpty()) {
             showPopupNotice = false
             capturedPopupViews.forEach { runCatching { it.destroy() } }
             capturedPopupViews.clear()
         }
     }
-    fun onPopupUrl(host: String, url: String, transport: WebView, allowed: Boolean) {
+    fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {
         if (allowed) {
             runCatching { transport.destroy() }
-            web?.loadUrl(url)
+            tab.view?.loadUrl(url)
+            if (tab.id != activeTabId) activeTabId = tab.id
         } else if (pendingPopups.size < 5) {
             capturedPopupViews.add(transport)
             pendingPopups.add(url)
             popupHost = host
+            popupTabId = tab.id
             showPopupNotice = true
         } else {
             // Over the 5-popup cap: drop the extra silently rather than
@@ -165,7 +261,7 @@ fun WebApp(content: String) {
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
         popupStrict = BrowserStore.popupStrict(context)
-        popupSettingForHost = BrowserStore.popupSetting(context, hostOf(currentUrl))
+        popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
     }
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
@@ -183,15 +279,21 @@ fun WebApp(content: String) {
         }
     }
     DisposableEffect(Unit) {
-        onDispose { capturedPopupViews.forEach { runCatching { it.destroy() } } }
+        onDispose {
+            capturedPopupViews.forEach { runCatching { it.destroy() } }
+            // Leaving the browser destroys every tab's WebView (pre-tab
+            // behaviour for the single WebView); switching tabs does not.
+            tabs.forEach { runCatching { it.view?.destroy() } }
+        }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen) {
         navigator.backInterceptor = {
             when {
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
                 showPopupNotice -> { clearPendingPopups(); true }
+                tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
                 web != null && web!!.canGoBack() -> { web!!.goBack(); true }
@@ -205,157 +307,269 @@ fun WebApp(content: String) {
         Column(Modifier.fillMaxSize()) {
             // Back steps through the page's history first (the interceptor above), then leaves.
             ScreenHeader("Browser", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            // Address/search bar + navigation (Phase 3.4, item 1): every control is a
-            // Gs control on Material You colours, like the rest of AutoSpace chrome.
-            // Tapping the address pill opens the car keyboard; submitting navigates
-            // (a URL loads, anything else searches no-AI DuckDuckGo).
-            // Phase 6, Notscape capsule language (car-adapted): circular
-            // frosted nav buttons grouped around the URL pill, inset 12dp
-            // from the edges. Unlike Notscape's phone bar, nothing collapses
-            // here — Back/Forward/Reload/Home stay reachable while driving.
+            // Address/search bar + navigation (Phase 3.4, item 1).
+            // Tapping the address pill opens the car keyboard; submitting
+            // navigates (a URL loads, anything else searches no-AI
+            // DuckDuckGo). Phase 6, Notscape capsule language
+            // (car-adapted): circular frosted nav buttons grouped around
+            // the URL pill, inset 12dp from the edges. Unlike Notscape's
+            // phone bar, nothing collapses here — Back/Forward/Reload/
+            // Home stay reachable while driving.
+            // Phase 10, slimmer + Notscape-like: 44dp circular buttons
+            // (Notscape's 44dp), a slimmer 44dp frost URL pill, tighter
+            // padding (12dp sides, 2dp vertical, 6dp gaps), load
+            // progress filling the pill itself (Notscape's pill fill)
+            // instead of a separate bar below, the media finder as a
+            // circular icon in the bar (count badge, hidden when no
+            // media — the old row below the bar is gone), and a tabs
+            // button with a tab-count badge. The pill is a frostBar
+            // (not a GsButton) so its height can sit at 44dp under
+            // GsButton's 48dp minimum; it still follows the theme
+            // through the frost material + hairline.
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = canGoBack, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = canGoForward, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, shape = androidx.compose.foundation.shape.CircleShape)
-                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(content) }, shape = androidx.compose.foundation.shape.CircleShape)
-                GsButton(
-                    // A tap while already editing must NOT re-seed from
-                    // currentUrl — that wiped whatever was typed so far.
-                    onClick = { if (!addressEditing) { addressText = currentUrl; addressEditing = true } },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    // While editing, show what is actually being typed:
-                    // the live addressText with a caret, not currentUrl
-                    // (the old behaviour made every keypress invisible,
-                    // since CarKeyboard itself draws keys, not a field).
-                    // Long text shows its tail, so the newest keystroke
-                    // stays visible instead of hiding behind an ellipsis.
-                    if (addressEditing) {
-                        if (addressText.isEmpty()) {
-                            Text(
-                                "Type an address or search…",
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
-                            val shown = if (addressText.length <= 40) addressText
-                                else "…" + addressText.takeLast(38)
-                            Text(
-                                shown + "▏",
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
-                        }
-                    } else {
-                        Text(currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                }
-                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true }, shape = androidx.compose.foundation.shape.CircleShape)
-            }
-            // Progress bar (Phase 3.4, item 2): only while a page is actually loading.
-            if (progress in 1..99) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-                    GsProgressBar(progress / 100f, Modifier.weight(1f))
-                }
-            }
-            // Finder button (Phase 3.2): shown only when media was actually detected
-            // on the current page. A GsButton, so it follows the app theme like all chrome.
-            if (foundMedia.isNotEmpty()) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.Start,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GsButton(onClick = { sheetOpen = true }) {
-                        Text("Media on this page (${foundMedia.size})")
-                    }
-                }
-            }
-            AndroidView(
-                modifier = Modifier.weight(1f).fillMaxSize(),
-                factory = { context ->
-                    WebView(context).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
-                        webViewClient = BrowserClient(
-                            ring = ring,
-                            onMedia = { url, title -> mainHandler.post { addMedia(url, title) } },
-                            onPageStart = {
-                                mainHandler.post {
-                                    foundMedia.clear()
-                                    loadError = null
-                                }
-                            },
-                            onHistory = { url, back, forward ->
-                                mainHandler.post {
-                                    currentUrl = url
-                                    canGoBack = back
-                                    canGoForward = forward
-                                    BrowserStore.recordHistory(context, url)
-                                }
-                            },
-                            onMainFrameError = { message ->
-                                mainHandler.post { loadError = message }
-                            },
-                        )
-                        webChromeClient = BrowserChrome(
-                            context = context,
-                            onPopupUrl = { host, url, transport, allowed ->
-                                mainHandler.post { onPopupUrl(host, url, transport, allowed) }
-                            },
-                            onProgress = { p -> mainHandler.post { progress = p } },
-                            onShowFullscreen = { view, callback ->
-                                mainHandler.post {
-                                    fullscreenView = view
-                                    fullscreenCallback = callback
-                                }
-                            },
-                            onHideFullscreen = { mainHandler.post { hideFullscreen() } },
-                            onJsDialog = { dialog -> mainHandler.post { jsDialog = dialog } },
-                        )
-                        val downloadOwner = this
-                        setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
-                            // Phase 3.4, item 4: downloads go to the phone Downloads
-                            // folder with a started/failed notice, instead of silently
-                            // doing nothing (the old behaviour).
-                            runCatching {
-                                val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                                val request = DownloadManager.Request(Uri.parse(url))
-                                    .setTitle(filename)
-                                    .setDescription("Downloaded from the car browser")
-                                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-                                context.getSystemService(DownloadManager::class.java)?.enqueue(request)
-                                GearslipLog.i("car browser download started: $filename")
-                                CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
-                            }.onFailure { e ->
-                                GearslipLog.e("car browser download FAILED: $url - ${e.message}")
-                                CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, enabled = activeTab.canGoBack, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, enabled = activeTab.canGoForward, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                GsIconButton(Icons.Filled.Home, "Home", { web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                Box(
+                    Modifier.weight(1f).height(44.dp)
+                        .frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp)
+                        .clickable {
+                            // Tapping the pill selects all: starting an
+                            // edit seeds from the active tab's URL and
+                            // selects it; tapping again mid-edit
+                            // re-selects (a tap while already editing
+                            // must NOT re-seed — that wiped typed text).
+                            if (!addressEditing) {
+                                addressText = activeTab.currentUrl
+                                addressEditing = true
                             }
-                        })
-                        addJavascriptInterface(
-                            FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                            "GearslipField",
+                            addressSelected = true
+                        },
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    // Notscape pill fill: the load progress washes
+                    // across the pill behind the text while loading, as
+                    // a fraction-width primary wash from the start edge.
+                    if (activeTab.progress in 1..99) {
+                        Box(
+                            Modifier.height(44.dp)
+                                .fillMaxWidth(activeTab.progress / 100f)
+                                .background(
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+                                    androidx.compose.foundation.shape.RoundedCornerShape(50),
+                                ),
                         )
-                        if (content.startsWith("http://") || content.startsWith("https://")) {
-                            loadUrl(content)
-                        } else {
-                            loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
-                        }
-                        web = this
                     }
-                },
-                // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
-                update = { it.settings.isAlgorithmicDarkeningAllowed = false },
-                onRelease = { it.destroy() },
-            )
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            // While editing, show what is actually being
+                            // typed: the live addressText, not
+                            // currentUrl (the old behaviour made every
+                            // keypress invisible, since CarKeyboard
+                            // itself draws keys, not a field). Long text
+                            // shows its tail, so the newest keystroke
+                            // stays visible instead of hiding behind an
+                            // ellipsis. While selected, the text sits on
+                            // a primaryContainer highlight, so the
+                            // selection itself is visible in the pill.
+                            if (addressEditing) {
+                                if (addressText.isEmpty()) {
+                                    Text(
+                                        "Type an address or search…",
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                } else {
+                                    val shown = if (addressText.length <= 40) addressText
+                                        else "…" + addressText.takeLast(38)
+                                    val label = if (addressSelected) shown else shown + "▏"
+                                    if (addressSelected) {
+                                        Text(
+                                            label,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.background(
+                                                MaterialTheme.colorScheme.primaryContainer,
+                                                androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                                            ).padding(horizontal = 4.dp, vertical = 2.dp),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        )
+                                    } else {
+                                        Text(
+                                            label,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(activeTab.currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                        }
+                        // One-tap clear while editing: clears the whole
+                        // address (selection or not) and keeps editing,
+                        // so the driver can start over without backspacing.
+                        if (addressEditing && addressText.isNotEmpty()) {
+                            GsIconButton(
+                                Icons.Filled.Close, "Clear address",
+                                { addressText = ""; addressSelected = false },
+                                size = 32.dp, iconSize = 18.dp,
+                                shape = androidx.compose.foundation.shape.CircleShape,
+                            )
+                        }
+                    }
+                }
+                // Media finder (Phase 10, moved into the bar): a circular
+                // icon with a count badge, shown only when the active
+                // tab actually has media — the old GsButton row below
+                // the bar is gone.
+                if (activeTab.foundMedia.isNotEmpty()) {
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        GsIconButton(Icons.Filled.PlayArrow, "Media on this page", { sheetOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                        Box(
+                            Modifier.size(20.dp)
+                                .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                "${activeTab.foundMedia.size}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        }
+                    }
+                }
+                // Tabs (Phase 10): count badge always shown (never zero
+                // tabs); the switcher sheet holds New tab + the list.
+                Box(contentAlignment = Alignment.TopEnd) {
+                    GsIconButton(Icons.Filled.Tab, "Tabs", { tabsOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                    Box(
+                        Modifier.size(20.dp)
+                            .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "${tabs.size}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+                GsIconButton(Icons.Filled.Star, "Saved & history", { refreshLists(); listsOpen = true }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+            }
+            // Phase 10 tabs: only the active tab's WebView is composed,
+            // keyed by tab id so switching disposes one AndroidView and
+            // composes the next. The factory returns a tab's EXISTING
+            // WebView when it has one (a switch back re-attaches it,
+            // page + history intact) and creates + loads it only once.
+            // onRelease deliberately does NOT destroy: destroying here
+            // would kill every tab on every switch. Tab WebViews die
+            // only on tab close (posted) or on leaving the browser.
+            androidx.compose.runtime.key(activeTab.id) {
+                AndroidView(
+                    modifier = Modifier.weight(1f).fillMaxSize(),
+                    factory = { context ->
+                        activeTab.view?.also { web = it } ?: WebView(context).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            val tab = activeTab
+                            webViewClient = BrowserClient(
+                                ring = ring,
+                                onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
+                                onPageStart = {
+                                    mainHandler.post {
+                                        tab.foundMedia.clear()
+                                        tab.loadError = null
+                                    }
+                                },
+                                onHistory = { url, back, forward ->
+                                    mainHandler.post {
+                                        tab.currentUrl = url
+                                        tab.canGoBack = back
+                                        tab.canGoForward = forward
+                                        BrowserStore.recordHistory(context, url)
+                                    }
+                                },
+                                onMainFrameError = { message ->
+                                    mainHandler.post { tab.loadError = message }
+                                },
+                            )
+                            webChromeClient = BrowserChrome(
+                                context = context,
+                                onPopupUrl = { host, url, transport, allowed ->
+                                    mainHandler.post { onPopupUrl(tab, host, url, transport, allowed) }
+                                },
+                                onProgress = { p -> mainHandler.post { tab.progress = p } },
+                                onTitle = { t -> mainHandler.post { tab.title = t?.takeIf { it.isNotBlank() } } },
+                                onShowFullscreen = { view, callback ->
+                                    // Fullscreen / dialogs belong to the
+                                    // tab in front: a background tab's
+                                    // video must not seize the screen.
+                                    if (tab.id == activeTabId) {
+                                        mainHandler.post {
+                                            fullscreenView = view
+                                            fullscreenCallback = callback
+                                        }
+                                    }
+                                },
+                                onHideFullscreen = { mainHandler.post { hideFullscreen() } },
+                                onJsDialog = { dialog ->
+                                    if (tab.id == activeTabId) {
+                                        mainHandler.post { jsDialog = dialog }
+                                    }
+                                },
+                            )
+                            val downloadOwner = this
+                            setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                                // Phase 3.4, item 4: downloads go to the phone Downloads
+                                // folder with a started/failed notice, instead of silently
+                                // doing nothing (the old behaviour).
+                                runCatching {
+                                    val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                                    val request = DownloadManager.Request(Uri.parse(url))
+                                        .setTitle(filename)
+                                        .setDescription("Downloaded from the car browser")
+                                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                                    context.getSystemService(DownloadManager::class.java)?.enqueue(request)
+                                    GearslipLog.i("car browser download started: $filename")
+                                    CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
+                                }.onFailure { e ->
+                                    GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+                                    CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
+                                }
+                            })
+                            addJavascriptInterface(
+                                FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                                "GearslipField",
+                            )
+                            if (tab.rawHtml != null) {
+                                loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
+                            } else {
+                                loadUrl(tab.currentUrl)
+                            }
+                            tab.view = this
+                            web = this
+                        }
+                    },
+                    // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
+                    update = { it.settings.isAlgorithmicDarkeningAllowed = false },
+                    onRelease = { /* tabs keep their WebView; see above */ },
+                )
+            }
             if (!addressEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
@@ -376,15 +590,40 @@ fun WebApp(content: String) {
             // dismissing keeps the current page. While editing, the pill above
             // shows the live addressText with a caret, so every keypress is
             // visible; a dismissed edit simply reverts the pill to the URL.
+            // Phase 10 select-all: CarKeyboard is a pure function of text
+            // with no selection state, so selection lives HERE. While
+            // addressSelected, the first keypress replaces the whole
+            // selection (a letter/space reports old+char, so the result
+            // is just the added suffix) and one backspace clears it all
+            // (it reports old-minus-one, so the result is empty). After
+            // that first keypress the selection is spent and typing
+            // appends normally. The clear X in the pill and a fresh pill
+            // tap re-select; submit/dismiss clear the selection.
             if (addressEditing) {
                 CarKeyboard(
                     text = addressText,
-                    onTextChange = { addressText = it },
+                    onTextChange = { updated ->
+                        if (addressSelected) {
+                            addressSelected = false
+                            addressText = when {
+                                updated.length > addressText.length ->
+                                    updated.takeLast(updated.length - addressText.length)
+                                updated.length < addressText.length -> ""
+                                else -> updated
+                            }
+                        } else {
+                            addressText = updated
+                        }
+                    },
                     onSubmit = {
                         addressEditing = false
+                        addressSelected = false
                         web?.loadUrl(ProjectedContent.navigateUrl(addressText))
                     },
-                    onDismiss = { addressEditing = false },
+                    onDismiss = {
+                        addressEditing = false
+                        addressSelected = false
+                    },
                 )
             }
         }
@@ -392,7 +631,7 @@ fun WebApp(content: String) {
         // The WebView stays composed underneath, so Retry just reloads it.
         // Phase 8: a kit panel, not a bare column, like every other browser
         // notice — the page itself stays unthemed, the chrome does not.
-        if (loadError != null) {
+        if (activeTab.loadError != null) {
             Box(
                 Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f)),
                 contentAlignment = Alignment.Center,
@@ -409,13 +648,13 @@ fun WebApp(content: String) {
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                         )
                         Text(
-                            loadError ?: "",
+                            activeTab.loadError ?: "",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            GsButton(onClick = { loadError = null; web?.reload() }) { Text("Retry") }
-                            GsButton(onClick = { loadError = null; web?.goBack() }) { Text("Go back") }
+                            GsButton(onClick = { activeTab.loadError = null; web?.reload() }) { Text("Retry") }
+                            GsButton(onClick = { activeTab.loadError = null; web?.goBack() }) { Text("Go back") }
                         }
                     }
                 }
@@ -425,8 +664,8 @@ fun WebApp(content: String) {
             BrowserListsSheet(
                 bookmarks = bookmarks,
                 history = historyList,
-                currentUrl = currentUrl,
-                currentHost = hostOf(currentUrl),
+                currentUrl = activeTab.currentUrl,
+                currentHost = hostOf(activeTab.currentUrl),
                 popupStrict = popupStrict,
                 popupSetting = popupSettingForHost,
                 onPopupStrictChange = { strict ->
@@ -434,19 +673,19 @@ fun WebApp(content: String) {
                     popupStrict = strict
                 },
                 onPopupSettingChange = { setting ->
-                    BrowserStore.setPopupSetting(context, hostOf(currentUrl), setting)
+                    BrowserStore.setPopupSetting(context, hostOf(activeTab.currentUrl), setting)
                     popupSettingForHost = setting
                 },
-                isBookmarked = BrowserStore.isBookmarked(context, currentUrl),
+                isBookmarked = BrowserStore.isBookmarked(context, activeTab.currentUrl),
                 onLoad = { url ->
                     listsOpen = false
                     web?.loadUrl(url)
                 },
                 onBookmarkToggle = {
-                    if (BrowserStore.isBookmarked(context, currentUrl)) {
-                        BrowserStore.removeBookmark(context, currentUrl)
+                    if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
+                        BrowserStore.removeBookmark(context, activeTab.currentUrl)
                     } else {
-                        BrowserStore.addBookmark(context, currentUrl)
+                        BrowserStore.addBookmark(context, activeTab.currentUrl)
                     }
                     refreshLists()
                 },
@@ -476,8 +715,9 @@ fun WebApp(content: String) {
         }
         // Phase 8 popup notice (Notscape's popup notice, car-sized): a frost
         // panel floating over the page — NOT a Gs sheet — naming the site
-        // and offering Open popup (first captured URL, into this main view;
-        // tabs are still deferred), Block always for this site, and Dismiss.
+        // and offering Open popup (first captured URL, into its
+        // originating tab — Phase 10 tabs; popups never open a new tab),
+        // Block always for this site, and Dismiss.
         if (showPopupNotice && pendingPopups.isNotEmpty()) {
             val host = popupHost?.takeIf { it.isNotBlank() }
                 ?: hostOf(pendingPopups.first()).takeIf { it.isNotBlank() }
@@ -515,17 +755,108 @@ fun WebApp(content: String) {
         }
         if (sheetOpen) {
             MediaFinderSheet(
-                items = foundMedia,
+                items = activeTab.foundMedia,
                 onOpen = { item ->
                     sheetOpen = false
                     navigator.videoPlayer(
-                        foundMedia.map { it.url },
-                        foundMedia.map { it.title },
-                        foundMedia.indexOf(item).coerceAtLeast(0),
+                        activeTab.foundMedia.map { it.url },
+                        activeTab.foundMedia.map { it.title },
+                        activeTab.foundMedia.indexOf(item).coerceAtLeast(0),
                     )
                 },
                 onClose = { sheetOpen = false },
             )
+        }
+        if (tabsOpen) {
+            TabSwitcherSheet(
+                tabs = tabs,
+                activeTabId = activeTabId,
+                onSwitch = { switchTab(it) },
+                onCloseTab = { closeTab(it) },
+                onNewTab = { newTab() },
+                onClose = { tabsOpen = false },
+            )
+        }
+    }
+}
+
+/**
+ * Tab switcher (Phase 10): a bottom kit sheet listing every tab by
+ * title (or host, or "New tab") + URL, with the active tab bold in
+ * primary, a close X per tab, and a New tab row on top. Back closes
+ * the sheet (see the back interceptor); closing the last tab resets
+ * it to a fresh start page instead of leaving zero tabs.
+ */
+@Composable
+private fun TabSwitcherSheet(
+    tabs: List<BrowserTab>,
+    activeTabId: Int,
+    onSwitch: (BrowserTab) -> Unit,
+    onCloseTab: (BrowserTab) -> Unit,
+    onNewTab: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        Box(
+            Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)).clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                onClick = onClose,
+            ),
+        )
+        app.autospace.car.theme.GsSheetSurface(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Tabs (${tabs.size})", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    GsIconButton(Icons.Filled.Close, "Close tabs", onClose, size = 56.dp, iconSize = 28.dp)
+                }
+                GsButton(onClick = onNewTab, modifier = Modifier.fillMaxWidth()) {
+                    androidx.compose.material3.Icon(Icons.Filled.Add, null, Modifier.size(22.dp))
+                    Text("New tab")
+                }
+                tabs.forEach { tab ->
+                    val isActive = tab.id == activeTabId
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                if (isActive) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            )
+                            .clickable { onSwitch(tab) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                tab.title ?: runCatching { Uri.parse(tab.currentUrl).host ?: "" }.getOrDefault("").ifBlank { "New tab" },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                tab.currentUrl,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                    }
+                }
+            }
         }
     }
 }
@@ -612,6 +943,7 @@ private class BrowserChrome(
     private val context: android.content.Context,
     private val onPopupUrl: (host: String, url: String, transport: WebView, allowed: Boolean) -> Unit,
     private val onProgress: (Int) -> Unit,
+    private val onTitle: (String?) -> Unit = {},
     private val onShowFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     private val onHideFullscreen: () -> Unit,
     private val onJsDialog: (JsDialogState) -> Unit,
@@ -620,14 +952,19 @@ private class BrowserChrome(
         onProgress(newProgress)
     }
 
+    override fun onReceivedTitle(view: WebView?, title: String?) {
+        onTitle(title)
+    }
+
     /**
      * Phase 8 strict popup blocking (Notscape's onCreateWindow, car-adapted).
      * window.open / target=_blank never opens a window silently and never
      * navigates the main view silently:
      *  - per-site Block always: dropped silently, no notice, no transport.
      *  - allowed (strict off globally, or per-site Allow): the target's URL
-     *    is captured and loaded in the MAIN view (there are no tabs here);
-     *    the browser's Back control is the way back from it.
+     *    is captured and loaded in the tab that opened it (Phase 10;
+     *    popups never open a new tab); the browser's Back control is the
+     *    way back from it.
      *  - strict default: the target's URL is captured and reported, and the
      *    notice offers it, up to 5 in arrival order.
      * In the captured cases a transport WebView is still created and handed

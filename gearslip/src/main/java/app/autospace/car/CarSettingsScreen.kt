@@ -96,7 +96,7 @@ fun CarSettingsScreen() {
             Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 56.dp),
+                .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
 
@@ -106,18 +106,23 @@ fun CarSettingsScreen() {
             open,
         ) { CarSettings.setOpenOnConnect(it) }
 
-        // UI size (Phase 9, correcting Phase 8): a slider in the
-        // Icon/Tile size style, 50%-150%, default 100% mid-range — Phase
-        // 8's 100%-150% put the default at the slider's zero end, so the
-        // user could never go smaller. Old presets (100, 125, 150)
-        // still survive inside the new range.
+        // UI size (Phase 10, correcting Phase 9's display): the slider
+        // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
+        // minimum size, not zero size. Mapping, unchanged underneath:
+        // slider p 0–100 -> scale 0.5 + (p/100)*1.0, so p=0 -> scale
+        // 0.5, p=50 -> scale 1.0 (ship default, the old Normal), p=100
+        // -> scale 1.5 (the old Extra large). The pill shows p%, and
+        // the persisted key is still car_scale (0.5–1.5), so an old
+        // stored scale migrates by p=(scale-0.5)*100, clamped 0–100.
+        // Phase 9 showed the scale as 50%–150%, which read as a second,
+        // different scale next to the 0–100 icon slider.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                 androidx.compose.foundation.layout.Box(
                     Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
                         .padding(horizontal = 16.dp, vertical = 6.dp),
-                ) { Text("${(scale * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+                ) { Text("${((scale - 0.5f) * 100f).roundToInt().coerceIn(0, 100)}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             }
             GsGroupedCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -126,7 +131,7 @@ fun CarSettingsScreen() {
                         onSeek = { CarSettings.setScale(0.5f + it * 1.0f) },
                     )
                     Text(
-                        "Scales the whole car UI, 50%–150%; 100% is the old Normal, 125% the old Large, 150% the old Extra large.",
+                        "Scales the whole car UI, 0–100; 50 is the ship default. 0 is the smallest size, not zero size — nothing vanishes at 0.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -388,9 +393,13 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
     // neutral colour (not blue text inside it); chips wrap to rows of at
     // most 3, so 6 app-theme chips and long "Maps (mirrored)" labels are
     // never squeezed into one row; labels never wrap mid-chip (maxLines 1
-    // + ellipsis); and the selected state is tonal/neutral — the old
-    // primaryContainer fill read brown under a dynamic theme and bright
-    // blue under plain Dark, the same control in two different accents.
+    // + ellipsis). Phase 10: the selected state is the theme PRIMARY
+    // (dynamic accent under Material You, system blue under plain) with
+    // onPrimary text and Bold — Phase 8's tonal step
+    // (surfaceContainerHighest vs High) was indistinguishable in the
+    // audit video, and primary is the same accent language as the
+    // slider thumb and the nav bar's active pill, so it reads as
+    // "selected" in every theme including all-black OLED.
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         GsGroupedCard(Modifier.fillMaxWidth()) {
@@ -405,7 +414,7 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(64.dp),
-                                colors = if (on) GsColors(scheme.surfaceContainerHighest, scheme.onSurface)
+                                colors = if (on) GsColors(scheme.primary, scheme.onPrimary)
                                 else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
                                 latched = on,
                             ) {

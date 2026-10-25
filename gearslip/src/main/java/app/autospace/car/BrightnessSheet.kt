@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,9 +55,13 @@ object BrightnessSheetVisibility {
  * its content scrolls, and a visible Close (X) sits at the top beside the title
  * — the old bottom-only Done could be pushed off-screen on a 480px car screen
  * (Brightness + Theme rows + Night rows + Done), and the scrim-tap close was
- * not discoverable. Done is kept at the bottom. The content is capped at
- * 440dp high so a close control is always reachable on short car screens
- * (checked against the 800x480 car-preview size in code, not a car test).
+ * not discoverable. Phase 10: Done moves INTO that top header row (Title,
+ * Done, Close) and the header is OUTSIDE the scroll column, so both
+ * controls are always visible on any screen height — the audit re-check
+ * found Done still needed a scroll to the bottom on 480px, since the
+ * sheet caps at 440dp against a 416dp content area (480 minus the nav
+ * bar) and the Close scrolls away with the content. The content is
+ * still capped at 440dp and still scrolls; only the header is sticky.
  */
 @Composable
 fun BrightnessSheet() {
@@ -73,22 +76,25 @@ fun BrightnessSheet() {
         GsSheetSurface(
             modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 440.dp),
         ) {
+            // Sticky header: Title + Done + Close, outside the scroll
+            // column, so both actions are reachable without scrolling.
+            Row(
+                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Brightness", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                GsButton(onClick = BrightnessSheetVisibility::close) { Text("Done") }
+                // Car-sized close control, always at the top of the sheet.
+                GsIconButton(
+                    Icons.Filled.Close, "Close brightness",
+                    BrightnessSheetVisibility::close, size = 56.dp, iconSize = 28.dp,
+                )
+            }
             Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text("Brightness", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    // Car-sized close control, always at the top of the sheet.
-                    GsIconButton(
-                        Icons.Filled.Close, "Close brightness",
-                        BrightnessSheetVisibility::close, size = 56.dp, iconSize = 28.dp,
-                    )
-                }
                 GsSeekBar(fraction = brightness, onSeek = CarSettings::setBrightness)
                 Text(
                     "${(brightness * 100).roundToInt()}% — 100% is the head unit's own maximum; " +
@@ -112,10 +118,6 @@ fun BrightnessSheet() {
                     ThemeChoice("Auto", night == NightMode.AUTO, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.AUTO) }
                     ThemeChoice("Day", night == NightMode.DAY, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.DAY) }
                     ThemeChoice("Night", night == NightMode.NIGHT, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.NIGHT) }
-                }
-                Spacer(Modifier.height(4.dp))
-                GsButton(onClick = BrightnessSheetVisibility::close, modifier = Modifier.fillMaxWidth()) {
-                    Text("Done")
                 }
             }
         }

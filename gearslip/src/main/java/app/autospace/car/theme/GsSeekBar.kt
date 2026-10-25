@@ -60,8 +60,11 @@ fun GsProgressBar(
     val shown = fraction.coerceIn(0f, 1f)
     val inset = 3.dp
     val fill = if (active) lerp(color, Color.White, 0.12f) else color
+    // Phase 10: the unfilled track was only 12% towards primary, so on
+    // video it read as a thin smear rather than a bar — 28% keeps it
+    // visibly a track in every theme without stealing the fill's job.
     if (LocalGsTheme.current.id == GsThemes.Flat.id) {
-        WavyBar(shown, fill, lerp(scheme.surfaceContainerHighest, color, 0.12f), modifier.fillMaxWidth().height(height))
+        WavyBar(shown, fill, lerp(scheme.surfaceContainerHighest, color, 0.28f), modifier.fillMaxWidth().height(height))
         return
     }
     BoxWithConstraints(
@@ -69,7 +72,7 @@ fun GsProgressBar(
             .fillMaxWidth()
             .height(height)
             .clip(CircleShape)
-            .background(lerp(scheme.surfaceContainerHighest, color, 0.12f))
+            .background(lerp(scheme.surfaceContainerHighest, color, 0.28f))
             .padding(inset),
         contentAlignment = Alignment.CenterStart,
     ) {
@@ -146,9 +149,14 @@ private fun WavyBar(fraction: Float, color: Color, track: Color, modifier: Modif
  *
  * Phase 8 audit fix: a car-sized thumb (32dp) and a thicker track (28dp),
  * instead of the old thumb-less thin bar whose position could only be read
- * from the fill edge. The video player's own slim scrubber does NOT use
- * this — it has its own PlayerScrubber, so the player keeps Notscape's
- * slim over-video scrubber.
+ * from the fill edge. Phase 10: thumb 36dp and a higher-contrast track
+ * (see GsProgressBar), because the audit video still read the sliders
+ * as thin/small — the source sizes already met 32/28, and the whole UI
+ * (sliders included) scales with the UI-size Density, so a reduced UI
+ * scale shrinks sliders too; the bigger thumb + stronger track keep
+ * them readable at any scale. The video player's own slim scrubber
+ * does NOT use this — it has its own PlayerScrubber, so the player
+ * keeps Notscape's slim over-video scrubber.
  */
 @Composable
 fun GsSeekBar(
@@ -182,7 +190,7 @@ fun GsSeekBar(
         GsProgressBar(dragging ?: fraction, active = dragging != null, height = trackHeight)
         if (showThumb) {
             val shown = (dragging ?: fraction).coerceIn(0f, 1f)
-            val thumb = 32.dp
+            val thumb = 36.dp
             Box(
                 Modifier
                     .align(Alignment.CenterStart)

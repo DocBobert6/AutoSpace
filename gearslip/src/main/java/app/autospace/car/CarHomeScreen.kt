@@ -105,22 +105,69 @@ fun CarHome() {
     // ~36% of the width instead of ~32%, about 22px wider on an 800px
     // screen once padding and gap are counted. With nothing playing the
     // map still takes the full row (minus the padding), as before.
-    Row(
-        Modifier.fillMaxSize().padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Box(
-            Modifier
-                .weight(if (splitScreen) 1.75f else 1f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(20.dp)),
+    // Phase 10: the audit video's full-width map showed NO padding or
+    // rounded corners at all — the pane's own clip + MapCornerOverlays
+    // cannot be trusted for this, because a SurfaceView is its own
+    // SurfaceFlinger layer: if that layer ever spans the full frame
+    // (it is lent at frame size in places, and the app keeps drawing
+    // into it), it paints straight over the Row's padding area and the
+    // pane-level overlays sit inset over map video, invisible. So the
+    // Home frame is ALSO drawn here, in the window layer above the
+    // SurfaceView: an opaque backdrop-coloured frame with a rounded
+    // inner cut, over the whole Row. When the SurfaceView is correctly
+    // pane-sized this frame paints backdrop over backdrop and changes
+    // nothing; when it is full-frame, this frame is what restores the
+    // 12dp padding and 20dp corners. It takes no pointer input, so map
+    // gestures pass through untouched.
+    Box(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxSize().padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            MapPane(navStatus, frame)
+            Box(
+                Modifier
+                    .weight(if (splitScreen) 1.75f else 1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(20.dp)),
+            ) {
+                MapPane(navStatus, frame)
+            }
+            if (splitScreen) {
+                val side = Modifier.weight(1f).fillMaxHeight()
+                if (panel == SidePanel.LYRICS) SideLyrics(now, side) else DockedPlayer(now, side)
+            }
         }
-        if (splitScreen) {
-            val side = Modifier.weight(1f).fillMaxHeight()
-            if (panel == SidePanel.LYRICS) SideLyrics(now, side) else DockedPlayer(now, side)
+        HomeFrameOverlay(Modifier.fillMaxSize())
+    }
+}
+
+/**
+ * Opaque backdrop frame over the Home row: outer rect minus an inner
+ * rounded rect (12dp inset, 20dp radius), drawn in the window layer so
+ * it masks even a full-frame SurfaceView layer underneath. No pointer
+ * handling — Canvas takes none — so it never intercepts a gesture.
+ */
+@Composable
+private fun HomeFrameOverlay(modifier: Modifier = Modifier) {
+    val backdrop = MaterialTheme.colorScheme.background
+    Canvas(modifier) {
+        val inset = 12.dp.toPx()
+        val radius = 20.dp.toPx()
+        val inner = Rect(inset, inset, size.width - inset, size.height - inset)
+        val path = Path().apply {
+            addRect(Rect(Offset.Zero, size))
+            addRoundRect(
+                androidx.compose.ui.geometry.RoundRect(
+                    inner,
+                    topLeft = androidx.compose.ui.geometry.CornerRadius(radius, radius),
+                    topRight = androidx.compose.ui.geometry.CornerRadius(radius, radius),
+                    bottomLeft = androidx.compose.ui.geometry.CornerRadius(radius, radius),
+                    bottomRight = androidx.compose.ui.geometry.CornerRadius(radius, radius),
+                )
+            )
+            fillType = PathFillType.EvenOdd
         }
+        drawPath(path, backdrop)
     }
 }
 
