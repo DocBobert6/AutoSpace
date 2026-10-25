@@ -249,17 +249,7 @@ object VoiceModels {
         for (name in engine.files) {
             val f = File(d, name)
             if (!f.isFile) return "${engine.label} files incomplete — delete and re-download"
-            val min = when (engine) {
-                Engine.KOKORO -> when (name) {
-                    "model.onnx" -> MIN_KOKORO_MODEL_BYTES
-                    "voices.bin" -> MIN_VOICES_BIN_BYTES
-                    else -> MIN_SMALL_FILE_BYTES
-                }
-                Engine.PIPER -> when (name) {
-                    "en_US-amy-medium.onnx" -> MIN_PIPER_MODEL_BYTES
-                    else -> MIN_SMALL_FILE_BYTES
-                }
-            }
+            val min = minFileBytes(engine, name)
             if (f.length() < min) return "${engine.label} files incomplete — delete and re-download"
         }
         val phondata = File(espeakDir(context, engine), "phondata")
@@ -281,6 +271,36 @@ object VoiceModels {
     private const val MIN_VOICES_BIN_BYTES = 1_000L
     private const val MIN_SMALL_FILE_BYTES = 1_000L
 
+    /**
+     * Plausible-size floor for one downloaded file, in bytes. A file below
+     * its floor counts as truncated, never as a usable download.
+     *
+     * 2026-10-25 fix (Robert: both engines failed every download with
+     * "files incomplete"): tokens.txt files are TINY by nature. Live
+     * Hugging Face sizes verified 2026-10-25 via the repos' own API
+     * listings: Kokoro tokens.txt is 687 bytes, Piper tokens.txt is
+     * 921 bytes — both BELOW the old single 1,000-byte small-file
+     * floor. So every complete download of both engines failed its
+     * own final validation and reported "files incomplete", forever,
+     * no matter how many times it was retried. The tokens floor is
+     * therefore its own, far below both real files (687/921) and far
+     * above an empty stub. Every other floor is unchanged: model
+     * floors stay far below the real models (Kokoro model.onnx
+     * 325,560,556 bytes, Piper model 63,201,425 bytes), and
+     * phondata keeps the 1,000-byte floor against a real 550,424
+     * bytes. Floors must be re-checked against live sizes before
+     * they are ever raised again.
+     */
+    fun minFileBytes(engine: Engine, name: String): Long = when {
+        engine == Engine.KOKORO && name == "model.onnx" -> MIN_KOKORO_MODEL_BYTES
+        engine == Engine.KOKORO && name == "voices.bin" -> MIN_VOICES_BIN_BYTES
+        engine == Engine.PIPER && name == "en_US-amy-medium.onnx" -> MIN_PIPER_MODEL_BYTES
+        name == "tokens.txt" -> MIN_TOKENS_BYTES
+        else -> MIN_SMALL_FILE_BYTES
+    }
+
+    private const val MIN_TOKENS_BYTES = 100L
+
     fun delete(context: Context, engine: Engine) {
         cancelled = engine
         dir(context, engine).deleteRecursively()
@@ -297,7 +317,19 @@ object VoiceModels {
         worker.execute {
             val target = dir(app, engine)
             val partial = File(target.parentFile, "${engine.id}.partial").apply { deleteRecursively(); mkdirs() }
+            var stage = "starting download"
             try {
+                // 2026-10-25: retry from Failed clears the incomplete set
+                // FIRST, so a retry can never be poisoned by old files —
+                // this is what the Settings text ("delete and
+                // re-download") promises and the Download button in
+                // Failed state now actually does. The set being deleted
+                // is Failed, so synthesis never uses it (VoiceEngine
+                // only loads when isReady, i.e. validation passes);
+                // a fresh set is swapped in only after it validates,
+                // below, so a failed retry leaves Missing, not a
+                // half-old, half-new set.
+                target.deleteRecursively()
                 val total = engine.downloadMb * 1_048_576L
                 var done = 0L
                 fun progress(read: Long) {
@@ -305,6 +337,7 @@ object VoiceModels {
                     state.value = State.Downloading((((done + read) * 100) / total).toInt().coerceIn(0, 99))
                 }
                 for (name in engine.files) {
+                    stage = "downloading $name"
                     val conn = open("https://huggingface.co/${engine.repo}/resolve/main/$name")
                     val length = conn.contentLengthLong
                     val file = File(partial, name)
@@ -315,9 +348,11 @@ object VoiceModels {
                     done += file.length()
                 }
                 // espeak-ng-data is a directory: list it, then fetch file by file.
+                stage = "listing espeak-ng-data"
                 val listed = listHfDir(engine.repo, "espeak-ng-data")
                 check(listed.isNotEmpty()) { "espeak-ng-data was not listed in ${engine.repo}" }
                 for (path in listed) {
+                    stage = "downloading $path"
                     val conn = open("https://huggingface.co/${engine.repo}/resolve/main/$path")
                     val length = conn.contentLengthLong
                     val file = File(partial, path).apply { parentFile?.mkdirs() }
@@ -329,8 +364,8 @@ object VoiceModels {
                 }
                 check(engine.files.all { File(partial, it).isFile }) { "some files were missing" }
                 check(File(partial, "espeak-ng-data/phondata").isFile) { "espeak-ng-data arrived without phondata" }
-                target.deleteRecursively()
                 check(partial.renameTo(target)) { "couldn't store the voice" }
+                stage = "validating download"
                 val failure = validationFailure(app, engine)
                 check(failure == null) { failure ?: "voice validation failed" }
                 GearslipLog.i("voice: downloaded ${engine.label}")
@@ -340,8 +375,23 @@ object VoiceModels {
                 if (cancelled == engine) {
                     state.value = State.Missing
                 } else {
-                    GearslipLog.w("voice: download of ${engine.label} failed: ${e.message}")
-                    state.value = State.Failed(e.message ?: e.javaClass.simpleName)
+                    // 2026-10-25: a failure names its stage and file,
+                    // so a download error can no longer masquerade as
+                    // a validation failure (or vice versa). The
+                    // validation stage keeps its plain reason verbatim,
+                    // so "files incomplete" still reads exactly as
+                    // before when validation genuinely fails. open()
+                    // already embeds the HTTP status ("the server
+                    // answered 404"), so a path error, a network
+                    // error, and a validation failure are now three
+                    // visibly different messages in Settings.
+                    val reason = if (stage == "validating download") {
+                        e.message ?: e.javaClass.simpleName
+                    } else {
+                        "$stage: ${e.message ?: e.javaClass.simpleName}"
+                    }
+                    GearslipLog.w("voice: download of ${engine.label} failed: $reason")
+                    state.value = State.Failed(reason)
                 }
             }
         }
