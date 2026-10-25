@@ -35,7 +35,7 @@ import app.autospace.host.CarAppConnection
 import app.autospace.host.display
 import app.autospace.host.text
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -512,7 +512,7 @@ private fun CarNavBar(navigator: CarNavigator) {
                 // Brightness, one tap to the slider sheet: the phone's brightness does
                 // not reach the projected display, so this is the only brightness
                 // control the driver has.
-                GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
+                GsIconButton(Icons.Filled.LightMode, "Brightness", BrightnessSheetVisibility::open)
                 Spacer(Modifier.width(6.dp))
                 // Weather no longer has its own chip - the temperature alone (no icon, no room
                 // for one) sits where "Night"/"Day" used to, freeing a whole chip's width for the
