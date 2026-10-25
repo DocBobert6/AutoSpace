@@ -22,9 +22,12 @@ import java.nio.FloatBuffer
  * Fill video for screen sharing: the platform's AUTO_MIRROR scaling only ever
  * produces Fit video (letterboxed), so Fill needs an intermediate render step.
  * This class owns it: the virtual display renders Fit frames into a
- * SurfaceTexture, and a small GLES pass samples only the content rect of each
- * frame (see [MirrorGeometry.contentUv]) stretched to the full encoder Surface
- * — a crop, not a stretch — plus the Fill exit button in the top-right corner.
+ * SurfaceTexture, and a small GLES pass samples the CENTRAL sub-rect of
+ * each frame (see [MirrorGeometry.fillUv]) stretched to the full encoder
+ * Surface — a true crop at one scale on both axes, not a stretch. (The
+ * Phase 10 bug sampled the whole Fit content rect instead, which
+ * distorts whenever the phone and frame aspects differ.) Plus the Fill
+ * exit button in the top-right corner.
  *
  * Anything failing here (no EGL, no texture, no surface) makes [create] return
  * null, and the caller falls back to direct Fit mirroring rather than showing a
@@ -100,7 +103,7 @@ class MirrorFillRenderer private constructor(
             val phoneW = bounds?.width()?.toFloat() ?: return
             val phoneH = bounds?.height()?.toFloat() ?: return
             if (phoneW <= 0f || phoneH <= 0f) return
-            val uv = MirrorGeometry.contentUv(phoneW, phoneH, frameW.toFloat(), frameH.toFloat())
+            val uv = MirrorGeometry.fillUv(phoneW, phoneH, frameW.toFloat(), frameH.toFloat())
             // Buffer UV (v from top) -> standard texture coords (t = 0 at the bottom),
             // then through the SurfaceTexture transform, which accounts for the
             // buffer's orientation. Positions are a fullscreen triangle strip.

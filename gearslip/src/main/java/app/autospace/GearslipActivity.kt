@@ -26,6 +26,7 @@ import androidx.activity.result.contract.ActivityResultContracts.StartActivityFo
 import android.content.res.Configuration
 import app.autospace.audio.AudioCaptureService
 import app.autospace.audio.CarAudio
+import app.autospace.mirror.MirrorExitTracker
 import app.autospace.mirror.MirrorService
 import app.autospace.mirror.PhoneMirror
 import app.autospace.mirror.TouchRelayService
@@ -338,29 +339,51 @@ class GearslipActivity : ComponentActivity(), Projection {
     }
 
     /**
-     * Sends a head-unit touch to the phone. Anything landing on the mirror's letterbox padding
-     * maps to nothing on the phone and is dropped rather than clamped onto a screen edge.
-     * In Fill there is no padding, so the GL exit button in the top-right corner is
-     * the way out instead: a tap there stops the mirror (the phone-notification stop
-     * remains as a backup).
+     * Sends a head-unit touch to the phone, through [MirrorExitTracker].
+     * Phase 10 mirror fix: the mirror stops ONLY on a deliberate tap --
+     * DOWN and UP both in the Fill exit button, or both on Fit
+     * letterbox padding (which maps to nothing on the phone). The old
+     * code stopped on ANY finger-up over padding or the exit corner,
+     * so a drag from content that ended on padding, or in the corner,
+     * closed the session mid-gesture -- on a portrait phone in a
+     * landscape car the Fit bars are most of the frame, so nearly any
+     * touch outside the narrow content strip did it. The stop reason
+     * is logged, so the next test shows which exit fired. The phone
+     * notification's Stop action and the head-unit BACK key remain as
+     * backup exits.
      */
+    private val mirrorTouch = MirrorExitTracker()
+
     private fun relayTouch(action: Int, x: Float, y: Float) {
-        if (PhoneMirror.isInExitRegion(x, y)) {
-            if (action == MotionEvent.ACTION_UP) PhoneMirror.requestStop()
-            return
+        val inExit = PhoneMirror.isInExitRegion(x, y)
+        val map: (Float, Float) -> Pair<Float, Float>? = { fx, fy ->
+            PhoneMirror.mapToPhone(this, fx, fy)?.let { it.x to it.y }
         }
-        val point = PhoneMirror.mapToPhone(this, x, y)
-        if (point == null) {
-            // The letterbox bars belong to no window, which makes them a safe way back: a tap
-            // on the padding leaves the mirror and returns the car to Gearslip's own UI.
-            if (action == MotionEvent.ACTION_UP) PhoneMirror.requestStop()
-            return
+        val decision = when (action) {
+            MotionEvent.ACTION_DOWN -> mirrorTouch.down(x, y, inExit, map)
+            MotionEvent.ACTION_MOVE -> mirrorTouch.move(x, y, inExit, map)
+            MotionEvent.ACTION_UP -> mirrorTouch.up(x, y, inExit, map)
+            MotionEvent.ACTION_CANCEL -> mirrorTouch.cancel()
+            else -> MirrorExitTracker.Decision.Swallow
         }
-        val relay = TouchRelayService.instance ?: return
-        when (action) {
-            MotionEvent.ACTION_DOWN -> relay.down(point.x, point.y)
-            MotionEvent.ACTION_MOVE -> relay.move(point.x, point.y)
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> relay.up(point.x, point.y)
+        when (decision) {
+            is MirrorExitTracker.Decision.Stop -> {
+                GearslipLog.i(
+                    "mirror: stopping on deliberate tap (" +
+                        if (decision.reason == MirrorExitTracker.StopReason.EXIT_BUTTON) "fill exit button" else "fit letterbox padding" +
+                        ")"
+                )
+                PhoneMirror.requestStop()
+            }
+            is MirrorExitTracker.Decision.Swallow -> Unit
+            is MirrorExitTracker.Decision.Relay -> {
+                val relay = TouchRelayService.instance ?: return
+                when (decision.action) {
+                    MirrorExitTracker.RelayAction.DOWN -> relay.down(decision.x, decision.y)
+                    MirrorExitTracker.RelayAction.MOVE -> relay.move(decision.x, decision.y)
+                    MirrorExitTracker.RelayAction.UP -> relay.up(decision.x, decision.y)
+                }
+            }
         }
     }
 

@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
@@ -567,7 +568,10 @@ fun WebApp(content: String) {
                     },
                     // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
                     update = { it.settings.isAlgorithmicDarkeningAllowed = false },
-                    onRelease = { /* tabs keep their WebView; see above */ },
+                    // Tabs keep their WebView (see above) — but it MUST
+                    // leave its parent here, or re-attaching it to the
+                    // next tab's AndroidView throws "already has a parent".
+                    onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
                 )
             }
             if (!addressEditing) {
