@@ -244,6 +244,7 @@ fun CarUi() {
                                     CarScreen.VehicleData -> VehicleDataScreen()
                                     is CarScreen.Notifications -> NotificationsScreen(screen.replyTo)
                                     is CarScreen.Messages -> MessagesScreen(screen.packageName)
+                                    is CarScreen.VideoPlayer -> VideoPlayerScreen(url = screen.url, title = screen.title, onClose = { navigator.back() })
                                     is CarScreen.App -> CarApps.find(screen.id)?.content?.invoke()
                                 }
                             }

@@ -142,6 +142,11 @@ dependencies {
     implementation(libs.androidx.car.app)
     implementation(libs.androidx.car.app.projected)
     implementation(libs.androidx.media)
+    // Browser media player (Phase 3.3): HLS first, DASH included, PlayerView via media3-ui.
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.ui)
     testImplementation(libs.junit)
 }
 

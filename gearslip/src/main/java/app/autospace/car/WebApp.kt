@@ -8,21 +8,30 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material3.Text
 import app.autospace.GearslipLog
+import app.autospace.car.theme.GsButton
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -35,14 +44,30 @@ import org.json.JSONObject
  * same reason). [FOCUS_TRACKING_JS] reports focus/blur on the page's editable elements, and
  * [CarKeyboard] edits the focused one back through injected JS instead of through the DOM's own
  * native input path, which this Presentation can't reach.
+ *
+ * Browser theming (Phase 3.0, corrected): the CHROME follows AutoSpace (Material You colours
+ * + Gs controls, below), but PAGES are never themed — no force-dark, no algorithmic darkening
+ * from the phone theme or from darkness outside. Upstream darkened pages when it was dark
+ * outside; AutoSpace sets isAlgorithmicDarkeningAllowed = false, so pages render as authored
+ * (their own prefers-color-scheme dark modes still work naturally). The only page injection
+ * kept is the focus ring (an accessibility outline, not a theme).
  */
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
-    val darkOutside = LocalDarkOutside.current
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
     var fieldText by remember { mutableStateOf<String?>(null) }
+    // Media found on the current page (Phase 3.2), deduplicated by URL, newest first.
+    val foundMedia = remember { mutableStateListOf<FoundMedia>() }
+    var sheetOpen by remember { mutableStateOf(false) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    fun addMedia(url: String, title: String?) {
+        if (!VideoUrl.isPlayableUrl(url)) return
+        if (foundMedia.none { it.url == url }) {
+            foundMedia.add(0, FoundMedia(url, title?.takeIf { it.isNotBlank() }))
+        }
+    }
 
     DisposableEffect(web) {
         navigator.backInterceptor = {
@@ -57,56 +82,123 @@ fun WebApp(content: String) {
         onDispose { navigator.backInterceptor = null }
     }
 
-    Column(Modifier.fillMaxSize()) {
-        // Back steps through the page's history first (the interceptor above), then leaves.
-        ScreenHeader("Browser", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-        AndroidView(
-            modifier = Modifier.weight(1f).fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    webViewClient = LoggingClient(ring)
-                    addJavascriptInterface(
-                        FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                        "GearslipField",
-                    )
-                    if (content.startsWith("http://") || content.startsWith("https://")) {
-                        loadUrl(content)
-                    } else {
-                        loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            // Back steps through the page's history first (the interceptor above), then leaves.
+            ScreenHeader("Browser", Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            // Finder button (Phase 3.2): shown only when media was actually detected
+            // on the current page. A GsButton, so it follows the app theme like all chrome.
+            if (foundMedia.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.Start,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    GsButton(onClick = { sheetOpen = true }) {
+                        Text("Media on this page (${foundMedia.size})")
                     }
-                    web = this
                 }
-            },
-            // Pages that honour it follow the darkness outside; a first, tweakable use of the signal.
-            update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
-            onRelease = { it.destroy() },
-        )
-        fieldText?.let { text ->
-            CarKeyboard(
-                text = text,
-                onTextChange = { updated ->
-                    fieldText = updated
-                    web?.evaluateJavascript(setFieldValueJs(updated), null)
+            }
+            AndroidView(
+                modifier = Modifier.weight(1f).fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        webViewClient = BrowserClient(
+                            ring = ring,
+                            onMedia = { url, title -> mainHandler.post { addMedia(url, title) } },
+                            onPageStart = { mainHandler.post { foundMedia.clear() } },
+                        )
+                        addJavascriptInterface(
+                            FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                            "GearslipField",
+                        )
+                        if (content.startsWith("http://") || content.startsWith("https://")) {
+                            loadUrl(content)
+                        } else {
+                            loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
+                        }
+                        web = this
+                    }
                 },
-                onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
-                onDismiss = {
-                    fieldText = null
-                    web?.evaluateJavascript(BLUR_FIELD_JS, null)
+                // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
+                update = { it.settings.isAlgorithmicDarkeningAllowed = false },
+                onRelease = { it.destroy() },
+            )
+            fieldText?.let { text ->
+                CarKeyboard(
+                    text = text,
+                    onTextChange = { updated ->
+                        fieldText = updated
+                        web?.evaluateJavascript(setFieldValueJs(updated), null)
+                    },
+                    onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
+                    onDismiss = {
+                        fieldText = null
+                        web?.evaluateJavascript(BLUR_FIELD_JS, null)
+                    },
+                )
+            }
+        }
+        if (sheetOpen) {
+            MediaFinderSheet(
+                items = foundMedia,
+                onOpen = { item ->
+                    sheetOpen = false
+                    navigator.videoPlayer(item.url, item.title)
                 },
+                onClose = { sheetOpen = false },
             )
         }
     }
 }
 
-private class LoggingClient(private val ring: String) : WebViewClient() {
+/**
+ * WebViewClient for the car browser. Detection (Phase 3.2) uses
+ * shouldInterceptRequest / onLoadResource (never blocking a load — it always returns
+ * null / lets the resource through) plus <video>/<audio> element sources read on page
+ * finish. No injected overlay on the page itself: overlays break on locked-down pages
+ * and cross-site iframes, and the finder lives in AutoSpace chrome instead.
+ * shouldInterceptRequest runs off the UI thread, so media reports are posted to the
+ * main handler by the caller (see WebApp's onMedia).
+ */
+private class BrowserClient(
+    private val ring: String,
+    private val onMedia: (String, String?) -> Unit,
+    private val onPageStart: () -> Unit,
+) : WebViewClient() {
+
+    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
+        request?.url?.toString()?.let { url ->
+            if (VideoUrl.isPlayableUrl(url)) onMedia(url, null)
+        }
+        return null
+    }
+
+    override fun onLoadResource(view: WebView?, url: String?) {
+        if (url != null && VideoUrl.isPlayableUrl(url)) onMedia(url, null)
+    }
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+        onPageStart()
+    }
+
     override fun onPageFinished(view: WebView?, url: String?) {
         GearslipLog.i("car web page loaded: $url")
         view?.evaluateJavascript(FOCUS_TRACKING_JS, null)
         view?.evaluateJavascript(focusRingJs(ring), null)
+        view?.evaluateJavascript(EXTRACT_MEDIA_JS) { result ->
+            runCatching {
+                val array = JSONArray(result)
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    onMedia(obj.optString("url"), obj.optString("title").takeIf { it.isNotBlank() })
+                }
+            }
+        }
     }
 
     // onPageFinished fires for error pages too, so without this a blocked load (missing
@@ -206,5 +298,22 @@ private const val FOCUS_TRACKING_JS = """
         document.addEventListener('focusout', function(e) {
             if (isEditable(e.target)) window.GearslipField.blurred();
         });
+    })();
+"""
+
+/**
+ * Reads <video>/<audio> elements and their <source> children (Phase 3.2). Returns an
+ * array of {url, title} for the Kotlin side to filter through VideoUrl — this script
+ * itself does no filtering and no page modification beyond reading the DOM.
+ */
+private const val EXTRACT_MEDIA_JS = """
+    (function() {
+        var out = [];
+        function push(src, title) { if (src) out.push({url: src, title: title || ''}); }
+        document.querySelectorAll('video, audio').forEach(function(el) {
+            push(el.currentSrc || el.src, el.title);
+            el.querySelectorAll('source').forEach(function(s) { push(s.src, el.title); });
+        });
+        return out;
     })();
 """

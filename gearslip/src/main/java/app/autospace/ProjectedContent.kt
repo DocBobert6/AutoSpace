@@ -29,7 +29,29 @@ object ProjectedContent {
     }
 
     /** What the Web app opens until a page is chosen in Settings. */
-    const val DEFAULT_URL = "https://duckduckgo.com"
+    // noai.duckduckgo.com hides AI summaries/chat icons (Phase 3.1); the plain
+    // duckduckgo.com default is superseded and must not come back.
+    const val DEFAULT_URL = "https://noai.duckduckgo.com/"
+
+    /** A search on the no-AI DuckDuckGo endpoint, with AI assistance off. */
+    fun searchUrl(query: String): String =
+        "https://noai.duckduckgo.com/?q=${java.net.URLEncoder.encode(query, "UTF-8")}&assist=false"
+
+    /**
+     * What the browser address/search box does with typed text (Phase 3.1/3.4):
+     * something that looks like a URL loads as one (scheme added if missing);
+     * anything else is a no-AI search for that text.
+     */
+    fun navigateUrl(input: String): String {
+        val text = input.trim()
+        if (text.isEmpty()) return DEFAULT_URL
+        if (text.startsWith("<")) return text
+        if ("://" in text) return text
+        // A bare domain ("example.com", "example.com/path") with no spaces is a URL;
+        // anything with spaces or without a dot is a search query.
+        val looksLikeDomain = !text.contains(' ') && text.substringBefore('/').contains('.')
+        return if (looksLikeDomain) "https://$text" else searchUrl(text)
+    }
 
     /** A bare "example.com" is a URL the user meant; raw HTML is passed through untouched. */
     private fun normalize(value: String): String =
