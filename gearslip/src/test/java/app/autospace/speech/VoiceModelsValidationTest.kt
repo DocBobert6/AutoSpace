@@ -28,6 +28,24 @@ class VoiceModelsValidationTest {
     }
 
     @Test
+    fun downloadPercentMovesAndCapsAt99() {
+        assertEquals(0, VoiceModels.downloadPercent(0, 100))
+        assertEquals(50, VoiceModels.downloadPercent(50, 100))
+        // Over-estimate totals used to freeze the bar: a real total
+        // past the estimate must still cap at 99, never 100, until Ready.
+        assertEquals(99, VoiceModels.downloadPercent(200, 100))
+        assertEquals(0, VoiceModels.downloadPercent(50, 0))
+    }
+
+    @Test
+    fun downloadingStateCarriesItsDetail() {
+        val s = VoiceModels.State.Downloading(96, "espeak-ng-data: 201/355 files")
+        assertEquals(96, s.percent)
+        assertEquals("espeak-ng-data: 201/355 files", s.detail)
+        assertEquals("", VoiceModels.State.Downloading(0).detail)
+    }
+
+    @Test
     fun modelAndVoicesFloorsUnchanged() {
         assertEquals(10_000_000L, VoiceModels.minFileBytes(VoiceModels.Engine.KOKORO, "model.onnx"))
         assertEquals(1_000L, VoiceModels.minFileBytes(VoiceModels.Engine.KOKORO, "voices.bin"))

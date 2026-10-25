@@ -5,7 +5,11 @@ import app.autospace.GearslipLog
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -165,7 +169,7 @@ object VoiceModels {
 
     sealed interface State {
         data object Missing : State
-        data class Downloading(val percent: Int) : State
+        data class Downloading(val percent: Int, val detail: String = "") : State
         data object Ready : State
         data class Failed(val reason: String) : State
     }
@@ -330,14 +334,16 @@ object VoiceModels {
                 // below, so a failed retry leaves Missing, not a
                 // half-old, half-new set.
                 target.deleteRecursively()
-                val total = engine.downloadMb * 1_048_576L
+                var total = engine.downloadMb * 1_048_576L
                 var done = 0L
+                var currentDetail = ""
                 fun progress(read: Long) {
                     if (cancelled == engine) throw InterruptedException("cancelled")
-                    state.value = State.Downloading((((done + read) * 100) / total).toInt().coerceIn(0, 99))
+                    state.value = State.Downloading(downloadPercent(done + read, total), currentDetail)
                 }
                 for (name in engine.files) {
                     stage = "downloading $name"
+                    currentDetail = name
                     val conn = open("https://huggingface.co/${engine.repo}/resolve/main/$name")
                     val length = conn.contentLengthLong
                     val file = File(partial, name)
@@ -348,20 +354,67 @@ object VoiceModels {
                     done += file.length()
                 }
                 // espeak-ng-data is a directory: list it, then fetch file by file.
+                // 2026-10-25 (Robert: downloads go "very slow" after
+                // ~90-95%): that range is exactly this phase. The model
+                // files end at ~89% of the estimate (Kokoro model.onnx
+                // alone is 88.7% of 350 MB; Piper's model 88.6% of
+                // 68 MB), and espeak-ng-data is 355 more files totalling
+                // 17.2 MB — but the old code kept dividing by the
+                // estimate, so the percent passed 100% and sat coerced
+                // at 99% for the whole phase, with no filename shown,
+                // while 355 sequential HTTPS connections (resolve,
+                // redirect, TLS, one tiny file each) ran one at a
+                // time. Three fixes, all here: (1) the total is
+                // recomputed from the listing's real sizes, so the
+                // percent moves through this phase instead of freezing;
+                // (2) every progress update names its file and, for
+                // espeak, its file count, so Settings shows what is
+                // actually happening; (3) the espeak files download
+                // 4 at a time instead of 1 — the model files stay
+                // sequential (single big streams, where parallelism
+                // buys nothing). Validation below is untouched.
                 stage = "listing espeak-ng-data"
                 val listed = listHfDir(engine.repo, "espeak-ng-data")
                 check(listed.isNotEmpty()) { "espeak-ng-data was not listed in ${engine.repo}" }
-                for (path in listed) {
-                    stage = "downloading $path"
-                    val conn = open("https://huggingface.co/${engine.repo}/resolve/main/$path")
-                    val length = conn.contentLengthLong
-                    val file = File(partial, path).apply { parentFile?.mkdirs() }
-                    CountingStream(conn.inputStream, ::progress).use { input ->
-                        file.outputStream().use { input.copyTo(it, 256 * 1024) }
+                val listedTotal = listed.sumOf { it.size }
+                if (listedTotal > 0) total = done + listedTotal
+                stage = "downloading espeak-ng-data"
+                val pool = Executors.newFixedThreadPool(4) { Thread(it, "gearslip-voice-espeak") }
+                val doneAtomic = AtomicLong(done)
+                val finished = AtomicInteger(0)
+                val firstError = AtomicReference<Exception?>(null)
+                val latch = CountDownLatch(listed.size)
+                try {
+                    for (hf in listed) {
+                        pool.execute {
+                            try {
+                                if (cancelled == engine) throw InterruptedException("cancelled")
+                                val conn = open("https://huggingface.co/${engine.repo}/resolve/main/${hf.path}")
+                                val length = conn.contentLengthLong
+                                val file = File(partial, hf.path).apply { parentFile?.mkdirs() }
+                                conn.inputStream.use { input ->
+                                    file.outputStream().use { input.copyTo(it, 256 * 1024) }
+                                }
+                                check(length <= 0 || file.length() == length) { "file ${hf.path} arrived cut short" }
+                                val n = finished.incrementAndGet()
+                                val d = doneAtomic.addAndGet(file.length())
+                                state.value = State.Downloading(
+                                    downloadPercent(d, total),
+                                    "espeak-ng-data: $n/${listed.size} files",
+                                )
+                            } catch (e: Exception) {
+                                firstError.compareAndSet(null, e)
+                            } finally {
+                                latch.countDown()
+                            }
+                        }
                     }
-                    check(length <= 0 || file.length() == length) { "$path arrived cut short" }
-                    done += file.length()
+                    latch.await()
+                } finally {
+                    pool.shutdownNow()
                 }
+                firstError.get()?.let { throw it }
+                done = doneAtomic.get()
                 check(engine.files.all { File(partial, it).isFile }) { "some files were missing" }
                 check(File(partial, "espeak-ng-data/phondata").isFile) { "espeak-ng-data arrived without phondata" }
                 check(partial.renameTo(target)) { "couldn't store the voice" }
@@ -397,14 +450,20 @@ object VoiceModels {
         }
     }
 
-    private fun listHfDir(repo: String, dir: String): List<String> {
+    /** Percent for the download bar, capped at 99 until the state flips to Ready. */
+    fun downloadPercent(done: Long, total: Long): Int =
+        if (total <= 0) 0 else ((done * 100) / total).toInt().coerceIn(0, 99)
+
+    private data class HfFile(val path: String, val size: Long)
+
+    private fun listHfDir(repo: String, dir: String): List<HfFile> {
         val conn = open("https://huggingface.co/api/models/$repo/tree/main/$dir?recursive=true")
         val text = conn.inputStream.bufferedReader().readText()
-        val out = mutableListOf<String>()
+        val out = mutableListOf<HfFile>()
         val arr = JSONArray(text)
         for (i in 0 until arr.length()) {
             val obj = arr.getJSONObject(i)
-            if (obj.optString("type") == "file") out += obj.getString("path")
+            if (obj.optString("type") == "file") out += HfFile(obj.getString("path"), obj.optLong("size", 0))
         }
         return out
     }

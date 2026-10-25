@@ -508,7 +508,7 @@ private fun SpokenVoiceDownloadStatus() {
     val piper by VoiceModels.state(VoiceModels.Engine.PIPER).collectAsState()
     fun line(engine: VoiceModels.Engine, state: VoiceModels.State): String = when (state) {
         VoiceModels.State.Ready -> "${engine.label} is ready."
-        is VoiceModels.State.Downloading -> "${engine.label}: downloading, ${state.percent}%."
+        is VoiceModels.State.Downloading -> "${engine.label}: downloading, ${state.percent}%." + (if (state.detail.isNotEmpty()) " ${state.detail}." else "")
         is VoiceModels.State.Failed -> "${engine.label} didn't finish: ${state.reason}. Tap Download voices to try again."
         VoiceModels.State.Missing -> "${engine.label} not downloaded yet."
     }

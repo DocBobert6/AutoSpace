@@ -643,7 +643,7 @@ private fun VoiceEngineRow(
                 Text(
                     when (val s = state) {
                         State.Ready -> "Downloaded. ${engine.detail}"
-                        is State.Downloading -> "Downloading, ${s.percent}%"
+                        is State.Downloading -> "Downloading, ${s.percent}%" + (if (s.detail.isNotEmpty()) " — ${s.detail}" else "")
                         is State.Failed -> "Download failed: ${s.reason}"
                         State.Missing -> engine.detail
                     },
