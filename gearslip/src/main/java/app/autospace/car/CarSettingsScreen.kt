@@ -65,6 +65,7 @@ fun CarSettingsScreen() {
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
     val display by CarEnvironment.display.collectAsState()
     val vehicle by CarEnvironment.vehicle.collectAsState()
+    val mirrorFit by CarSettings.mirrorFit.collectAsState()
     val context = LocalContext.current
     val cert by produceState<CertSummary?>(null) {
         value = withContext(Dispatchers.Default) { CertSummary.read(context) }
@@ -175,6 +176,22 @@ fun CarSettingsScreen() {
         WebPageSetting()
 
         ScreenFit(vehicle)
+
+        ResolutionSetting(vehicle, display)
+
+        ChoiceRow(
+            "Screen sharing",
+            listOf(MirrorFit.FILL to "Fill (crop)", MirrorFit.FIT to "Fit (letterbox)"),
+            mirrorFit,
+        ) { CarSettings.setMirrorFit(it) }
+        Text(
+            "Fill crops the phone's edges to fill the frame; tap the ✕ in the top-right corner " +
+                "to exit. Fit shows the whole phone with bars; tap a bar to exit. A portrait " +
+                "phone on a landscape car crops heavily in Fill — Fit looks better there. " +
+                "Applies the next time screen sharing starts.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
         ChoiceRow(
             "Experimental features",
@@ -344,9 +361,49 @@ private fun Info(label: String, value: String) {
  * Nudges how much of the frame the UI keeps clear at the top and bottom, live, so a car's
  * display can be fitted from the driver's seat. Save writes it to this vehicle's profile.
  */
+/**
+ * The driver's per-vehicle resolution preference, saved into that vehicle's
+ * profile (no more hand-editing vehicles.json). It takes effect on the next
+ * connect, when the runner resolves it against what the head unit offers.
+ */
+@Composable
+private fun ResolutionSetting(vehicle: String, display: String) {
+    val context = LocalContext.current.applicationContext
+    val known = vehicle.isNotEmpty() && vehicle != "Unknown vehicle"
+    var pref by remember(vehicle) {
+        mutableStateOf(app.autospace.VehicleProfiles.resolutionPreference(context, vehicle) ?: "auto")
+    }
+    var saved by remember { mutableStateOf<String?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChoiceRow(
+            "Resolution",
+            listOf("auto" to "Auto", "720p" to "720p", "1080p" to "1080p", "2k" to "2K", "4k" to "4K"),
+            pref,
+        ) { value ->
+            if (!known) {
+                saved = "No vehicle profile matched — nothing saved"
+            } else if (app.autospace.VehicleProfiles.saveResolutionPreference(context, vehicle, value)) {
+                pref = value
+                saved = "Saved for $vehicle — applies on next connect"
+            } else {
+                saved = "Could not save"
+            }
+        }
+        Text(
+            "Now showing: $display. Only sizes this head unit offers are ever used — " +
+                "if your pick isn't offered, the nearest size at or below it is picked " +
+                "instead. 2K/4K are wired-first: on a wireless link they cap at 1080p.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        saved?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
 @Composable
 private fun ScreenFit(vehicle: String) {
     val insets by CarEnvironment.insets.collectAsState()
+    val frame by CarEnvironment.frame.collectAsState()
     val context = LocalContext.current.applicationContext
     var saved by remember { mutableStateOf<String?>(null) }
     val known = vehicle.isNotEmpty() && vehicle != "Unknown vehicle"
@@ -361,7 +418,7 @@ private fun ScreenFit(vehicle: String) {
         Stepper("Top", insets.top) { change(insets.copy(top = (insets.top + it).coerceAtLeast(0))) }
         Stepper("Bottom", insets.bottom) { change(insets.copy(bottom = (insets.bottom + it).coerceAtLeast(0))) }
         Text(
-            "Usable height ${480 - insets.top - insets.bottom}px of 480",
+            "Usable height ${frame.height - insets.top - insets.bottom}px of ${frame.height}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

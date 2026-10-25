@@ -36,6 +36,14 @@ object PhoneMirror {
     private var media: MediaProjection? = null
     private var frameWidth = 0
     private var frameHeight = 0
+    private var fillRenderer: MirrorFillRenderer? = null
+
+    /**
+     * Whether touches and video use Fill geometry. Set by the activity from
+     * [app.autospace.car.CarSettings.mirrorFit] before mirroring starts; Fill is
+     * the default. Fit keeps the old letterbox behaviour exactly.
+     */
+    var fillEnabled: Boolean = false
 
     /**
      * Wired up by the session, which owns the encoder Surface and so is the only thing that
@@ -108,23 +116,50 @@ object PhoneMirror {
         if (display != null) GearslipLog.i("mirroring the phone into ${width}x$height")
     }
 
+    /**
+     * Fill mirroring: the virtual display renders Fit frames into the GL
+     * renderer's texture, which crops them to the full frame. Returns false when
+     * the renderer could not start — the caller then falls back to [begin] (Fit)
+     * rather than showing a black screen.
+     */
+    fun beginFill(context: Context, token: MediaProjection, output: Surface, width: Int, height: Int, densityDpi: Int): Boolean {
+        val renderer = MirrorFillRenderer.create(output, width, height, context) ?: return false
+        fillRenderer = renderer
+        begin(token, renderer.inputSurface, width, height, densityDpi)
+        if (!_active.value) {
+            runCatching { renderer.release() }
+            fillRenderer = null
+            return false
+        }
+        return true
+    }
+
+    /** True for a touch on the Fill exit button (top-right corner of the frame). */
+    fun isInExitRegion(x: Float, y: Float): Boolean {
+        if (!fillEnabled || frameWidth <= 0 || frameHeight <= 0) return false
+        return MirrorGeometry.exitRegion(frameWidth.toFloat(), frameHeight.toFloat()).contains(x, y)
+    }
+
     fun end() {
         runCatching { display?.release() }
         runCatching { media?.stop() }
         display = null
         media = null
+        runCatching { fillRenderer?.release() }
+        fillRenderer = null
         _active.value = false
     }
 
     /**
      * Maps a head-unit touch in projected coordinates onto the phone's screen.
      *
-     * Mirroring letterboxes: the phone's display is scaled to fit the car frame with its
+     * Fit letterboxes: the phone's display is scaled to fit the car frame with its
      * aspect kept, so the live content occupies a centred sub-rectangle and everything outside
-     * it is padding that no window can receive. Metrics are read per call rather than cached
-     * because rotating the phone changes the shape of the mirror underneath us.
-     *
-     * Returns null for a touch that landed on the padding.
+     * it is padding that no window can receive — a touch there returns null. Fill
+     * covers the frame, so every frame point maps inside the phone. Metrics are read
+     * per call rather than cached because rotating the phone changes the shape of
+     * the mirror underneath us. The geometry here must match the video geometry
+     * ([MirrorGeometry]) or every tap lands wrong.
      */
     fun mapToPhone(context: Context, x: Float, y: Float): PointF? {
         if (frameWidth == 0 || frameHeight == 0) return null
@@ -132,15 +167,11 @@ object PhoneMirror {
             ?.currentWindowMetrics?.bounds ?: return null
         val phoneW = bounds.width().toFloat()
         val phoneH = bounds.height().toFloat()
-        if (phoneW <= 0f || phoneH <= 0f) return null
-
-        val scale = minOf(frameWidth / phoneW, frameHeight / phoneH)
-        val offsetX = (frameWidth - phoneW * scale) / 2f
-        val offsetY = (frameHeight - phoneH * scale) / 2f
-
-        val px = (x - offsetX) / scale
-        val py = (y - offsetY) / scale
-        if (px < 0f || py < 0f || px > phoneW || py > phoneH) return null
-        return PointF(px, py)
+        val p = if (fillEnabled) {
+            MirrorGeometry.mapFill(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())
+        } else {
+            MirrorGeometry.mapFit(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())
+        } ?: return null
+        return PointF(p.x, p.y)
     }
 }

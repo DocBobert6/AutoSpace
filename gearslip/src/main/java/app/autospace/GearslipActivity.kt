@@ -29,6 +29,7 @@ import app.autospace.mirror.PhoneMirror
 import app.autospace.mirror.TouchRelayService
 import app.autospace.car.CarEnvironment
 import app.autospace.car.CarSettings
+import app.autospace.car.MirrorFit
 import app.autospace.car.CarUi
 import app.autospace.car.Prefetch
 import app.autospace.stats.UsageStats
@@ -272,7 +273,16 @@ class GearslipActivity : ComponentActivity(), Projection {
         val target = surface ?: return
         screenProjector?.stop()
         screenProjector = null
-        PhoneMirror.begin(token, target, frameWidth, frameHeight, frameDensity)
+        // Fill is the default: the GL renderer crops Fit frames to the frame, with
+        // an exit button. If it cannot start, fall back to direct Fit mirroring
+        // rather than showing a black screen.
+        PhoneMirror.fillEnabled = CarSettings.mirrorFit.value == MirrorFit.FILL
+        var ok = false
+        if (PhoneMirror.fillEnabled) {
+            ok = PhoneMirror.beginFill(this, token, target, frameWidth, frameHeight, frameDensity)
+            if (!ok) PhoneMirror.fillEnabled = false
+        }
+        if (!ok) PhoneMirror.begin(token, target, frameWidth, frameHeight, frameDensity)
         if (PhoneMirror.active.value) PhoneMirror.launchPending(this) else showCarUi()
     }
 
@@ -286,8 +296,15 @@ class GearslipActivity : ComponentActivity(), Projection {
     /**
      * Sends a head-unit touch to the phone. Anything landing on the mirror's letterbox padding
      * maps to nothing on the phone and is dropped rather than clamped onto a screen edge.
+     * In Fill there is no padding, so the GL exit button in the top-right corner is
+     * the way out instead: a tap there stops the mirror (the phone-notification stop
+     * remains as a backup).
      */
     private fun relayTouch(action: Int, x: Float, y: Float) {
+        if (PhoneMirror.isInExitRegion(x, y)) {
+            if (action == MotionEvent.ACTION_UP) PhoneMirror.requestStop()
+            return
+        }
         val point = PhoneMirror.mapToPhone(this, x, y)
         if (point == null) {
             // The letterbox bars belong to no window, which makes them a safe way back: a tap

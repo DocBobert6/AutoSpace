@@ -28,6 +28,13 @@ data class VehicleProfile(
     /** Preferred video resolution, e.g. "800x480". Null keeps the default choice. */
     val resolution: String?,
     val insets: Insets,
+    /**
+     * The driver's resolution preference for this vehicle, from Settings > Display:
+     * "auto", "720p", "1080p", "2k" or "4k". Null is "auto". Unlike [resolution], which
+     * names one exact config, a preference is resolved at connect time against what
+     * the head unit actually offers (nearest at or below, never an invented config).
+     */
+    val resolutionPreference: String? = null,
 )
 
 object VehicleProfiles {
@@ -81,6 +88,38 @@ object VehicleProfiles {
         }.onFailure { GearslipLog.e("could not save insets to $FILE", it) }.getOrDefault(false)
     }
 
+    /** Writes [preference] into the profile called [name] in the file, leaving everything else as it was. */
+    fun saveResolutionPreference(context: Context, name: String, preference: String): Boolean {
+        val file = context.getExternalFilesDir(null)?.let { File(it, FILE) } ?: return false
+        return runCatching {
+            val root = JSONObject(file.readText())
+            val vehicles = root.getJSONArray("vehicles")
+            var found = false
+            for (i in 0 until vehicles.length()) {
+                val v = vehicles.getJSONObject(i)
+                if (v.optString("name") == name) {
+                    v.put("resolutionPreference", preference)
+                    found = true
+                }
+            }
+            if (found) file.writeText(root.toString(2))
+            found
+        }.onFailure { GearslipLog.e("could not save resolution preference to $FILE", it) }.getOrDefault(false)
+    }
+
+    /** The stored resolution preference for the profile called [name], or null (auto). */
+    fun resolutionPreference(context: Context, name: String): String? {
+        val file = context.getExternalFilesDir(null)?.let { File(it, FILE) } ?: return null
+        return runCatching {
+            val vehicles = JSONObject(file.readText()).optJSONArray("vehicles") ?: return null
+            for (i in 0 until vehicles.length()) {
+                val v = vehicles.getJSONObject(i)
+                if (v.optString("name") == name) return v.optString("resolutionPreference").ifEmpty { null }
+            }
+            null
+        }.getOrNull()
+    }
+
     fun parse(json: String): List<VehicleProfile> {
         val vehicles: JSONArray = JSONObject(json).optJSONArray("vehicles") ?: return emptyList()
         return (0 until vehicles.length()).map { i ->
@@ -92,6 +131,7 @@ object VehicleProfiles {
                 name = v.optString("name", "vehicle $i"),
                 match = match,
                 resolution = v.optString("resolution").ifEmpty { null },
+                resolutionPreference = v.optString("resolutionPreference").ifEmpty { null },
                 insets = if (ins == null) Insets.NONE else Insets(
                     ins.optInt("top"), ins.optInt("bottom"), ins.optInt("left"), ins.optInt("right"),
                 ),

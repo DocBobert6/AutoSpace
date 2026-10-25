@@ -894,14 +894,31 @@ class GearslipRunner(
                 )
                 if (maxUnackedFromConfig != null) maxUnacked = maxOf(1, maxUnackedFromConfig)
                 val offered = indices.map { it.toInt() }
-                val preferred = vehicleProfile?.resolution?.let { want ->
-                    offered.firstOrNull { videoConfigs.getOrNull(it)?.resolutionName == want }
+                // Resolution selection (AutoSpace): an exact vehicle-profile name
+                // wins, else the driver's per-vehicle preference picks the largest
+                // offered landscape config at or below its cap (wireless caps 2k/4k
+                // at 1080p), else the old fit choice. Nothing is ever invented: a
+                // size the head unit did not offer is never selected.
+                val knownOffered = offered.mapNotNull { idx ->
+                    videoConfigs.getOrNull(idx)?.pixelSize()?.let { (w, h) ->
+                        idx to OfferedConfig(videoConfigs[idx].resolutionName, w, h)
+                    }
                 }
-                selectedConfigIndex = preferred ?: fitToScreen(offered) ?: offered.firstOrNull()
-                log.i("selected config index $selectedConfigIndex from offered $offered")
+                val choice = ResolutionSelect.select(
+                    knownOffered.map { it.second },
+                    vehicleProfile?.resolution,
+                    vehicleProfile?.resolutionPreference,
+                    wireless,
+                ) { _ ->
+                    fitToScreen(offered)?.let { fitIdx ->
+                        knownOffered.indexOfFirst { it.first == fitIdx }.takeIf { it >= 0 }
+                    }
+                }
+                selectedConfigIndex = choice?.let { knownOffered[it.index].first } ?: offered.firstOrNull()
+                log.i("selected config index $selectedConfigIndex from offered $offered (${choice?.note})")
                 SessionReport.video(
                     "${videoConfigs.getOrNull(selectedConfigIndex ?: -1)?.resolutionName ?: "?"} " +
-                        "(head unit offered ${offered.size}), max_unacked=$maxUnacked",
+                        "(head unit offered ${offered.size}), max_unacked=$maxUnacked, ${choice?.note}",
                 )
                 // VideoFocusRequestNotification { mode = 2; reason = 3 }
                 val focus = Protobuf.varintField(2, VIDEO_FOCUS_PROJECTED.toLong()) +

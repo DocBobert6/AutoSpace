@@ -18,6 +18,9 @@ enum class Units { AUTO, IMPERIAL, METRIC }
 /** The car UI's own colours. Separate from [NightMode], which is about the light outside (the map). */
 enum class AppTheme { PHONE, LIGHT, DARK }
 
+/** How screen sharing fits the phone into the car frame: Fill crops, Fit letterboxes. */
+enum class MirrorFit { FILL, FIT }
+
 /**
  * Settings changed from the car screen itself. Held as flows so the car UI reacts the moment a
  * button is tapped, and persisted through [AppSettings] so they survive the next connection.
@@ -38,6 +41,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_PLAYER_TITLE = "car_player_title"
     private const val KEY_THEME = "car_app_theme"
     private const val KEY_BRIGHTNESS = "car_brightness"
+    private const val KEY_MIRROR_FIT = "car_mirror_fit"
     private const val KEY_UI_THEME = "car_ui_theme"
     private const val KEY_PINNED = "car_pinned_apps"
     private const val KEY_APP_ORDER = "car_app_order"
@@ -233,6 +237,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         }.getOrDefault(AppTheme.PHONE)
         uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
         brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
+        mirrorFitFlow.value = runCatching {
+            MirrorFit.valueOf(AppSettings.getString(app, KEY_MIRROR_FIT, MirrorFit.FILL.name))
+        }.getOrDefault(MirrorFit.FILL)
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
         playerTitleFlow.value = AppSettings.getString(app, KEY_PLAYER_TITLE, "false") == "true"
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
@@ -288,6 +295,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setBrightness(value: Float) {
         brightnessFlow.value = value.coerceIn(0.05f, 1f)
         AppSettings.putString(app, KEY_BRIGHTNESS, brightnessFlow.value.toString())
+    }
+
+    private val mirrorFitFlow = MutableStateFlow(MirrorFit.FILL)
+
+    /** Screen-sharing fit; Fill is the default. Applies the next time mirroring starts. */
+    val mirrorFit: StateFlow<MirrorFit> = mirrorFitFlow
+
+    fun setMirrorFit(fit: MirrorFit) {
+        mirrorFitFlow.value = fit
+        AppSettings.putString(app, KEY_MIRROR_FIT, fit.name)
     }
 
     fun setUiTheme(id: String) {
