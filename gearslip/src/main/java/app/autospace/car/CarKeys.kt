@@ -7,6 +7,7 @@ import android.view.KeyEvent
 import app.autospace.GearslipLog
 import app.autospace.call.CallUiState
 import app.autospace.call.CarCalls
+import app.autospace.mirror.PhoneMirror
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -62,6 +63,23 @@ object CarKeys {
      * here knows, for the caller to log.
      */
     fun onKey(keyCode: Int, down: Boolean, longPress: Boolean): Boolean {
+        // Phase 9 mirror immersive, second exit path: while mirroring,
+        // CarUi is not projected (the mirror owns the encoder surface)
+        // and its BACK handler is not running, so a head-unit BACK
+        // would otherwise do nothing and trap the driver in the mirror.
+        // BACK during mirroring therefore EXITS the mirror (it is not
+        // relayed to the phone app — phone back is the phone's own
+        // on-screen back button, reached by touch). This swallows no
+        // phone tap at all: it is a hardware key, not a touch, and it
+        // works in both Fit and Fill, unlike the corner/letterbox taps.
+        // The other exits are unchanged: Fill's GL exit button
+        // (top-right corner, tap on finger-up), Fit's letterbox-bar
+        // tap, and the phone notification's Stop action.
+        if (down && keyCode == KeyEvent.KEYCODE_BACK && PhoneMirror.active.value) {
+            GearslipLog.i("mirror: head-unit BACK exits mirroring")
+            PhoneMirror.requestStop()
+            return true
+        }
         if (keyCode in FOCUS_KEYS) {
             _focusMoves.tryEmit(Unit)
             focusSink?.invoke(keyCode, down)

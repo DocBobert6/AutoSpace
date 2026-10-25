@@ -83,6 +83,7 @@ import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.LocalGsTheme
 import app.autospace.media.CarMedia
 import app.autospace.media.MediaArt
+import app.autospace.mirror.PhoneMirror
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -116,6 +117,16 @@ fun CarUi() {
     // Phase 9 immersive player: CarUi reads the player's published
     // controls visibility and hides the nav bar with it (see below).
     val playerControlsVisible by PlayerImmersiveState.controlsVisible.collectAsState()
+    // Phase 9 mirror immersive: while mirroring, no AutoSpace chrome
+    // may be drawn over the phone video. In a real car this is already
+    // the case — showMirror stops the projector and the mirror owns
+    // the encoder surface — but CarUi can still be composed (phone
+    // preview, or a session where the projector is alive), so hide the
+    // nav bar and the notification popup outright while mirroring.
+    // CallOverlay stays: a ringing call outranks the mirror. When
+    // mirroring ends, PhoneMirror.onEnded restarts CarUi with chrome
+    // back, so nothing here needs to restore it.
+    val mirrorActive by PhoneMirror.active.collectAsState()
     val dark = when (appTheme) {
         AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
         AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
@@ -285,7 +296,7 @@ fun CarUi() {
                         PopupTimer()
                         // The dashboard is already listing them, so it needs no popup.
                         NotificationPopup(
-                            showNew = screen !is CarScreen.Notifications && screen != CarScreen.Dashboard,
+                            showNew = screen !is CarScreen.Notifications && screen != CarScreen.Dashboard && !mirrorActive,
                             modifier = Modifier.align(Alignment.TopEnd),
                         )
                         // Above the popup: a call is more urgent than any notification.
@@ -315,7 +326,7 @@ fun CarUi() {
                     // had to be lifted here; the video stays full-bleed.
                     val keyboardVisible by CarKeyboardVisibility.state
                     val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
-                    if (!keyboardVisible && !playerImmersiveHide) CarNavBar(navigator)
+                    if (!keyboardVisible && !playerImmersiveHide && !mirrorActive) CarNavBar(navigator)
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())
