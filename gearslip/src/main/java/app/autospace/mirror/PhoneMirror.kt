@@ -154,35 +154,71 @@ object PhoneMirror {
         }
     }
 
+    /** True while the GL display renderer (not the direct Fit path) is carrying the mirror. */
+    val rendererActive: Boolean get() = fillRenderer != null
+
+    /** Pushes the local display state into the GL renderer; a no-op on the direct path. */
+    fun setDisplayTransform() {
+        fillRenderer?.setTransform(
+            MirrorDisplayState.fill, MirrorDisplayState.zoom,
+            MirrorDisplayState.panX, MirrorDisplayState.panY, MirrorDisplayState.chromeVisible,
+        )
+    }
+
+    /** The frame size the renderer and the touch path agree on. */
+    fun frameSize(): Pair<Int, Int> = frameWidth to frameHeight
+
+    /** The phone's own display size, for display-geometry clamping. Null when unknown. */
+    fun phoneSize(context: Context): PointF? {
+        val bounds = context.getSystemService(WindowManager::class.java)?.currentWindowMetrics?.bounds ?: return null
+        return PointF(bounds.width().toFloat(), bounds.height().toFloat())
+    }
+
+    /**
+     * GL-rendered mirroring in either mode: the virtual display renders
+     * Fit frames into the renderer's texture, which then draws the
+     * display transform (Fit quad positioned by zoom/pan, or Fill crop
+     * sampled by zoom/pan) plus the pill and chrome. Returns false when
+     * the renderer could not start — the caller then falls back to
+     * [begin] (direct Fit) rather than showing a black screen. On the
+     * direct path there is no pill, no chrome, and no zoom: the video
+     * bypasses the renderer entirely, so nothing can be drawn over it.
+     */
+    fun beginDisplay(context: Context, token: MediaProjection, output: Surface, width: Int, height: Int, densityDpi: Int, fill: Boolean): Boolean {
+        // End the previous session FIRST: its renderer, display, and media
+        // must be gone before the new renderer exists, so no end() call
+        // below can ever touch the new renderer. (Previously the create
+        // came first and begin()'s end() destroyed it immediately.)
+        end()
+        MirrorDisplayState.reset()
+        MirrorDisplayState.fill = fill
+        val renderer = MirrorFillRenderer.create(output, width, height, context, fill) ?: run {
+            GearslipLog.e("mirror display renderer failed to start (falling back to direct Fit)")
+            return false
+        }
+        GearslipLog.i("mirror display renderer started into ${width}x$height (${if (fill) "Fill" else "Fit"})")
+        fillRenderer = renderer
+        setDisplayTransform()
+        beginInternal(token, renderer.inputSurface, width, height, densityDpi)
+        if (!_active.value) {
+            // beginInternal already cleared media without stopping the token
+            // (see above), so the caller's retry reuses a LIVE token.
+            runCatching { renderer.release() }
+            fillRenderer = null
+            GearslipLog.e("mirror display failed; renderer released, token kept live for retry")
+            return false
+        }
+        return true
+    }
+
     /**
      * Fill mirroring: the virtual display renders Fit frames into the GL
      * renderer's texture, which crops them to the full frame. Returns false when
      * the renderer could not start — the caller then falls back to [begin] (Fit)
      * rather than showing a black screen.
      */
-    fun beginFill(context: Context, token: MediaProjection, output: Surface, width: Int, height: Int, densityDpi: Int): Boolean {
-        // End the previous session FIRST: its renderer, display, and media
-        // must be gone before the new renderer exists, so no end() call
-        // below can ever touch the new renderer. (Previously the create
-        // came first and begin()'s end() destroyed it immediately.)
-        end()
-        val renderer = MirrorFillRenderer.create(output, width, height, context) ?: run {
-            GearslipLog.e("mirror Fill renderer failed to start (falling back to Fit)")
-            return false
-        }
-        GearslipLog.i("mirror Fill renderer started into ${width}x$height")
-        fillRenderer = renderer
-        beginInternal(token, renderer.inputSurface, width, height, densityDpi)
-        if (!_active.value) {
-            // beginInternal already cleared media without stopping the token
-            // (see above), so the caller's Fit retry reuses a LIVE token.
-            runCatching { renderer.release() }
-            fillRenderer = null
-            GearslipLog.e("mirror Fill display failed; renderer released, token kept live for Fit retry")
-            return false
-        }
-        return true
-    }
+    fun beginFill(context: Context, token: MediaProjection, output: Surface, width: Int, height: Int, densityDpi: Int): Boolean =
+        beginDisplay(context, token, output, width, height, densityDpi, fill = true)
 
     /** True for a touch on the Fill exit button (top-right corner of the frame). */
     fun isInExitRegion(x: Float, y: Float): Boolean {
@@ -197,6 +233,7 @@ object PhoneMirror {
         media = null
         runCatching { fillRenderer?.release() }
         fillRenderer = null
+        MirrorDisplayState.reset()
         _active.value = false
         GearslipLog.i("mirror ended")
     }
@@ -218,7 +255,18 @@ object PhoneMirror {
             ?.currentWindowMetrics?.bounds ?: return null
         val phoneW = bounds.width().toFloat()
         val phoneH = bounds.height().toFloat()
-        val p = if (fillEnabled) {
+        // On the renderer path the tap map must be the inverse of the
+        // display transform (zoom/pan included), or taps land on the
+        // wrong phone control at any zoom. On the direct path there is
+        // no transform, so the legacy maps apply (and agree with
+        // mapDisplay at zoom 1 / pan 0 anyway).
+        val p = if (rendererActive) {
+            MirrorGeometry.mapDisplay(
+                x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat(),
+                MirrorDisplayState.fill, MirrorDisplayState.zoom,
+                MirrorDisplayState.panX, MirrorDisplayState.panY,
+            )
+        } else if (fillEnabled) {
             MirrorGeometry.mapFill(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())
         } else {
             MirrorGeometry.mapFit(x, y, phoneW, phoneH, frameWidth.toFloat(), frameHeight.toFloat())

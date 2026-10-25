@@ -70,6 +70,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
     private const val KEY_HOTWORD = "car_hotword"
+    private const val KEY_HOTWORD_PHONE_MIC = "car_hotword_phone_mic"
     private const val KEY_CALL_SPEAKER = "car_call_speaker"
     private const val KEY_DARK_TYPE = "car_dark_type"
     private const val KEY_TILE_SIZE = "car_tile_size"
@@ -134,6 +135,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val systemSpeechFlow = MutableStateFlow(false)
     private val phoneMicFlow = MutableStateFlow(false)
     private val hotwordFlow = MutableStateFlow(false)
+    private val hotwordPhoneMicFlow = MutableStateFlow(false)
     private val callSpeakerFlow = MutableStateFlow(false)
     private val playerSpeedFlow = MutableStateFlow(1f)
     private val playerSkipSecFlow = MutableStateFlow(10)
@@ -256,6 +258,13 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     /** Hotword listening ("Hey AutoSpace" / "Hey Gearslip") while connected. Default off. */
     val hotword: StateFlow<Boolean> = hotwordFlow
     /**
+     * Hotword listening uses the phone microphone, always, regardless of
+     * the voice-microphone setting. Default off (meaning: follow the
+     * voice-microphone setting). Hotword-only: button-press commands,
+     * calls, and everything else are untouched by this switch.
+     */
+    val hotwordPhoneMic: StateFlow<Boolean> = hotwordPhoneMicFlow
+    /**
      * Calls go to the phone's speaker (and so the phone's microphone) instead of the car's
      * Bluetooth route, applied when a call starts and restored when it ends. Default off;
      * calls only — voice commands, assistant speech, and media are untouched. The car's
@@ -312,9 +321,19 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         tileSizeFlow.value = AppSettings.getString(app, KEY_TILE_SIZE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
         uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
         brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
-        mirrorFitFlow.value = runCatching {
-            MirrorFit.valueOf(AppSettings.getString(app, KEY_MIRROR_FIT, MirrorFit.FILL.name))
-        }.getOrDefault(MirrorFit.FILL)
+        // 2026-10-25: the default is FIT, reversing the earlier
+        // Fill default — Fill on a portrait phone crops the top and
+        // bottom off, which is the "way too zoomed in" complaint. A
+        // stored FILL is migrated to FIT once as well (Fill stays one
+        // tap away in the mirror chrome and in Settings below), so an
+        // existing install that never chose Fill explicitly gets the
+        // fixed default instead of keeping the broken one silently.
+        val storedFit = AppSettings.getString(app, KEY_MIRROR_FIT, "")
+        mirrorFitFlow.value = when (storedFit) {
+            "FILL" -> MirrorFit.FIT.also { AppSettings.putString(app, KEY_MIRROR_FIT, MirrorFit.FIT.name) }
+            "FIT" -> MirrorFit.FIT
+            else -> MirrorFit.FIT
+        }
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
         // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
@@ -333,6 +352,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
         hotwordFlow.value = AppSettings.getString(app, KEY_HOTWORD, "false") == "true"
+        hotwordPhoneMicFlow.value = AppSettings.getString(app, KEY_HOTWORD_PHONE_MIC, "false") == "true"
         callSpeakerFlow.value = AppSettings.getString(app, KEY_CALL_SPEAKER, "false") == "true"
         playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
@@ -400,7 +420,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     private val mirrorFitFlow = MutableStateFlow(MirrorFit.FILL)
 
-    /** Screen-sharing fit; Fill is the default. Applies the next time mirroring starts. */
+    /** Screen-sharing fit; Fit is the default. Applies the next time mirroring starts. */
     val mirrorFit: StateFlow<MirrorFit> = mirrorFitFlow
 
     fun setMirrorFit(fit: MirrorFit) {
@@ -464,6 +484,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setHotword(on: Boolean) {
         hotwordFlow.value = on
         AppSettings.putString(app, KEY_HOTWORD, on.toString())
+    }
+
+    fun setHotwordPhoneMic(on: Boolean) {
+        hotwordPhoneMicFlow.value = on
+        AppSettings.putString(app, KEY_HOTWORD_PHONE_MIC, on.toString())
     }
 
     fun setCallSpeaker(on: Boolean) {

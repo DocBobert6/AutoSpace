@@ -26,7 +26,9 @@ import androidx.activity.result.contract.ActivityResultContracts.StartActivityFo
 import android.content.res.Configuration
 import app.autospace.audio.AudioCaptureService
 import app.autospace.audio.CarAudio
+import app.autospace.mirror.MirrorDisplayState
 import app.autospace.mirror.MirrorExitTracker
+import app.autospace.mirror.MirrorGeometry
 import app.autospace.mirror.MirrorService
 import app.autospace.mirror.PhoneMirror
 import app.autospace.mirror.TouchRelayService
@@ -137,6 +139,13 @@ class GearslipActivity : ComponentActivity(), Projection {
         enableEdgeToEdge()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        // CrashReporter first: its unclean-shutdown check must see
+        // the PREVIOUS session's log file as the newest one, which is
+        // only true before GearslipLog.init creates this run's file;
+        // and its Java handler must be installed before
+        // GearslipLog.installCrashHandler so the chain runs
+        // log-recording first, .txt second, system termination last.
+        CrashReporter.install(this)
         GearslipLog.init(this)
         GearslipLog.installCrashHandler()
         GearslipLog.i("AutoSpace ready")
@@ -230,6 +239,10 @@ class GearslipActivity : ComponentActivity(), Projection {
         PhoneMirror.requestStop()
         closeAccessory()
         GearslipLog.flush()
+        // A clean activity destroy is the one clean exit the app can
+        // actually observe: without this the next start would file an
+        // unclean-shutdown report for a run that ended normally.
+        CrashReporter.markCleanExit(this)
     }
 
     /** Launches the system dialog that offers Gearslip the call-screening role, if it isn't held already. */
@@ -315,7 +328,18 @@ class GearslipActivity : ComponentActivity(), Projection {
             ok = PhoneMirror.beginFill(this, token, target, frameWidth, frameHeight, frameDensity)
             if (!ok) PhoneMirror.fillEnabled = false
         }
+        // Fit now ALSO goes through the GL renderer when it can: the
+        // renderer is what draws the pill/chrome and applies zoom/pan,
+        // and the direct path can draw nothing over the video. Only if
+        // the renderer cannot start at all does Fit fall back to the
+        // direct path (chrome/zoom then unavailable, but the mirror
+        // still works — the old behaviour, not a black screen).
+        if (!ok) {
+            ok = PhoneMirror.beginDisplay(this, token, target, frameWidth, frameHeight, frameDensity, fill = false)
+            if (ok) PhoneMirror.fillEnabled = false
+        }
         if (!ok) PhoneMirror.begin(token, target, frameWidth, frameHeight, frameDensity)
+        resetMirrorGestures()
         if (PhoneMirror.active.value) {
             GearslipLog.i("mirror live (${if (PhoneMirror.fillEnabled) "Fill" else "Fit"})${if (retry) " after retry" else ""}")
             PhoneMirror.launchPending(this)
@@ -332,6 +356,7 @@ class GearslipActivity : ComponentActivity(), Projection {
     }
 
     private fun showCarUi() {
+        resetMirrorGestures()
         val target = surface ?: return
         if (screenProjector != null) return
         val projector = ScreenProjector(this).also { screenProjector = it }
@@ -353,6 +378,258 @@ class GearslipActivity : ComponentActivity(), Projection {
      * backup exits.
      */
     private val mirrorTouch = MirrorExitTracker()
+
+    // --- Mirror chrome / zoom gestures (2026-10-25) -------------------------------
+    //
+    // Touch rules, in priority order, for a mirroring session on the
+    // GL renderer path (direct-Fit fallback has no chrome and no zoom,
+    // so it keeps the old single-finger relay exactly):
+    //  1. Two fingers = a pinch: zoom 1x-3x about the frame centre,
+    //     detected locally, never relayed to the phone as a pinch
+    //     (mirror relay is single-finger only, and stays that way).
+    //  2. The pill (top-centre) opens the chrome; chrome buttons
+    //     (Fit/Fill, zoom out/in, reset) act locally. Chrome touches
+    //     NEVER relay. Chrome auto-hides 3.5s after the last chrome
+    //     interaction, like the video player's controls.
+    //  3. While zoomed (> 1x), a single-finger drag PANS the view
+    //     (local only); a tap without a drag still relays to the
+    //     phone, mapped through the zoom/pan transform so it lands on
+    //     the right control. At zoom 1x a drag relays as a swipe,
+    //     exactly as before — pan exists only while zoomed.
+    //  4. Otherwise (zoom 1x, no chrome touch): the old deliberate-tap
+    //     exit + relay behaviour, untouched.
+    private var pinchActive = false
+    private var pinchStartDist = 0f
+    private var pinchStartZoom = 1f
+    private var pendingTapX = 0f
+    private var pendingTapY = 0f
+    private var pendingTap = false
+    private var panning = false
+    private var lastPanX = 0f
+    private var lastPanY = 0f
+    private var chromePending = -1 // button index, or -2 = dismiss-tap, or -1 = none
+    private var pillPending = false
+
+    private val chromeHideRunnable = Runnable {
+        MirrorDisplayState.chromeVisible = false
+        PhoneMirror.setDisplayTransform()
+    }
+
+    private fun showMirrorChrome() {
+        MirrorDisplayState.chromeVisible = true
+        PhoneMirror.setDisplayTransform()
+        mainHandler.removeCallbacks(chromeHideRunnable)
+        mainHandler.postDelayed(chromeHideRunnable, 3_500)
+    }
+
+    private fun hideMirrorChrome() {
+        mainHandler.removeCallbacks(chromeHideRunnable)
+        MirrorDisplayState.chromeVisible = false
+        PhoneMirror.setDisplayTransform()
+    }
+
+    private fun resetMirrorGestures() {
+        pinchActive = false
+        pendingTap = false
+        panning = false
+        chromePending = -1
+        pillPending = false
+        mainHandler.removeCallbacks(chromeHideRunnable)
+    }
+
+    private fun pushMirrorTransform() = PhoneMirror.setDisplayTransform()
+
+    /** Handles a whole multi-touch event while mirroring; true when it was consumed here. */
+    private fun handleMirrorTouch(action: Int, points: List<TouchPoint>): Boolean {
+        if (!PhoneMirror.rendererActive) {
+            // Direct-Fit fallback: no chrome, no zoom — old path, first finger only.
+            points.firstOrNull()?.let { relayTouch(action, it.x, it.y) }
+            return true
+        }
+        val (fw, fh) = PhoneMirror.frameSize()
+        val frameW = fw.toFloat()
+        val frameH = fh.toFloat()
+        if (frameW <= 0f || frameH <= 0f) return true
+        if (points.size >= 2) {
+            // Pinch: zoom only, never relayed. A pinch cancels any
+            // pending tap/pan/chrome gesture rather than completing it.
+            val dx = points[0].x - points[1].x
+            val dy = points[0].y - points[1].y
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+            if (!pinchActive) {
+                pinchActive = true
+                pinchStartDist = dist
+                pinchStartZoom = MirrorDisplayState.zoom
+                pendingTap = false
+                panning = false
+                chromePending = -1
+                pillPending = false
+                // The first finger may already have relayed a DOWN to
+                // the phone (zoom 1x path): end that gesture cleanly
+                // with an UP instead of leaving a stuck touch down
+                // while the pinch zooms locally. cancel() returns the
+                // UP itself when one is owed, Swallow otherwise.
+                when (val d = mirrorTouch.cancel()) {
+                    is MirrorExitTracker.Decision.Relay -> TouchRelayService.instance?.up(d.x, d.y)
+                    else -> Unit
+                }
+            } else if (pinchStartDist > 0f && dist > 0f) {
+                MirrorDisplayState.setZoom(pinchStartZoom * dist / pinchStartDist)
+                pushMirrorTransform()
+            }
+            return true
+        }
+        if (pinchActive) {
+            // The second finger just lifted: end the pinch, swallow
+            // this event so it cannot become a stray tap.
+            pinchActive = false
+            return true
+        }
+        val pt = points.firstOrNull() ?: return true
+        val x = pt.x
+        val y = pt.y
+        val pill = MirrorGeometry.pillRegion(frameW, frameH)
+        val buttons = MirrorGeometry.chromeButtons(frameW, frameH)
+        if (MirrorDisplayState.chromeVisible) {
+            when (action) {
+                MotionEvent.ACTION_DOWN -> {
+                    when {
+                        pill.contains(x, y) -> { pillPending = true }
+                        else -> {
+                            val idx = buttons.indexOfFirst { it.contains(x, y) }
+                            chromePending = if (idx >= 0) idx else -2
+                        }
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (chromePending >= 0 && !buttons[chromePending].contains(x, y)) chromePending = -1
+                    if (pillPending && !pill.contains(x, y)) pillPending = false
+                    return true
+                }
+                MotionEvent.ACTION_UP -> {
+                    when {
+                        pillPending -> { pillPending = false; hideMirrorChrome() }
+                        chromePending >= 0 -> {
+                            val idx = chromePending
+                            chromePending = -1
+                            when (idx) {
+                                0 -> {
+                                    val fill = !MirrorDisplayState.fill
+                                    MirrorDisplayState.fill = fill
+                                    PhoneMirror.fillEnabled = fill
+                                    CarSettings.setMirrorFit(if (fill) MirrorFit.FILL else MirrorFit.FIT)
+                                }
+                                1 -> MirrorDisplayState.setZoom(MirrorDisplayState.zoom - 0.25f)
+                                2 -> MirrorDisplayState.setZoom(MirrorDisplayState.zoom + 0.25f)
+                                3 -> {
+                                    MirrorDisplayState.setZoom(1f)
+                                    MirrorDisplayState.panX = 0f
+                                    MirrorDisplayState.panY = 0f
+                                }
+                            }
+                            pushMirrorTransform()
+                            showMirrorChrome() // acting restarts the 3.5s hide timer
+                        }
+                        chromePending == -2 -> { chromePending = -1; hideMirrorChrome() }
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    chromePending = -1
+                    pillPending = false
+                    return true
+                }
+            }
+            return true
+        }
+        // Chrome closed: the pill is the only chrome entry point.
+        when (action) {
+            MotionEvent.ACTION_DOWN -> {
+                if (pill.contains(x, y)) {
+                    pillPending = true
+                    return true
+                }
+                if (MirrorDisplayState.zoom > 1f) {
+                    // Zoomed: hold the DOWN — a drag from here pans,
+                    // a tap without a drag relays (mapped through the
+                    // zoom/pan transform) on UP.
+                    pendingTap = true
+                    panning = false
+                    pendingTapX = x
+                    pendingTapY = y
+                    lastPanX = x
+                    lastPanY = y
+                    return true
+                }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (pillPending) {
+                    if (!pill.contains(x, y)) pillPending = false
+                    return true
+                }
+                if (pendingTap) {
+                    val dx = x - pendingTapX
+                    val dy = y - pendingTapY
+                    if (!panning && dx * dx + dy * dy > 12f * 12f) panning = true
+                    if (panning) {
+                        val phone = PhoneMirror.phoneSize(this)
+                        if (phone != null) {
+                            val base = if (MirrorDisplayState.fill) {
+                                MirrorGeometry.fill(phone.x, phone.y, frameW, frameH)
+                            } else {
+                                MirrorGeometry.fit(phone.x, phone.y, frameW, frameH)
+                            }
+                            val scaledW = phone.x * base.scale * MirrorDisplayState.zoom
+                            val scaledH = phone.y * base.scale * MirrorDisplayState.zoom
+                            val (cx, cy) = MirrorGeometry.clampPan(
+                                MirrorDisplayState.panX + (x - lastPanX),
+                                MirrorDisplayState.panY + (y - lastPanY),
+                                scaledW, scaledH, frameW, frameH,
+                            )
+                            MirrorDisplayState.panX = cx
+                            MirrorDisplayState.panY = cy
+                            pushMirrorTransform()
+                        }
+                        lastPanX = x
+                        lastPanY = y
+                    }
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                if (pillPending) {
+                    pillPending = false
+                    showMirrorChrome()
+                    return true
+                }
+                if (pendingTap) {
+                    pendingTap = false
+                    if (!panning) {
+                        // A tap while zoomed: relay it as a down+up at
+                        // the zoom-mapped phone point (exit region and
+                        // padding rules do not apply mid-tap: the tap
+                        // started on content, so it ends on content).
+                        val relay = TouchRelayService.instance
+                        PhoneMirror.mapToPhone(this, x, y)?.let { p ->
+                            relay?.down(p.x, p.y)
+                            relay?.up(p.x, p.y)
+                        }
+                    }
+                    panning = false
+                    return true
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                pillPending = false
+                pendingTap = false
+                panning = false
+                return true
+            }
+        }
+        relayTouch(action, x, y)
+        return true
+    }
 
     private fun relayTouch(action: Int, x: Float, y: Float) {
         val inExit = PhoneMirror.isInExitRegion(x, y)
@@ -497,8 +774,10 @@ class GearslipActivity : ComponentActivity(), Projection {
         // To the front of the main thread's queue: a touch waiting behind other work is lag the
         // driver feels, while the work it jumps ahead of can wait a frame.
         mainHandler.postAtFrontOfQueue {
-            // Mirroring drives one phone touch at a time, so it follows the first finger only.
-            if (PhoneMirror.active.value) points.firstOrNull()?.let { relayTouch(action, it.x, it.y) }
+            // Mirroring: the multi-touch handler owns pinch, pill,
+            // chrome, and zoomed pan; single-finger relay inside it
+            // still drives one phone touch at a time, as before.
+            if (PhoneMirror.active.value) handleMirrorTouch(action, points)
             else screenProjector?.dispatchTouch(action, actionIndex, points)
         }
     }

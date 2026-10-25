@@ -62,6 +62,27 @@ object HotwordListener {
     private const val POLL_MS = 250L
     private const val MIC_RELEASE_WAIT_MS = 1_500L
     private const val TRIGGER_COOLDOWN_MS = 1_500L
+    /**
+     * Broken-car-mic fallback (2026-10-25): a car mic that opens and
+     * streams silence never trips SpeechEngine's 1500 ms first-audio
+     * fallback (that one only fires when NOTHING arrives), so the loop
+     * used to listen to silence forever. A chunk counts as silent when
+     * every sample is within [SILENCE_AMPLITUDE] of zero (16-bit
+     * samples: a working mic's noise floor alone is louder than this,
+     * and any real speech is hundreds of times louder); [SILENCE_CHUNKS]
+     * of unbroken silence (8 s) on a car mic switches this hold to the
+     * phone mic, once per hold, and logs it. The flap guard is the
+     * combination: continuous silence only (any loud chunk resets the
+     * count), a long window (a quiet car at a red light does not trip
+     * 8 s of digital silence), and once-per-hold (it never bounces
+     * back and forth). A mic streaming loud garbage is NOT detected —
+     * silence is the only broken-mic shape this can prove — and the
+     * phone-mic hotword switch below is the workaround for that case.
+     */
+    private const val SILENCE_AMPLITUDE = 32
+    private const val SILENCE_FALLBACK_MS = 8_000L
+    /** How often the "waiting for Kroko" diagnostic may repeat while the loop retries. */
+    private const val MODEL_WAIT_LOG_MS = 30_000L
 
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "gearslip-hotword") }
     private val main = Handler(Looper.getMainLooper())
@@ -75,6 +96,7 @@ object HotwordListener {
     /** True while something else must own the microphone (assistant busy, on a call). */
     @Volatile private var suspendCheck: () -> Boolean = { true }
     @Volatile private var onHotword: (() -> Unit)? = null
+    @Volatile private var lastModelWaitLog = 0L
 
     /**
      * Wiring from the car layer: [sessionCheck] is true only for a real car session
@@ -149,7 +171,19 @@ object HotwordListener {
                 if (recognizer == null) {
                     recognizer = loadRecognizer(app)
                     if (recognizer == null) {
-                        // Kroko not downloaded (yet): retry quietly, once a second.
+                        // Kroko not downloaded (yet): retry once a second,
+                        // but say so on a throttle instead of in total
+                        // silence — a loop that never logs looks dead
+                        // exactly like a loop that never hears, and the
+                        // driver cannot tell which one they have.
+                        val now = SystemClock.uptimeMillis()
+                        if (now - lastModelWaitLog > MODEL_WAIT_LOG_MS) {
+                            lastModelWaitLog = now
+                            GearslipLog.w(
+                                "hotword: waiting for the Kroko listening model — " +
+                                    "download it in Settings on the phone",
+                            )
+                        }
                         Thread.sleep(1_000)
                         continue
                     }
@@ -161,22 +195,23 @@ object HotwordListener {
                     val deadline = SystemClock.uptimeMillis() + 2_000
                     while (holdingMic && SystemClock.uptimeMillis() < deadline) Thread.sleep(50)
                 }
-                val mic = try {
-                    SpeechEngine.openSpeechMic()
+                val opened = try {
+                    SpeechEngine.openHotwordMic()
                 } catch (t: Throwable) {
                     GearslipLog.w("hotword: could not open a microphone: ${t.message}")
                     Thread.sleep(1_000)
                     continue
                 }
+                var liveMic = opened.first
                 holdingMic = true
                 GearslipLog.i("hotword: listening for \"Hey AutoSpace\"")
                 try {
-                    runStream(recognizer, mic)
+                    liveMic = runStream(recognizer, liveMic, opened.second)
                 } catch (t: Throwable) {
                     GearslipLog.w("hotword: listening failed: ${t.message}")
                 } finally {
                     holdingMic = false
-                    runCatching { mic.close() }
+                    runCatching { liveMic.close() }
                 }
                 // The driver is mid-command after a trigger (or a gate just closed):
                 // do not reopen the microphone into the tail of that speech.
@@ -192,7 +227,15 @@ object HotwordListener {
      * the microphone ends. Utterances are segmented by silence (or length) with a fresh
      * stream, so a long drive's transcript never grows into a false trigger.
      */
-    private fun runStream(recognizer: OnlineRecognizer, mic: SpeechEngine.Mic) {
+    private fun runStream(
+        recognizer: OnlineRecognizer,
+        mic: SpeechEngine.Mic,
+        source: SpeechEngine.MicSource,
+    ): SpeechEngine.Mic {
+        var liveMic = mic
+        var liveSource = source
+        var silentChunks = 0
+        var fellBack = false
         var stream = recognizer.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)
@@ -201,9 +244,35 @@ object HotwordListener {
         try {
             while (running) {
                 if (!gatesPassForStream()) break
-                val n = mic.read(frame)
+                val n = liveMic.read(frame)
                 if (n < 0) break
                 if (n == 0) continue
+                // Broken-car-mic fallback, this hold only: unbroken
+                // digital silence on a car mic means the mic is not
+                // hearing the cabin at all. Switch to the phone mic
+                // for the rest of the hold (old mic closed first, so
+                // the single channel is never held twice).
+                if (liveSource == SpeechEngine.MicSource.CAR && !fellBack) {
+                    var loud = false
+                    for (i in 0 until n) {
+                        val v = frame[i].toInt()
+                        if (v > SILENCE_AMPLITUDE || v < -SILENCE_AMPLITUDE) { loud = true; break }
+                    }
+                    silentChunks = if (loud) 0 else silentChunks + 1
+                    if (silentChunks * 100L >= SILENCE_FALLBACK_MS) {
+                        runCatching { liveMic.close() }
+                        liveMic = try {
+                            SpeechEngine.openPhoneMic()
+                        } catch (t: Throwable) {
+                            GearslipLog.w("hotword: phone mic fallback failed: ${t.message}")
+                            break
+                        }
+                        liveSource = SpeechEngine.MicSource.PHONE
+                        fellBack = true
+                        silentChunks = 0
+                        GearslipLog.i("hotword: car mic silent, using phone mic")
+                    }
+                }
                 for (i in 0 until n) samples[i] = frame[i] / 32768f
                 stream.acceptWaveform(if (n == CHUNK) samples else samples.copyOf(n), RATE)
                 while (recognizer.isReady(stream)) recognizer.decode(stream)
@@ -216,7 +285,7 @@ object HotwordListener {
                         GearslipLog.i("hotword: heard \"$phrase\", opening the assistant")
                         val action = onHotword
                         main.post { action?.invoke() }
-                        return
+                        return liveMic
                     }
                 }
                 val now = SystemClock.uptimeMillis()
@@ -231,6 +300,7 @@ object HotwordListener {
         } finally {
             runCatching { stream.release() }
         }
+        return liveMic
     }
 
     /**

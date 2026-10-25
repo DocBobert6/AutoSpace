@@ -124,24 +124,53 @@ object VoiceEngine {
         }
     }
 
+    /**
+     * The espeak languages sherpa-onnx can phonemize with for the
+     * catalogue voices. A selected voice whose sid is outside the
+     * voices.bin table (0..52) or whose language is not one of these
+     * must never reach a native generate: that call is exactly the
+     * shape of crash that kills the process with no Java exception.
+     * A stored selection can go stale this way if the catalogue ever
+     * changes under it; the check costs nothing and keeps the stale
+     * value from ever being spoken — Piper answers instead.
+     */
+    private val ALLOWED_ESPEAK_LANGS = setOf("en", "es", "fr", "hi", "it", "ja", "pt", "cmn")
+
+    private fun validKokoroVoice(voice: VoiceModels.KokoroVoice): Boolean {
+        if (voice.sid !in 0..52) return false
+        if (VoiceModels.KOKORO_VOICES.none { it.id == voice.id && it.sid == voice.sid }) return false
+        return VoiceModels.espeakLang(voice) in ALLOWED_ESPEAK_LANGS
+    }
+
     private fun synthesizeNow(app: Context, text: String): Synthesized? {
         if (VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)) {
             val voice = VoiceModels.selectedVoice.value
-            val started = System.currentTimeMillis()
-            val audio = runCatching { kokoro(app, voice)?.generate(text, voice.sid, 1.0f) }.getOrNull()
-            if (audio != null && audio.samples.isNotEmpty()) {
-                GearslipLog.i(
-                    "voice: kokoro ${voice.id} spoke ${audio.samples.size * 1000 / audio.sampleRate} ms " +
-                        "of audio in ${System.currentTimeMillis() - started} ms",
-                )
-                return Synthesized(audio.samples, audio.sampleRate, "kokoro")
+            if (!validKokoroVoice(voice)) {
+                GearslipLog.w("voice: selected voice ${voice.id} sid ${voice.sid} is not valid, trying piper")
+            } else {
+                val started = System.currentTimeMillis()
+                // Markers around the native call (engine + voice id only,
+                // never spoken text): if this generate kills the process,
+                // the begin line without an end line names the step.
+                GearslipLog.i("voice: native generate begin kokoro ${voice.id}")
+                val audio = runCatching { kokoro(app, voice)?.generate(text, voice.sid, 1.0f) }.getOrNull()
+                GearslipLog.i("voice: native generate end kokoro ${voice.id}")
+                if (audio != null && audio.samples.isNotEmpty() && audio.sampleRate > 0) {
+                    GearslipLog.i(
+                        "voice: kokoro ${voice.id} spoke ${audio.samples.size * 1000 / audio.sampleRate} ms " +
+                            "of audio in ${System.currentTimeMillis() - started} ms",
+                    )
+                    return Synthesized(audio.samples, audio.sampleRate, "kokoro")
+                }
+                GearslipLog.w("voice: kokoro synthesis failed, trying piper")
             }
-            GearslipLog.w("voice: kokoro synthesis failed, trying piper")
         }
         if (VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) {
             val started = System.currentTimeMillis()
+            GearslipLog.i("voice: native generate begin piper")
             val audio = runCatching { piper(app)?.generate(text, 0, 1.0f) }.getOrNull()
-            if (audio != null && audio.samples.isNotEmpty()) {
+            GearslipLog.i("voice: native generate end piper")
+            if (audio != null && audio.samples.isNotEmpty() && audio.sampleRate > 0) {
                 GearslipLog.i(
                     "voice: piper spoke ${audio.samples.size * 1000 / audio.sampleRate} ms " +
                         "of audio in ${System.currentTimeMillis() - started} ms",
@@ -173,8 +202,11 @@ object VoiceEngine {
                     debug = false,
                 ),
             )
+            GearslipLog.i("voice: native load begin kokoro")
             return runCatching { OfflineTts(config) }.onFailure {
                 GearslipLog.w("voice: kokoro failed to load: ${it.message}")
+            }.onSuccess {
+                GearslipLog.i("voice: native load end kokoro")
             }.getOrNull()?.also {
                 kokoro = it
                 kokoroLang = lang
@@ -197,8 +229,11 @@ object VoiceEngine {
                     debug = false,
                 ),
             )
+            GearslipLog.i("voice: native load begin piper")
             return runCatching { OfflineTts(config) }.onFailure {
                 GearslipLog.w("voice: piper failed to load: ${it.message}")
+            }.onSuccess {
+                GearslipLog.i("voice: native load end piper")
             }.getOrNull()?.also { piper = it }
         }
     }
@@ -219,7 +254,7 @@ object VoiceEngine {
      * Returns false straight away when no engine can speak, so the caller
      * can say that instead of leaving the driver waiting on silence.
      */
-    fun play(context: Context, text: String, onDone: () -> Unit): Boolean {
+    fun play(context: Context, text: String, onDone: () -> Unit, onSilent: () -> Unit = {}): Boolean {
         if (text.isBlank()) {
             main.post(onDone)
             return true
@@ -234,10 +269,18 @@ object VoiceEngine {
         playExecutor.execute {
             val audio = synthesize(app, text)
             if (myGeneration != generation.get() || audio == null) {
-                if (myGeneration == generation.get()) main.post(onDone)
+                // A failed render used to end here as plain silence: the
+                // overlay closed and the driver got nothing, not even a
+                // reason. [onSilent] lets the caller say so instead.
+                // Interrupted speech (a newer reply took over) is not a
+                // failure and must not surface: it is already superseded.
+                if (myGeneration == generation.get()) {
+                    main.post(onDone)
+                    main.post(onSilent)
+                }
                 return@execute
             }
-            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = false)
+            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = false, onSilent = onSilent)
         }
         return true
     }
@@ -292,19 +335,28 @@ object VoiceEngine {
         val future: Future<Synthesized?> = synthExecutor.submit<Synthesized?> {
             runCatching {
                 if (voice != null) {
-                    val started = System.currentTimeMillis()
-                    val generated = kokoro(app, voice)?.generate(text, voice.sid, 1.0f)
-                    if (generated != null && generated.samples.isNotEmpty()) {
-                        GearslipLog.i(
-                            "voice: preview ${voice.id} rendered " +
-                                "${generated.samples.size * 1000 / generated.sampleRate} ms " +
-                                "in ${System.currentTimeMillis() - started} ms",
-                        )
-                        Synthesized(generated.samples, generated.sampleRate, "kokoro")
-                    } else null
+                    if (!validKokoroVoice(voice)) {
+                        GearslipLog.w("voice: preview voice ${voice.id} sid ${voice.sid} is not valid")
+                        null
+                    } else {
+                        val started = System.currentTimeMillis()
+                        GearslipLog.i("voice: native generate begin preview ${voice.id}")
+                        val generated = kokoro(app, voice)?.generate(text, voice.sid, 1.0f)
+                        GearslipLog.i("voice: native generate end preview ${voice.id}")
+                        if (generated != null && generated.samples.isNotEmpty() && generated.sampleRate > 0) {
+                            GearslipLog.i(
+                                "voice: preview ${voice.id} rendered " +
+                                    "${generated.samples.size * 1000 / generated.sampleRate} ms " +
+                                    "in ${System.currentTimeMillis() - started} ms",
+                            )
+                            Synthesized(generated.samples, generated.sampleRate, "kokoro")
+                        } else null
+                    }
                 } else {
+                    GearslipLog.i("voice: native generate begin preview piper")
                     val generated = piper(app)?.generate(text, 0, 1.0f)
-                    if (generated != null && generated.samples.isNotEmpty()) {
+                    GearslipLog.i("voice: native generate end preview piper")
+                    if (generated != null && generated.samples.isNotEmpty() && generated.sampleRate > 0) {
                         GearslipLog.i(
                             "voice: preview piper rendered " +
                                 "${generated.samples.size * 1000 / generated.sampleRate} ms",
@@ -326,27 +378,48 @@ object VoiceEngine {
     }
 
     /** The shared AudioTrack playback loop for [play] and [playPreview]. */
-    private fun playAudio(audio: Synthesized, myGeneration: Int, onDone: () -> Unit, notifyOnInterrupt: Boolean) {
+    private fun playAudio(
+        audio: Synthesized,
+        myGeneration: Int,
+        onDone: () -> Unit,
+        notifyOnInterrupt: Boolean,
+        onSilent: () -> Unit = {},
+    ) {
+        // The Builder used to sit outside the try: a generated rate the
+        // hardware rejects (0, or absurd) threw IllegalArgumentException
+        // on this thread, onDone never fired, and the overlay stuck on
+        // SPEAKING. A bad rate is a failed render, not a crash: guard it
+        // and fail through the same path as a failed synthesis.
+        if (audio.rate <= 0 || audio.rate > 96_000 || audio.samples.isEmpty()) {
+            GearslipLog.w("voice: refusing playback of unusable audio (rate ${audio.rate})")
+            if (myGeneration == generation.get()) {
+                main.post(onDone)
+                main.post(onSilent)
+            }
+            return
+        }
         val shorts = floatsToShorts(audio.samples)
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build(),
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(audio.rate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .build(),
-            )
-            .setBufferSizeInBytes(shorts.size * 2)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-        currentTrack = track
+        var track: AudioTrack? = null
+        var failed = false
         try {
+            track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setSampleRate(audio.rate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .build(),
+                )
+                .setBufferSizeInBytes(shorts.size * 2)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build()
+            currentTrack = track
             track.play()
             var offset = 0
             while (offset < shorts.size && myGeneration == generation.get()) {
@@ -356,12 +429,16 @@ object VoiceEngine {
             }
         } catch (e: Exception) {
             GearslipLog.w("voice: playback failed: ${e.message}")
+            failed = true
         } finally {
-            runCatching { track.stop() }
-            runCatching { track.release() }
-            if (currentTrack === track) currentTrack = null
+            track?.let {
+                runCatching { it.stop() }
+                runCatching { it.release() }
+                if (currentTrack === it) currentTrack = null
+            }
         }
         if (myGeneration == generation.get() || notifyOnInterrupt) main.post(onDone)
+        if (failed && myGeneration == generation.get()) main.post(onSilent)
     }
 
     /** Float samples in [-1, 1] to 16-bit PCM, clamped, never silent by overflow. */

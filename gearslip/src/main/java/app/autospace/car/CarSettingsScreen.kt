@@ -76,6 +76,7 @@ fun CarSettingsScreen() {
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
     val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
     val hotword by CarSettings.hotword.collectAsState()
+    val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
     val callSpeaker by CarSettings.callSpeaker.collectAsState()
     val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
     val display by CarEnvironment.display.collectAsState()
@@ -326,6 +327,20 @@ fun CarSettingsScreen() {
         // Hotword (2026-10-25): hands-free wake phrase, off by default. The
         // listener itself enforces the rest — car session only, suspended while
         // the assistant is busy or on a call — so this row is only the switch.
+        // Hotword-only phone mic (2026-10-25): the same switch as
+        // phone Settings, same state. When on, hotword listening uses
+        // the phone mic even when the car has one — the workaround for
+        // a broken car mic. Button-press commands, calls, and the
+        // voice-microphone setting above are untouched by this switch.
+        ExperimentalFeatureRow(
+            title = "Listen for “Hey AutoSpace” on the phone microphone",
+            description = "Hotword listening only: uses the phone's microphone even when " +
+                "the car has one. Turn this on if the car's microphone doesn't work " +
+                "and “Hey AutoSpace” never answers. Button-press voice commands, " +
+                "calls, and everything else are unaffected.",
+            checked = hotwordPhoneMic,
+        ) { CarSettings.setHotwordPhoneMic(it) }
+
         ExperimentalFeatureRow(
             title = "Listen for “Hey AutoSpace”",
             description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
@@ -362,7 +377,7 @@ fun CarSettingsScreen() {
 
         ChoiceRow(
             "Screen sharing",
-            listOf(MirrorFit.FILL to "Fill (crop)", MirrorFit.FIT to "Fit (letterbox)"),
+            listOf(MirrorFit.FIT to "Fit (letterbox)", MirrorFit.FILL to "Fill (crop)"),
             mirrorFit,
         ) { CarSettings.setMirrorFit(it) }
         Text(

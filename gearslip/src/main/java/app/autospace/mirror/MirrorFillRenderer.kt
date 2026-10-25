@@ -53,6 +53,28 @@ class MirrorFillRenderer private constructor(
     private var colorProgram: Int = 0
     private var released = false
 
+    /**
+     * The local display transform + chrome, set from GearslipActivity
+     * (the only writer) and read on the render thread. Volatile, never
+     * synchronized: a torn read here only ever shows one frame at the
+     * previous zoom, never a corrupt frame. Fill vs Fit changes the
+     * sampling itself (see renderFrame); zoom/pan never touch the
+     * phone — they only move the sampling window / quad.
+     */
+    @Volatile var displayFill: Boolean = true
+    @Volatile var displayZoom: Float = 1f
+    @Volatile var displayPanX: Float = 0f
+    @Volatile var displayPanY: Float = 0f
+    @Volatile var chromeVisible: Boolean = false
+
+    fun setTransform(fill: Boolean, zoom: Float, panX: Float, panY: Float, chrome: Boolean) {
+        displayFill = fill
+        displayZoom = zoom.coerceIn(1f, 3f)
+        displayPanX = panX
+        displayPanY = panY
+        chromeVisible = chrome
+    }
+
     /** The Surface the virtual display renders its Fit frames into. */
     val inputSurface: Surface
 
@@ -103,33 +125,96 @@ class MirrorFillRenderer private constructor(
             val phoneW = bounds?.width()?.toFloat() ?: return
             val phoneH = bounds?.height()?.toFloat() ?: return
             if (phoneW <= 0f || phoneH <= 0f) return
-            val uv = MirrorGeometry.fillUv(phoneW, phoneH, frameW.toFloat(), frameH.toFloat())
             // Buffer UV (v from top) -> standard texture coords (t = 0 at the bottom),
             // then through the SurfaceTexture transform, which accounts for the
-            // buffer's orientation. Positions are a fullscreen triangle strip.
-            val std = floatArrayOf(
-                uv[0], 1f - uv[3],
-                uv[2], 1f - uv[3],
-                uv[0], 1f - uv[1],
-                uv[2], 1f - uv[1],
-            )
+            // buffer's orientation.
+            //
+            // Fill: a fullscreen quad sampling the zoom/pan window of the
+            // Fit content rect — the frame corners' phone points (via the
+            // same mapDisplay the touch relay uses, so video and taps
+            // can never disagree) converted back to buffer UV. At zoom
+            // 1 / pan 0 this is exactly the old fillUv rect.
+            //
+            // Fit: the quad itself moves — it sits at displayRect (the
+            // Fit content rect, zoomed about the frame centre, panned)
+            // and samples the whole Fit content rect. The buffer's
+            // letterbox bars are never drawn: they stay cleared black
+            // outside the quad. (The old Fit path skipped this renderer
+            // entirely; routing Fit through it is what makes zoom, pan,
+            // and chrome possible in the new Fit default.)
+            val frameWf = frameW.toFloat()
+            val frameHf = frameH.toFloat()
+            val positions: FloatArray
+            val std: FloatArray
+            if (displayFill) {
+                positions = floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)
+                val content = MirrorGeometry.contentUv(phoneW, phoneH, frameWf, frameHf)
+                fun uvOf(px: Float, py: Float): Pair<Float, Float> {
+                    val u = content[0] + (px / phoneW) * (content[2] - content[0])
+                    val v = content[1] + (py / phoneH) * (content[3] - content[1])
+                    return u to v
+                }
+                val corners = listOf(
+                    MirrorGeometry.mapDisplay(0f, frameHf, phoneW, phoneH, frameWf, frameHf, true, displayZoom, displayPanX, displayPanY),
+                    MirrorGeometry.mapDisplay(frameWf, frameHf, phoneW, phoneH, frameWf, frameHf, true, displayZoom, displayPanX, displayPanY),
+                    MirrorGeometry.mapDisplay(0f, 0f, phoneW, phoneH, frameWf, frameHf, true, displayZoom, displayPanX, displayPanY),
+                    MirrorGeometry.mapDisplay(frameWf, 0f, phoneW, phoneH, frameWf, frameHf, true, displayZoom, displayPanX, displayPanY),
+                )
+                val fallback = MirrorGeometry.fillUv(phoneW, phoneH, frameWf, frameHf)
+                val uv = corners.mapIndexed { i, pt ->
+                    if (pt == null) {
+                        // A corner outside the phone (cannot happen for
+                        // Fill at zoom >= 1, but never draw garbage):
+                        // fall back to that corner of the unzoomed rect.
+                        when (i) {
+                            0 -> fallback[0] to fallback[3]
+                            1 -> fallback[2] to fallback[3]
+                            2 -> fallback[0] to fallback[1]
+                            else -> fallback[2] to fallback[1]
+                        }
+                    } else uvOf(pt.x, pt.y)
+                }
+                std = floatArrayOf(
+                    uv[0].first, 1f - uv[0].second,
+                    uv[1].first, 1f - uv[1].second,
+                    uv[2].first, 1f - uv[2].second,
+                    uv[3].first, 1f - uv[3].second,
+                )
+            } else {
+                val r = MirrorGeometry.displayRect(phoneW, phoneH, frameWf, frameHf, false, displayZoom, displayPanX, displayPanY)
+                positions = floatArrayOf(
+                    ndcX(r.left), ndcY(r.bottom),
+                    ndcX(r.right), ndcY(r.bottom),
+                    ndcX(r.left), ndcY(r.top),
+                    ndcX(r.right), ndcY(r.top),
+                )
+                val uv = MirrorGeometry.contentUv(phoneW, phoneH, frameWf, frameHf)
+                std = floatArrayOf(
+                    uv[0], 1f - uv[3],
+                    uv[2], 1f - uv[3],
+                    uv[0], 1f - uv[1],
+                    uv[2], 1f - uv[1],
+                )
+            }
             val tex = FloatArray(8)
             for (i in 0 until 4) {
-                val s = std[i * 2]; val t = std[i * 2 + 1]
-                tex[i * 2] = m[0] * s + m[4] * t + m[12]
-                tex[i * 2 + 1] = m[1] * s + m[5] * t + m[13]
+                val sc = std[i * 2]; val t = std[i * 2 + 1]
+                tex[i * 2] = m[0] * sc + m[4] * t + m[12]
+                tex[i * 2 + 1] = m[1] * sc + m[5] * t + m[13]
             }
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
-            drawVideo(tex)
-            drawExitButton()
+            drawVideo(positions, tex)
+            if (displayFill) drawExitButton()
+            drawPill()
+            if (chromeVisible) drawChrome()
             EGL14.eglSwapBuffers(display, surface)
         } catch (t: Throwable) {
             GearslipLog.e("mirror fill frame failed", t)
         }
     }
 
-    private fun drawVideo(tex: FloatArray) {
+    private fun drawVideo(positions: FloatArray, tex: FloatArray) {
         GLES20.glUseProgram(videoProgram)
         val pos = GLES20.glGetAttribLocation(videoProgram, "aPosition")
         val tc = GLES20.glGetAttribLocation(videoProgram, "aTexCoord")
@@ -137,7 +222,7 @@ class MirrorFillRenderer private constructor(
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES20.glUniform1i(texLoc, 0)
-        vertexAttrib(pos, floatBuffer(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f))
+        vertexAttrib(pos, floatBuffer(*positions))
         vertexAttrib(tc, floatBuffer(*tex))
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         GLES20.glDisableVertexAttribArray(pos)
@@ -184,6 +269,91 @@ class MirrorFillRenderer private constructor(
         GLES20.glDisableVertexAttribArray(pos)
     }
 
+    /**
+     * Mirror chrome, drawn in GL because no Compose layer exists over
+     * the mirror video (see MirrorDisplayState). The pill is always
+     * drawn (it is the only way to open the chrome: a tap on the
+     * mirror relays to the phone, so tap-to-toggle would flash chrome
+     * on every phone tap); the button row only while chrome is open.
+     * Glyphs only — GL has no text — in the player's frost style
+     * (dark translucent quads, white glyphs). Hit rects are the same
+     * MirrorGeometry functions the activity hit-tests with, so the
+     * drawn buttons and their tap targets cannot drift apart.
+     */
+    private fun drawPill() {
+        val r = MirrorGeometry.pillRegion(frameW.toFloat(), frameH.toFloat())
+        drawQuadPx(r, 0f, 0f, 0f, 0.55f)
+        val cx = (r.left + r.right) / 2f
+        val cy = (r.top + r.bottom) / 2f
+        val dot = (r.bottom - r.top) * 0.09f
+        val gap = (r.right - r.left) * 0.14f
+        for (dx in floatArrayOf(-gap, 0f, gap)) {
+            drawQuadPx(FrameRect(cx + dx - dot, cy - dot, cx + dx + dot, cy + dot), 1f, 1f, 1f, 0.9f)
+        }
+    }
+
+    private fun drawChrome() {
+        val buttons = MirrorGeometry.chromeButtons(frameW.toFloat(), frameH.toFloat())
+        buttons.forEachIndexed { i, r ->
+            drawQuadPx(r, 0f, 0f, 0f, 0.55f)
+            val cx = (r.left + r.right) / 2f
+            val cy = (r.top + r.bottom) / 2f
+            val size = r.right - r.left
+            when (i) {
+                0 -> if (displayFill) {
+                    // Fill is active: a filled square.
+                    val inset = size * 0.28f
+                    drawQuadPx(FrameRect(cx - inset, cy - inset, cx + inset, cy + inset), 1f, 1f, 1f, 0.9f)
+                } else {
+                    // Fit is active: a hollow square (outline bars).
+                    val inset = size * 0.28f
+                    val t = size * 0.055f
+                    drawQuadPx(FrameRect(cx - inset, cy - inset, cx + inset, cy - inset + t), 1f, 1f, 1f, 0.9f)
+                    drawQuadPx(FrameRect(cx - inset, cy + inset - t, cx + inset, cy + inset), 1f, 1f, 1f, 0.9f)
+                    drawQuadPx(FrameRect(cx - inset, cy - inset, cx - inset + t, cy + inset), 1f, 1f, 1f, 0.9f)
+                    drawQuadPx(FrameRect(cx + inset - t, cy - inset, cx + inset, cy + inset), 1f, 1f, 1f, 0.9f)
+                }
+                1 -> drawBar(cx, cy, size * 0.22f, size * 0.045f, 0f, 1f, 1f, 1f, 0.9f)
+                2 -> {
+                    drawBar(cx, cy, size * 0.22f, size * 0.045f, 0f, 1f, 1f, 1f, 0.9f)
+                    drawBar(cx, cy, size * 0.22f, size * 0.045f, 1.5707963f, 1f, 1f, 1f, 0.9f)
+                }
+                3 -> {
+                    drawBar(cx, cy, size * 0.20f, size * 0.04f, 0.7853982f, 1f, 1f, 1f, 0.9f)
+                    drawBar(cx, cy, size * 0.20f, size * 0.04f, -0.7853982f, 1f, 1f, 1f, 0.9f)
+                }
+            }
+        }
+    }
+
+    private fun drawQuadPx(r: FrameRect, red: Float, g: Float, b: Float, a: Float) {
+        drawColorQuad(
+            floatArrayOf(
+                ndcX(r.left), ndcY(r.bottom),
+                ndcX(r.right), ndcY(r.bottom),
+                ndcX(r.left), ndcY(r.top),
+                ndcX(r.right), ndcY(r.top),
+            ),
+            red, g, b, a,
+        )
+    }
+
+    private fun drawBar(cx: Float, cy: Float, len: Float, thick: Float, angle: Float, r: Float, g: Float, b: Float, a: Float) {
+        val dx = kotlin.math.cos(angle) * len
+        val dy = kotlin.math.sin(angle) * len
+        val px = -kotlin.math.sin(angle) * thick
+        val py = kotlin.math.cos(angle) * thick
+        drawColorQuad(
+            floatArrayOf(
+                ndcX(cx - dx - px), ndcY(cy - dy - py),
+                ndcX(cx + dx - px), ndcY(cy + dy - py),
+                ndcX(cx - dx + px), ndcY(cy - dy + py),
+                ndcX(cx + dx + px), ndcY(cy + dy + py),
+            ),
+            r, g, b, a,
+        )
+    }
+
     private fun ndcX(px: Float): Float = 2f * px / frameW - 1f
     private fun ndcY(py: Float): Float = 1f - 2f * py / frameH
 
@@ -204,11 +374,11 @@ class MirrorFillRenderer private constructor(
     }
 
     companion object {
-        fun create(output: Surface, frameW: Int, frameH: Int, context: Context): MirrorFillRenderer? {
+        fun create(output: Surface, frameW: Int, frameH: Int, context: Context, fill: Boolean = true): MirrorFillRenderer? {
             if (frameW <= 0 || frameH <= 0) return null
             return runCatching { MirrorFillRenderer(output, frameW, frameH, context.applicationContext) }
                 .onFailure { GearslipLog.e("mirror fill renderer failed to start (falling back to Fit)", it) }
-                .getOrNull()
+                .getOrNull()?.also { it.displayFill = fill }
         }
 
         private fun chooseConfig(display: EGLDisplay): EGLConfig {

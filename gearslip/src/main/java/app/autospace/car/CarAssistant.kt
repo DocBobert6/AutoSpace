@@ -150,10 +150,21 @@ object CarAssistant {
             return
         }
         _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text)
-        val started = VoiceEngine.play(context, text) {
+        val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)
-        }
+        }, onSilent = {
+            // 2026-10-25: a render that starts (engines Ready) but
+            // produces nothing used to close the overlay in silence.
+            // Say so, and point at the files: a corrupt set now fails
+            // validation at load instead of crashing in native code,
+            // but a render can still fail, and that must be visible.
+            _state.value = State(
+                Phase.ERROR,
+                reply = "Couldn't speak that reply. Check the voice files in Settings — " +
+                    "delete and re-download Kokoro or Piper if they look incomplete.",
+            )
+        })
         if (started) {
             acquireSpeechFocus(context)
         } else {
@@ -168,16 +179,29 @@ object CarAssistant {
      * Speaks [text] for someone other than the assistant (a message read aloud), then runs
      * [onDone] on the main thread - straight away if speech isn't available.
      */
-    fun say(text: String, onDone: () -> Unit) {
+    fun say(text: String, onDone: () -> Unit, onSilent: () -> Unit = {}) {
         val context = appContext
         if (context == null || text.isBlank()) {
             mainHandler.post(onDone)
             return
         }
-        val started = VoiceEngine.play(context, text) {
+        // VoiceReply widening (2026-10-25): VoiceReply speaks ONLY
+        // through say(), so it shares the assistant reply's spoken
+        // path exactly — including the crash family (a native generate
+        // on a corrupt set) and the silent-render case. The P1
+        // validation + markers + fallback already cover say() because
+        // it funnels through the same play()/synthesizeNow; [onSilent]
+        // additionally lets VoiceReply notice a render that produced
+        // nothing instead of carrying on as if the driver heard it.
+        // A started=false reply (no engine Ready) still just ends the
+        // step via onDone, as before — the no-voice warning lives in
+        // the assistant overlay, not in the message card.
+        val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
             mainHandler.post(onDone)
-        }
+        }, onSilent = {
+            mainHandler.post(onSilent)
+        })
         if (started) {
             acquireSpeechFocus(context)
         } else {

@@ -228,6 +228,38 @@ internal fun SpokenVoiceSection() {
     // suspension while busy or on a call; this is only the switch.
     SettingsSection(title = "Voice: hotword") {
         val hotword by CarSettings.hotword.collectAsState()
+        val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
+        val liveModel by SpeechModels.selected.collectAsState()
+        val liveState by SpeechModels.state(liveModel).collectAsState()
+        if (hotword && liveState !is State.Ready) {
+            Text(
+                "The Kroko listening model isn't downloaded yet, so hotword listening " +
+                    "is waiting — it starts on its own once Kroko is downloaded.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Listen for “Hey AutoSpace” on the phone microphone",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    "Hotword listening only: uses the phone's microphone even when " +
+                        "the car has one. Turn this on if the car's microphone doesn't " +
+                        "work and “Hey AutoSpace” never answers. Button-press voice " +
+                        "commands, calls, and everything else are unaffected.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = hotwordPhoneMic, onCheckedChange = { CarSettings.setHotwordPhoneMic(it) })
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,

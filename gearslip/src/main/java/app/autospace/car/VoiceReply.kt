@@ -78,10 +78,35 @@ object VoiceReply {
 
     val active: Boolean get() = _state.value.phase != Phase.IDLE
 
+    /**
+     * A spoken step that rendered nothing: the driver never heard it,
+     * so carrying on as if they had (asking about an unheard message,
+     * counting down to send an unheard read-back) would be wrong.
+     * Stops whatever the step started, then shows the error instead.
+     * Bumps [run] so every callback the dead step already posted
+     * (offer timeout, countdown, delayed listen) drops on its id
+     * check instead of resurrecting the flow.
+     */
+    private fun silentSpeechError(id: Int) {
+        if (id != run) return
+        CarAssistant.stopListening()
+        CarAssistant.stopSpeaking()
+        main.removeCallbacksAndMessages(SEND_TOKEN)
+        val nid = ++run
+        _state.value = _state.value.copy(
+            phase = Phase.ERROR,
+            error = "Couldn't speak that aloud. Check the voice files in Settings.",
+            until = SystemClock.uptimeMillis() + LINGER_MS,
+            span = LINGER_MS,
+            held = 0f,
+        )
+        main.postDelayed({ if (nid == run) finish() }, LINGER_MS)
+    }
+
     /** Reads [n]'s newest messages aloud. */
     fun read(n: CarNotification) {
         val id = begin(State(Phase.READING, n))
-        CarAssistant.say(spoken(n)) {
+        CarAssistant.say(spoken(n), onDone = {
             if (id != run) return@say
             when {
                 n.reply == null -> finish()
@@ -89,7 +114,7 @@ object VoiceReply {
                 CarCalls.state.value is CallUiState.Active -> idleAfterRead(id)
                 else -> offer(id)
             }
-        }
+        }, onSilent = { silentSpeechError(id) })
     }
 
     /**
@@ -98,7 +123,7 @@ object VoiceReply {
      */
     private fun offer(id: Int) {
         _state.value = _state.value.copy(phase = Phase.OFFERING, heard = "", until = 0L, span = 0L, held = 0f)
-        CarAssistant.say("Do you want to reply?") {
+        CarAssistant.say("Do you want to reply?", onDone = {
             if (id != run) return@say
             val until = SystemClock.uptimeMillis() + OFFER_MS
             _state.value = _state.value.copy(until = until, span = OFFER_MS)
@@ -124,7 +149,7 @@ object VoiceReply {
                 // No answer counts as no: the message has been heard, so the card goes.
                 onError = { if (id == run) close() },
             )
-        }
+        }, onSilent = { silentSpeechError(id) })
     }
 
     private fun idleAfterRead(id: Int) {
@@ -164,9 +189,9 @@ object VoiceReply {
     }
 
     private fun ask(id: Int) {
-        CarAssistant.say("What's your reply?") {
+        CarAssistant.say("What's your reply?", onDone = {
             if (id == run) listen(id)
-        }
+        }, onSilent = { silentSpeechError(id) })
     }
 
     private fun listen(id: Int) {
@@ -185,12 +210,12 @@ object VoiceReply {
     private fun confirm(id: Int, text: String) {
         _state.value = _state.value.copy(phase = Phase.CONFIRMING, heard = text, until = 0L, span = 0L, held = 0f)
         // The countdown starts once the driver has heard the whole reply, not while it's read out.
-        CarAssistant.say("Sending: $text") {
+        CarAssistant.say("Sending: $text", onDone = {
             if (id != run) return@say
             startCountdown(id, SEND_DELAY_MS)
             // A moment for the read-back to finish playing in the car before the microphone opens.
             main.postDelayed({ if (id == run) listenForCommand(id) }, ECHO_MS)
-        }
+        }, onSilent = { silentSpeechError(id) })
     }
 
     /** Sends in [ms]. */

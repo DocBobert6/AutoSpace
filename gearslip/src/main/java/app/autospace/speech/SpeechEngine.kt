@@ -404,14 +404,36 @@ object SpeechEngine {
 
     // --- microphones -----------------------------------------------------------------------
 
+    /** Which physical microphone a [Mic] came from; the hotword loop needs to know. */
+    internal enum class MicSource { PHONE, CAR }
+
     /**
      * The microphone a phrase is heard from, chosen exactly as [stream] chooses it: the
      * phone's when the phone-microphone setting is on, otherwise the car's when it has one
      * and sends usable audio, else the phone's. Shared with [HotwordListener] so the
      * hotword and a button-press command never pick different microphones.
      */
-    internal fun openSpeechMic(): Mic =
-        if (CarSettings.phoneMicForVoice.value) phoneMic() else carMic() ?: phoneMic()
+    internal fun openSpeechMic(): Mic = openSpeechMicSource().first
+
+    internal fun openSpeechMicSource(): Pair<Mic, MicSource> =
+        if (CarSettings.phoneMicForVoice.value) phoneMic() to MicSource.PHONE
+        else carMic()?.let { it to MicSource.CAR } ?: (phoneMic() to MicSource.PHONE)
+
+    /**
+     * The microphone the hotword loop listens on. The hotword-only
+     * phone-mic switch (2026-10-25, for a car whose built-in mic is
+     * broken) wins over everything: when it is on, the loop always
+     * uses the phone mic, regardless of the voice-microphone setting.
+     * When it is off, the loop follows the voice-microphone setting
+     * exactly as a button-press command does. Hotword-only: button
+     * commands, calls, and everything else never see this switch.
+     */
+    internal fun openHotwordMic(): Pair<Mic, MicSource> =
+        if (CarSettings.hotwordPhoneMic.value) phoneMic() to MicSource.PHONE
+        else openSpeechMicSource()
+
+    /** The phone mic on its own, for the hotword loop's silent-car-mic fallback. */
+    internal fun openPhoneMic(): Mic = phoneMic()
 
     /** Where a phrase is heard from: [read] fills [frame] and returns how many samples it got, -1 at the end. */
     internal interface Mic {

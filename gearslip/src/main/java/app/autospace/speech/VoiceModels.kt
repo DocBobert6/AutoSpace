@@ -188,7 +188,14 @@ object VoiceModels {
         val app = context.applicationContext
         val id = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_VOICE, null)
         _selectedVoice.value = KOKORO_VOICES.firstOrNull { it.id == id } ?: DEFAULT_VOICE
-        Engine.entries.forEach { e -> if (isReady(app, e)) states.getValue(e).value = State.Ready }
+        Engine.entries.forEach { e ->
+            val failure = validationFailure(app, e)
+            states.getValue(e).value = when {
+                failure == null -> State.Ready
+                anyFilePresent(app, e) -> State.Failed(failure)
+                else -> State.Missing
+            }
+        }
         // A voice an older build offered and this one doesn't: storage nobody can use.
         File(app.filesDir, "voice").listFiles()
             ?.filter { it.isDirectory && it.name.removeSuffix(".partial") !in Engine.entries.map { e -> e.id } }
@@ -214,11 +221,65 @@ object VoiceModels {
     /**
      * Ready means the engine's own files are all there and espeak-ng-data
      * has its main phoneme table — the two things synthesis actually opens.
+     *
+     * 2026-10-25 assistant-crash hardening: presence alone is NOT enough.
+     * A download that exists but is truncated (killed download, partial
+     * file left behind by an older build, corrupt storage) used to count
+     * as Ready, so VoiceEngine handed its files to sherpa-onnx and a
+     * native generate on a corrupt model killed the whole process — no
+     * Java exception, no dialog, phone and Android Auto gone together.
+     * [validationFailure] therefore also floors every file at a
+     * plausible size: a real Kokoro model.onnx is hundreds of MB, a
+     * real Piper model tens of MB, and a voices.bin holding 53 voices
+     * is not a few bytes. The floors are deliberately far below the
+     * real sizes (so a future smaller model still passes) and far
+     * above zero (so a truncated stub fails). A download that fails
+     * this check is Failed, never Ready, and synthesis never attempts
+     * it — the caller falls back (Kokoro -> Piper -> no-voice warning).
+     * This cannot catch every corruption (a full-size file with bad
+     * bytes inside still passes), which is why VoiceEngine also logs
+     * markers around every native generate: the next crash's last log
+     * line then names the exact step that died.
      */
-    fun isReady(context: Context, engine: Engine): Boolean {
+    fun isReady(context: Context, engine: Engine): Boolean = validationFailure(context, engine) == null
+
+    /** Null when [engine]'s on-disk set is usable; else a plain reason for Settings. */
+    fun validationFailure(context: Context, engine: Engine): String? {
         val d = dir(context, engine)
-        return engine.files.all { File(d, it).isFile } && File(espeakDir(context, engine), "phondata").isFile
+        for (name in engine.files) {
+            val f = File(d, name)
+            if (!f.isFile) return "${engine.label} files incomplete — delete and re-download"
+            val min = when (engine) {
+                Engine.KOKORO -> when (name) {
+                    "model.onnx" -> MIN_KOKORO_MODEL_BYTES
+                    "voices.bin" -> MIN_VOICES_BIN_BYTES
+                    else -> MIN_SMALL_FILE_BYTES
+                }
+                Engine.PIPER -> when (name) {
+                    "en_US-amy-medium.onnx" -> MIN_PIPER_MODEL_BYTES
+                    else -> MIN_SMALL_FILE_BYTES
+                }
+            }
+            if (f.length() < min) return "${engine.label} files incomplete — delete and re-download"
+        }
+        val phondata = File(espeakDir(context, engine), "phondata")
+        if (!phondata.isFile || phondata.length() < MIN_SMALL_FILE_BYTES) {
+            return "${engine.label} files incomplete — delete and re-download"
+        }
+        return null
     }
+
+    /** True when any of [engine]'s files exist at all (a partial/corrupt set, not a clean Missing). */
+    private fun anyFilePresent(context: Context, engine: Engine): Boolean {
+        val d = dir(context, engine)
+        return engine.files.any { File(d, it).isFile } ||
+            File(espeakDir(context, engine), "phondata").isFile
+    }
+
+    private const val MIN_KOKORO_MODEL_BYTES = 10_000_000L
+    private const val MIN_PIPER_MODEL_BYTES = 1_000_000L
+    private const val MIN_VOICES_BIN_BYTES = 1_000L
+    private const val MIN_SMALL_FILE_BYTES = 1_000L
 
     fun delete(context: Context, engine: Engine) {
         cancelled = engine
@@ -270,6 +331,8 @@ object VoiceModels {
                 check(File(partial, "espeak-ng-data/phondata").isFile) { "espeak-ng-data arrived without phondata" }
                 target.deleteRecursively()
                 check(partial.renameTo(target)) { "couldn't store the voice" }
+                val failure = validationFailure(app, engine)
+                check(failure == null) { failure }
                 GearslipLog.i("voice: downloaded ${engine.label}")
                 state.value = State.Ready
             } catch (e: Exception) {

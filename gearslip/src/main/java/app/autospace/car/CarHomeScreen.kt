@@ -90,33 +90,41 @@ fun CarHome() {
     // screen once padding and gap are counted. With nothing playing the
     // map still takes the full row (minus the padding), as before.
     // Phase 10: the audit video's full-width map showed NO padding or
-    // rounded corners at all — the pane's own clip + MapCornerOverlays
-    // cannot be trusted for this, because a SurfaceView is its own
-    // SurfaceFlinger layer: if that layer ever spans the full frame
-    // (it is lent at frame size in places, and the app keeps drawing
-    // into it), it paints straight over the Row's padding area and the
-    // pane-level overlays sit inset over map video, invisible. So the
-    // Home frame is ALSO drawn here, in the window layer above the
-    // SurfaceView: an opaque backdrop-coloured frame with a rounded
-    // inner cut, over the whole Row. When the SurfaceView is correctly
-    // pane-sized this frame paints backdrop over backdrop and changes
-    // nothing; when it is full-frame, this frame is what restores the
-    // 12dp padding and 20dp corners. It takes no pointer input, so map
+    // rounded corners at all — a SurfaceView is its own SurfaceFlinger
+    // layer: if that layer ever spans the full frame (it is lent at
+    // frame size in places, and the app keeps drawing into it), it
+    // paints straight over the Row's padding area. So the Home frame
+    // is drawn here, in the window layer above the SurfaceView: an
+    // opaque backdrop-coloured frame with a rounded inner cut, over
+    // the whole Row. When the SurfaceView is correctly pane-sized
+    // this frame paints backdrop over backdrop and changes nothing;
+    // when it is full-frame, this frame is what restores the 12dp
+    // padding and 20dp corners. It takes no pointer input, so map
     // gestures pass through untouched.
+    // 2026-10-25 (map-corner dots): the pane-level corner masks that
+    // used to sit here are GONE, deliberately. On a real head unit
+    // they showed as four visible dots at the map's corners: when the
+    // SurfaceView spans the full frame, the masks (painted at the
+    // pane's inset corners, in backdrop colour) land in the middle of
+    // map video instead of over its corners, so each one reads as a
+    // dot punched into the map — and even when the surface IS
+    // pane-sized, the frame overlay below already rounds those same
+    // corners, so the masks were redundant there. One frame only, no
+    // pane masks: the dots have nowhere left to come from. Cost,
+    // stated plainly: in split mode the map pane's INNER corners (the
+    // ones against the media pane, which the whole-row frame does not
+    // cover) go square instead of rounded. Square inner corners beat
+    // dots on the map.
     Box(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxSize().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Audit (second video): the pane's clip is gone. It cannot
-            // round a SurfaceView (a separate window layer), and a Compose
-            // clip DOES apply to descendant Canvas draws — so it was
-            // clipping MapCornerOverlays' own corner masks into no-ops,
-            // leaving the split mode's inner corners unmasked while the
-            // outer corners relied on HomeFrameOverlay alone. The masks
-            // below do the rounding now, at all four pane corners, in
-            // every theme: their colour is the background token, never
-            // a hardcoded black (verified at source).
+            // round a SurfaceView (a separate window layer). Corner
+            // rounding comes from HomeFrameOverlay alone now (see the
+            // 2026-10-25 note above: pane masks drew dots on a real
+            // head unit and are deleted, not just disabled).
             Box(
                 Modifier
                     .weight(if (splitScreen) 1.75f else 1f)
@@ -163,54 +171,6 @@ private fun HomeFrameOverlay(modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Rounds the map pane's corners for real, despite the map being a
- * SurfaceView. Each corner gets a backdrop-coloured mask: the corner
- * square minus a quarter circle (EvenOdd path), so only the square's
- * outer corner is painted over and the map shows through the rounded
- * cut. No pointer handling, so it never intercepts a map gesture; and
- * it sits above the SurfaceView only because a default SurfaceView
- * renders behind the window — if the stage ever moves to
- * setZOrderOnTop, these masks would silently stop working and the map
- * would go square-cornered again.
- */
-@Composable
-private fun MapCornerOverlays(modifier: Modifier = Modifier) {
-    val backdrop = MaterialTheme.colorScheme.background
-    Canvas(modifier) {
-        val r = 20.dp.toPx()
-        val w = size.width
-        val h = size.height
-        fun corner(rect: Rect, circle: Rect) {
-            drawPath(
-                Path().apply {
-                    addRect(rect)
-                    addOval(circle)
-                    fillType = PathFillType.EvenOdd
-                },
-                backdrop,
-            )
-        }
-        // Top-left: circle centred at the inner corner (r, r).
-        corner(Rect(Offset.Zero, Size(r, r)), Rect(Offset.Zero, Size(2 * r, 2 * r)))
-        // Top-right: circle centred at (w - r, r).
-        corner(
-            Rect(Offset(w - r, 0f), Size(r, r)),
-            Rect(Offset(w - 2 * r, 0f), Size(2 * r, 2 * r)),
-        )
-        // Bottom-left: circle centred at (r, h - r).
-        corner(
-            Rect(Offset(0f, h - r), Size(r, r)),
-            Rect(Offset(0f, h - 2 * r), Size(2 * r, 2 * r)),
-        )
-        // Bottom-right: circle centred at (w - r, h - r).
-        corner(
-            Rect(Offset(w - r, h - r), Size(r, r)),
-            Rect(Offset(w - 2 * r, h - 2 * r), Size(2 * r, 2 * r)),
-        )
-    }
-}
-
 @Composable
 private fun MapPane(status: CarAppConnection.Status, frame: CarEnvironment.Frame) {
     val navigator = LocalCarNavigator.current
@@ -218,13 +178,14 @@ private fun MapPane(status: CarAppConnection.Status, frame: CarEnvironment.Frame
         // The map is a SurfaceView (its own SurfaceFlinger layer), so the
         // Box clip above rounds the Compose chrome but NOT the map itself
         // — Compose clip cannot round a separate window layer, and claiming
-        // otherwise would be wrong. The corners are rounded for real by
-        // MapCornerOverlays: backdrop-coloured masks over the four corners,
-        // drawn above the SurfaceView (default Z-order: behind the window),
-        // which no touch handling touches, so map gestures pass through.
+        // otherwise would be wrong. The outer corners are rounded for
+        // real by HomeFrameOverlay (the whole-row frame, drawn above the
+        // SurfaceView since a default SurfaceView renders behind the
+        // window); nothing is drawn over the map pane itself any more,
+        // so no mask can show up as a dot on it. Map gestures pass
+        // through untouched: the frame takes no pointer input.
         Box(Modifier.fillMaxSize()) {
             CarAppStage(CarServices.nav, status, frame, embedded = true) { CarServices.stopNav() }
-            MapCornerOverlays(Modifier.fillMaxSize())
         }
         return
     }
