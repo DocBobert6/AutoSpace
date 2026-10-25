@@ -166,6 +166,14 @@ fun WebApp(content: String) {
     // immersive on entry — leaving the browser clears it (see the
     // DisposableEffect below), this is the belt-and-braces half.
     val immersive by BrowserImmersiveState.immersive.collectAsState()
+    // Exiting immersive restores the bar: without this, leaving
+    // immersive (pill, BACK, keyboard) while the page sat at the top
+    // left the bar hidden with no scroll event left to restore it —
+    // the stuck-hidden-at-page-top case. Same for moving the bar
+    // top/bottom: it reappears at its new edge instead of staying
+    // hidden there.
+    LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
+    LaunchedEffect(barBottom) { resetBarScrollHide() }
     LaunchedEffect(Unit) { BrowserImmersiveState.exit() }
     // Scroll-hide (Robert 2026-10-25 06:20 redirect): the address
     // bar row — and ONLY it — follows the active tab's WebView
@@ -417,7 +425,10 @@ fun WebApp(content: String) {
     // it is hidden, so sheets never open from a hidden bar.
     fun onWebScroll(tabId: Int, scrollY: Int, oldScrollY: Int) {
         if (tabId != activeTabId) return
-        if (scrollY == 0) {
+        // Near the top restores the bar, not just exactly 0: a scroll
+        // clamped just above 0 (resize, content change) used to leave
+        // the bar hidden with nowhere left to scroll up to.
+        if (scrollY < barScrollThresholdPx) {
             resetBarScrollHide()
             return
         }
@@ -784,132 +795,145 @@ fun WebApp(content: String) {
                     GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
                 }
             }
-            if (!barBottom && !barHiddenByScroll) browserBar()
-            // Phase 10 tabs: only the active tab's WebView is composed,
-            // keyed by tab id so switching disposes one AndroidView and
-            // composes the next. The factory returns a tab's EXISTING
-            // WebView when it has one (a switch back re-attaches it,
-            // page + history intact) and creates + loads it only once.
-            // onRelease deliberately does NOT destroy: destroying here
-            // would kill every tab on every switch. Tab WebViews die
-            // only on tab close (posted) or on leaving the browser.
-            androidx.compose.runtime.key(activeTab.id) {
-                AndroidView(
-                    modifier = Modifier.weight(1f).fillMaxSize(),
-                    factory = { context ->
-                        activeTab.view?.also { web = it } ?: WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            val tab = activeTab
-                            // Scroll-hide (Robert 2026-10-25 06:20):
-                            // the tab's own scroll drives only the
-                            // bar row (see onWebScroll). The listener
-                            // rides this WebView, so a tab switch
-                            // (re-attach reuses the same view) keeps
-                            // it, and leaving the browser destroys
-                            // the view with it.
-                            setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-                                mainHandler.post { onWebScroll(tab.id, scrollY, oldScrollY) }
-                            }
-                            webViewClient = BrowserClient(
-                                ring = ring,
-                                onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
-                                onPageStart = {
-                                    mainHandler.post {
-                                        tab.foundMedia.clear()
-                                        tab.loadError = null
-                                        // A new page load restores
-                                        // the bar (active tab only;
-                                        // in immersive mode the
-                                        // header/nav bar stay hidden
-                                        // until immersive exit).
-                                        if (tab.id == activeTabId) resetBarScrollHide()
-                                    }
-                                },
-                                onHistory = { url, back, forward ->
-                                    mainHandler.post {
-                                        tab.currentUrl = url
-                                        tab.canGoBack = back
-                                        tab.canGoForward = forward
-                                        BrowserStore.recordHistory(context, url)
-                                    }
-                                },
-                                onMainFrameError = { message ->
-                                    mainHandler.post { tab.loadError = message }
-                                },
-                                onPopunder = { url, host ->
-                                    mainHandler.post { capturePopunder(url, host) }
-                                },
-                            )
-                            webChromeClient = BrowserChrome(
-                                context = context,
-                                onPopupUrl = { host, url, transport, allowed ->
-                                    mainHandler.post { onPopupUrl(tab, host, url, transport, allowed) }
-                                },
-                                onProgress = { p -> mainHandler.post { tab.progress = p } },
-                                onTitle = { t -> mainHandler.post { tab.title = t?.takeIf { it.isNotBlank() } } },
-                                onShowFullscreen = { view, callback ->
-                                    // Fullscreen / dialogs belong to the
-                                    // tab in front: a background tab's
-                                    // video must not seize the screen.
-                                    if (tab.id == activeTabId) {
-                                        mainHandler.post {
-                                            fullscreenView = view
-                                            fullscreenCallback = callback
-                                        }
-                                    }
-                                },
-                                onHideFullscreen = { mainHandler.post { hideFullscreen() } },
-                                onJsDialog = { dialog ->
-                                    if (tab.id == activeTabId) {
-                                        mainHandler.post { jsDialog = dialog }
-                                    }
-                                },
-                            )
-                            val downloadOwner = this
-                            setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
-                                // Phase 3.4, item 4: downloads go to the phone Downloads
-                                // folder with a started/failed notice, instead of silently
-                                // doing nothing (the old behaviour).
-                                runCatching {
-                                    val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                                    val request = DownloadManager.Request(Uri.parse(url))
-                                        .setTitle(filename)
-                                        .setDescription("Downloaded from the car browser")
-                                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-                                    context.getSystemService(DownloadManager::class.java)?.enqueue(request)
-                                    GearslipLog.i("car browser download started: $filename")
-                                    CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
-                                }.onFailure { e ->
-                                    GearslipLog.e("car browser download FAILED: $url - ${e.message}")
-                                    CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
+            // Floating bar (Notscape parity, audit fix): the page fills the
+            // whole frame and the bar overlays it at the top or bottom
+            // edge instead of taking a docked row — hiding or showing
+            // the bar never resizes the page, so scroll positions and
+            // scroll events stay stable. The overlay Box draws nothing
+            // and takes no touches outside the bar itself, so page taps
+            // pass through everywhere but the bar.
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                // Phase 10 tabs: only the active tab's WebView is composed,
+                // keyed by tab id so switching disposes one AndroidView and
+                // composes the next. The factory returns a tab's EXISTING
+                // WebView when it has one (a switch back re-attaches it,
+                // page + history intact) and creates + loads it only once.
+                // onRelease deliberately does NOT destroy: destroying here
+                // would kill every tab on every switch. Tab WebViews die
+                // only on tab close (posted) or on leaving the browser.
+                androidx.compose.runtime.key(activeTab.id) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { context ->
+                            activeTab.view?.also { web = it } ?: WebView(context).apply {
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                val tab = activeTab
+                                // Scroll-hide (Robert 2026-10-25 06:20):
+                                // the tab's own scroll drives only the
+                                // bar row (see onWebScroll). The listener
+                                // rides this WebView, so a tab switch
+                                // (re-attach reuses the same view) keeps
+                                // it, and leaving the browser destroys
+                                // the view with it.
+                                setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                                    mainHandler.post { onWebScroll(tab.id, scrollY, oldScrollY) }
                                 }
-                            })
-                            addJavascriptInterface(
-                                FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                                "GearslipField",
-                            )
-                            if (tab.rawHtml != null) {
-                                loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
-                            } else {
-                                loadUrl(tab.currentUrl)
+                                webViewClient = BrowserClient(
+                                    ring = ring,
+                                    onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
+                                    onPageStart = {
+                                        mainHandler.post {
+                                            tab.foundMedia.clear()
+                                            tab.loadError = null
+                                            // A new page load restores
+                                            // the bar (active tab only;
+                                            // in immersive mode the
+                                            // header/nav bar stay hidden
+                                            // until immersive exit).
+                                            if (tab.id == activeTabId) resetBarScrollHide()
+                                        }
+                                    },
+                                    onHistory = { url, back, forward ->
+                                        mainHandler.post {
+                                            tab.currentUrl = url
+                                            tab.canGoBack = back
+                                            tab.canGoForward = forward
+                                            BrowserStore.recordHistory(context, url)
+                                        }
+                                    },
+                                    onMainFrameError = { message ->
+                                        mainHandler.post { tab.loadError = message }
+                                    },
+                                    onPopunder = { url, host ->
+                                        mainHandler.post { capturePopunder(url, host) }
+                                    },
+                                )
+                                webChromeClient = BrowserChrome(
+                                    context = context,
+                                    onPopupUrl = { host, url, transport, allowed ->
+                                        mainHandler.post { onPopupUrl(tab, host, url, transport, allowed) }
+                                    },
+                                    onProgress = { p -> mainHandler.post { tab.progress = p } },
+                                    onTitle = { t -> mainHandler.post { tab.title = t?.takeIf { it.isNotBlank() } } },
+                                    onShowFullscreen = { view, callback ->
+                                        // Fullscreen / dialogs belong to the
+                                        // tab in front: a background tab's
+                                        // video must not seize the screen.
+                                        if (tab.id == activeTabId) {
+                                            mainHandler.post {
+                                                fullscreenView = view
+                                                fullscreenCallback = callback
+                                            }
+                                        }
+                                    },
+                                    onHideFullscreen = { mainHandler.post { hideFullscreen() } },
+                                    onJsDialog = { dialog ->
+                                        if (tab.id == activeTabId) {
+                                            mainHandler.post { jsDialog = dialog }
+                                        }
+                                    },
+                                )
+                                val downloadOwner = this
+                                setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                                    // Phase 3.4, item 4: downloads go to the phone Downloads
+                                    // folder with a started/failed notice, instead of silently
+                                    // doing nothing (the old behaviour).
+                                    runCatching {
+                                        val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
+                                        val request = DownloadManager.Request(Uri.parse(url))
+                                            .setTitle(filename)
+                                            .setDescription("Downloaded from the car browser")
+                                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+                                        context.getSystemService(DownloadManager::class.java)?.enqueue(request)
+                                        GearslipLog.i("car browser download started: $filename")
+                                        CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
+                                    }.onFailure { e ->
+                                        GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+                                        CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
+                                    }
+                                })
+                                addJavascriptInterface(
+                                    FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                                    "GearslipField",
+                                )
+                                if (tab.rawHtml != null) {
+                                    loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
+                                } else {
+                                    loadUrl(tab.currentUrl)
+                                }
+                                tab.view = this
+                                web = this
                             }
-                            tab.view = this
-                            web = this
-                        }
-                    },
-                    // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
-                    update = { it.settings.isAlgorithmicDarkeningAllowed = false },
-                    // Tabs keep their WebView (see above) — but it MUST
-                    // leave its parent here, or re-attaching it to the
-                    // next tab's AndroidView throws "already has a parent".
-                    onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
-                )
+                        },
+                        // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
+                        update = { it.settings.isAlgorithmicDarkeningAllowed = false },
+                        // Tabs keep their WebView (see above) — but it MUST
+                        // leave its parent here, or re-attaching it to the
+                        // next tab's AndroidView throws "already has a parent".
+                        onRelease = { view -> (view.parent as? ViewGroup)?.removeView(view) },
+                    )
+                }
+                if (!barHiddenByScroll) {
+                    Box(
+                        Modifier.fillMaxSize(),
+                        contentAlignment = if (barBottom) Alignment.BottomCenter else Alignment.TopCenter,
+                    ) { browserBar() }
+                }
             }
-            if (barBottom && !barHiddenByScroll) browserBar()
             if (!addressEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
@@ -978,8 +1002,13 @@ fun WebApp(content: String) {
         // overlays below, so those still cover it when active,
         // and the passenger gate still appears first while moving.
         if (immersive) {
+            // The pill must never sit on the bar: with the bar at the
+            // top and visible it drops below it (12dp margin + the
+            // 48dp bar row); with the bar hidden by scroll, or at the
+            // bottom, it rides the top edge as before.
+            val pillTop = if (!barBottom && !barHiddenByScroll) 60.dp else 12.dp
             Box(
-                Modifier.fillMaxSize().padding(12.dp),
+                Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = pillTop, bottom = 12.dp),
                 contentAlignment = Alignment.TopEnd,
             ) {
                 Box(
@@ -1310,7 +1339,15 @@ private fun BrowserSettingsMenu(
             ),
         )
         app.autospace.car.theme.GsSheetSurface(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            // The car nav bar (64dp) overlays the bottom of the
+            // browser screen, so a bottom sheet padded only 16dp had
+            // its last rows covered by it. 80dp clears it with the
+            // usual 16dp margin; when the nav bar is hidden the extra
+            // margin is harmless, and the sheet still scrolls within
+            // the space left.
+            modifier = Modifier.fillMaxWidth().padding(
+                start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
+            ),
         ) {
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
@@ -1383,7 +1420,11 @@ private fun TabSwitcherSheet(
             ),
         )
         app.autospace.car.theme.GsSheetSurface(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            // Same nav-bar clearance as the settings sheet (see
+            // there): 80dp bottom padding, harmless when hidden.
+            modifier = Modifier.fillMaxWidth().padding(
+                start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
+            ),
         ) {
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),

@@ -58,7 +58,11 @@ android {
         // keystore.properties, and debug uses it when it is present (both
         // builds declare the car template permission, and Android refuses
         // a second app declaring it under a different key).
-        create("debug") {
+        // NOTE: the Android plugin already declares a "debug" signing
+        // config, so this configures it in place — create("debug")
+        // fails the build ("a SigningConfig with that name already
+        // exists"), which is what the first push of this change did.
+        getByName("debug") {
             storeFile = project.file("debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"

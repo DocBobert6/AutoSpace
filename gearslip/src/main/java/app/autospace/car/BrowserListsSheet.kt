@@ -60,7 +60,9 @@ fun BrowserListsSheet(
         // Phase 7 kit sheet: solid surfaceContainerLow, 28dp corners.
         // Phase 8: the kit sheet composable itself (same colours, plus the
         // OLED hairline when OLED is on).
-        GsSheetSurface(Modifier.fillMaxWidth().padding(16.dp)) {
+        GsSheetSurface(Modifier.fillMaxWidth().padding(
+            start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
+        )) {
             Column(
                 Modifier.fillMaxWidth().padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
