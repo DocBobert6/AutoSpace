@@ -68,7 +68,9 @@ fun VideoPlayerScreen(url: String, title: String?, onClose: () -> Unit) {
 
     val player = remember(url, retryKey) {
         ExoPlayer.Builder(context)
-            .setHandleAudioFocus(true)
+            // Audio focus is handled here, via setAudioAttributes' second argument:
+            // the Builder has no separate setHandleAudioFocus in Media3 1.11 (that
+            // call fails to resolve and poisons the whole chain's type inference).
             .setAudioAttributes(
                 androidx.media3.common.AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
