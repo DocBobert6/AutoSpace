@@ -701,10 +701,20 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 }
             }
         }
-    } else if (moving && !passengerAllowed) {
+    } else if (moving && !passengerAllowed && !gateOpen) {
         // Audio-only placeholder: no surface attached, so no video frame is sent.
         // This is the "Yes, I'm driving" branch of the passenger gate
-        // (and the whole branch, before the gate existed).
+        // (and the whole branch, before the gate existed). Note the
+        // !gateOpen: while the gate is OPEN and unanswered, this
+        // branch must NOT run — the video branch below stays composed
+        // instead, so the surface stays attached and playback keeps
+        // going behind the gate dialog (Robert 2026-10-25 08:15:
+        // video must still be playing behind the popup; only "Yes"
+        // drops to audio-only, and "I'm a passenger" then dismisses
+        // with video already playing — no branch switch, so no
+        // surface detach, no restart, no re-buffer). Nothing here
+        // pauses the player: the only pause() calls are the sleep
+        // timer and the transport button, neither gate-linked.
         // Controls stay visible and reachable while driving — they control audio.
         // The options capsule is parked chrome; driving shows transport only.
         Column(Modifier.fillMaxSize()) {
@@ -1143,12 +1153,103 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // Passenger gate, emitted after the branch so it draws above the
     // video, the audio-only placeholder and the error screen alike.
     // "Yes" is NOT onClose: it keeps the player open on the
-    // audio-only branch; only "I'm a passenger" shows the picture.
+    // audio-only branch (the !gateOpen above then applies);
+    // "I'm a passenger" dismisses with the video branch already
+    // playing underneath. BACK rule unchanged: the player never
+    // had a gate-specific BACK intercept, and none is added here —
+    // BACK still leaves the player, exactly as before the gate.
     if (gateOpen) {
-        PassengerGateDialog(
+        VideoPassengerGateDialog(
             onDriving = { gateOpen = false },
             onPassenger = { passengerAllowed = true; gateOpen = false },
         )
+    }
+}
+
+/**
+ * The VIDEO passenger gate (Robert 2026-10-25 08:15, correcting the
+ * same-day order that briefly restyled both gates): player frost
+ * chrome ONLY — zero Gs controls, identical under every theme,
+ * because this dialog sits over video and must wear the player's
+ * material, not the kit's. The browser gate keeps the regular Gs
+ * kit (see PassengerGateDialog); this one is a separate composable
+ * at the player's own call site, sharing nothing but the texts.
+ *
+ * Texts, buttons, and the honesty-gate meaning are identical to
+ * the browser gate, word for word — only the material differs.
+ * The scrim is a DIM (Black 0.35), not the browser gate's 0.6 and
+ * not opaque: the video behind it must stay visible and keep
+ * playing (the video branch stays composed while this dialog is
+ * up; see the !gateOpen audio-only condition). The scrim still
+ * swallows every touch, so nothing behind the gate — video
+ * controls included — is reachable until Yes or I'm a passenger
+ * is tapped. In-composition overlay, never a real window, for the
+ * same virtual-display reason as the browser gate.
+ */
+@Composable
+private fun VideoPassengerGateDialog(
+    onDriving: () -> Unit,
+    onPassenger: () -> Unit,
+) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        // Dimming, touch-swallowing scrim: video stays visible behind it.
+        Box(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).clickable(
+                indication = null,
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                onClick = {},
+            ),
+        )
+        Box(
+            Modifier.fillMaxWidth().padding(16.dp)
+                .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "Are you driving?",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    "Browsing the web or watching video while driving is " +
+                        "dangerous and could result in an accident, injury, " +
+                        "or even death. Do not drive and browse or watch video.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(4.dp))
+                // Frost-pill buttons (player transport language), not GsButton.
+                Box(
+                    Modifier.fillMaxWidth().height(52.dp)
+                        .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .clickable(onClick = onDriving),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "Yes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+                Box(
+                    Modifier.fillMaxWidth().height(52.dp)
+                        .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                        .clickable(onClick = onPassenger),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        "I'm a passenger",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
     }
 }
 

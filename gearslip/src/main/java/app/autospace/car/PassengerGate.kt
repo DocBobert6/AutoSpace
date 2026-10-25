@@ -24,10 +24,13 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsSheetSurface
 
 /**
- * The passenger gate, shared by the browser and the video player
- * (Robert 2026-10-25 05:40, explicitly reversing the old locked
- * "video parked-only, audio may continue" decision for the passenger
- * case only).
+ * The passenger gate for the BROWSER (Robert 2026-10-25 05:40,
+ * explicitly reversing the old locked "video parked-only, audio may
+ * continue" decision for the passenger case only). The video player
+ * has its own gate now (VideoPassengerGateDialog, 2026-10-25 08:15:
+ * player frost chrome, zero Gs controls, video playing behind a
+ * dimming scrim) — this composable is the browser call site only,
+ * and keeps the regular Gs kit, exactly as ordered.
  *
  * Shown when a surface is entered while [app.autospace.notify.CarMotion]
  * says the car is moving, and again on a parked→moving transition
