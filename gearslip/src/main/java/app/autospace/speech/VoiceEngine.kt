@@ -189,6 +189,19 @@ object VoiceEngine {
             if (cached != null && kokoroLang == lang) return cached
             runCatching { cached?.release() }
             val dir = VoiceModels.dir(app, VoiceModels.Engine.KOKORO)
+            // 2026-10-25: never hand a refused set to native code.
+            // A native load failure is a whole-process exit (sherpa
+            // SHERPA_ONNX_EXIT), not a Java exception, so the only
+            // safe moment to refuse is here, before the call, while
+            // the caller can still fall back to Piper. The load
+            // check line underneath is what makes the NEXT crash
+            // report decisive: exact sizes here plus a death in load
+            // would exclude the files entirely.
+            VoiceModels.validationFailure(app, VoiceModels.Engine.KOKORO)?.let {
+                GearslipLog.w("voice: kokoro load refused: $it")
+                return null
+            }
+            GearslipLog.i("voice: load check ${VoiceModels.loadCheck(app, VoiceModels.Engine.KOKORO)}")
             val config = OfflineTtsConfig(
                 model = OfflineTtsModelConfig(
                     kokoro = OfflineTtsKokoroModelConfig(
@@ -218,6 +231,14 @@ object VoiceEngine {
         synchronized(lock) {
             piper?.let { return it }
             val dir = VoiceModels.dir(app, VoiceModels.Engine.PIPER)
+            // Same refusal-before-native-call as kokoro() above: a
+            // bad Piper set must fall back to the no-voice warning,
+            // never reach a native load that can exit the process.
+            VoiceModels.validationFailure(app, VoiceModels.Engine.PIPER)?.let {
+                GearslipLog.w("voice: piper load refused: $it")
+                return null
+            }
+            GearslipLog.i("voice: load check ${VoiceModels.loadCheck(app, VoiceModels.Engine.PIPER)}")
             val config = OfflineTtsConfig(
                 model = OfflineTtsModelConfig(
                     vits = OfflineTtsVitsModelConfig(

@@ -240,34 +240,145 @@ object VoiceModels {
      * above zero (so a truncated stub fails). A download that fails
      * this check is Failed, never Ready, and synthesis never attempts
      * it — the caller falls back (Kokoro -> Piper -> no-voice warning).
-     * This cannot catch every corruption (a full-size file with bad
-     * bytes inside still passes), which is why VoiceEngine also logs
-     * markers around every native generate: the next crash's last log
-     * line then names the exact step that died.
+    /**
+     * 2026-10-25 load-crash hardening: the floors alone were NOT
+     * enough — a set that passed them still died inside the native
+     * Kokoro load (Robert's 09:37 crash report: "native load begin
+     * kokoro" with no end), because sherpa-onnx exits the whole
+     * process on a bad set instead of throwing. [validationFailure]
+     * therefore pins every file the native load opens to its exact
+     * published size, and VoiceEngine logs a load-check line of
+     * actual sizes before every native load. A full-size file with
+     * bad bytes inside still passes the size check; if such a set
+     * ever dies in load, the load-check line proves the sizes were
+     * exact and files are excluded.
      */
     fun isReady(context: Context, engine: Engine): Boolean = validationFailure(context, engine) == null
 
     /** Null when [engine]'s on-disk set is usable; else a plain reason for Settings. */
-    fun validationFailure(context: Context, engine: Engine): String? {
-        val d = dir(context, engine)
+    fun validationFailure(context: Context, engine: Engine): String? =
+        validationFailureForDir(dir(context, engine), espeakDir(context, engine), engine)
+
+    /**
+     * Pure-directory form of [validationFailure], so unit tests can
+     * pin it without a Context.
+     *
+     * 2026-10-25 Kokoro load-crash hardening (Robert's 09:37 crash
+     * report: a set that PASSED the old floors still died inside
+     * the native Kokoro load, "native load begin kokoro" with no
+     * end). sherpa-onnx 1.13.8 kills the whole process —
+     * SHERPA_ONNX_EXIT, no Java exception, nothing for runCatching
+     * to catch — when the native load meets a bad set: a voices.bin
+     * whose float count does not match the model's style_dim x
+     * speakers (offline-tts-kokoro-model.cc), or an espeak-ng-data
+     * whose core tables espeak_Initialize cannot load
+     * (piper-phonemize-lexicon.cc InitEspeak, which must return
+     * 22050 or the process exits). The old check only floored
+     * model/voices/tokens/phondata, so a truncated voices.bin, a
+     * missing phonindex/phontab/intonations, or any other
+     * size-visible defect sailed through as Ready and died in
+     * native code. The load-critical files are therefore now pinned
+     * to their EXACT published sizes (Hugging Face tree API,
+     * verified live 2026-10-25): a set that is not the published
+     * artifact is Failed, never Ready, and synthesis falls back
+     * (Kokoro -> Piper -> no-voice warning) while the process is
+     * still alive. A size mismatch names its file, so Settings says
+     * which file is bad instead of a blanket "files incomplete".
+     * Consequence, stated plainly: if Hugging Face ever re-uploads
+     * one of these files at a new size, the table below must be
+     * updated with it, or fresh downloads will read Failed until
+     * it is. Excluded by the same investigation, so NOT guarded
+     * here: tokens content (the published tokens.txt parses
+     * cleanly — single codepoints, no duplicates), the empty
+     * lexicon (InitLexicon("") returns immediately by design),
+     * lang="en" (it satisfies the multi-lang gate), JNI binding
+     * skew and ONNX Runtime exceptions (both surface as Java
+     * exceptions through SafeJNI and the guarded field macros, so
+     * they would log "failed to load", not kill the process).
+     */
+    fun validationFailureForDir(d: File, espeak: File, engine: Engine): String? {
         for (name in engine.files) {
             val f = File(d, name)
             if (!f.isFile) return "${engine.label} files incomplete — delete and re-download"
-            val min = minFileBytes(engine, name)
-            if (f.length() < min) return "${engine.label} files incomplete — delete and re-download"
+            val exact = exactFileBytes(engine, name)
+            if (exact != null && f.length() != exact) {
+                return "${engine.label} $name size mismatch (expected $exact, found ${f.length()}) — delete and re-download"
+            }
+            if (exact == null && f.length() < minFileBytes(engine, name)) {
+                return "${engine.label} files incomplete — delete and re-download"
+            }
         }
-        val phondata = File(espeakDir(context, engine), "phondata")
-        if (!phondata.isFile || phondata.length() < MIN_SMALL_FILE_BYTES) {
-            return "${engine.label} files incomplete — delete and re-download"
+        for (name in ESPEAK_CORE_FILES) {
+            val f = File(espeak, name)
+            val exact = exactEspeakBytes(name) ?: continue
+            if (!f.isFile) return "${engine.label} espeak-ng-data/$name missing — delete and re-download"
+            if (f.length() != exact) {
+                return "${engine.label} espeak-ng-data/$name size mismatch (expected $exact, found ${f.length()}) — delete and re-download"
+            }
         }
         return null
+    }
+
+    /** Files espeak_Initialize loads at native load time; all four must be exact. */
+    val ESPEAK_CORE_FILES: List<String> = listOf("phondata", "phonindex", "phontab", "intonations")
+
+    /**
+     * Exact published size of one top-level engine file, or null when
+     * the file has no pinned size (floors in [minFileBytes] apply
+     * instead). Sizes from the Hugging Face tree API for
+     * csukuangfj/kokoro-multi-lang-v1_0 and
+     * csukuangfj/vits-piper-en_US-amy-medium, verified live
+     * 2026-10-25. Both repos carry the identical espeak-ng-data tree
+     * (same git tree hash), so the core sizes in [exactEspeakBytes]
+     * apply to both engines.
+     */
+    fun exactFileBytes(engine: Engine, name: String): Long? = when {
+        engine == Engine.KOKORO && name == "model.onnx" -> 325_560_556L
+        engine == Engine.KOKORO && name == "voices.bin" -> 28_200_960L
+        engine == Engine.KOKORO && name == "tokens.txt" -> 687L
+        engine == Engine.PIPER && name == "en_US-amy-medium.onnx" -> 63_201_425L
+        engine == Engine.PIPER && name == "tokens.txt" -> 921L
+        else -> null
+    }
+
+    /** Exact published size of one espeak-ng-data core table, or null. */
+    fun exactEspeakBytes(name: String): Long? = when (name) {
+        "phondata" -> 550_424L
+        "phonindex" -> 39_074L
+        "phontab" -> 55_796L
+        "intonations" -> 2_040L
+        else -> null
+    }
+
+    /**
+     * One line for the crash log, written by VoiceEngine immediately
+     * before every native load: the ACTUAL on-disk sizes of every
+     * file the load opens, plus the espeak file count. -1 means the
+     * file is absent. If a future report still ends on a load-begin
+     * line, this line says whether the set was exactly the published
+     * artifact (then files are excluded) or which file was off.
+     */
+    fun loadCheck(context: Context, engine: Engine): String =
+        loadCheckForDir(dir(context, engine), espeakDir(context, engine), engine)
+
+    /** Pure-directory form of [loadCheck], so unit tests can pin the format. */
+    fun loadCheckForDir(d: File, espeak: File, engine: Engine): String {
+        fun size(parent: File, name: String): Long {
+            val f = File(parent, name)
+            return if (f.isFile) f.length() else -1
+        }
+        val parts = engine.files.joinToString(" ") { "$it=${size(d, it)}" }
+        val core = ESPEAK_CORE_FILES.joinToString(" ") { "$it=${size(espeak, it)}" }
+        val count = if (espeak.isDirectory) espeak.walkTopDown().count { it.isFile } else 0
+        return "${engine.id} $parts $core espeak_files=$count"
     }
 
     /** True when any of [engine]'s files exist at all (a partial/corrupt set, not a clean Missing). */
     private fun anyFilePresent(context: Context, engine: Engine): Boolean {
         val d = dir(context, engine)
+        val espeak = espeakDir(context, engine)
         return engine.files.any { File(d, it).isFile } ||
-            File(espeakDir(context, engine), "phondata").isFile
+            ESPEAK_CORE_FILES.any { File(espeak, it).isFile }
     }
 
     private const val MIN_KOKORO_MODEL_BYTES = 10_000_000L
@@ -416,7 +527,15 @@ object VoiceModels {
                 firstError.get()?.let { throw it }
                 done = doneAtomic.get()
                 check(engine.files.all { File(partial, it).isFile }) { "some files were missing" }
-                check(File(partial, "espeak-ng-data/phondata").isFile) { "espeak-ng-data arrived without phondata" }
+                // 2026-10-25 load-crash hardening: a listing that
+                // silently omitted an espeak core table used to pass
+                // here (only phondata was checked) and die later in
+                // native load. All four load-critical tables must be
+                // in the partial set, or the download fails now, by
+                // name, instead of the load dying later.
+                for (core in ESPEAK_CORE_FILES) {
+                    check(File(partial, "espeak-ng-data/$core").isFile) { "espeak-ng-data arrived without $core" }
+                }
                 check(partial.renameTo(target)) { "couldn't store the voice" }
                 stage = "validating download"
                 val failure = validationFailure(app, engine)
