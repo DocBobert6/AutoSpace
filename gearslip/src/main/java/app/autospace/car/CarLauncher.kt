@@ -11,9 +11,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -236,6 +239,26 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
     entry.messaging?.let { navigator.messages(it.packageName, it.label) }
 }
 
+/** One row of the launcher grid: either a group header or a tile. Headers are emitted
+ * wherever the group changes along the ordered list, so the driver's custom order is
+ * never regrouped behind their back — a group can reappear after a moved tile. */
+private sealed interface LauncherRow {
+    data class Header(val group: AppGroup) : LauncherRow
+    data class App(val tile: Tile) : LauncherRow
+}
+
+private fun AppGroup.title(): String = when (this) {
+    AppGroup.PHONE -> "Phone"
+    AppGroup.MAPS -> "Maps"
+    AppGroup.MUSIC -> "Music"
+    AppGroup.MESSAGING -> "Messaging"
+    AppGroup.WEB -> "Web"
+    AppGroup.SCREEN_SHARING -> "Screen sharing"
+    AppGroup.SETTINGS -> "Settings"
+    AppGroup.EXIT -> "Exit"
+    AppGroup.OTHER -> "Other"
+}
+
 /** The app launcher: every app as an icon grid, grouped Phone, Maps, Music, Messaging, Web, Screen sharing, Settings. */
 @Composable
 fun CarLauncher() {
@@ -261,16 +284,113 @@ fun CarLauncher() {
     }
 
     val appOrder by CarSettings.appOrder.collectAsState()
-    val tiles = launcherOrder(all, showVehicleData, appOrder).map(::tileOf)
+    val ordered = launcherOrder(all, showVehicleData, appOrder)
+    val mediaPackages = remember(all) { all.mapNotNull { it.media?.component?.packageName }.toSet() }
 
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 108.dp),
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    // Search, through the car's own keyboard: tapping the search row opens it, typing
+    // filters tiles by label, submitting or dismissing closes it again.
+    var query by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
+    val filtered = if (query.isBlank()) ordered else ordered.filter { it.label.contains(query, ignoreCase = true) }
+    val rows = remember(filtered, mediaPackages) {
+        val out = mutableListOf<LauncherRow>()
+        var last: AppGroup? = null
+        for (entry in filtered) {
+            val group = groupOf(entry, mediaPackages)
+            if (group != last) { out += LauncherRow.Header(group); last = group }
+            out += LauncherRow.App(tileOf(entry))
+        }
+        out
+    }
+
+    // Pinned apps (from the nav bar's pin set) get their own row on top, so the
+    // driver's favourites are one tap away without scrolling the grid.
+    val pinnedIds by CarSettings.pinnedApps.collectAsState()
+    val pinned = remember(pinnedIds, all) { pinnedIds.mapNotNull { findEntry(it) } }
+
+    Column(Modifier.fillMaxSize()) {
+        GsButton(
+            onClick = { searching = true },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+            tone = GsTone.Neutral,
+        ) {
+            Icon(Icons.Filled.Search, contentDescription = null)
+            Spacer(Modifier.width(8.dp))
+            Text(if (query.isBlank()) "Search apps" else query, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (pinned.isNotEmpty()) {
+            Text(
+                "Pinned",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                items(pinned) { entry -> PinnedTile(tileOf(entry)) }
+            }
+        }
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 136.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(rows, span = { _, row -> if (row is LauncherRow.Header) GridItemSpan(maxLineSpan) else GridItemSpan(1) }) { row ->
+                when (row) {
+                    is LauncherRow.Header -> Text(
+                        row.group.title(),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
+                    )
+                    is LauncherRow.App -> AppTile(row.tile)
+                }
+            }
+        }
+        if (searching) {
+            CarKeyboard(
+                text = query,
+                onTextChange = { query = it },
+                onSubmit = { searching = false },
+                onDismiss = { searching = false },
+            )
+        }
+    }
+}
+
+/** A compact pinned-app tile for the launcher's pinned row. */
+@Composable
+private fun PinnedTile(tile: Tile) {
+    GsIconBox(
+        onClick = tile.onClick,
+        onLongClick = tile.onLongClick,
+        modifier = Modifier.size(96.dp),
+        colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
+        shape = MaterialTheme.shapes.extraLarge,
     ) {
-        items(tiles) { AppTile(it) }
+        Column(
+            Modifier.fillMaxSize().padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Box {
+                TileIcon(tile, 44.dp)
+                if (tile.broken) {
+                    BrokenBadge(
+                        20.dp,
+                        Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
+                            .border(2.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+            TileLabel(tile, maxLines = 1)
+        }
     }
 }
 
@@ -294,7 +414,7 @@ private fun AppTile(tile: Tile) {
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
-        modifier = Modifier.height(120.dp),
+        modifier = Modifier.height(148.dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
         shape = shape,
     ) {
@@ -324,10 +444,10 @@ private fun AppTile(tile: Tile) {
 }
 
 @Composable
-private fun TileIcon(tile: Tile) {
+private fun TileIcon(tile: Tile, size: androidx.compose.ui.unit.Dp = 64.dp) {
     when {
-        tile.icon != null -> Image(tile.icon, contentDescription = null, modifier = Modifier.size(52.dp))
-        tile.glyph != null -> Icon(tile.glyph, contentDescription = null, modifier = Modifier.size(52.dp))
+        tile.icon != null -> Image(tile.icon, contentDescription = null, modifier = Modifier.size(size))
+        tile.glyph != null -> Icon(tile.glyph, contentDescription = null, modifier = Modifier.size(size))
     }
 }
 
