@@ -94,10 +94,18 @@ class MirrorGeometryTest {
         assertNotNull(zoomed)
         assertEquals(540f, zoomed!!.x, 0.5f)
         assertEquals(1200f, zoomed.y, 0.5f)
-        // Panning right by 100px moves the mapped point left by 100 / scale px.
-        val panned = MirrorGeometry.mapDisplay(960f, 540f, phoneW, phoneH, frameW, frameH, false, 2f, 100f, 0f)
+        // Panning down by 100px moves the mapped point up: the zoomed
+        // content is taller than the frame, so vertical pan is possible.
+        val panned = MirrorGeometry.mapDisplay(960f, 540f, phoneW, phoneH, frameW, frameH, false, 2f, 0f, 100f)
         assertNotNull(panned)
-        assertTrue(panned!!.x < zoomed.x)
+        assertTrue(panned!!.y < zoomed.y)
+        // Horizontal pan is NOT possible here, by design: even at 2x
+        // the Fit content (972px) is narrower than the frame (1920px),
+        // so the pan clamps to zero and the point does not move.
+        val clamped = MirrorGeometry.mapDisplay(960f, 540f, phoneW, phoneH, frameW, frameH, false, 2f, 100f, 0f)
+        assertNotNull(clamped)
+        assertEquals(zoomed.x, clamped!!.x, 0.001f)
+        assertEquals(zoomed.y, clamped.y, 0.001f)
         // A point dragged off the zoomed content maps to nothing, not to a clamped edge.
         assertNull(MirrorGeometry.mapDisplay(0f, 540f, phoneW, phoneH, frameW, frameH, false, 2f, 0f, 0f))
     }
