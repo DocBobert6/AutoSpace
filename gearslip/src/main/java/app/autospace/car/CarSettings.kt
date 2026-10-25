@@ -69,6 +69,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
+    private const val KEY_HOTWORD = "car_hotword"
     private const val KEY_DARK_TYPE = "car_dark_type"
     private const val KEY_TILE_SIZE = "car_tile_size"
     private const val KEY_PLAYER_SPEED = "car_player_speed"
@@ -131,6 +132,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val experimentalFeaturesFlow = MutableStateFlow(false)
     private val systemSpeechFlow = MutableStateFlow(false)
     private val phoneMicFlow = MutableStateFlow(false)
+    private val hotwordFlow = MutableStateFlow(false)
     private val playerSpeedFlow = MutableStateFlow(1f)
     private val playerSkipSecFlow = MutableStateFlow(10)
     private val carSensorsFlow = MutableStateFlow(false)
@@ -249,6 +251,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val systemSpeech: StateFlow<Boolean> = systemSpeechFlow
     /** Voice commands/replies use the phone mic even when the car has one. Default off; calls unaffected. */
     val phoneMicForVoice: StateFlow<Boolean> = phoneMicFlow
+    /** Hotword listening ("Hey AutoSpace" / "Hey Gearslip") while connected. Default off. */
+    val hotword: StateFlow<Boolean> = hotwordFlow
     /** Video player speed, persisted (Notscape playerSpeed). */
     val playerSpeed: StateFlow<Float> = playerSpeedFlow
     /** Video player skip interval in seconds, persisted (Notscape playerSkipSec). */
@@ -319,6 +323,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
+        hotwordFlow.value = AppSettings.getString(app, KEY_HOTWORD, "false") == "true"
         playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
@@ -444,6 +449,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setPhoneMicForVoice(on: Boolean) {
         phoneMicFlow.value = on
         AppSettings.putString(app, KEY_PHONE_MIC, on.toString())
+    }
+
+    fun setHotword(on: Boolean) {
+        hotwordFlow.value = on
+        AppSettings.putString(app, KEY_HOTWORD, on.toString())
     }
 
     fun setPlayerSpeed(speed: Float) {

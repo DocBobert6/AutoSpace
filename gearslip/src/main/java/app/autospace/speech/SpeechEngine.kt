@@ -88,6 +88,18 @@ object SpeechEngine {
     private val idleUnload = Runnable { unloadFinal("after ${IDLE_UNLOAD_MS / 60_000} minutes without use") }
     @Volatile private var run = 0
 
+    /**
+     * True while a button-press (or dictated) phrase is being listened for. [HotwordListener]
+     * watches this and closes its own microphone before a phrase starts, so the two never
+     * hold the car's single microphone channel at once; it is cleared when the phrase's
+     * worker task ends, before its result is posted. A counter, not a bare boolean: two
+     * rapid listens must not let the first one's end clear the second one's flag.
+     */
+    private val listeningCount = java.util.concurrent.atomic.AtomicInteger(0)
+    internal val listeningActive: Boolean get() = listeningCount.get() > 0
+    internal fun markListeningStart() { listeningCount.incrementAndGet() }
+    internal fun markListeningEnd() { if (listeningCount.get() > 0) listeningCount.decrementAndGet() }
+
     /** Loads the model ahead of time, so the first command doesn't wait for it. */
     fun warm(context: Context) {
         val app = context.applicationContext
@@ -155,10 +167,16 @@ object SpeechEngine {
         // Brings Parakeet back if it was unloaded, while the driver talks.
         main.removeCallbacks(idleUnload)
         finalWorker.execute { ensureFinalLoaded(app) }
+        markListeningStart()
         worker.execute {
+            try {
             if (id != run) return@execute
             if (!SpeechModels.isReady(app, SpeechModels.selected.value)) return@execute post { onError(NOT_DOWNLOADED) }
             val r = ensureLoaded(app) ?: return@execute post { onError(NOT_LOADED) }
+            // The hotword loop closes its microphone on [listeningActive] within one
+            // 100 ms chunk; wait for that before opening this phrase's microphone, so
+            // the car's single microphone channel is never held by both at once.
+            HotwordListener.waitForMicRelease()
             VoiceFocus.acquire(app)
             val text = try {
                 if (cue) cue()
@@ -176,6 +194,12 @@ object SpeechEngine {
             if (id != run) return@execute
             post(onHeard)
             post { if (text.isEmpty()) onError("Didn't catch that.") else onResult(text) }
+            } finally {
+                // Cleared when the phrase's worker task ends, before its result posts;
+                // the assistant's own phase (LISTENING/THINKING/SPEAKING) keeps the
+                // hotword suspended through the reply that follows.
+                markListeningEnd()
+            }
         }
     }
 
@@ -194,13 +218,9 @@ object SpeechEngine {
         onPartial: (String) -> Unit,
         onStopped: () -> Unit,
     ): String {
-        // Phone-mic setting (Phase 6): skip the car microphone entirely —
-        // do not even start it — and use the phone's directly. Both voice
-        // paths (CarAssistant commands and VoiceReply replies) funnel through
-        // this one selection point, so both honour the setting. When off,
-        // behaviour is exactly as before: car mic first, phone mic if the
-        // car has none, sends an unusable format, or sends nothing in 1.5s.
-        val mic = if (CarSettings.phoneMicForVoice.value) phoneMic() else carMic() ?: phoneMic()
+        // One selection point for every voice path (CarAssistant commands, VoiceReply
+        // replies, and the hotword listener): see [openSpeechMic].
+        val mic = openSpeechMic()
         val s = r.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)
@@ -362,9 +382,10 @@ object SpeechEngine {
 
     /**
      * Models write in upper case, or with punctuation and capitals of their own; commands are
-     * matched in plain lower case, so only words and apostrophes are kept.
+     * matched in plain lower case, so only words and apostrophes are kept. Shared with
+     * [HotwordListener], which matches its phrases against the same cleaned text.
      */
-    private fun clean(text: String): String =
+    internal fun clean(text: String): String =
         text.lowercase().replace(Regex("[^\\p{L}\\p{N}' ]"), " ").replace(Regex("\\s+"), " ").trim()
 
     /**
@@ -383,8 +404,17 @@ object SpeechEngine {
 
     // --- microphones -----------------------------------------------------------------------
 
+    /**
+     * The microphone a phrase is heard from, chosen exactly as [stream] chooses it: the
+     * phone's when the phone-microphone setting is on, otherwise the car's when it has one
+     * and sends usable audio, else the phone's. Shared with [HotwordListener] so the
+     * hotword and a button-press command never pick different microphones.
+     */
+    internal fun openSpeechMic(): Mic =
+        if (CarSettings.phoneMicForVoice.value) phoneMic() else carMic() ?: phoneMic()
+
     /** Where a phrase is heard from: [read] fills [frame] and returns how many samples it got, -1 at the end. */
-    private interface Mic {
+    internal interface Mic {
         fun read(frame: ShortArray): Int
         fun close()
     }

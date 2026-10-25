@@ -73,6 +73,7 @@ fun CarSettingsScreen() {
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val systemSpeech by CarSettings.systemSpeech.collectAsState()
     val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
+    val hotword by CarSettings.hotword.collectAsState()
     val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
     val display by CarEnvironment.display.collectAsState()
     val vehicle by CarEnvironment.vehicle.collectAsState()
@@ -318,6 +319,19 @@ fun CarSettingsScreen() {
                 "NOT affect phone calls.",
             checked = phoneMicForVoice,
         ) { CarSettings.setPhoneMicForVoice(it) }
+
+        // Hotword (2026-10-25): hands-free wake phrase, off by default. The
+        // listener itself enforces the rest — car session only, suspended while
+        // the assistant is busy or on a call — so this row is only the switch.
+        ExperimentalFeatureRow(
+            title = "Listen for “Hey AutoSpace”",
+            description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
+                "(or “Hey Gearslip”) and opens the assistant without a button press. " +
+                "It needs the Kroko listening model downloaded, it stops while the " +
+                "assistant is speaking, on a call, or when the car disconnects, and " +
+                "nothing you say leaves the phone.",
+            checked = hotword,
+        ) { CarSettings.setHotword(it) }
 
         WebPageSetting()
 

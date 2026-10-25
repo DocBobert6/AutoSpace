@@ -10,6 +10,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import app.autospace.speech.SpeechModels
 import app.autospace.speech.SpeechModels.Model
 import app.autospace.speech.SpeechModels.State
 import androidx.compose.ui.text.font.FontWeight
+import app.autospace.car.CarSettings
 import app.autospace.speech.VoiceModels
 
 /**
@@ -160,6 +162,29 @@ internal fun SpokenVoiceSection() {
                     fontWeight = if (voice == selectedVoice) FontWeight.Bold else FontWeight.Normal,
                 )
             }
+        }
+    }
+    // Hotword: the same persisted switch as car Settings, so either place reflects
+    // the other. The listener itself enforces car-session-only listening and
+    // suspension while busy or on a call; this is only the switch.
+    SettingsSection(title = "Voice: hotword") {
+        val hotword by CarSettings.hotword.collectAsState()
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Listen for “Hey AutoSpace”", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
+                        "(or “Hey Gearslip”) and opens the assistant without a button press. " +
+                        "Off by default. It needs the Kroko listening model downloaded, " +
+                        "and nothing you say leaves the phone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = hotword, onCheckedChange = { CarSettings.setHotword(it) })
         }
     }
 }

@@ -73,6 +73,18 @@ object CarServices {
         VoiceReply.init(appContext)
         // Loaded now, while nothing's waiting on it, so the first reply isn't slower than the rest.
         app.autospace.speech.SpeechEngine.warm(appContext)
+        // Hotword: wired here, gated inside HotwordListener itself. The session check
+        // (CarEnvironment.isRunning) is false in the phone preview, so the preview
+        // never opens the microphone; a real session sets it before CarUi composes.
+        app.autospace.speech.HotwordListener.configure(
+            sessionCheck = { CarEnvironment.isRunning },
+            suspendCheck = {
+                CarAssistant.state.value.phase != CarAssistant.Phase.IDLE ||
+                    app.autospace.call.CarCalls.state.value is app.autospace.call.CallUiState.Active
+            },
+            onHotword = { CarAssistant.start() },
+        )
+        app.autospace.speech.HotwordListener.start(appContext)
     }
 
     // --- map -----------------------------------------------------------------------------
@@ -252,6 +264,9 @@ object CarServices {
 
     /** The car went away: nothing should keep running for a screen that no longer exists. */
     fun shutdown() {
+        // Hotword first: its microphone must close the moment the session ends, even
+        // if something below throws. The loop thread exits on its own.
+        app.autospace.speech.HotwordListener.stop()
         context?.let { app.autospace.notify.CarMotion.stop(it) }
         app.autospace.call.CarCalls.stop()
         runCatching { nav.disconnect() }

@@ -55,6 +55,7 @@ object VoiceHelp {
         "Call emergency services" to "Asks you to confirm out loud before dialling",
         "Remind me in 10 minutes" to "A local timer, spoken when it fires",
         "Cancel · Never mind" to "Stop the assistant without an answer",
+        "“Hey AutoSpace” · “Hey Gearslip”" to "Wake the assistant without a button, while connected and only when the hotword switch is on",
         "Help" to "This list",
     )
 }

@@ -213,6 +213,11 @@ object CarAssistant {
         onResult: (String) -> Unit,
         onError: (String) -> Unit,
     ) {
+        // Same flag the sherpa path sets in SpeechEngine.listen: the hotword loop
+        // closes its microphone on it, so the two never hold the car mic at once.
+        // (The sherpa path's worker waits for the release; this path relies on the
+        // recognizer opening its microphone after the hotword loop's next chunk.)
+        SpeechEngine.markListeningStart()
         val r = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
@@ -225,11 +230,13 @@ object CarAssistant {
 
             override fun onError(error: Int) {
                 releaseRecognizer()
+                SpeechEngine.markListeningEnd()
                 onError(errorMessage(error))
             }
 
             override fun onResults(results: Bundle?) {
                 releaseRecognizer()
+                SpeechEngine.markListeningEnd()
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 if (text.isBlank()) onError("Didn't catch that.") else onResult(text)
             }

@@ -97,6 +97,9 @@ object CarEnvironment {
         frameFlow.value = Frame(width, height, densityDpi)
     }
 
+    /** True only for a real car session: only GearslipActivity calls [start]; the phone preview never does. */
+    val isRunning: Boolean get() = running
+
     fun start(context: Context) {
         if (running) return
         running = true
