@@ -240,7 +240,7 @@ object VoiceModels {
      * above zero (so a truncated stub fails). A download that fails
      * this check is Failed, never Ready, and synthesis never attempts
      * it — the caller falls back (Kokoro -> Piper -> no-voice warning).
-    /**
+     *
      * 2026-10-25 load-crash hardening: the floors alone were NOT
      * enough — a set that passed them still died inside the native
      * Kokoro load (Robert's 09:37 crash report: "native load begin
