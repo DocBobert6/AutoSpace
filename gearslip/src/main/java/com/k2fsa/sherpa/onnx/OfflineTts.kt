@@ -5,6 +5,21 @@
 // pocket, supertonic) are present so a newer native library that looks one of them
 // up still finds a field, and are left empty. Only the config and generate paths
 // AutoSpace actually calls are used: newFromFile + generateImpl + delete.
+// 2026-10-25, LOAD-BEARING NAME (Robert's 10:15 Piper crash report: death
+// inside native OfflineTts load with verified-good files): the vendored
+// .so's JNI looks the ZipVoice sub-config up by the EXACT class name
+// com.k2fsa.sherpa.onnx.OfflineTtsZipVoiceModelConfig (capital V, proven
+// from the .so's own field-type descriptor string). The binding previously
+// spelled it OfflineTtsZipvoiceModelConfig (lowercase v), so the JNI's
+// GetFieldID for ModelConfig.zipvoice found no field with that signature
+// and the process died inside newFromFile — for BOTH engines, since both
+// go through the same whole-ModelConfig conversion, while the recognizers
+// (whose binding class names all match) kept working. Do NOT rename this
+// class back to the lowercase spelling: the capital V is what the .so
+// looks up. The encoder/decoder/scale fields below complete the class
+// for the same reason — a missing leaf field is tolerated by the JNI
+// (it logs "Failed to get field ID"), but the class itself must exist
+// under the exact name, and the fields are cheap insurance.
 // GeneratedAudio's constructor shape (FloatArray, Int) is what the JNI layer
 // builds, so keep it exactly.
 package com.k2fsa.sherpa.onnx
@@ -74,7 +89,7 @@ data class OfflineTtsKittenModelConfig(
     var vocoder: String = "",
 )
 
-data class OfflineTtsZipvoiceModelConfig(
+data class OfflineTtsZipVoiceModelConfig(
     var model: String = "",
     var voices: String = "",
     var tokens: String = "",
@@ -87,6 +102,14 @@ data class OfflineTtsZipvoiceModelConfig(
     var noiseScaleW: Float = 0.8f,
     var acousticModel: String = "",
     var vocoder: String = "",
+    // ZipVoice's own fields (unused by AutoSpace — the class is never
+    // populated — but present so the JNI reader finds them by name):
+    var encoder: String = "",
+    var decoder: String = "",
+    var featScale: Float = 1.0f,
+    var guidanceScale: Float = 1.0f,
+    var tShift: Float = 0.0f,
+    var targetRms: Float = 1.0f,
 )
 
 data class OfflineTtsPocketModelConfig(
@@ -124,7 +147,7 @@ data class OfflineTtsModelConfig(
     var matcha: OfflineTtsMatchaModelConfig = OfflineTtsMatchaModelConfig(),
     var kokoro: OfflineTtsKokoroModelConfig = OfflineTtsKokoroModelConfig(),
     var kitten: OfflineTtsKittenModelConfig = OfflineTtsKittenModelConfig(),
-    var zipvoice: OfflineTtsZipvoiceModelConfig = OfflineTtsZipvoiceModelConfig(),
+    var zipvoice: OfflineTtsZipVoiceModelConfig = OfflineTtsZipVoiceModelConfig(),
     var pocket: OfflineTtsPocketModelConfig = OfflineTtsPocketModelConfig(),
     var supertonic: OfflineTtsSupertonicModelConfig = OfflineTtsSupertonicModelConfig(),
     var numThreads: Int = 1,
