@@ -369,7 +369,38 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     }
     DisposableEffect(player) {
         player.addListener(listener)
+        // Hardware NEXT/PREVIOUS while this screen is up: seek the video by the
+        // live skip-seconds setting, never skip a music track (see CarKeys.videoSeekHandler).
+        // Registered here, at screen level, so it is live while the passenger gate dialog
+        // is up too (the gate sits inside this composition and audio keeps playing), and
+        // it is cleared BEFORE the player is released below, so no press can ever reach
+        // a released player through it. The handler consumes every press while set:
+        // when the player is not usable (STATE_IDLE covers not-yet-prepared and error
+        // states; mediaItemCount == 0 covers nothing loaded) it does NOTHING — no seek
+        // attempt, no crash, and no fall-through to music track skip. seekTo leaves
+        // playWhenReady untouched, so a seek while paused stays paused, exactly like
+        // the on-screen scrubber. Rapid presses each read currentPosition at press
+        // time, so each steps from the latest seek target; ExoPlayer collapses
+        // successive seeks natively rather than queueing a wild jump. Boundaries are
+        // clamped here (0 at the start, duration at the end); a live/unknown duration
+        // (TIME_UNSET) is only floored at 0. This touches NOTHING else: the on-screen
+        // Prev/Next media-item buttons and the double-tap ±10s gesture are unchanged,
+        // and the skip amount is read live from CarSettings.playerSkipSec at press
+        // time, not from this screen's remembered skipSec copy.
+        CarKeys.videoSeekHandler = { forward ->
+            runCatching {
+                if (player.mediaItemCount > 0 && player.playbackState != Player.STATE_IDLE) {
+                    val deltaMs = CarSettings.playerSkipSec.value.coerceAtLeast(0) * 1000L
+                    val dur = player.duration
+                    val target = (player.currentPosition + if (forward) deltaMs else -deltaMs)
+                        .coerceAtLeast(0L)
+                    player.seekTo(if (dur > 0) target.coerceAtMost(dur) else target)
+                }
+            }
+            true
+        }
         onDispose {
+            CarKeys.videoSeekHandler = null
             player.removeListener(listener)
             player.release()
         }

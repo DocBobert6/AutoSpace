@@ -36,6 +36,28 @@ object CarKeys {
     /** Delivers an Android key event to the car display; set while the car UI is showing. */
     @Volatile var focusSink: ((keyCode: Int, down: Boolean) -> Unit)? = null
 
+    /**
+     * Hardware NEXT/PREVIOUS routing while the video player screen is up, set by
+     * [VideoPlayerScreen] while it is composed and cleared before its player is released
+     * (see that screen's DisposableEffect). Non-null means the player screen is the
+     * current screen, so a hardware NEXT/PREVIOUS is a video seek, NOT a music track skip.
+     * The handler returns true when it consumed the press — INCLUDING the safe no-op when
+     * the player is not ready (not yet prepared, error state, no media loaded): a press
+     * inside the player must never fall through to skipping a music track, which would be
+     * the wrong action while the user is watching video. Null everywhere else means
+     * music track skip behaviour is exactly as before. The handler reads
+     * [CarSettings.playerSkipSec] live at press time, so a setting change alters the
+     * very next press; nothing here caches the skip amount.
+     */
+    @Volatile var videoSeekHandler: ((forward: Boolean) -> Boolean)? = null
+
+    /** True when the video player screen consumed a hardware NEXT/PREVIOUS as a seek. */
+    private fun videoSeek(forward: Boolean): Boolean {
+        val consumed = videoSeekHandler?.invoke(forward) == true
+        if (consumed) GearslipLog.i("keys: video player hardware seek ${if (forward) "forward" else "back"}")
+        return consumed
+    }
+
     private var appContext: Context? = null
     private val main = Handler(Looper.getMainLooper())
 
@@ -91,8 +113,8 @@ object CarKeys {
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> media.togglePlay()
             KeyEvent.KEYCODE_MEDIA_PLAY -> if (!media.now.value.playing) media.togglePlay()
             KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP -> if (media.now.value.playing) media.togglePlay()
-            KeyEvent.KEYCODE_MEDIA_NEXT -> media.next()
-            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> media.previous()
+            KeyEvent.KEYCODE_MEDIA_NEXT -> if (!videoSeek(true)) media.next()
+            KeyEvent.KEYCODE_MEDIA_PREVIOUS -> if (!videoSeek(false)) media.previous()
             KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_VOICE_ASSIST -> voice()
             KeyEvent.KEYCODE_CALL -> call()
             KeyEvent.KEYCODE_ENDCALL -> endCall()
