@@ -289,6 +289,11 @@ fun CarLauncher() {
     }
 
     val appOrder by CarSettings.appOrder.collectAsState()
+    // Icon-size slider (Phase 6): 1.0 is the Phase 6 large size. Grid width
+    // follows the icon but never below 96dp, and tile height never shrinks,
+    // so the tap area stays a car target even with the icon hidden at 0%.
+    val iconFrac by CarSettings.iconSize.collectAsState()
+    val launcherGridMin = (168f * iconFrac).coerceAtLeast(96f).dp
     val ordered = launcherOrder(all, showVehicleData, appOrder)
     val mediaPackages = remember(all) { all.mapNotNull { it.media?.component?.packageName }.toSet() }
 
@@ -337,7 +342,7 @@ fun CarLauncher() {
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                items(pinned) { entry -> PinnedTile(tileOf(entry)) }
+                items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac) }
             }
         }
         // Phase 6, phone-drawer language scaled UP for the car: search at the
@@ -345,7 +350,7 @@ fun CarLauncher() {
         // tiles — but icons larger than a phone's, never smaller. Groups,
         // search and the pinned row are unchanged behaviour.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 168.dp),
+            columns = GridCells.Adaptive(minSize = launcherGridMin),
             modifier = Modifier.weight(1f).fillMaxWidth(),
             contentPadding = PaddingValues(20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -360,7 +365,7 @@ fun CarLauncher() {
                         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
                     )
                 }
-                items(sectionTiles) { tile -> AppTile(tile) }
+                items(sectionTiles) { tile -> AppTile(tile, iconFrac) }
             }
         }
         if (searching) {
@@ -376,7 +381,7 @@ fun CarLauncher() {
 
 /** A compact pinned-app tile for the launcher's pinned row. */
 @Composable
-private fun PinnedTile(tile: Tile) {
+private fun PinnedTile(tile: Tile, iconFrac: Float = 1f) {
     GsIconBox(
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
@@ -390,7 +395,7 @@ private fun PinnedTile(tile: Tile) {
             verticalArrangement = Arrangement.Center,
         ) {
             Box {
-                TileIcon(tile, 56.dp)
+                TileIcon(tile, 56.dp * iconFrac)
                 if (tile.broken) {
                     BrokenBadge(
                         20.dp,
@@ -418,7 +423,7 @@ private fun BrokenBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier = 
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AppTile(tile: Tile) {
+private fun AppTile(tile: Tile, iconFrac: Float = 1f) {
     // Phase 6: 20dp card radius (Notscape ladder), taller tile for the
     // larger icon, so the label is never crowded.
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)
@@ -438,7 +443,7 @@ private fun AppTile(tile: Tile) {
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box {
-                    TileIcon(tile)
+                    TileIcon(tile, 80.dp * iconFrac)
                     if (tile.broken) {
                         // Pinned to the icon's lower corner, ringed in the tile's colour so it
                         // reads as sitting on top of the icon.

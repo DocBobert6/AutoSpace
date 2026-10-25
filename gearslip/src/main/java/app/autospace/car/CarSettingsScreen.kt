@@ -21,6 +21,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import kotlin.math.roundToInt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -48,6 +49,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun CarSettingsScreen() {
     val scale by CarSettings.scale.collectAsState()
+    val iconSize by CarSettings.iconSize.collectAsState()
     val open by CarSettings.openOnConnect.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
@@ -91,6 +93,32 @@ fun CarSettingsScreen() {
             listOf(1f to "Normal", 1.25f to "Large", 1.5f to "Extra large"),
             scale,
         ) { CarSettings.setScale(it) }
+
+        // Icon size (Phase 6, corrected 2026-10-24 22:10: 0%-100%, superseding
+        // the first 20%-100% ask). Finer than the Size presets above, which
+        // stay exactly as they are. 0% hides the icon; the tile, its label
+        // and its tap area stay, so a tile is never lost by shrinking it.
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Icon size", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("0%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                GsSeekBar(
+                    fraction = iconSize,
+                    onSeek = { CarSettings.setIconSize(it) },
+                    modifier = Modifier.weight(1f),
+                )
+                Text("100%", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                "${(iconSize * 100).roundToInt()}% — icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         ChoiceRow(
             "App theme",

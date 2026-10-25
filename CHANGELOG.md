@@ -131,6 +131,15 @@ in the local worktree; it can be added later by a git push from a local clone.
   capture the car video surfaces anyway; the gradient/shadow/hairline
   recipe is what reads as frost on a compressed car stream. Visual
   acceptance on the phone preview and in the car is still owed.
+- New features: icon-size slider in car Settings (next to Size / App
+  theme), 0%–100% (corrected 2026-10-24 22:10, superseding the first
+  20%–100% ask). 100% is the large size above; the slider scales app
+  icons down linearly on the apps page (including pinned tiles) and the
+  screen-sharing page, and the grid reflows with it. Tiles keep their
+  full height and never narrow below 96dp, so at 0% the icon is hidden
+  but the tile, its label, and its large car tap area stay usable. The
+  Normal / Large / Extra-large Size presets are unchanged — the slider
+  is the finer, independent control.
 
 ## Unreleased (Phase 5 — Regression / release prep)
 - First release will be a BETA (Robert, 2026-10-24), not a stable release:

@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -48,6 +49,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun PhoneAppsScreen() {
     val context = LocalContext.current
+    val iconFrac by CarSettings.iconSize.collectAsState()
     val apps by produceState(initialValue = PhoneApps.cached() ?: emptyList(), context) {
         value = PhoneApps.cached() ?: withContext(Dispatchers.IO) { PhoneApps.installed(context).also { PhoneApps.warm(context) } }
     }
@@ -65,14 +67,14 @@ fun PhoneAppsScreen() {
         // Frost tiles — icons larger than a phone's, never smaller. The
         // touch-relay warning above is unchanged.
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 144.dp),
+            columns = GridCells.Adaptive(minSize = (144f * iconFrac).coerceAtLeast(96f).dp),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             items(apps) { app ->
-                PhoneAppTile(app) { PhoneMirror.open(context, app.packageName) }
+                PhoneAppTile(app, iconFrac) { PhoneMirror.open(context, app.packageName) }
             }
         }
     }
@@ -108,7 +110,7 @@ private fun TouchRelayWarning() {
 }
 
 @Composable
-private fun PhoneAppTile(app: PhoneApp, onClick: () -> Unit) {
+private fun PhoneAppTile(app: PhoneApp, iconFrac: Float = 1f, onClick: () -> Unit) {
     GsIconBox(
         onClick = onClick,
         modifier = Modifier.height(152.dp),
@@ -120,7 +122,7 @@ private fun PhoneAppTile(app: PhoneApp, onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(72.dp)) }
+            app.icon?.let { Image(it, contentDescription = null, modifier = Modifier.size(72.dp * iconFrac)) }
             Spacer(Modifier.height(10.dp))
             Text(
                 app.label,
