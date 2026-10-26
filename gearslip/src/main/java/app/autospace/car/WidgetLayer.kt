@@ -26,6 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.car.app.model.Template
+import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.car.theme.GsIconButton
 import kotlin.math.roundToInt
 import app.autospace.car.theme.GsKit
@@ -61,8 +64,10 @@ enum class WidgetKind { WEATHER, DIGEST, EVENT }
  * Whether the widget column shows. Pure so it is unit-testable. Every gate
  * matters: the master switch, the floating full-bleed base, the column not
  * dismissed (persisted, not per-session — see [CarSettings]), actually on
- * Home, and never while the lyrics column owns the side (lyrics falls back
- * to the classic split, which has no background to overlay).
+ * Home, never while the lyrics column owns the side (lyrics falls back
+ * to the classic split, which has no background to overlay), and the nav
+ * app's current template leaving the column's corner free (see
+ * [navTemplateAllowsWidgets]).
  */
 fun shouldShowWidgetColumn(
     widgetsEnabled: Boolean,
@@ -70,7 +75,51 @@ fun shouldShowWidgetColumn(
     dismissed: Boolean,
     onHome: Boolean,
     sidePanel: SidePanel,
-): Boolean = widgetsEnabled && floatingOn && !dismissed && onHome && sidePanel != SidePanel.LYRICS
+    navTemplateAllowsWidgets: Boolean,
+): Boolean = widgetsEnabled && floatingOn && !dismissed && onHome &&
+    sidePanel != SidePanel.LYRICS && navTemplateAllowsWidgets
+
+/**
+ * r39 widget/nav-panel gate: whether the nav app's current template leaves
+ * the driver-side column's corner free. Pure so it is unit-testable.
+ *
+ * Why (r37 screenshot): Vela's search/categories panel is host-rendered
+ * TemplateChrome, and MapPaneLayout always draws its left-side container
+ * (TopStart, 12dp padding, 42% of the width) for any map-backed template
+ * when not panning — the widget column (TopStart, same 12dp padding, 30%
+ * width) sits inside that footprint. NavigationChrome's turn card is
+ * TopStart too, so the same collision applies during guidance. This
+ * predicate mirrors TemplateChrome's own card condition exactly: the card
+ * shows iff not panning and the navigation info is a RoutingInfo that is
+ * loading or carries a current step.
+ *
+ * Show only when: no template (bare map), or a NavigationTemplate with no
+ * turn card showing — its navigation info is not a RoutingInfo, the
+ * RoutingInfo is neither loading nor carrying a current step, or pan mode
+ * is on (pan hides the card, and MapPaneLayout hides its container too).
+ * A non-loading RoutingInfo without a step cannot be built via its Builder
+ * (build requires a step and distance unless loading), so that arm is
+ * defensive only — a real app cannot send it either. A
+ * destinationTravelEstimate alone never hides the column: its bar is
+ * BottomStart and does not collide, and this predicate never reads it.
+ *
+ * Hide for every other non-null template: any MapTemplate (the container
+ * always renders, pane or list or neither), MapWithContent, place lists,
+ * route preview, search, list, pane, and any other full-screen content
+ * template.
+ *
+ * Hiding here is NOT a dismissal: it touches no persisted flag, so the
+ * column returns on its own when the template clears.
+ */
+fun navTemplateAllowsWidgets(template: Template?, panMode: Boolean): Boolean {
+    if (template == null) return true
+    if (template is NavigationTemplate) {
+        if (panMode) return true
+        val info = template.navigationInfo as? RoutingInfo ?: return true
+        return !info.isLoading && info.currentStep == null
+    }
+    return false
+}
 
 /**
  * Column width: ~30% of the frame, capped at 280dp (proposal §3) and floored

@@ -72,6 +72,8 @@ fun CarHome() {
     val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
     val widgetsOn by CarSettings.homeWidgetsEnabled.collectAsStateWithLifecycle()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
+    val navTemplate by CarServices.nav.template.collectAsStateWithLifecycle()
+    val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -115,8 +117,13 @@ fun CarHome() {
     )
     // r37 widget layer: driver-side column over the full-bleed map base
     // only (floating ON). Classic split hides it and stays byte-for-byte.
+    // r39: the column also steps aside whenever the nav app's current
+    // template occupies its corner (search panel, turn card, any other
+    // template chrome) — hiding by template, never a dismissal, so the
+    // column returns on its own when the template clears.
     val showWidgetColumn = shouldShowWidgetColumn(
         widgetsOn, floatingOn, widgetsDismissed, onHome, panel,
+        navTemplateAllowsWidgets(navTemplate, navPanMode),
     )
 
     // Phase 8: 12dp outer padding (so rounded corners actually show against
