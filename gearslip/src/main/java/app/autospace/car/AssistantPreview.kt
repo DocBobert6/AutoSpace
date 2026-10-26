@@ -169,6 +169,18 @@ object AssistantPreview {
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Navigate command", params = dest, spoken = "Navigating to $dest.")
             }
         }
+        // Read-only readouts sit BEFORE the call triggers on purpose, mirroring the live
+        // order (battery is checked before call): "phone battery" starts with the
+        // "phone " call trigger, so checking call first misroutes it as "Calling battery."
+        when {
+            heard == "phone battery" || heard == "battery level" || heard == "how much battery" ||
+                heard == "how much battery is left" || heard == "what's my phone battery" ->
+                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Battery readout (read-only, runnable)", spoken = "Your phone battery is at … percent.")
+            heard.contains("what time") || heard == "time" ->
+                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Time readout (read-only, runnable)", spoken = "It's ….")
+            heard == "how far" || heard == "eta" || heard == "how much further" ->
+                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "ETA readout (read-only, runnable)", spoken = "… to go.")
+        }
         after(heard, CALL_TRIGGERS)?.let { name ->
             if (name.isNotBlank()) {
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Call command", params = name, spoken = "Calling $name.")
@@ -186,11 +198,6 @@ object AssistantPreview {
             }
         }
         when {
-            heard == "phone battery" || heard == "battery level" || heard == "how much battery" ||
-                heard == "how much battery is left" || heard == "what's my phone battery" ->
-                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Battery readout (read-only, runnable)", spoken = "Your phone battery is at … percent.")
-            heard.contains("what time") || heard == "time" ->
-                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Time readout (read-only, runnable)", spoken = "It's ….")
             heard == "volume up" || heard == "louder" || heard == "turn it up" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Volume command", spoken = "Volume up.")
             heard == "volume down" || heard == "quieter" || heard == "turn it down" ->
@@ -218,8 +225,6 @@ object AssistantPreview {
                 heard == "start screen sharing" || heard == "stop screen sharing" ||
                 heard == "start mirroring" || heard == "stop mirroring" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Settings toggle", spoken = "Done.")
-            heard == "how far" || heard == "eta" || heard == "how much further" ->
-                return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "ETA readout (read-only, runnable)", spoken = "… to go.")
             heard == "stop navigation" || heard == "cancel navigation" || heard == "end navigation" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Stop navigation", spoken = "Navigation stopped.")
         }
@@ -330,8 +335,8 @@ object AssistantPreview {
         Case("what is the capital of France", Handler.AI, "AI fallback sample — skipped when gates closed"),
         Case("tell me a joke", Handler.AI, "AI fallback sample — skipped when gates closed"),
         Case("call Mom and navigate home", Handler.AMBIGUOUS, "Two actions — two confirmations, never one batch"),
-        Case("blorp glorp", Handler.UNMATCHED, "No match anywhere"),
-        Case("open spotify", Handler.BUILTIN, "Built-in beats keyword: open-app is checked before keywords"),
+        Case("blorp glorp", Handler.AI, "No local match — AI fallback with gates open; unmatched when gates closed"),
+        Case("open spotify", Handler.BUILTIN, "Generic open-app command"),
     )
 
     data class CaseResult(

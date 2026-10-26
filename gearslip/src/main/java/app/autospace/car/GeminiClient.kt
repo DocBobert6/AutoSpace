@@ -147,19 +147,16 @@ object GeminiClient {
      * unavailable answer, not a guessed one).
      */
     fun extractText(responseJson: String): String? {
-        val root = runCatching { JSONObject(responseJson) }.getOrNull() ?: return null
-        val candidates = root.optJSONArray("candidates") ?: return null
-        if (candidates.length() == 0) return null
-        val parts = candidates.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: return null
-        val out = StringBuilder()
-        for (i in 0 until parts.length()) {
-            val partText = parts.optJSONObject(i)?.optString("text").orEmpty()
-            if (partText.isNotEmpty()) {
-                if (out.isNotEmpty()) out.append(' ')
-                out.append(partText)
-            }
-        }
-        val result = out.toString().trim()
-        return result.ifBlank { null }
+        // JsonMini, not org.json: the framework JSON class is a stub on the JVM
+        // unit-test classpath (see AiAssistant.parseModelReply), so the tested parse
+        // path must not touch it. Device behavior is identical for Gemini's shape.
+        val root = JsonMini.parse(responseJson) as? JsonMini.Value.Obj ?: return null
+        val candidates = (root.objField("candidates") as? JsonMini.Value.Arr)?.list ?: return null
+        if (candidates.isEmpty()) return null
+        val first = candidates[0] as? JsonMini.Value.Obj ?: return null
+        val parts = (first.objField("content")?.objField("parts") as? JsonMini.Value.Arr)?.list ?: return null
+        val texts = parts.mapNotNull { (it as? JsonMini.Value.Obj)?.objField("text")?.asString() }
+            .filter { it.isNotEmpty() }
+        return texts.joinToString(" ").takeIf { it.isNotBlank() }
     }
 }

@@ -50,8 +50,8 @@ class AiAssistantTest {
     @Test fun cannedSuiteSkipsAiCasesWithGatesClosed() {
         val result = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
         assertEquals(0, result.failed)
-        assertEquals(2, result.skipped)
-        assertEquals(AssistantPreview.CANNED_CASES.size - 2, result.passed)
+        assertEquals(3, result.skipped)
+        assertEquals(AssistantPreview.CANNED_CASES.size - 3, result.passed)
     }
 
     // --- Confirmation defaults: silence / timeout / ambiguity / unknown = DECLINE ---

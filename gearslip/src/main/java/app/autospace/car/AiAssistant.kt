@@ -193,12 +193,24 @@ object AiAssistant {
         val text = raw.trim()
         if (text.isEmpty()) return ParsedReply.Refused("AI answer isn't available right now.")
         if (!text.startsWith("{")) return ParsedReply.Answer(text)
-        val json = runCatching { org.json.JSONObject(text) }.getOrNull()
+        // Parsed with JsonMini, not org.json: the framework JSON class is a stub on the
+        // JVM unit-test classpath (its methods return null under return-default-values),
+        // which NPE'd every proposal test. JsonMini behaves identically on device and JVM.
+        val root = JsonMini.parse(text) as? JsonMini.Value.Obj
             ?: return ParsedReply.Refused("I couldn't understand the AI reply, so I'm not acting on it.")
-        val action = json.optString("action").trim()
+        fun strField(vararg names: String): String {
+            for (n in names) {
+                val v = root.objField(n)?.asString()
+                if (v != null) return v.trim()
+            }
+            return ""
+        }
+        fun intField(name: String): Int? = root.objField(name)?.asInt()
+        fun boolField(name: String): Boolean? = root.objField(name)?.asBool()
+        val action = strField("action")
         return when (action) {
             "navigate" -> {
-                val dest = json.optString("destination").trim()
+                val dest = strField("destination")
                 if (dest.isEmpty()) return ParsedReply.Refused("I couldn't understand the destination, so I'm not navigating.")
                 if (!sharesWordWith(dest, utterance)) {
                     return ParsedReply.Refused("I can't navigate somewhere you didn't mention.")
@@ -206,17 +218,17 @@ object AiAssistant {
                 ParsedReply.Proposal(AiAction.Navigate(dest))
             }
             "open_app" -> {
-                val app = json.optString("app").trim()
+                val app = strField("app", "app_label")
                 if (app.isEmpty()) ParsedReply.Refused("I couldn't understand which app, so I'm not opening anything.")
                 else ParsedReply.Proposal(AiAction.OpenApp(app))
             }
             "browser_search" -> {
-                val term = json.optString("term").trim()
+                val term = strField("term")
                 if (term.isEmpty()) ParsedReply.Refused("I couldn't understand what to search for.")
                 else ParsedReply.Proposal(AiAction.BrowserSearch(term))
             }
             "call" -> {
-                val name = json.optString("contact").trim()
+                val name = strField("contact", "contact_name")
                 if (name.isEmpty()) return ParsedReply.Refused("I couldn't understand who to call.")
                 if (name.lowercase() in setOf("911", "emergency", "emergency services", "nine one one")) {
                     return ParsedReply.EmergencyOffer
@@ -224,8 +236,8 @@ object AiAssistant {
                 ParsedReply.Proposal(AiAction.Call(name))
             }
             "reply_message" -> {
-                val name = json.optString("contact").trim()
-                val msg = json.optString("text").trim()
+                val name = strField("contact", "contact_name")
+                val msg = strField("text")
                 if (name.isEmpty() || msg.isEmpty()) {
                     ParsedReply.Refused("I couldn't understand that message, so I'm not sending anything.")
                 } else {
@@ -233,7 +245,7 @@ object AiAssistant {
                 }
             }
             "media" -> {
-                val cmd = json.optString("command").trim().lowercase()
+                val cmd = strField("command").lowercase()
                 if (cmd !in setOf("play", "pause", "next", "previous")) {
                     ParsedReply.Refused("I couldn't understand that media command.")
                 } else {
@@ -241,7 +253,7 @@ object AiAssistant {
                 }
             }
             "volume" -> {
-                val mode = json.optString("mode").trim().lowercase()
+                val mode = strField("mode").lowercase()
                 if (mode !in setOf("up", "down", "mute", "unmute")) {
                     ParsedReply.Refused("I couldn't understand that volume command.")
                 } else {
@@ -249,31 +261,31 @@ object AiAssistant {
                 }
             }
             "brightness" -> {
-                if (json.has("percent")) {
-                    val pct = json.optInt("percent", -1)
+                val pct = intField("percent")
+                if (pct != null) {
                     if (pct !in 0..100) ParsedReply.Refused("That brightness value doesn't make sense.")
                     else ParsedReply.Proposal(AiAction.Brightness(pct))
                 } else {
-                    val dir = json.optString("direction").trim().lowercase()
+                    val dir = strField("direction").lowercase()
                     if (dir !in setOf("up", "down")) ParsedReply.Refused("I couldn't understand that brightness command.")
                     else ParsedReply.Proposal(AiAction.BrightnessDirection(dir))
                 }
             }
             "toggle" -> {
-                val setting = json.optString("setting").trim().lowercase()
+                val setting = strField("setting").lowercase()
                 if (setting !in setOf("speak_directions", "phone_mic", "screen_sharing")) {
                     ParsedReply.Refused("I can't change that setting from here.")
                 } else {
-                    ParsedReply.Proposal(AiAction.Toggle(setting, json.optBoolean("on", true)))
+                    ParsedReply.Proposal(AiAction.Toggle(setting, boolField("on") ?: true))
                 }
             }
             "timer" -> {
-                val minutes = json.optInt("minutes", -1)
+                val minutes = intField("minutes") ?: -1
                 if (minutes !in 1..240) ParsedReply.Refused("I can time up to 4 hours.")
                 else ParsedReply.Proposal(AiAction.Timer(minutes))
             }
             "readout" -> {
-                val what = json.optString("what").trim().lowercase()
+                val what = strField("what").lowercase()
                 if (what !in setOf("battery", "eta", "messages")) {
                     ParsedReply.Refused("I can't read that out from here.")
                 } else {
