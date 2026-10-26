@@ -53,7 +53,6 @@ import app.autospace.stats.WorkedPrompt
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenWhatsNew: () -> Unit,
-    onOpenUsageNotes: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
     val status by SessionStatus.state.collectAsStateWithLifecycle()

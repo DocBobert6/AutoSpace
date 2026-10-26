@@ -194,6 +194,7 @@ private fun TestModeBanner() {
     }
 }
 
+@Composable
 private fun DebugBuildBanner() {
     Surface(
         modifier = Modifier.fillMaxWidth().height(28.dp),
