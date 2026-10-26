@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            14, "0.4.3-alpha",
+            listOf(
+                "Map chrome can now be frosted: an experimental switch gives the map pane, turn card, trip bar, and edge buttons the same frosted look as the floating media card, so the map shows through faintly.",
+            ),
+        ),
+        Release(
             13, "0.4.2-alpha",
             listOf(
                 "Calls on speaker hold better: the speaker setting is re-applied just after a call starts, and the call's audio route is now logged so speaker problems can be diagnosed from a trace.",
