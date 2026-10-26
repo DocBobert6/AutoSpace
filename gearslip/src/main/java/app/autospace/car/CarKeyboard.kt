@@ -1,12 +1,21 @@
 package app.autospace.car
 
 import app.autospace.car.theme.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +39,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -94,6 +105,20 @@ object CarKeyboardVisibility {
  * never lands on delete instead. Keys stay large (44dp height floor), with clear Gboard-style
  * gaps between keys (8dp gutters, 12dp corners) and no prediction and no suggestion strip:
  * the Gboard shape is kept, the phone's small targets and smart features are not.
+ *
+ * r50 (glide typing): tracing a word across letter keys without lifting inserts
+ * the best match on lift when confidence is high (learned-first, shape-scored,
+ * no language model — see [GlideMatcher]); a weak trace inserts nothing and
+ * offers its candidates on the strip instead. A press becomes a glide only at
+ * three distinct keys, so tap, flick-down hint, long-press hint, and
+ * cancel-on-leave all hold below that; classification happens at lift, so a
+ * downward glide start never fires the hint mid-trace. While tracing, the
+ * strip's centre slot previews the live best guess and a thin line in the
+ * scheme primary follows the finger (its own switch, on by default, separate
+ * from the glide switch). Glide has its own switch, on by default, and lives
+ * under the same passenger gate as tap typing. Inserts go through [KeyInsert]
+ * (fresh text, r49), never a snapshot, and replace the current word like a
+ * strip tap.
  *
  * Shortcuts (Robert, 2026-10-25, rebuilt to match Gboard 2026-10-25): letter keys carry
  * Gboard's shortcuts, painted small at the key's top-right corner — Q-P hold
@@ -187,6 +212,21 @@ fun CarKeyboard(
     var learned by remember { mutableStateOf(KeyboardSuggestions.learnedWords(context)) }
     var clearedNotice by remember { mutableStateOf(false) }
     val wordlist = remember { KeyboardSuggestions.loadWordlist(context) }
+    // r50: glide typing state (see [GlideMatcher] + [GlideState]). The live rank
+    // is derived from the traced path, so the strip preview follows the finger
+    // without any per-field wiring — glide lives in this shared component, so
+    // every field gets it. The override holds low-confidence lift candidates on
+    // the strip until the next text change (cleared in the effect below).
+    val glideState = remember { GlideState() }
+    var glideEnabled by remember { mutableStateOf(AppSettings.keyboardGlideEnabled(context)) }
+    var glideTrailEnabled by remember { mutableStateOf(AppSettings.keyboardGlideTrailEnabled(context)) }
+    var glideOverride by remember { mutableStateOf<List<String>?>(null) }
+    DisposableEffect(glideState) { onDispose { glideState.clearKeys() } }
+    val glideRank by remember {
+        derivedStateOf {
+            if (glideState.active) GlideMatcher.rank(glideState.pathKeys, learned.asReversed(), wordlist) else emptyList()
+        }
+    }
     var prevText by remember { mutableStateOf(text) }
     LaunchedEffect(text) {
         KeyboardSuggestions.completedWord(prevText, text)?.let { word ->
@@ -195,6 +235,9 @@ fun CarKeyboard(
             }
         }
         prevText = text
+        // r50: a text change ends any low-confidence glide offer — a tap or a
+        // keystroke returns the strip to normal prefix candidates.
+        glideOverride = null
     }
     // Submit usually ends a word with no boundary character, so learn it here.
     val submitWithLearn = {
@@ -205,11 +248,33 @@ fun CarKeyboard(
         }
         onSubmit()
     }
+    // r50: lift-time glide resolution. This lambda is captured by LetterKey's
+    // pointerInput block at creation, so like [latestChange] it must only read
+    // fresh values through state/holder indirection at CALL time — `learned`,
+    // `shifted`, and `glideOverride` are remembered state (fresh via their
+    // delegates), `wordlist` is a loaded-once list, and [keyInsert] reads the
+    // current text through its provider. Never close over `text` here (r49).
+    // Insert replaces the current word like a strip tap; a weak trace offers
+    // its candidates on the strip instead of inserting.
+    val onGlideLift = { path: List<Char> ->
+        when (val result = GlideMatcher.resolve(path, learned.asReversed(), wordlist)) {
+            is GlideMatcher.Result.Insert -> {
+                keyInsert.insertWord(result.word, capitalize = shifted)
+                shifted = false
+            }
+            is GlideMatcher.Result.Suggest -> glideOverride = result.candidates
+            GlideMatcher.Result.NoMatch -> Unit
+        }
+    }
     val word = KeyboardSuggestions.currentWord(text)
-    val suggestions = if (stripEnabled && !showKeyboardSettings) {
-        KeyboardSuggestions.candidates(word, learned, wordlist)
-    } else {
-        emptyList()
+    // r50: the strip shows the glide rank while tracing (best in the centre
+    // slot) and the low-confidence lift candidates after one, until the next
+    // text change returns it to normal prefix candidates.
+    val suggestions = when {
+        !stripEnabled || showKeyboardSettings -> emptyList()
+        glideRank.isNotEmpty() -> GlideMatcher.centreBest(glideRank.take(GlideMatcher.MAX_CANDIDATES).map { it.word })
+        glideOverride != null -> GlideMatcher.centreBest(glideOverride!!)
+        else -> KeyboardSuggestions.candidates(word, learned, wordlist)
     }
     val clipboard = remember {
         runCatching {
@@ -222,10 +287,18 @@ fun CarKeyboard(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = modifier.fillMaxWidth(),
         ) {
-            Column(
-                Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            // r50: the trace line draws over the keys, so the board is a Box
+            // with the trace Canvas last (drawn on top, never consuming input).
+            // Points are window coordinates; the Canvas converts them to its
+            // own frame, so the line follows the finger whatever the board's
+            // padding or position.
+            var overlayCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+            val traceColor = MaterialTheme.colorScheme.primary
+            Box {
+                Column(
+                    Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                 // r30: the strip row always leads (full row when the strip is
                 // on, dismiss + gear only when it is off, so settings stay
                 // reachable); the settings panel replaces the keys below it.
@@ -235,9 +308,12 @@ fun CarKeyboard(
                         suggestions = suggestions,
                         title = if (showKeyboardSettings) "Keyboard settings" else null,
                         onDismiss = onDismiss,
-                        onCandidate = { candidate ->
-                            onTextChange(KeyboardSuggestions.replaceCurrentWord(text, candidate))
-                        },
+                        // r50: through [keyInsert] so a glide candidate tapped
+                        // after an empty current word appends instead of
+                        // replacing nothing (replaceCurrentWord alone returns
+                        // text unchanged then). Identical to the old call for
+                        // normal prefix candidates.
+                        onCandidate = { candidate -> keyInsert.insertWord(candidate) },
                         onCopy = {
                             if (text.isNotEmpty()) {
                                 runCatching {
@@ -268,6 +344,16 @@ fun CarKeyboard(
                             KeyboardSuggestions.setStripEnabled(context, enabled)
                             stripEnabled = enabled
                         },
+                        glideEnabled = glideEnabled,
+                        onGlideChange = { enabled ->
+                            AppSettings.setKeyboardGlideEnabled(context, enabled)
+                            glideEnabled = enabled
+                        },
+                        glideTrailEnabled = glideTrailEnabled,
+                        onGlideTrailChange = { enabled ->
+                            AppSettings.setKeyboardGlideTrailEnabled(context, enabled)
+                            glideTrailEnabled = enabled
+                        },
                         clearedNotice = clearedNotice,
                         onClearLearned = {
                             KeyboardSuggestions.clearLearnedWords(context)
@@ -295,6 +381,9 @@ fun CarKeyboard(
                                     shifted = false
                                 },
                                 onShortcut = hint?.let { { keyInsert.append(it) } },
+                                glideState = glideState,
+                                glideEnabled = glideEnabled && !symbols,
+                                onGlideLift = onGlideLift,
                             )
                         }
                         if (staggered) Spacer(Modifier.weight(0.5f))
@@ -323,6 +412,9 @@ fun CarKeyboard(
                                 shifted = false
                             },
                             onShortcut = hint?.let { { keyInsert.append(it) } },
+                            glideState = glideState,
+                            glideEnabled = glideEnabled && !symbols,
+                            onGlideLift = onGlideLift,
                         )
                     }
                     Key("⌫", Modifier.weight(1.4f)) {
@@ -360,7 +452,30 @@ fun CarKeyboard(
                     SubmitKey(Modifier.weight(1.6f), submitIcon, submitImage, submitWithLearn)
                 }
                 } // !showKeyboardSettings
-            }
+                } // Column
+                // r50: the glide trace line, drawn only while a trace is active
+                // (three keys) and the trail switch is on. The line itself is
+                // state-driven: each new point recomposes this scope, so the
+                // Canvas redraws as the finger moves.
+                if (glideTrailEnabled && glideState.active && glideState.pathPoints.size >= 2) {
+                    Canvas(
+                        Modifier.fillMaxSize().onGloballyPositioned { overlayCoords = it }
+                    ) {
+                        val coords = overlayCoords ?: return@Canvas
+                        val points = glideState.pathPoints.map { coords.windowToLocal(it) }
+                        if (points.size < 2) return@Canvas
+                        val path = Path().apply {
+                            moveTo(points[0].x, points[0].y)
+                            points.drop(1).forEach { lineTo(it.x, it.y) }
+                        }
+                        drawPath(
+                            path,
+                            color = traceColor,
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                        )
+                    }
+                }
+            } // Box
         }
     }
 }
@@ -509,9 +624,20 @@ private fun LetterKey(
     hint: String? = null,
     onLetter: () -> Unit,
     onShortcut: (() -> Unit)? = null,
+    // r50: glide typing. [glideState] is a stable remembered holder (safe to
+    // capture in pointerInput); [onGlideLift] must only read fresh values through
+    // state/holder indirection at call time, like [latestChange] (see its call
+    // site) — never a `text` snapshot (r49).
+    glideState: GlideState,
+    glideEnabled: Boolean,
+    onGlideLift: (List<Char>) -> Unit,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val gestureScope = rememberCoroutineScope()
+    // r50: this key's own layout coordinates, for converting the finger's
+    // local position into window coordinates (the shared frame the glide
+    // registry and the trace line both use).
+    var keyCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
     // r47: the key's own measured size, so the tracker cancels only when the
     // finger truly leaves the key — not on an in-key roll. Zero (unmeasured)
     // reads as inside: layout always precedes input, so this is only a guard.
@@ -522,17 +648,52 @@ private fun LetterKey(
         modifier
             .height(LocalKeyHeight.current)
             .onSizeChanged { keySize = it }
+            .onGloballyPositioned { coords ->
+                keyCoords = coords
+                // Every single-character key registers its position for glide
+                // lookup (letters and symbols alike — the map is keyed by
+                // character, so no layer's keys can shadow another's, and a
+                // layer switch re-registers fresh coordinates).
+                if (label.length == 1) glideState.register(label.lowercase()[0], coords)
+            }
             .gsSurface(colors.container, shape, colors.border, pressed)
             .semantics { role = Role.Button; onClick { onLetter(); true } }
-            .pointerInput(hint, label) {
+            .pointerInput(hint, label, glideEnabled) {
                 val swipeThresholdPx = with(density) { 20.dp.toPx() }
                 val longPressTimeoutMs = viewConfiguration.longPressTimeoutMillis
                 awaitPointerEventScope {
+                    // r50: a cancelled block (keys leaving composition
+                    // mid-press) must not strand the glide claim — see the
+                    // finally below, which releases whatever press is live.
+                    var currentGlideId: PointerId? = null
+                    try {
                     while (true) {
                         val down = awaitFirstDown()
                         pressed = true
                         val tracker = KeyGestureTracker(swipeThresholdPx, longPressTimeoutMs)
                         tracker.onDown()
+                        // r50: glide bookkeeping for this press only. A press
+                        // glides only if it claims the shared trace (one
+                        // finger at a time — a second finger down mid-glide
+                        // types taps, never corrupts the first trace) and
+                        // starts on a letter key; anything else runs the r47
+                        // rules exactly. Classification happens at lift
+                        // (below), so a downward glide start cannot fire the
+                        // hint mid-trace and leaving the key cannot cancel a
+                        // trace that still reaches three keys.
+                        val baseLetter = label.lowercase().firstOrNull()?.takeIf { it.isLetter() }
+                        val myGlide = glideEnabled && baseLetter != null && glideState.tryClaim(down.id)
+                        var leftKey = false
+                        var flickPending = false
+                        var glideActivated = false
+                        var shortcutInserted = false
+                        if (myGlide && baseLetter != null) {
+                            currentGlideId = down.id
+                            glideState.pathKeys.clear()
+                            glideState.pathPoints.clear()
+                            glideState.pathKeys.add(baseLetter)
+                            keyCoords?.let { glideState.pathPoints.add(it.localToWindow(down.position)) }
+                        }
                         // Shared with the timeout job: set before any insert
                         // on lift, so a job resuming at the same instant as a
                         // lift can never insert after the tap already did.
@@ -542,6 +703,7 @@ private fun LetterKey(
                             timeoutJob = gestureScope.launch {
                                 delay(longPressTimeoutMs)
                                 if (!gestureDone && tracker.onTimeout() == KeyPressOutcome.SHORTCUT) {
+                                    shortcutInserted = true
                                     onShortcut()
                                 }
                             }
@@ -562,8 +724,21 @@ private fun LetterKey(
                                 // cancellation, never a tap: the old code
                                 // inserted a phantom letter here (notably
                                 // when the passenger gate popped mid-press).
+                                // r50: a glide classifies HERE, at lift, not
+                                // mid-trace — a downward start that crossed
+                                // three keys is a glide even though its first
+                                // move looked like a flick, and a trace that
+                                // left the key is a glide even though leaving
+                                // cancels an ordinary press. A long-press that
+                                // already inserted wins over both.
                                 outcome = if (change.isConsumed) {
                                     tracker.onCancel()
+                                    KeyPressOutcome.NONE
+                                } else if (myGlide && glideActivated && !shortcutInserted) {
+                                    onGlideLift(glideState.pathKeys.toList())
+                                    KeyPressOutcome.NONE
+                                } else if (myGlide && flickPending && !leftKey && !shortcutInserted) {
+                                    onShortcut?.invoke()
                                     KeyPressOutcome.NONE
                                 } else {
                                     tracker.onUp()
@@ -579,7 +754,59 @@ private fun LetterKey(
                             val insideKey = keySize == IntSize.Zero ||
                                 (pos.x >= 0f && pos.x <= keySize.width.toFloat() &&
                                     pos.y >= 0f && pos.y <= keySize.height.toFloat())
-                            val swipe = if (hint != null && onShortcut != null) tracker.onMove(dy, dx, elapsed, insideKey) else null
+                            val swipe = if (myGlide && !shortcutInserted) {
+                                // r50: glide tracking replaces the tracker's
+                                // cancel/flick while the finger roams. The
+                                // trace line follows every move (throttled to
+                                // 12px so a trace doesn't recompose per
+                                // pixel); the key sequence only grows on a
+                                // NEW key. Once three distinct keys are
+                                // entered the press is a glide: the
+                                // long-press timeout is cancelled (a slow
+                                // trace is not a long-press) and the tracker
+                                // is ignored from then on. A press whose
+                                // long-press already inserted skips tracking
+                                // entirely (falling through to the tracker
+                                // branch, which returns null once fired), so
+                                // no trace line or live preview ever promises
+                                // an insert that lift will not perform.
+                                val windowPos = keyCoords?.localToWindow(pos)
+                                if (windowPos != null) {
+                                    val lastPoint = glideState.pathPoints.lastOrNull()
+                                    if (lastPoint == null || (windowPos - lastPoint).getDistance() >= 12f) {
+                                        glideState.pathPoints.add(windowPos)
+                                    }
+                                    val over = glideState.keyAt(windowPos)
+                                    if (over != null && (glideState.pathKeys.isEmpty() || glideState.pathKeys.last() != over)) {
+                                        glideState.pathKeys.add(over)
+                                    }
+                                }
+                                if (!glideActivated && !shortcutInserted &&
+                                    glideState.pathKeys.size >= GlideMatcher.GLIDE_THRESHOLD_KEYS
+                                ) {
+                                    glideActivated = true
+                                    timeoutJob?.cancel()
+                                }
+                                if (!glideActivated) {
+                                    if (!insideKey) {
+                                        leftKey = true
+                                        tracker.onCancel()
+                                    } else if (hint != null && onShortcut != null &&
+                                        tracker.onMove(dy, dx, elapsed, true) == KeyPressOutcome.SHORTCUT
+                                    ) {
+                                        // Flick RECORDED, not fired: firing
+                                        // here would insert the hint
+                                        // mid-trace on a downward glide
+                                        // start. The lift decides.
+                                        flickPending = true
+                                    }
+                                }
+                                null
+                            } else if (hint != null && onShortcut != null) {
+                                tracker.onMove(dy, dx, elapsed, insideKey)
+                            } else {
+                                null
+                            }
                             if (swipe == KeyPressOutcome.SHORTCUT) {
                                 gestureDone = true
                                 timeoutJob?.cancel()
@@ -601,6 +828,16 @@ private fun LetterKey(
                         }
                         timeoutJob?.cancel()
                         pressed = false
+                        // r50: end of press — release the trace (and its
+                        // path) only if this press owned it; a second
+                        // finger's tap never clears the first trace.
+                        if (myGlide) {
+                            glideState.release(down.id)
+                            currentGlideId = null
+                        }
+                    }
+                    } finally {
+                        currentGlideId?.let { glideState.release(it) }
                     }
                 }
             },
@@ -635,6 +872,73 @@ private fun LetterKey(
 }
 
 /**
+ * r50: shared glide-trace state for [CarKeyboard], held in `remember` and passed
+ * into every [LetterKey]. The holder itself is stable, so pointerInput blocks may
+ * capture it freely (same pattern as [KeyInsert]); only the path lists are state,
+ * so the strip preview and trace line recompose as the finger moves.
+ *
+ * Coordinates are WINDOW coordinates throughout: each key registers its layout
+ * coordinates on layout, the trace converts the finger's local position through
+ * the starting key's coordinates, and the trace Canvas converts back through its
+ * own — one shared frame, so stagger, padding, and Presentation displays all
+ * cancel out. One finger owns a trace at a time ([tryClaim]): a second finger
+ * down mid-glide types taps and never corrupts the first trace.
+ */
+class GlideState {
+    /** Distinct keys entered, consecutive duplicates collapsed, in trace order. */
+    val pathKeys = mutableStateListOf<Char>()
+
+    /** Raw finger positions in window coordinates, for the trace line. */
+    val pathPoints = mutableStateListOf<Offset>()
+
+    private val keyCoords = mutableMapOf<Char, LayoutCoordinates>()
+    private var owner: PointerId? = null
+
+    fun register(letter: Char, coords: LayoutCoordinates) {
+        keyCoords[letter] = coords
+    }
+
+    fun clearKeys() {
+        keyCoords.clear()
+    }
+
+    /** Claim the trace for [id]; false when another press already owns it. */
+    fun tryClaim(id: PointerId): Boolean {
+        if (owner != null) return false
+        owner = id
+        return true
+    }
+
+    /** Release the trace (and its path) when the owning press ends. */
+    fun release(id: PointerId) {
+        if (owner == id) {
+            owner = null
+            pathKeys.clear()
+            pathPoints.clear()
+        }
+    }
+
+    /** The letter key under a window position, or null over gaps, rows, or chrome. */
+    fun keyAt(windowPos: Offset): Char? {
+        for ((letter, coords) in keyCoords) {
+            if (!coords.isAttached) continue
+            val origin = coords.positionInWindow()
+            val size = coords.size
+            if (windowPos.x >= origin.x && windowPos.x <= origin.x + size.width &&
+                windowPos.y >= origin.y && windowPos.y <= origin.y + size.height
+            ) {
+                return letter
+            }
+        }
+        return null
+    }
+
+    /** True once the trace has crossed the glide threshold. */
+    val active: Boolean
+        get() = pathKeys.size >= GlideMatcher.GLIDE_THRESHOLD_KEYS
+}
+
+/**
  * r49: the insert path for [LetterKey], kept pure so the hazard is unit-testable.
  *
  * LetterKey's `.pointerInput(hint, label)` block captures its lambdas at creation and
@@ -652,6 +956,24 @@ class KeyInsert(
 ) {
     fun append(insert: String) {
         onTextChange(currentText() + insert)
+    }
+
+    /**
+     * r50: glide insert — replace the current word, or append when there is
+     * none (replaceCurrentWord alone returns text unchanged on an empty word,
+     * which would swallow a glide typed after a space). [capitalize] mirrors
+     * tap-shift: a shifted glide capitalizes its word and the caller consumes
+     * shift; otherwise the strip's matchCase rule applies inside
+     * replaceCurrentWord, so display and insert agree on case.
+     */
+    fun insertWord(word: String, capitalize: Boolean = false) {
+        val candidate = if (capitalize) word.replaceFirstChar { it.uppercaseChar() } else word
+        val current = currentText()
+        if (KeyboardSuggestions.currentWord(current).isEmpty()) {
+            onTextChange(current + candidate)
+        } else {
+            onTextChange(KeyboardSuggestions.replaceCurrentWord(current, candidate))
+        }
     }
 
     fun dropLast() {
@@ -902,6 +1224,10 @@ private fun StripToolButton(
 private fun KeyboardSettingsPanel(
     stripEnabled: Boolean,
     onStripChange: (Boolean) -> Unit,
+    glideEnabled: Boolean,
+    onGlideChange: (Boolean) -> Unit,
+    glideTrailEnabled: Boolean,
+    onGlideTrailChange: (Boolean) -> Unit,
     clearedNotice: Boolean,
     onClearLearned: () -> Unit,
     onDone: () -> Unit,
@@ -921,6 +1247,40 @@ private fun KeyboardSettingsPanel(
             }
             Spacer(Modifier.width(12.dp))
             GsSwitch(stripEnabled, onStripChange)
+        }
+        // r50: glide typing, on by default, with its own switch — and the
+        // trail switch beside it, separate by Robert's amendment (glide on +
+        // trail off = glide works with no line). The live strip guess is not
+        // covered by the trail switch: it stays on while tracing.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Glide typing", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Trace a word without lifting your finger; lifting inserts the best match, or offers candidates when the trace is weak",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            GsSwitch(glideEnabled, onGlideChange)
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Glide trail", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Show the trace line while gliding",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            GsSwitch(glideTrailEnabled, onGlideTrailChange)
         }
         GsButton(onClick = onClearLearned, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
             Text("Clear learned words")

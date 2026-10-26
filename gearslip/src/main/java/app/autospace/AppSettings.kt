@@ -16,6 +16,8 @@ object AppSettings {
     /** r30: learned words typed on the car keyboard (newline-joined, lowercase). */
     const val KEY_KEYBOARD_LEARNED_WORDS = "car_keyboard_learned_words"
     private const val KEY_KEYBOARD_SUGGESTIONS = "car_keyboard_suggestions"
+    private const val KEY_KEYBOARD_GLIDE = "car_keyboard_glide"
+    private const val KEY_KEYBOARD_GLIDE_TRAIL = "car_keyboard_glide_trail"
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -57,6 +59,22 @@ object AppSettings {
 
     fun setKeyboardSuggestionsEnabled(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_KEYBOARD_SUGGESTIONS, value).apply()
+    }
+
+    /** r50: glide typing on the car keyboard. On by default. */
+    fun keyboardGlideEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEYBOARD_GLIDE, true)
+
+    fun setKeyboardGlideEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_KEYBOARD_GLIDE, value).apply()
+    }
+
+    /** r50: the glide trace line. On by default; separate from the glide switch. */
+    fun keyboardGlideTrailEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEYBOARD_GLIDE_TRAIL, true)
+
+    fun setKeyboardGlideTrailEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_KEYBOARD_GLIDE_TRAIL, value).apply()
     }
 
     /**

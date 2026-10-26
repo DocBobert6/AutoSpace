@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            18, "0.4.7-alpha",
+            listOf(
+                "Glide typing on the car keyboard: trace a word across the keys without lifting and it inserts on lift when the trace is confident, or offers candidates on the strip when it is weak. A thin trace line follows your finger (its own switch), and the strip previews the live best guess while you trace. Tap typing, flick and long-press hints all work exactly as before below three keys.",
+            ),
+        ),
+        Release(
             17, "0.4.6-alpha",
             listOf(
                 "Car keyboard typing fixed for good: fast typing no longer overwrites recent letters, and one tap can no longer wipe a whole search — every key now appends to the current text. Every keyboard field also shows a caret line at the typing position, so it is always visible where the next character will land.",

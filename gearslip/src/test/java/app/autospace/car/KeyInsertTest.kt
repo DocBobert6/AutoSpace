@@ -69,4 +69,30 @@ class KeyInsertTest {
         assertEquals("", field.text)
         assertEquals(3, field.received.size)
     }
+
+    @Test
+    fun insertWordAppendsWhenCurrentWordEmpty() {
+        // r50: gliding after a space — replaceCurrentWord alone would return
+        // text unchanged, swallowing the glide, so insertWord appends instead.
+        val field = Field("hello ")
+        val insert = field.handler()
+        insert.insertWord("world")
+        assertEquals("hello world", field.text)
+    }
+
+    @Test
+    fun insertWordReplacesCurrentWord() {
+        val field = Field("hello wor")
+        val insert = field.handler()
+        insert.insertWord("world")
+        assertEquals("hello world", field.text)
+    }
+
+    @Test
+    fun insertWordCapitalizesWhenShifted() {
+        val field = Field("hello ")
+        val insert = field.handler()
+        insert.insertWord("world", capitalize = true)
+        assertEquals("hello World", field.text)
+    }
 }

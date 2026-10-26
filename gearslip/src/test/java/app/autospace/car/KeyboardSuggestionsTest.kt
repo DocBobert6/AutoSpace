@@ -39,6 +39,9 @@ class KeyboardSuggestionsTest {
         assertEquals("hello", KeyboardSuggestions.matchCase("hel", "hello"))
         assertEquals("Hello", KeyboardSuggestions.matchCase("Hel", "hello"))
         assertEquals("HELLO", KeyboardSuggestions.matchCase("HEL", "hello"))
+        // r50: a glide candidate offered with an empty current word (traced
+        // after a space) must pass through, not throw on first().
+        assertEquals("hello", KeyboardSuggestions.matchCase("", "hello"))
     }
 
     @Test

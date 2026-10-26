@@ -54,6 +54,9 @@ object KeyboardSuggestions {
 
     /** Case-match a candidate to what the user typed: ALL-CAPS stays caps, initial cap stays capped. */
     fun matchCase(typed: String, candidate: String): String {
+        // r50: a glide candidate can be offered with an empty current word
+        // (traced after a space); first() on "" would throw, so empty passes through.
+        if (typed.isEmpty()) return candidate
         if (typed.length > 1 && typed.all { it.isUpperCase() }) return candidate.uppercase()
         if (typed.first().isUpperCase()) return candidate.replaceFirstChar { it.uppercaseChar() }
         return candidate
