@@ -38,6 +38,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.gsShape
 import app.autospace.car.theme.pitLanePanelBorder
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.media.MediaArt
