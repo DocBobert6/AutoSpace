@@ -148,7 +148,7 @@ private enum class SettingsCategory(val title: String, val description: String) 
     ),
     VOICE(
         "Voice",
-        "Spoken directions, spoken voices, hotword, phone microphone, voice trace",
+        "Spoken directions, spoken voices, hotword, phone microphone, voice trace, voice shortcuts",
     ),
     BROWSER_AND_VIDEO(
         "Browser & video",
@@ -454,6 +454,45 @@ private fun VoicePage() {
             "nothing you say leaves the phone.",
         checked = hotword,
     ) { CarSettings.setHotword(it) }
+
+    // Voice shortcuts (r19): read-only here — adding and editing happen on the phone,
+    // where typing an address is not a car-keyboard job. This list just shows the driver
+    // what already exists, in the same order the phone shows it.
+    val context = LocalContext.current
+    androidx.compose.runtime.LaunchedEffect(context) { VoiceShortcuts.ensureLoaded(context) }
+    val shortcuts by VoiceShortcuts.shortcuts.collectAsState()
+    GsSectionHeader("Voice shortcuts")
+    Text(
+        "Saved on the phone, in Settings > Voice shortcuts. Say a keyword after a " +
+            "navigate, open, or search phrasing — for example, “navigate to home” for a saved address.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (shortcuts.isEmpty()) {
+        Text(
+            "No voice shortcuts yet.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else {
+        shortcuts.forEach { shortcut ->
+            val typeLabel = when (shortcut.type) {
+                VoiceShortcutType.NAVIGATION -> "Navigation"
+                VoiceShortcutType.OPEN_APP -> "Open app"
+                VoiceShortcutType.BROWSER_SEARCH -> "Browser search"
+            }
+            val shownTarget = if (shortcut.type == VoiceShortcutType.OPEN_APP && shortcut.label.isNotBlank()) {
+                shortcut.label
+            } else {
+                shortcut.target
+            }
+            Text(
+                "${shortcut.keyword} → $typeLabel → $shownTarget",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
 }
 
 @Composable

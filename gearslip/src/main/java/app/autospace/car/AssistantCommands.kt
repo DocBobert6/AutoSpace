@@ -101,6 +101,14 @@ object AssistantCommands {
         emergencyCommand(context, heard)?.let { return it }
         callCommand(context, heard)?.let { return it }
         messagesCommand(context, heard)?.let { return it }
+        // Custom voice shortcuts (r19) sit here on purpose: every exact built-in above has
+        // already had its chance, so a bare keyword never beats a built-in, and the synonym /
+        // fuzzy matcher below never gets to guess over a keyword. The "open <keyword>" and
+        // "search <keyword>" forms sit before the generic open/search parsers for the same
+        // reason a keyword is more specific than the generic command — but navigation
+        // keywords are substituted inside navigateCommand above instead, so they keep the
+        // full navigate path (nav-app picking, spoken confirmation) unchanged.
+        keywordCommand(context, navigator, frame, heard)?.let { return it }
         browserSearchCommand(navigator, heard)?.let { return it }
         openAppCommand(context, navigator, frame, heard)?.let { return it }
         synonymCommand(context, navigator, heard)?.let { return it }
@@ -224,6 +232,18 @@ object AssistantCommands {
         }
         var destination = after(text, NAVIGATE_TRIGGERS) ?: return null
         if (destination.isBlank()) return "Where to?"
+
+        // Custom voice shortcut (r19): an exact navigation keyword stands for its stored
+        // address, substituted here so everything below — nav-app picking, the geo query,
+        // the spoken confirmation naming the address — runs exactly as for a spoken address.
+        // Only the type name is logged, never the keyword or the address.
+        val navShortcut = VoiceShortcuts.findNavigation(context, destination)
+            ?: destination.removePrefix("the ").takeIf { it != destination }
+                ?.let { VoiceShortcuts.findNavigation(context, it) }
+        if (navShortcut != null) {
+            GearslipLog.i("assistant: voice shortcut matched type=NAVIGATION")
+            destination = navShortcut.target
+        }
 
         val entries = allEntries(context)
         // "go to Spotify" means the app, and "go to settings" the screen; "go to Target" is a place.
@@ -723,6 +743,54 @@ object AssistantCommands {
             "Sent to ${thread.title.ifBlank { thread.appLabel }}."
         } else {
             "That message can't be replied to any more."
+        }
+    }
+
+    /**
+     * Custom voice shortcuts (r19), exact match only — a near-miss falls through to the
+     * generic handlers and the fuzzy matcher, never to a keyword. Bare form: "my tunes"
+     * opens the saved app, "my news" searches the saved term. Prefixed form: "open my
+     * tunes", "search my news". A navigation keyword has no bare form here — it only
+     * substitutes inside [navigateCommand]. Only the type is logged, never the keyword
+     * or its target. Apps resolve through the same entry list [openAppCommand] uses
+     * (built-ins + installed), by stored component id first, then by stored label.
+     */
+    private suspend fun keywordCommand(
+        context: Context,
+        navigator: CarNavigator,
+        frame: CarEnvironment.Frame,
+        heard: String,
+    ): String? {
+        val (candidate, wantedType) = when {
+            heard.startsWith("open ") -> heard.removePrefix("open ").trim() to VoiceShortcutType.OPEN_APP
+            heard.startsWith("search for ") -> heard.removePrefix("search for ").trim() to VoiceShortcutType.BROWSER_SEARCH
+            heard.startsWith("search ") -> heard.removePrefix("search ").trim() to VoiceShortcutType.BROWSER_SEARCH
+            else -> heard to null
+        }
+        if (candidate.isBlank()) return null
+        // "open the browser app" style padding, same normalization openAppCommand uses.
+        val normalized = candidate.removePrefix("the ").removePrefix("my ").removeSuffix(" app").trim()
+        val shortcut = VoiceShortcuts.findKeyword(context, candidate)
+            ?: VoiceShortcuts.findKeyword(context, normalized)
+            ?: return null
+        if (wantedType != null && shortcut.type != wantedType) return null
+        return when (shortcut.type) {
+            VoiceShortcutType.NAVIGATION -> null // Only via a navigate phrasing, in navigateCommand.
+            VoiceShortcutType.OPEN_APP -> {
+                GearslipLog.i("assistant: voice shortcut matched type=OPEN_APP")
+                val entries = allEntries(context)
+                val match = entries.firstOrNull { it.componentId == shortcut.target }
+                    ?: shortcut.label.takeIf { it.isNotBlank() }?.let { bestMatch(entries, it) { entry -> entry.label } }
+                    ?: return "I couldn't find that saved app any more. Edit the shortcut on the phone to pick it again."
+                launchEntry(match, navigator, frame)
+                "Opening ${match.label}."
+            }
+            VoiceShortcutType.BROWSER_SEARCH -> {
+                GearslipLog.i("assistant: voice shortcut matched type=BROWSER_SEARCH")
+                BrowserLaunch.pendingUrl = "https://noai.duckduckgo.com/?q=" + URLEncoder.encode(shortcut.target, "UTF-8")
+                navigator.open("web")
+                "Searching for ${shortcut.target}."
+            }
         }
     }
 

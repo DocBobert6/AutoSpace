@@ -399,6 +399,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         }.getOrDefault(Units.AUTO)
         whatsNewFlow.value = AppSettings.getString(app, KEY_WHATS_NEW, "true") == "true"
         whatsNewSeenFlow.value = AppSettings.getString(app, KEY_WHATS_NEW_SEEN, "0").toIntOrNull() ?: 0
+        // Voice shortcuts (r19) live in the same prefs; loading them here means the car
+        // assistant sees phone-side edits on the next connection.
+        VoiceShortcuts.ensureLoaded(app)
         refreshAutoNight()
     }
 

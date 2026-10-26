@@ -51,6 +51,7 @@ object VoiceHelp {
         "Stop navigation · How far · When will I arrive · Repeat that" to "End a route, ETA and distance, or the last direction again",
         "Turn speak directions on/off · Use phone mic · Start/stop screen sharing" to "Voice and mirroring toggles",
         "Search for…" to "The web, on no-AI DuckDuckGo",
+        "Voice shortcuts" to "Your saved shortcuts work too — say “navigate to home” for a saved address",
         "Read my messages · Text… that…" to "Messages aloud; replies only to a thread that already exists",
         "Call emergency services" to "Asks you to confirm out loud before dialling",
         "Remind me in 10 minutes" to "A local timer, spoken when it fires",
