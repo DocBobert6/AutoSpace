@@ -500,17 +500,6 @@ object AiAssistant {
         return placeTokens.isNotEmpty()
     }
 
-    /**
-     * The visual source line for a grounded answer; null for ungrounded ones. Never
-     * spoken. Provider-neutral by construction: the Groq line must NOT say Google
-     * ("via web search"), while the Gemini line keeps "via Google Search".
-     */
-    fun sourceLine(grounded: Boolean, provider: Provider): String? = when {
-        !grounded -> null
-        provider == Provider.GROQ -> "via web search"
-        else -> "via Google Search"
-    }
-
     // --- Log redaction: a Gemini API key must never survive into a log, trace, or report. ---
 
     /**

@@ -228,11 +228,21 @@ class AiAssistantTest {
         assertFalse(AiAssistant.hasPlace("weather for today"))
     }
 
-    @Test fun sourceLineOnlyForGrounded() {
-        assertEquals("via Google Search", AiAssistant.sourceLine(true, AiAssistant.Provider.GEMINI))
-        assertEquals("via web search", AiAssistant.sourceLine(true, AiAssistant.Provider.GROQ))
-        assertEquals(null, AiAssistant.sourceLine(false, AiAssistant.Provider.GEMINI))
-        assertEquals(null, AiAssistant.sourceLine(false, AiAssistant.Provider.GROQ))
+    // --- r41: grounded answers get a glyph beside the badge, never a text line ---
+    // Replaces sourceLineOnlyForGrounded: sourceLine itself was removed with the
+    // text line (the overlay was its only consumer; preview never used it), and
+    // the grounded rule now lives in groundedGlyph, provider-specific.
+
+    @Test fun groundedGlyphIsProviderSpecific() {
+        assertEquals(GroundedGlyph.GLOBE, groundedGlyph(true, true, AiAssistant.Provider.GROQ))
+        assertEquals(GroundedGlyph.GOOGLE_G, groundedGlyph(true, true, AiAssistant.Provider.GEMINI))
+    }
+
+    @Test fun groundedGlyphHiddenUnlessAiAndGrounded() {
+        assertEquals(GroundedGlyph.NONE, groundedGlyph(true, false, AiAssistant.Provider.GROQ))
+        assertEquals(GroundedGlyph.NONE, groundedGlyph(true, false, AiAssistant.Provider.GEMINI))
+        assertEquals(GroundedGlyph.NONE, groundedGlyph(false, true, AiAssistant.Provider.GROQ))
+        assertEquals(GroundedGlyph.NONE, groundedGlyph(false, true, AiAssistant.Provider.GEMINI))
     }
 
     @Test fun groundedTimeoutLongerThanPlain() {

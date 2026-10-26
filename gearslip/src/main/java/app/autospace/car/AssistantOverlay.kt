@@ -10,6 +10,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
@@ -18,8 +19,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -180,23 +184,30 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 if (small.isNotBlank()) {
                     Text(small, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                // AI badge (r25 §4, prefix removed r41): every AI answer carries a visible
-                // "AI" mark, and that badge is the SOLE AI indicator — the vehicle never
-                // says "From AI", and no prefix appears in the big overlay text either.
+                // AI badge (r25 §4, prefix removed r41) + grounded glyph (r41): every AI
+                // answer carries a visible "AI" mark; a grounded one adds one quiet glyph
+                // beside it — a globe for Groq, the Google "G" for Gemini — and nothing
+                // else. The vehicle never says "From AI", and no source text renders here.
                 if (state.fromAi) {
-                    Text(
-                        "AI",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                    )
-                    // Grounded source line (r27): shown, never spoken; the count is not
-                    // shown here — the line claims a source exists, not how many.
-                    AiAssistant.sourceLine(state.grounded, state.provider)?.let { line ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
                         Text(
-                            line,
+                            "AI",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.tertiary,
                         )
+                        when (groundedGlyph(state.fromAi, state.grounded, state.provider)) {
+                            GroundedGlyph.GLOBE -> Icon(
+                                Icons.Filled.Public,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            GroundedGlyph.GOOGLE_G -> GoogleGIcon(Modifier.size(14.dp))
+                            GroundedGlyph.NONE -> {}
+                        }
                     }
                 }
                 Text(
@@ -244,4 +255,50 @@ private fun PulsingMic(listening: Boolean, modifier: Modifier = Modifier) {
 @Composable
 fun MicGlyph(modifier: Modifier = Modifier) {
     Icon(ImageVector.vectorResource(R.drawable.mic_24), contentDescription = "Assistant", modifier = modifier)
+}
+
+/**
+ * Which grounded-source glyph, if any, sits beside the AI badge (r41). Pure, so the
+ * unit test pins it: a glyph shows only for an AI answer that was actually grounded,
+ * and the glyph names the provider that grounded it — globe for Groq, Google "G"
+ * for Gemini. Ungrounded answers get the badge alone.
+ */
+internal enum class GroundedGlyph { NONE, GLOBE, GOOGLE_G }
+
+internal fun groundedGlyph(fromAi: Boolean, grounded: Boolean, provider: AiAssistant.Provider): GroundedGlyph =
+    when {
+        !fromAi || !grounded -> GroundedGlyph.NONE
+        provider == AiAssistant.Provider.GROQ -> GroundedGlyph.GLOBE
+        else -> GroundedGlyph.GOOGLE_G
+    }
+
+/**
+ * The Google "G" mark at badge size (r41): four colored arcs plus the blue bar, drawn
+ * on a 24-unit viewport with the official brand colors (blue #4285F4, green #34A853,
+ * yellow #FBBC05, red #EA4335). The geometry was rendered and checked visually at
+ * 240px and at 28px during this round before it shipped. Multicolor by design
+ * (source attribution); never tinted. Not a Material icon: no Google logo exists
+ * in Material icons, so this is drawn, not borrowed.
+ */
+@Composable
+private fun GoogleGIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val scale = size.minDimension / 24f
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = 8.25f * scale
+        val stroke = Stroke(width = 4.5f * scale)
+        val topLeft = Offset(center.x - radius, center.y - radius)
+        val diameter = Size(radius * 2f, radius * 2f)
+        // drawArc angles: 0 = east, increasing clockwise — the same convention
+        // as the PIL render verified during this round, so the two match.
+        drawArc(Color(0xFF4285F4), 270f, 75f, false, topLeft, diameter, style = stroke)
+        drawArc(Color(0xFF34A853), 15f, 105f, false, topLeft, diameter, style = stroke)
+        drawArc(Color(0xFFFBBC05), 120f, 90f, false, topLeft, diameter, style = stroke)
+        drawArc(Color(0xFFEA4335), 210f, 60f, false, topLeft, diameter, style = stroke)
+        drawRect(
+            Color(0xFF4285F4),
+            topLeft = Offset(center.x, center.y - 2.25f * scale),
+            size = Size(10.5f * scale, 4.5f * scale),
+        )
+    }
 }

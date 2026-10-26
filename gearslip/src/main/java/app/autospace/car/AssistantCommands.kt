@@ -73,9 +73,9 @@ object AssistantCommands {
         private set
 
     /**
-     * Grounding outcome of the last AI answer (r27); CarUi reads it for the
-     * "via Google Search" line. Reset on every [handle] call, and only ever set on an
-     * Answer path — a confirmation sheet is not an answer and carries no source line.
+     * Grounding outcome of the last AI answer (r27); the overlay reads it for the
+     * grounded glyph (r41). Reset on every [handle] call, and only ever set on an
+     * Answer path — a confirmation sheet is not an answer and carries no glyph.
      */
     var lastReplyGrounded = false
         private set
@@ -83,8 +83,8 @@ object AssistantCommands {
         private set
 
     /**
-     * Provider of the last AI answer (r40); CarUi reads it for the source line, so a
-     * Groq answer never claims "via Google Search". Reset on every [handle] call.
+     * Provider of the last AI answer (r40); the overlay reads it for the glyph choice,
+     * so a Groq answer gets the globe and a Gemini answer the Google G. Reset on every [handle] call.
      */
     var lastReplyProvider: AiAssistant.Provider = AiAssistant.Provider.GEMINI
         private set

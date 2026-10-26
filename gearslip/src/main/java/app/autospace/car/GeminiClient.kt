@@ -150,7 +150,7 @@ object GeminiClient {
      * Reads candidates[0].groundingMetadata.groundingChunks and counts its web chunks.
      * Chunk contents (titles, URIs) are counted and then dropped — they never reach a
      * log, a trace, or the screen. A reply with search queries but no chunks counts
-     * as ungrounded: the "via Google Search" line is claimed only when sources exist.
+     * as ungrounded: grounding is claimed only when sources exist.
      */
     fun extractGrounding(responseJson: String): Grounding {
         val root = try {
