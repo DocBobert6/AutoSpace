@@ -2,7 +2,7 @@ package app.autospace.car
 
 import app.autospace.car.theme.*
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -340,7 +340,7 @@ private fun LetterKey(
                         // cancel, and exactly one insert (or none) happens.
                         var outcome: KeyPressOutcome? = null
                         while (outcome == null) {
-                            val event = awaitPointerEvent()
+                            val event = awaitPointerEvent(PointerEventPass.Main)
                             val change = event.changes.firstOrNull { it.id == down.id } ?: continue
                             if (!change.pressed) {
                                 gestureDone = true
@@ -362,7 +362,7 @@ private fun LetterKey(
                                 // nothing further (the shortcut already did).
                                 var lifted = false
                                 while (!lifted) {
-                                    val drain = awaitPointerEvent()
+                                    val drain = awaitPointerEvent(PointerEventPass.Main)
                                     val d = drain.changes.firstOrNull { it.id == down.id }
                                     if (d != null) {
                                         if (!d.pressed) lifted = true
