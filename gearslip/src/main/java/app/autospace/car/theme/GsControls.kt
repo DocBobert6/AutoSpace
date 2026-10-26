@@ -9,7 +9,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -78,6 +77,18 @@ fun gsColors(tone: GsTone): GsColors {
 @Composable
 fun gsShape(): Shape = RoundedCornerShape(gsLook().corner)
 
+/**
+ * r24: a capsule or explicitly round button/tile container's shape.
+ * Under a style with [ControlLook.rectangularButtons] (Pitlane only) the
+ * container takes the style's corner (6dp) instead of its capsule/round
+ * fallback, so no button or tile renders as a pill under Pitlane. Every
+ * other style gets the fallback itself — which IS today's shape at every
+ * call site — so no other style's shapes change by construction.
+ */
+@Composable
+fun gsButtonShape(fallback: Shape): Shape =
+    if (gsLook().rectangularButtons) gsShape() else fallback
+
 /** The current theme's control look, swapped for its light-mode variant on a light UI. */
 @Composable
 fun gsLook(): ControlLook {
@@ -145,29 +156,11 @@ fun Modifier.gsSurface(
                 drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = inset), 0.3f to Color.Transparent))
             }
         }
-        // Pitlane's selected indicator (r23): a small checker strip along
-        // the top edge of a LATCHED control only — alternating black and
-        // white squares, so it reads on dark and light surfaces alike.
-        // Drawn behind content (labels/icons are centred, the strip hugs
-        // the top edge) and clipped to the control's shape by the clip
-        // above. Never drawn unlatched, never a background or fill.
-        if (latched && look.checkerStrip) {
-            m = m.drawBehind {
-                val sq = 6.dp.toPx()
-                var x = 0f
-                var i = 0
-                while (x < size.width) {
-                    val w = minOf(sq, size.width - x)
-                    drawRect(
-                        if (i % 2 == 0) Color.White else Color.Black,
-                        topLeft = Offset(x, 0f),
-                        size = Size(w, sq),
-                    )
-                    x += sq
-                    i++
-                }
-            }
-        }
+        // r24: the checker strip is gone entirely (Robert disliked it
+        // under Pitlane and under Circuit). No strip is drawn for any
+        // style; ControlLook.checkerStrip is retired and reads false
+        // everywhere. Selected controls read through their primary
+        // fill and bold label alone.
         if (look.rimAlpha > 0f) {
             m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), shape)
         }

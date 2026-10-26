@@ -79,10 +79,20 @@ data class ControlLook(
      */
     val containerAlpha: Float = 1f,
     /**
-     * r23: when true, a latched (selected) control wears a small
-     * black-and-white checker strip along its top edge instead of the
-     * inset shadow — Pitlane's selected indicator. Only ever drawn on
-     * latched controls, never as a background or fill.
+     * r24: when true, capsule and explicitly round button/tile containers
+     * (launcher tiles, switches, keyboard keys, call buttons) render with
+     * this style's corner instead of their capsule/round fallback, so no
+     * button or tile renders as a pill under the style. Pitlane only; every
+     * other style keeps its existing shapes exactly (see gsButtonShape).
+     */
+    val rectangularButtons: Boolean = false,
+    /**
+     * RETIRED in r24: formerly drew a small black-and-white checker strip
+     * along the top edge of latched controls under Pitlane. Robert
+     * disliked the checker under Pitlane and under Circuit, so r24 removes
+     * the strip entirely — the rendering path in gsSurface is gone, and
+     * this flag reads false on every built-in look. Kept only so the
+     * retirement is assertable in GsThemeTest; nothing draws from it.
      */
     val checkerStrip: Boolean = false,
     /** Replaces this look when the UI is light, for effects that only work on one background. */
@@ -142,10 +152,12 @@ object GsThemes {
      * the bold feeling comes from the thick edge + solid containers +
      * pairing with the Pitlane color scheme's high-contrast carbon
      * black/white/red/yellow, not from heavier text. The face is flat,
-     * so the hold marker is the DOT. Selected indicator: a small
-     * checker strip on latched controls only (see checkerStrip) — never
-     * a checkerboard background, never a full-pattern fill; insetAlpha
-     * is 0 because the strip replaces the inset shadow here. The light
+     * so the hold marker is the DOT. r24: the checker strip on latched
+     * controls is REMOVED entirely (Robert disliked it under Pitlane and
+     * under Circuit) — no strip is drawn for any style, and
+     * rectangularButtons (below) squares every capsule/round button and
+     * tile container under Pitlane; insetAlpha is 0 because Pitlane
+     * never had an inset shadow. The light
      * variant keeps the same squared, thick-edged language on light
      * surfaces (the style never forces carbon-black surfaces — colors
      * come from the color scheme, so Pitlane-on-light reads squared and
@@ -164,7 +176,7 @@ object GsThemes {
             pressedDim = 0.20f,
             containerAlpha = 1f,
             holdMarker = HoldMarkerStyle.DOT,
-            checkerStrip = true,
+            rectangularButtons = true,
             light = ControlLook(
                 corner = 6.dp,
                 topLight = 0f,
@@ -175,7 +187,7 @@ object GsThemes {
                 pressedDim = 0.20f,
                 containerAlpha = 1f,
                 holdMarker = HoldMarkerStyle.DOT,
-                checkerStrip = true,
+                rectangularButtons = true,
             ),
         ),
     )

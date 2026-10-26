@@ -367,7 +367,8 @@ fun CarLauncher() {
         }
         // Phase 9 pills: search at the top, then capsule pill rows
         // (icon + label on one horizontal line), 2 columns on a wide
-        // car screen — no square tiles anywhere. Phase 7's flat list,
+        // car screen — no square tiles anywhere, except under Pitlane
+        // (r24), where gsButtonShape squares the tiles. Phase 7's flat list,
         // no group headers, search and pinned behaviour are unchanged.
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 320.dp),
@@ -419,7 +420,9 @@ fun CarLauncher() {
 /** A pinned-app pill for the launcher's pinned row. Phase 9: a capsule
  * pill row (icon + label on one line), not a square tile — height
  * scales with the tile-size slider (56dp floor), icon with the
- * icon-size slider, label fully readable on one line. */
+ * icon-size slider, label fully readable on one line. r24: under
+ * Pitlane the pill is squared by gsButtonShape (the style's 6dp
+ * corner); every other style keeps the capsule. */
 @Composable
 private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
     GsIconBox(
@@ -427,7 +430,7 @@ private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
         onLongClick = tile.onLongClick,
         modifier = Modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)),
     ) {
         Row(
             Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -480,11 +483,14 @@ private fun AppTile(
     // Phase 9 pills: the square tile is gone — a fully rounded stadium
     // pill row, icon + label on ONE horizontal line, frost gradient +
     // hairline via GsIconBox (in Frost; other GsThemes keep their own
-    // finish through the same control). Height scales with the
+    // finish through the same control). r24: the capsule was the defect
+    // under Pitlane — gsButtonShape squares the tile to the style's
+    // 6dp corner there and keeps the capsule everywhere else.
+    // Height scales with the
     // tile-size slider (56dp floor, so a small pill is still a car
     // target); the icon scales with the icon-size slider and is hidden
     // at 0% with the label (and the whole tap area) intact.
-    val shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+    val shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50))
     // When drag is enabled, the tile's own long-press is NOT wired into
     // GsIconBox: the drag detector owns the long press, and a release without
     // movement opens the menu through onDragEnd instead. Otherwise a drag

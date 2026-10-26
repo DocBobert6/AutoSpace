@@ -104,7 +104,7 @@ private fun CallButton(icon: ImageVector, label: String, color: Color, enabled: 
             enabled = enabled,
             size = 72.dp,
             iconSize = 30.dp,
-            shape = CircleShape,
+            shape = gsButtonShape(CircleShape),
         )
         Spacer(Modifier.height(8.dp))
         Text(label, style = MaterialTheme.typography.labelLarge)

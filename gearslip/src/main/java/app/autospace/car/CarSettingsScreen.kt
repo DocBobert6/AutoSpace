@@ -193,7 +193,7 @@ private fun AppearancePage() {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             androidx.compose.foundation.layout.Box(
-                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)))
                     .padding(horizontal = 16.dp, vertical = 6.dp),
             ) { Text("${((scale - 0.5f) * 100f).roundToInt().coerceIn(0, 100)}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
@@ -220,7 +220,7 @@ private fun AppearancePage() {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Icon size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             androidx.compose.foundation.layout.Box(
-                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)))
                     .padding(horizontal = 16.dp, vertical = 6.dp),
             ) { Text("${(iconSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
@@ -248,7 +248,7 @@ private fun AppearancePage() {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Tile size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             androidx.compose.foundation.layout.Box(
-                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)))
                     .padding(horizontal = 16.dp, vertical = 6.dp),
             ) { Text("${(tileSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }

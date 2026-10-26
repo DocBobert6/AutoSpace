@@ -252,7 +252,7 @@ private fun Key(
         } else {
             GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
         },
-        shape = RoundedCornerShape(12.dp),
+        shape = gsButtonShape(RoundedCornerShape(12.dp)),
     ) {
         Box(Modifier.fillMaxWidth()) {
             Row(
@@ -310,7 +310,7 @@ private fun LetterKey(
     var pressed by remember { mutableStateOf(false) }
     val gestureScope = rememberCoroutineScope()
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
-    val shape = RoundedCornerShape(12.dp)
+    val shape = gsButtonShape(RoundedCornerShape(12.dp))
     Box(
         modifier
             .height(LocalKeyHeight.current)
@@ -474,7 +474,7 @@ private fun DismissKey(onClick: () -> Unit, modifier: Modifier = Modifier) {
         onClick = onClick,
         modifier = modifier.height(LocalKeyHeight.current),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = RoundedCornerShape(12.dp),
+        shape = gsButtonShape(RoundedCornerShape(12.dp)),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -492,7 +492,7 @@ private fun SubmitKey(modifier: Modifier, search: Boolean, image: ImageVector?, 
         onClick = onClick,
         modifier = modifier.height(LocalKeyHeight.current),
         colors = GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
-        shape = RoundedCornerShape(12.dp),
+        shape = gsButtonShape(RoundedCornerShape(12.dp)),
     ) {
         Row(
             Modifier.fillMaxWidth(),

@@ -28,7 +28,7 @@ fun GsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
         onClick = { onCheckedChange(!checked) },
         modifier = modifier.size(width = 64.dp, height = 36.dp),
         colors = if (checked) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-        shape = CircleShape,
+        shape = gsButtonShape(CircleShape),
         latched = checked,
     ) {
         Box(Modifier.matchParentSize().padding(4.dp), contentAlignment = Alignment.CenterStart) {
@@ -36,7 +36,7 @@ fun GsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
                 Modifier
                     .offset(x = x)
                     .size(knob)
-                    .gsSurface(if (checked) scheme.onPrimary else scheme.outline, CircleShape),
+                    .gsSurface(if (checked) scheme.onPrimary else scheme.outline, gsButtonShape(CircleShape)),
             )
         }
     }

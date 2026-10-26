@@ -117,7 +117,7 @@ private fun PhoneAppTile(app: PhoneApp, iconFrac: Float = 1f, tileFrac: Float = 
         onClick = onClick,
         modifier = Modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)),
     ) {
         Row(
             Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 8.dp),

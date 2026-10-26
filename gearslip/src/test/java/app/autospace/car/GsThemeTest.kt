@@ -40,7 +40,7 @@ class GsThemeTest {
     }
 
     @Test
-    fun pitlaneIsBuiltInWithSquaredThickCheckerStyle() {
+    fun pitlaneIsBuiltInWithSquaredThickStyleAndNoChecker() {
         assertTrue(GsThemes.builtIn.any { it.id == "pitlane" && it.name == "Pitlane" })
         assertEquals("pitlane", GsThemes.byId("pitlane").id)
         val look = GsThemes.Pitlane.control
@@ -51,15 +51,21 @@ class GsThemeTest {
         assertEquals(0.60f, look.bevelBottom, 0.001f)
         assertEquals(0, look.shadow.value.toInt())
         assertEquals(1f, look.containerAlpha, 0.001f)
-        // Checker strip is the selected indicator, and it replaces the
-        // inset shadow on this style — never both, never a background.
-        assertTrue(look.checkerStrip)
+        // r24: the checker strip is removed entirely — Pitlane squares
+        // its capsule/round containers instead, and no built-in style
+        // wears a checker strip under any color scheme.
+        assertTrue(look.rectangularButtons)
+        assertFalse(look.checkerStrip)
         assertEquals(0f, look.insetAlpha, 0.001f)
         val light = checkNotNull(look.light)
         assertEquals(6, light.corner.value.toInt())
-        assertTrue(light.checkerStrip)
-        // No other built-in style wears the checker strip.
-        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.checkerStrip })
+        assertTrue(light.rectangularButtons)
+        assertFalse(light.checkerStrip)
+        assertFalse(GsThemes.builtIn.any { it.control.checkerStrip })
+        assertFalse(GsThemes.builtIn.any { it.control.light?.checkerStrip == true })
+        // Rectangular buttons are Pitlane-only: every other built-in
+        // style keeps its existing shapes exactly.
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.rectangularButtons })
     }
 
     @Test
