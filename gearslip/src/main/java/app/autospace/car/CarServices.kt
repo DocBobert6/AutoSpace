@@ -74,10 +74,21 @@ object CarServices {
         // Loaded now, while nothing's waiting on it, so the first reply isn't slower than the rest.
         app.autospace.speech.SpeechEngine.warm(appContext)
         // Hotword: wired here, gated inside HotwordListener itself. The session check
-        // (CarEnvironment.isRunning) is false in the phone preview, so the preview
-        // never opens the microphone; a real session sets it before CarUi composes.
+        // is a real session (CarEnvironment.isRunning — also true in the phone
+        // preview, since the preview calls CarEnvironment.start) OR test mode
+        // (see ensureTestHotword). The loop logic itself is unchanged by
+        // test mode; it only ever starts under a session source.
+        configureHotword()
+        app.autospace.speech.HotwordListener.start(appContext)
+    }
+
+    /**
+     * The one hotword wiring, shared by a real session ([init]) and by
+     * test mode ([ensureTestHotword]) so the two can never drift.
+     */
+    private fun configureHotword() {
         app.autospace.speech.HotwordListener.configure(
-            sessionCheck = { CarEnvironment.isRunning },
+            sessionCheck = { CarEnvironment.isRunning || TestMode.active.value },
             // Suspended only while the assistant is actively busy or a call is live.
             // ERROR is deliberately not a suspension (2026-10-25): it is a settled
             // state, not activity — the old `phase != IDLE` check kept the hotword
@@ -94,7 +105,19 @@ object CarServices {
             },
             onHotword = { CarAssistant.start() },
         )
-        app.autospace.speech.HotwordListener.start(appContext)
+    }
+
+    /**
+     * Test mode's entry point (Robert, 2026-10-25): (re)applies the
+     * shared hotword wiring and starts the loop under test mode.
+     * [HotwordListener.start] is start-guarded, so calling this when
+     * a real or preview session already started the loop is a
+     * no-op. It does NOT change the loop: the gates, the recognizer
+     * and the trigger are exactly the real session's.
+     */
+    fun ensureTestHotword(context: android.content.Context) {
+        configureHotword()
+        app.autospace.speech.HotwordListener.start(context.applicationContext)
     }
 
     // --- map -----------------------------------------------------------------------------

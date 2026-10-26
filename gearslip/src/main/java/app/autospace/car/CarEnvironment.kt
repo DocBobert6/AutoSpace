@@ -97,7 +97,16 @@ object CarEnvironment {
         frameFlow.value = Frame(width, height, densityDpi)
     }
 
-    /** True only for a real car session: only GearslipActivity calls [start]; the phone preview never does. */
+    /**
+     * True only between a REAL accessory's surface-ready and its
+     * projection-stopped. The phone preview also calls [start] (so
+     * [isRunning] is true there too), but it never touches this flag
+     * — it is what CarMotion's simulated-driving override checks, so
+     * a couch-testing override can never ride into a real drive.
+     */
+    @Volatile var realSession = false
+
+    /** True for a real car session OR the phone preview: both call [start]. */
     val isRunning: Boolean get() = running
 
     fun start(context: Context) {

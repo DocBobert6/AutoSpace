@@ -4,6 +4,7 @@ import android.content.Intent
 import androidx.compose.material3.Surface
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,6 +67,9 @@ fun LogsScreen(onBack: () -> Unit) {
     // Live view: stay pinned to the newest line, but let go the moment the user scrolls up to
     // read something, and pick back up when they return to the bottom.
     var follow by remember { mutableStateOf(true) }
+    // Shown under the share row when "Share last trace" has nothing
+    // to share yet (no trace ever written); cleared on any share tap.
+    var traceNotice by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress to atEnd }.collect { (scrolling, end) ->
             if (scrolling) follow = end
@@ -89,8 +93,12 @@ fun LogsScreen(onBack: () -> Unit) {
         },
         bottomBar = {
             Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-                Row(
+                Column(
                     Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                Row(
+                    Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Button(
@@ -111,6 +119,41 @@ fun LogsScreen(onBack: () -> Unit) {
                         onClick = { GearslipLog.clearLive() },
                         modifier = Modifier.weight(1f).height(56.dp),
                     ) { Text("Clear") }
+                }
+                // Share last trace (Robert, 2026-10-25): the same
+                // user-initiated share as the session log, but for
+                // the last launch trace — so a trace never has to be
+                // dug out of Downloads/AutoSpace in Files. No upload,
+                // nothing automatic; nothing exists yet until a trace
+                // has been written, and then the notice says so.
+                OutlinedButton(
+                    onClick = {
+                        traceNotice = null
+                        scope.launch {
+                            val uri = withContext(Dispatchers.IO) {
+                                app.autospace.speech.VoiceTrace.shareableLastTrace(context)
+                            }
+                            if (uri == null) {
+                                traceNotice = "No launch trace written yet — arm one in Settings first."
+                            } else {
+                                val send = Intent(Intent.ACTION_SEND)
+                                    .setType("text/plain")
+                                    .putExtra(Intent.EXTRA_SUBJECT, "AutoSpace launch trace")
+                                    .putExtra(Intent.EXTRA_STREAM, uri)
+                                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                context.startActivity(Intent.createChooser(send, "Share trace"))
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                ) { Text("Share last trace") }
+                traceNotice?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 }
             }
         },

@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.speech.VoiceEngine
+import app.autospace.speech.VoiceTrace
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsThemes
@@ -302,6 +303,8 @@ fun CarSettingsScreen() {
         )
 
         VoiceSettings()
+
+        VoiceTraceSettings()
 
         SubtitleSettings()
 
@@ -650,6 +653,92 @@ private fun VoiceSettings() {
                             onSelect = { VoiceModels.selectVoice(context, voice) },
                             onPreview = { togglePreview("kokoro:${voice.id}", voice) },
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Voice trace controls in car Settings (Robert, 2026-10-25, couch
+ * testing): the same trace the phone arms for the next launch, now
+ * also armable from the car — plus "Start trace now", which records
+ * the chosen window from this moment, so a car session itself can
+ * be captured without a fresh launch. Window choice, one-shot
+ * auto-disarm, Downloads/AutoSpace export and the content filter
+ * (stages/file states/error classes only — never spoken text,
+ * messages, contacts, numbers, mic audio) are the same as the phone
+ * surface; this section only adds the car-side entry points.
+ */
+@Composable
+private fun VoiceTraceSettings() {
+    val context = LocalContext.current
+    var armed by remember { mutableStateOf(VoiceTrace.isArmed(context)) }
+    var window by remember { mutableStateOf(VoiceTrace.windowMs(context)) }
+    val capturing by VoiceTrace.capturing.collectAsState()
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        GsSectionHeader("Voice trace")
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "A one-time recording of the voice engine's steps, for " +
+                        "when a reply or preview fails. It records engine " +
+                        "stages, file states and error types only — never " +
+                        "spoken text, messages, contacts, numbers, or " +
+                        "microphone audio — and nothing is uploaded. The " +
+                        "file appears in Downloads/AutoSpace.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ChoiceRow(
+                    "Trace length",
+                    listOf(VoiceTrace.WINDOW_MS to "45 seconds", VoiceTrace.WINDOW_MS_LONG to "90 seconds"),
+                    window,
+                ) { VoiceTrace.setWindowMs(context, it); window = it }
+                if (capturing) {
+                    Text(
+                        "A trace is recording now — it ends on its own at " +
+                            "${window / 1000} seconds, or the moment you stop it.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    GsButton(
+                        onClick = { VoiceTrace.stopAndExportNow() },
+                        tone = GsTone.Tonal,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Stop trace and export now") }
+                } else {
+                    Text(
+                        if (armed) {
+                            "Trace armed — it starts on the next fresh launch " +
+                                "and records ${window / 1000} seconds, then " +
+                                "switches itself off."
+                        } else {
+                            "Arm it for the next fresh launch, or start one " +
+                                "now to capture this car session."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    GsButton(
+                        onClick = { VoiceTrace.startNow(context) },
+                        tone = GsTone.Tonal,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Start trace now") }
+                    if (armed) {
+                        GsButton(
+                            onClick = { VoiceTrace.disarm(context); armed = false },
+                            tone = GsTone.Tonal,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Cancel trace") }
+                    } else {
+                        GsButton(
+                            onClick = { VoiceTrace.arm(context); armed = true },
+                            tone = GsTone.Tonal,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Arm launch trace") }
                     }
                 }
             }

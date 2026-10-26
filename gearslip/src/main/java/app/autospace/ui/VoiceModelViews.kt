@@ -176,33 +176,89 @@ internal fun SpokenVoiceSection() {
         // ONLY: never spoken text, messages, contacts, numbers, or
         // microphone audio, and nothing is uploaded.
         var traceArmed by remember { mutableStateOf(VoiceTrace.isArmed(context)) }
+        var traceWindow by remember { mutableStateOf(VoiceTrace.windowMs(context)) }
+        val traceCapturing by VoiceTrace.capturing.collectAsState()
         Text(
-            "Record launch trace (next launch, 45 seconds)",
+            "Record launch trace (next launch)",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
         Text(
             if (traceArmed) {
                 "Trace armed — force-stop AutoSpace, open it fresh, and try a voice preview " +
-                    "within 45 seconds. The trace file appears in Downloads/AutoSpace, " +
-                    "then the recording switches itself off."
+                    "within ${traceWindow / 1000} seconds. The trace file appears in " +
+                    "Downloads/AutoSpace, then the recording switches itself off."
             } else {
-                "Arms a one-time 45-second recording from the next fresh launch, so a " +
-                    "preview failure leaves a readable record of every step it took. " +
-                    "It records engine stages, file states and error types only — never " +
-                    "spoken text, messages, contacts, numbers, or microphone audio — " +
+                "Arms a one-time ${traceWindow / 1000}-second recording from the next fresh " +
+                    "launch, so a preview failure leaves a readable record of every step " +
+                    "it took. It records engine stages, file states and error types only — " +
+                    "never spoken text, messages, contacts, numbers, or microphone audio — " +
                     "and nothing is uploaded."
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         )
-        if (traceArmed) {
+        // Window length (Robert, 2026-10-25, couch testing): 45 seconds
+        // stays the default; 90 gives a longer couch-testing window.
+        // Picking a length only changes the next trace, never a
+        // recording already running.
+        Text(
+            "Trace length",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = traceWindow == VoiceTrace.WINDOW_MS,
+                onClick = { VoiceTrace.setWindowMs(context, VoiceTrace.WINDOW_MS); traceWindow = VoiceTrace.WINDOW_MS },
+            )
+            Text(
+                "45 seconds",
+                modifier = Modifier.selectable(
+                    selected = traceWindow == VoiceTrace.WINDOW_MS,
+                    role = Role.RadioButton,
+                    onClick = { VoiceTrace.setWindowMs(context, VoiceTrace.WINDOW_MS); traceWindow = VoiceTrace.WINDOW_MS },
+                ),
+            )
+            RadioButton(
+                selected = traceWindow == VoiceTrace.WINDOW_MS_LONG,
+                onClick = { VoiceTrace.setWindowMs(context, VoiceTrace.WINDOW_MS_LONG); traceWindow = VoiceTrace.WINDOW_MS_LONG },
+            )
+            Text(
+                "90 seconds",
+                modifier = Modifier.selectable(
+                    selected = traceWindow == VoiceTrace.WINDOW_MS_LONG,
+                    role = Role.RadioButton,
+                    onClick = { VoiceTrace.setWindowMs(context, VoiceTrace.WINDOW_MS_LONG); traceWindow = VoiceTrace.WINDOW_MS_LONG },
+                ),
+            )
+        }
+        if (traceCapturing) {
+            Text(
+                "A trace is recording now — it ends on its own at ${traceWindow / 1000} " +
+                    "seconds, or the moment you stop it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            OutlinedButton(
+                onClick = { VoiceTrace.stopAndExportNow() },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            ) { Text("Stop trace and export now") }
+        }
+        // While a trace is recording, the only action is stopping it
+        // (above); arming or cancelling mid-recording would only
+        // confuse which window the export belongs to.
+        if (!traceCapturing && traceArmed) {
             OutlinedButton(
                 onClick = { VoiceTrace.disarm(context); traceArmed = false },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             ) { Text("Cancel trace") }
-        } else {
+        } else if (!traceCapturing) {
             OutlinedButton(
                 onClick = { VoiceTrace.arm(context); traceArmed = true },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

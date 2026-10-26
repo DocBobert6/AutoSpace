@@ -98,8 +98,21 @@ import java.util.Date
  * Follow phone use the phone's wallpaper colours. The size setting scales everything by
  * changing the density, so text, icons and touch targets grow together.
  */
+/**
+ * A theme override for the car PREVIEW only (Robert, 2026-10-25).
+ * Any field left null falls back to the car's own setting; a null
+ * [PreviewThemeOverride] means no override at all. The real session
+ * calls CarUi() with no argument, so its rendering is untouched —
+ * the override is applied only where the preview passes one.
+ */
+data class PreviewThemeOverride(
+    val appTheme: AppTheme?,
+    val uiThemeId: String?,
+    val darkType: DarkModeType?,
+)
+
 @Composable
-fun CarUi() {
+fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     val scale by CarSettings.scale.collectAsState()
     val phoneDark by CarEnvironment.phoneDark.collectAsState()
     val appTheme by CarSettings.appTheme.collectAsState()
@@ -108,6 +121,12 @@ fun CarUi() {
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
     val appContext = LocalContext.current.applicationContext
     val darkType by CarSettings.darkModeType.collectAsState()
+    // Preview-only overrides, applied after the unconditional
+    // collects so the real path (previewTheme == null) reads exactly
+    // what it read before.
+    val effAppTheme = previewTheme?.appTheme ?: appTheme
+    val effUiThemeId = previewTheme?.uiThemeId ?: uiThemeId
+    val effDarkType = previewTheme?.darkType ?: darkType
     // Phase 9 immersive player: CarUi reads the player's published
     // controls visibility and hides the nav bar with it (see below).
     val playerControlsVisible by PlayerImmersiveState.controlsVisible.collectAsState()
@@ -126,7 +145,7 @@ fun CarUi() {
     // mirroring ends, PhoneMirror.onEnded restarts CarUi with chrome
     // back, so nothing here needs to restore it.
     val mirrorActive by PhoneMirror.active.collectAsState()
-    val dark = when (appTheme) {
+    val dark = when (effAppTheme) {
         AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
         AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
         AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK -> true
@@ -143,12 +162,12 @@ fun CarUi() {
     // Follow options, across all styles. Browser PAGES stay unthemed
     // (Phase 3 correction) — this scheme is chrome only, and it flows into
     // the video player chrome too (its black scrims over video are untouched).
-    val colors = when (appTheme) {
-        AppTheme.LIGHT, AppTheme.DARK, AppTheme.FOLLOW_SYSTEM -> neutralFrostScheme(dark, darkType == DarkModeType.OLED)
+    val colors = when (effAppTheme) {
+        AppTheme.LIGHT, AppTheme.DARK, AppTheme.FOLLOW_SYSTEM -> neutralFrostScheme(dark, effDarkType == DarkModeType.OLED)
         AppTheme.MATERIAL_YOU_LIGHT -> dynamicLightColorScheme(appContext)
-        AppTheme.MATERIAL_YOU_DARK -> if (darkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
+        AppTheme.MATERIAL_YOU_DARK -> if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         AppTheme.MATERIAL_YOU -> if (dark) {
-            if (darkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
+            if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
     }
     val base = LocalDensity.current
@@ -220,12 +239,12 @@ fun CarUi() {
         LocalCarNavigator provides navigator,
         LocalDarkOutside provides darkOutside,
         LocalMapControlsWake provides controlsWake,
-        LocalGsTheme provides GsThemes.byId(uiThemeId),
+        LocalGsTheme provides GsThemes.byId(effUiThemeId),
         // Phase 9 OLED flag for the kit — cards and controls draw a
         // hairline outline when this is true, so a dark surface on the
         // pure-black OLED background still reads as a surface, and the
         // frost gradient still has an edge to shade.
-        LocalOledDark provides (dark && darkType == DarkModeType.OLED),
+        LocalOledDark provides (dark && effDarkType == DarkModeType.OLED),
     ) {
         MaterialTheme(colorScheme = colors) {
           CompositionLocalProvider(LocalIndication provides FocusRingIndication(MaterialTheme.colorScheme.primary)) {

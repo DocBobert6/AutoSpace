@@ -21,11 +21,18 @@ class VoiceTraceTest {
     }
 
     @Test
+    fun traceLongWindowIsExactly90Seconds() {
+        // Couch-testing option (2026-10-25): the longer window the
+        // phone and car trace pickers offer alongside the default.
+        assertEquals(90_000L, VoiceTrace.WINDOW_MS_LONG)
+    }
+
+    @Test
     fun buildTagIsPinnedAndNonBlank() {
         // Round 7 tripwire: the tag must change on every push (see
         // VoiceTrace.BUILD_TAG). A push that forgets to bump it fails
         // here instead of shipping traces no one can attribute.
-        assertEquals("r9", VoiceTrace.BUILD_TAG)
+        assertEquals("r10", VoiceTrace.BUILD_TAG)
     }
 
     @Test

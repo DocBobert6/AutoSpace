@@ -82,6 +82,7 @@ fun SettingsScreen(
     onOpenWhatsNew: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenCarPreview: () -> Unit,
+    onOpenCarPreviewSettings: () -> Unit,
     onOpenLogs: () -> Unit,
     onReplayTutorial: () -> Unit,
     onReplayIntro: () -> Unit,
@@ -120,7 +121,7 @@ fun SettingsScreen(
         ) {
             Spacer(Modifier.height(0.dp))
             ConnectionSection()
-            HelpSection(onOpenHelp, onOpenCarPreview, onOpenLogs)
+            HelpSection(onOpenHelp, onOpenCarPreview, onOpenCarPreviewSettings, onOpenLogs)
             CarAudioSection()
             VoiceModelSection()
             // Spoken voice, alongside the listening models above — not instead of
@@ -205,7 +206,12 @@ private fun ConnectionSection() {
 
 /** Connection help, and the tools for checking what Gearslip does. */
 @Composable
-private fun HelpSection(onOpenHelp: () -> Unit, onOpenCarPreview: () -> Unit, onOpenLogs: () -> Unit) {
+private fun HelpSection(
+    onOpenHelp: () -> Unit,
+    onOpenCarPreview: () -> Unit,
+    onOpenCarPreviewSettings: () -> Unit,
+    onOpenLogs: () -> Unit,
+) {
     val context = LocalContext.current
     val status by SessionStatus.state.collectAsState()
     val live = status.phase == SessionStatus.Phase.CONNECTING || status.phase == SessionStatus.Phase.PROJECTING
@@ -228,6 +234,17 @@ private fun HelpSection(onOpenHelp: () -> Unit, onOpenCarPreview: () -> Unit, on
                 trailing = { Arrow() },
             )
         }
+        // The preview's own settings stay reachable even while a
+        // car is connected (they change nothing until the preview
+        // opens), so this row is outside the !live block above.
+        SettingsDivider()
+        SettingsRow(
+            "Car preview settings",
+            Modifier.clickable(onClick = onOpenCarPreviewSettings),
+            subtitle = "Size, density, theme and test options for the preview only",
+            icon = Icons.Filled.Settings,
+            trailing = { Arrow() },
+        )
         SettingsDivider()
         SettingsRow(
             "Live logs",

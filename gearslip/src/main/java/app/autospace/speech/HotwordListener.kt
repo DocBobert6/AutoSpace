@@ -197,6 +197,9 @@ object HotwordListener {
 
     @Volatile private var lastGateReason: String? = null
 
+    /** Logged once per listening stretch while test mode is the only session source. */
+    @Volatile private var testModeAnnounced = false
+
     /** Logs a blocking gate the first time it appears; silence while it persists. */
     private fun logGate(app: Context) {
         val reason = gateReason(app)
@@ -212,10 +215,24 @@ object HotwordListener {
             while (running && gen == generation) {
                 if (!gatesPass(app)) {
                     logGate(app)
+                    testModeAnnounced = false
                     Thread.sleep(POLL_MS)
                     continue
                 }
                 lastGateReason = null
+                // Test mode attribution (Robert, 2026-10-25): when the
+                // loop is running under a simulated session only — no
+                // real session, no preview — say so once, so a log
+                // line can never be mistaken for a real car session.
+                if (app.autospace.car.TestMode.active.value &&
+                    !app.autospace.car.CarEnvironment.isRunning &&
+                    !testModeAnnounced
+                ) {
+                    testModeAnnounced = true
+                    GearslipLog.i(
+                        "hotword: listening in TEST MODE (simulated car session, not a real car)",
+                    )
+                }
                 if (recognizer == null) {
                     recognizer = loadRecognizer(app)
                     if (recognizer == null) {

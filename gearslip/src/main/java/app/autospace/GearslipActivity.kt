@@ -688,6 +688,10 @@ class GearslipActivity : ComponentActivity(), Projection {
     }
 
     private fun start(accessory: UsbAccessory) {
+        // Test mode auto-OFF (Robert, 2026-10-25): a real accessory
+        // connection ends any simulated session at once, so a test
+        // flag can never ride into a real drive.
+        app.autospace.car.TestMode.deactivate()
         // A fresh ATTACHED intent means the system wants a new session, whatever state the old
         // one is in - closing first guarantees openAccessory() below never fights a descriptor
         // this same process forgot to release. The old worker thread often isn't alive by this
@@ -725,6 +729,8 @@ class GearslipActivity : ComponentActivity(), Projection {
             runCatching { socket.close() }
             return
         }
+        // Test mode auto-OFF, same as the wired path above.
+        app.autospace.car.TestMode.deactivate()
         GearslipLog.i("wireless: starting a session over Wi-Fi to ${socket.inetAddress?.hostAddress}:${socket.port}")
         wirelessSocket = socket
         val runner = GearslipRunner(
@@ -768,6 +774,12 @@ class GearslipActivity : ComponentActivity(), Projection {
             frameDensity = densityDpi
             CarEnvironment.setDisplay(width, height, densityDpi)
             CarEnvironment.start(this)
+            // This is a REAL session now (the preview never calls
+            // onSurfaceReady): mark it, and drop any simulated-driving
+            // override back to Automatic — belt and braces with the
+            // realSession gate in CarMotion.moving.
+            CarEnvironment.realSession = true
+            app.autospace.notify.CarMotion.setSimMode(app.autospace.notify.CarMotion.SimMode.AUTO)
             showCarUi()
             app.autospace.car.CarKeys.focusSink = { code, down ->
                 runOnUiThread { screenProjector?.dispatchKey(code, down) }
@@ -797,6 +809,7 @@ class GearslipActivity : ComponentActivity(), Projection {
             screenProjector = null
             surface = null
             CarEnvironment.stop()
+            CarEnvironment.realSession = false
         }
     }
 }
