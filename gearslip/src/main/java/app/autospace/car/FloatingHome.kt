@@ -165,6 +165,16 @@ fun shouldResurfaceOnPlayTransition(wasPlaying: Boolean, isPlaying: Boolean): Bo
     !wasPlaying && isPlaying
 
 /**
+ * r43: the nav bar overlays the map (instead of sitting below Home
+ * in-flow) exactly when the floating Home is showing: on Home, floating
+ * media on, and not the lyrics split — lyrics keeps the classic split
+ * with the bar in-flow, and other screens keep the classic bar. Pure so
+ * it is unit-testable; the scaffold and the card clearance both read it.
+ */
+fun shouldOverlayNavBar(onHome: Boolean, floatingOn: Boolean, panel: SidePanel): Boolean =
+    onHome && floatingOn && panel != SidePanel.LYRICS
+
+/**
  * Card width: a glanceable card, not a panel — r42 narrows it to 40% of
  * the frame, capped at 380dp, floored at 240dp so transport still fits on
  * narrow frames, and never wider than the frame minus 24dp. Pure so it is

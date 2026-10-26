@@ -7,7 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r34 floating Home: card visibility, pill step-aside, and card width rules; r36 restore fix; r42 narrower card + smaller dismiss + style-shaped transport. */
+/** r34 floating Home: card visibility, pill step-aside, and card width rules; r36 restore fix; r42 narrower card + smaller dismiss + style-shaped transport; r43 map behind the nav bar in floating mode only. */
 class FloatingHomeTest {
 
     @Test
@@ -124,5 +124,27 @@ class FloatingHomeTest {
         // r42: callers that pass no shape (full player, CompactPlayer)
         // keep circles; only the floating card passes gsShape().
         assertEquals(CircleShape, DefaultTransportShape)
+    }
+
+    @Test
+    fun navBarOverlaysMapOnlyInFloatingHome() {
+        // r43: on Home, floating on, classic split never (lyrics).
+        assertTrue(shouldOverlayNavBar(true, true, SidePanel.NONE))
+        assertTrue(shouldOverlayNavBar(true, true, SidePanel.CONTROLS))
+        // Lyrics keeps the classic split, bar in-flow below Home.
+        assertFalse(shouldOverlayNavBar(true, true, SidePanel.LYRICS))
+        // Floating off: classic Home, bar in-flow.
+        assertFalse(shouldOverlayNavBar(true, false, SidePanel.NONE))
+        // Not on Home: other screens keep the classic bar.
+        assertFalse(shouldOverlayNavBar(false, true, SidePanel.NONE))
+    }
+
+    @Test
+    fun navBarStripHeightIsBarPlusMargins() {
+        // r43: 64dp bar + 8dp floating margins top and bottom.
+        assertEquals(80.dp, NAV_BAR_STRIP_HEIGHT)
+        // Card bottom clearance in overlay mode: the r42 24dp inset
+        // plus the strip, so the card sits where it sat in-flow.
+        assertEquals(104.dp, 24.dp + NAV_BAR_STRIP_HEIGHT)
     }
 }

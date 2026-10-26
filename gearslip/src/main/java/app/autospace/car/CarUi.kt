@@ -81,6 +81,7 @@ import app.autospace.car.theme.gsColors
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.gsShape
+import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.car.theme.LocalGsTheme
 import app.autospace.media.CarMedia
 import app.autospace.media.MediaArt
@@ -303,6 +304,39 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 }
                 val screen = navigator.current
                 val safetyWarningSeen by CarSettings.hasSeenSafetyWarning.collectAsState()
+                val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
+                // r43: in floating Home the nav bar overlays the full-height
+                // map instead of sitting below Home in-flow. Classic Home
+                // (floating off, or the lyrics split) keeps the bar in-flow.
+                val overlayNavBar = shouldOverlayNavBar(
+                    screen == CarScreen.Home, floatingOn, navigator.sidePanel,
+                )
+                // The keyboard takes the nav bar's row instead of squeezing in above it -
+                // nothing on the nav bar is useful mid-type, and the screen is too small to
+                // show both.
+                // Phase 9 immersive player: when the video player is the
+                // active screen AND its controls are hidden (3.5s
+                // auto-hide while playing), the bottom toolbar hides
+                // with them, and a tap — which re-shows the player
+                // controls — re-shows the bar too. The bar is NEVER
+                // hidden while controls are shown (Close/Stop must
+                // stay reachable), nor while paused/driving/error/
+                // listen mode, because the player never hides its
+                // controls in those states. CarUi has no persistent
+                // top bar (the breadcrumb is off, and call/notification
+                // overlays are urgent and transient, not chrome), and
+                // the player's own top capsule already follows
+                // controlsVisible, so the nav bar is the chrome that
+                // had to be lifted here; the video stays full-bleed.
+                val keyboardVisible by CarKeyboardVisibility.state
+                val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
+                // Browser immersive: same hide, extended, not
+                // restructured — the nav bar goes only while
+                // the browser is the active screen AND its
+                // immersive state is set; leaving the browser
+                // clears that state, so the bar returns.
+                val browserImmersiveHide = screen is CarScreen.App && screen.id == "web" && browserImmersive
+                val barVisible = !keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !mirrorActive
                 Box(Modifier.fillMaxSize().padding(pad)) {
                 Column(Modifier.fillMaxSize()) {
                     if (!safetyWarningSeen) {
@@ -311,7 +345,10 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     }
                     // Header navigation (breadcrumb trail) - off for now, kept to tweak later.
                     // BreadcrumbBar(navigator)
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                    // r43: in overlay mode this box is the full frame, so
+                    // the map runs behind the bar; classic keeps the
+                    // weight, so the bar's row stays its own strip.
+                    Box(if (overlayNavBar) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth()) {
                         // Home never leaves the composition; other screens cover it. Dropping it
                         // would tear down the map's surface, and coming back would then show black
                         // while the nav app redrew on a new one.
@@ -340,7 +377,14 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                                 }
                             }
                         }
-                        CarToastOverlay(Modifier.align(Alignment.BottomCenter))
+                        // r43: in overlay mode the content box is the full
+                        // frame, so bottom-anchored overlays clear the bar
+                        // strip to sit where they sat when the bar lived
+                        // below Home in-flow. Classic: 0dp, a no-op.
+                        CarToastOverlay(
+                            Modifier.align(Alignment.BottomCenter)
+                                .padding(bottom = if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp),
+                        )
                         CallPromptOverlay()
                         BluetoothPairOverlay()
                         PopupTimer()
@@ -352,37 +396,24 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         // Above the popup: a call is more urgent than any notification.
                         VoiceHelpOverlay(Modifier.align(Alignment.Center))
                         CallOverlay(Modifier.align(Alignment.TopCenter))
-                        AssistantOverlay(Modifier.align(Alignment.BottomCenter))
+                        AssistantOverlay(
+                            Modifier.align(Alignment.BottomCenter)
+                                .padding(bottom = if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp),
+                        )
                         // Phase 8 audit fix: the debug badge no longer
                         // floats over content at all — it lives in the nav
                         // bar (see CarNavBar), where it can cover nothing.
                     }
-                    // The keyboard takes the nav bar's row instead of squeezing in above it -
-                    // nothing on the nav bar is useful mid-type, and the screen is too small to
-                    // show both.
-                    // Phase 9 immersive player: when the video player is the
-                    // active screen AND its controls are hidden (3.5s
-                    // auto-hide while playing), the bottom toolbar hides
-                    // with them, and a tap — which re-shows the player
-                    // controls — re-shows the bar too. The bar is NEVER
-                    // hidden while controls are shown (Close/Stop must
-                    // stay reachable), nor while paused/driving/error/
-                    // listen mode, because the player never hides its
-                    // controls in those states. CarUi has no persistent
-                    // top bar (the breadcrumb is off, and call/notification
-                    // overlays are urgent and transient, not chrome), and
-                    // the player's own top capsule already follows
-                    // controlsVisible, so the nav bar is the chrome that
-                    // had to be lifted here; the video stays full-bleed.
-                    val keyboardVisible by CarKeyboardVisibility.state
-                    val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
-                    // Browser immersive: same hide, extended, not
-                    // restructured — the nav bar goes only while
-                    // the browser is the active screen AND its
-                    // immersive state is set; leaving the browser
-                    // clears that state, so the bar returns.
-                    val browserImmersiveHide = screen is CarScreen.App && screen.id == "web" && browserImmersive
-                    if (!keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !mirrorActive) CarNavBar(navigator)
+                    // r43: classic keeps the bar in-flow here; the
+                    // overlay branch below draws it over the map instead.
+                    if (barVisible && !overlayNavBar) CarNavBar(navigator)
+                }
+                // r43: the overlay bar draws over the full-height map,
+                // above the Column content but below AppMenu (which stays
+                // over everything, nav bar included) and the brightness
+                // dim (which dims the bar exactly as in classic mode).
+                if (barVisible && overlayNavBar) {
+                    CarNavBar(navigator, overlay = true, Modifier.align(Alignment.BottomCenter))
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())
@@ -585,13 +616,33 @@ internal val NAV_BAR_FLOAT_VERTICAL = 8.dp
 internal val NAV_BAR_FLOAT_ELEVATION = 6.dp
 
 /**
+ * r43: the strip the nav bar occupies at the frame bottom — the 64dp bar
+ * plus its 8dp floating margins top and bottom. When the bar overlays the
+ * map in floating Home, the card, the template chrome, and the bottom
+ * overlays clear exactly this height, so each sits where it sat when the
+ * bar lived below Home in-flow. Pure Dp math so it is unit-testable. */
+internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NAV_BAR_FLOAT_VERTICAL
+
+/**
  * Apps and open/pinned shortcuts on the left; now-playing pill against them; clock (tap for
  * calendar and weather), phone battery and the darkness signal on the right. Icon-only: a driver
  * reads a glyph faster than a label, and it keeps the bar short enough to leave the app underneath
  * more room.
  */
+/**
+ * r43 overlay: when true the bar floats over the map instead of sitting
+ * below Home in-flow, so it takes the floating card's frosted treatment
+ * (surfaceContainerLow at 0.92 alpha, Pitlane-only texture, same 6dp
+ * elevation, same Pitch-gated hairline) — an opaque bar would hide the
+ * map behind it and defeat the round, and true transparency would
+ * drown the buttons in a busy moving map. The texture modifier gates
+ * itself to Pitlane internally, so other styles are byte-identical.
+ * Content, buttons, height, shape, margins, and behavior are untouched;
+ * only the fill changes. [modifier] is the caller's placement (the
+ * overlay branch aligns it to the frame bottom); classic callers pass
+ * nothing and the bar is exactly as before. */
 @Composable
-private fun CarNavBar(navigator: CarNavigator) {
+private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifier: Modifier = Modifier) {
     val battery by CarEnvironment.battery.collectAsState()
     val now by rememberNow()
     val weather by Weather.state.collectAsState()
@@ -606,13 +657,18 @@ private fun CarNavBar(navigator: CarNavigator) {
     val running = rememberRunningApps()
 
     Surface(
-        modifier = Modifier.padding(horizontal = NAV_BAR_FLOAT_HORIZONTAL, vertical = NAV_BAR_FLOAT_VERTICAL),
+        modifier = modifier.padding(horizontal = NAV_BAR_FLOAT_HORIZONTAL, vertical = NAV_BAR_FLOAT_VERTICAL),
         shape = gsShape(),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = if (overlay) MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.92f)
+            else MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT).padding(horizontal = 10.dp)) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT)
+                .then(if (overlay) Modifier.pitLanePanelTexture() else Modifier)
+                .padding(horizontal = 10.dp),
+        ) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 // Home and Apps are two different places now, not a toggle on one button - the
                 // breadcrumb trail is how you retrace your steps, but reaching for either of

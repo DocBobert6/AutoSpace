@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.autospace.GearslipLog
@@ -56,6 +57,13 @@ fun CarAppStage(
     frame: CarEnvironment.Frame,
     /** Inside the home screen's map pane: no title bar, the template gets the whole area. */
     embedded: Boolean = false,
+    /**
+     * r43: lifts the template chrome off the frame bottom without
+     * shrinking the surface — bottom chrome (the travel-estimate bar)
+     * keeps its classic place above the overlay nav bar while the map
+     * tiles run full-size behind it. Every other caller passes 0.
+     */
+    chromeBottomClearance: Dp = 0.dp,
     onDisconnect: () -> Unit,
 ) {
     val template by connection.template.collectAsStateWithLifecycle()
@@ -66,7 +74,13 @@ fun CarAppStage(
         if (status.surfaceRequested) {
             AppSurface(connection, frame, template, Modifier.fillMaxSize())
         }
-        TemplateChrome(template, Modifier.fillMaxSize().padding(top = if (embedded) 0.dp else CHROME_BAR))
+        TemplateChrome(
+            template,
+            Modifier.fillMaxSize().padding(
+                top = if (embedded) 0.dp else CHROME_BAR,
+                bottom = chromeBottomClearance,
+            ),
+        )
         if (!embedded) ChromeBar(status, onDisconnect, Modifier.align(Alignment.TopCenter))
     }
 }

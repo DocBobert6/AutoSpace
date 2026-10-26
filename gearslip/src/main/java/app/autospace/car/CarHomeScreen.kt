@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.autospace.host.CarAppConnection
@@ -167,15 +168,19 @@ fun CarHome() {
             // SurfaceView recreation as an independent node. Bottom-end
             // (passenger side) reserves the driver side for the later
             // widget column; r42 moves it to 24dp in from the frame edges
-            // (left and up), and above the nav bar, which sits below this
-            // Box in-flow — so the card clears the bar and can never
-            // cover the turn zone.
+            // (left and up). r43: the nav bar overlays this Box's bottom
+            // instead of sitting below it in-flow, so the card clears the
+            // bar with bottom padding of 24dp plus the bar strip — and can
+            // never cover the turn zone.
             Box(Modifier.fillMaxSize()) {
-                MapPane(navStatus, frame)
+                MapPane(navStatus, frame, NAV_BAR_STRIP_HEIGHT)
             }
             if (showFloatingCard) {
                 BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(24.dp),
+                    Modifier.fillMaxSize().padding(
+                        start = 24.dp, top = 24.dp, end = 24.dp,
+                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                    ),
                     contentAlignment = Alignment.BottomEnd,
                 ) {
                     FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
@@ -192,10 +197,13 @@ fun CarHome() {
                 }
                 // Driver side (start in LTR), top-anchored below the top
                 // inset (proposal §3); the media card sits bottom-end, so
-                // the two never collide, and neither enters the nav bar's
-                // turn-pill row below this Box. The nav app's own turn UI
-                // at the top of its surface is checked visually on device
-                // (test list) — no numeric turn zone is claimed in code.
+                // the two never collide. r43: the nav bar now overlays
+                // this Box's bottom instead of sitting below it in-flow,
+                // but the column is top-anchored so it is unaffected —
+                // and on Home the bar carries no turn pill anyway. The
+                // nav app's own turn UI at the top of its surface is
+                // checked visually on device (test list) — no numeric
+                // turn zone is claimed in code.
                 BoxWithConstraints(
                     Modifier.fillMaxSize().padding(12.dp),
                     contentAlignment = Alignment.TopStart,
@@ -260,8 +268,18 @@ private fun HomeFrameOverlay(modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * r43: [chromeBottomClearance] lifts the nav app's template chrome off
+ * the frame bottom in floating mode, so bottom chrome (the
+ * travel-estimate bar) keeps its classic place above the bar while the
+ * map surface itself stays full-size behind it. Classic passes 0.
+ */
 @Composable
-private fun MapPane(status: CarAppConnection.Status, frame: CarEnvironment.Frame) {
+private fun MapPane(
+    status: CarAppConnection.Status,
+    frame: CarEnvironment.Frame,
+    chromeBottomClearance: Dp = 0.dp,
+) {
     val navigator = LocalCarNavigator.current
     if (status.phase == CarAppConnection.Phase.RUNNING) {
         // The map is a SurfaceView (its own SurfaceFlinger layer), so the
@@ -274,7 +292,10 @@ private fun MapPane(status: CarAppConnection.Status, frame: CarEnvironment.Frame
         // so no mask can show up as a dot on it. Map gestures pass
         // through untouched: the frame takes no pointer input.
         Box(Modifier.fillMaxSize()) {
-            CarAppStage(CarServices.nav, status, frame, embedded = true) { CarServices.stopNav() }
+            CarAppStage(
+                CarServices.nav, status, frame, embedded = true,
+                chromeBottomClearance = chromeBottomClearance,
+            ) { CarServices.stopNav() }
         }
         return
     }
