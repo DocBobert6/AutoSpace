@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Forward30
@@ -56,6 +58,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -96,6 +99,7 @@ import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -152,6 +156,25 @@ object PlayerImmersiveState {
     val controlsVisible = MutableStateFlow(true)
 }
 
+/**
+ * Player-local brightness override, r22. While the player is open and this
+ * is non-null, CarUi's brightness dim uses this value INSTEAD of the
+ * persisted global CarSettings.brightness — it never writes that setting,
+ * and it is cleared when the player leaves, so the car brightness returns
+ * exactly as it was. Both mechanisms are the same black-overlay alpha in
+ * CarUi (the car has no window-brightness control on a projected display),
+ * so the override REPLACES the global dim, it never stacks on top of it:
+ * with an override of 1f and a global of 0.5f there is no dim at all, and
+ * with an override of 0.3f and a global of 1f the dim is 0.7, not 0.7 on
+ * top of anything else. While the override is active, the nav-bar
+ * brightness sheet still writes the global setting (it persists for after
+ * the player closes) but does not visibly change the player until then —
+ * the player slider is the visible authority while the player is open.
+ */
+object PlayerBrightnessOverride {
+    val override = MutableStateFlow<Float?>(null)
+}
+
 @Composable
 fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int, onClose: () -> Unit) {
     val context = LocalContext.current
@@ -161,6 +184,29 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var isBuffering by remember { mutableStateOf(false) }
     var stallRecoveries by remember { mutableIntStateOf(0) }
     var currentIndex by remember { mutableIntStateOf(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0))) }
+    // Index the position poll last saw, so the media-item transition
+    // listener can tell which item just ended (for resume clearing) even
+    // though the player has already moved on by the time it fires.
+    var lastSeenIndex by remember { mutableIntStateOf(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0))) }
+    // Player-local brightness (r22): null = no override, follow the car's
+    // brightness. Set only by the player brightness slider below; published
+    // to PlayerBrightnessOverride, cleared when the player leaves.
+    var showBrightnessRow by remember { mutableStateOf(false) }
+    var playerBrightness by remember { mutableStateOf<Float?>(null) }
+    val carBrightness by CarSettings.brightness.collectAsState()
+    // Resume candidate (r22): the stored position for the opening item
+    // only, when it falls in the meaningful window (10s in to 95% of
+    // duration). Non-null means the player starts PAUSED behind the
+    // Resume/Restart prompt below instead of playing from the start.
+    var resumePromptMs by remember(urls, startIndex) {
+        mutableStateOf(
+            urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))?.let { url ->
+                PlayerResume.loadPosition(context, url)
+                    ?.takeIf { PlayerResume.isMeaningful(it.positionMs, it.durationMs) }
+                    ?.positionMs
+            },
+        )
+    }
     var listenMode by remember { mutableStateOf(false) }
     // Controls overlay: shown on tap/interaction, auto-hide ~3.5s after the
     // last touch while playing. They NEVER hide while paused (otherwise
@@ -219,7 +265,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var parsedQualities by remember { mutableStateOf<List<ParsedQuality>>(emptyList()) }
     var selectedParsedBw by remember { mutableStateOf<Long?>(null) }
 
-    fun closeAllRows() { showScaleRow = false; showAudioRow = false; showTextRow = false; showQualityRow = false }
+    fun closeAllRows() { showScaleRow = false; showAudioRow = false; showTextRow = false; showQualityRow = false; showBrightnessRow = false }
 
     fun buildItems(): List<MediaItem> = urls.mapIndexed { i, u ->
         val builder = MediaItem.Builder().setUri(u).setMediaId(u)
@@ -249,8 +295,21 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 setPlaybackSpeed(speed)
                 setMediaItems(buildItems(), currentIndex, 0L)
                 prepare()
-                playWhenReady = true
+                // A pending resume prompt holds playback until the user
+                // picks Resume or Restart; otherwise play straight away.
+                playWhenReady = resumePromptMs == null
             }
+    }
+    // Saves the current item's position (r22). A sub-10s position leaves
+    // any stored entry untouched, and a >=95% position removes it, per
+    // PlayerResume.save — so this is safe to call on pause, stop, and
+    // dispose alike, including at position 0 before first play.
+    fun saveCurrentPosition() {
+        val idx = player.currentMediaItemIndex
+        if (player.mediaItemCount == 0 || idx !in urls.indices) return
+        val pos = player.currentPosition.coerceAtLeast(0L)
+        val dur = player.duration.let { if (it == C.TIME_UNSET) 0L else it.coerceAtLeast(0L) }
+        PlayerResume.save(context, urls[idx], pos, dur)
     }
     fun refreshTracks(p: Player) {
         val groups = p.currentTracks.groups
@@ -351,6 +410,13 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         object : Player.Listener {
             override fun onIsPlayingChanged(v: Boolean) { isPlaying = v }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    // Natural end of an item: it completed, so its saved
+                    // position goes (r22). Manual Next/Prev saves first in
+                    // the button handler instead, so it is not cleared here.
+                    urls.getOrNull(lastSeenIndex)?.let { PlayerResume.clear(context, it) }
+                }
+                lastSeenIndex = player.currentMediaItemIndex
                 currentIndex = player.currentMediaItemIndex
                 refreshTracks(player)
             }
@@ -359,6 +425,11 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 error = e.message ?: "This video could not be played."
             }
             override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    // Playlist end: the finishing item completed, so its
+                    // saved position goes (r22). mediaId is the URL here.
+                    player.currentMediaItem?.mediaId?.let { PlayerResume.clear(context, it) }
+                }
                 isBuffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) {
                     stallRecoveries = 0
@@ -400,6 +471,12 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             true
         }
         onDispose {
+            // Leaving the player saves the position first (r22), while the
+            // player still reports one — after release it reports nothing.
+            // After a Stop press the position already reads 0, so this is
+            // a no-op there and the pre-stop save in the Stop handler
+            // stands.
+            saveCurrentPosition()
             CarKeys.videoSeekHandler = null
             player.removeListener(listener)
             player.release()
@@ -427,6 +504,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         while (true) {
             value = player.currentPosition to player.duration
             currentIndex = player.currentMediaItemIndex
+            lastSeenIndex = player.currentMediaItemIndex
             delay(500)
         }
     }
@@ -528,7 +606,24 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         PlayerImmersiveState.controlsVisible.value = controlsVisible
     }
     DisposableEffect(Unit) {
-        onDispose { PlayerImmersiveState.controlsVisible.value = true }
+        onDispose {
+            PlayerImmersiveState.controlsVisible.value = true
+            // The player-local brightness override dies with the player
+            // (r22): the car's own brightness returns on the next screen.
+            PlayerBrightnessOverride.override.value = null
+        }
+    }
+    // Publish the player-local brightness override (r22); null publishes
+    // "no override", i.e. follow the car's brightness.
+    LaunchedEffect(playerBrightness) {
+        PlayerBrightnessOverride.override.value = playerBrightness
+    }
+    // Pausing saves the position (r22) — including the sleep timer's
+    // pause, which is just a pause. At composition start isPlaying is
+    // false with position 0, which PlayerResume.save ignores, so a
+    // pending resume candidate survives an unplayed open.
+    LaunchedEffect(isPlaying) {
+        if (!isPlaying) saveCurrentPosition()
     }
     LaunchedEffect(sleepMinutes) {
         if (sleepMinutes > 0) {
@@ -590,12 +685,17 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         val wasAudio = row == "audio" && showAudioRow
         val wasText = row == "text" && showTextRow
         val wasQuality = row == "quality" && showQualityRow
+        val wasBrightness = row == "brightness" && showBrightnessRow
         closeAllRows()
         when (row) {
             "scale" -> showScaleRow = !wasScale
             "audio" -> showAudioRow = !wasAudio
             "text" -> showTextRow = !wasText
             "quality" -> showQualityRow = !wasQuality
+            // Closing the row keeps the override (like closing the
+            // quality row keeps the quality pick); Reset in the row, or
+            // leaving the player, clears it.
+            "brightness" -> showBrightnessRow = !wasBrightness
         }
     }
     // Shared by the parked centre cluster and the driving audio layout.
@@ -608,7 +708,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             if (urls.size > 1) {
                 PlayerIconButton(
                     Icons.Filled.SkipPrevious, "Previous",
-                    { player.seekToPreviousMediaItem(); touchControls() },
+                    { saveCurrentPosition(); player.seekToPreviousMediaItem(); touchControls() },
                     size = 60.dp, iconSize = 30.dp,
                 )
             }
@@ -656,7 +756,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             if (urls.size > 1) {
                 PlayerIconButton(
                     Icons.Filled.SkipNext, "Next",
-                    { player.seekToNextMediaItem(); touchControls() },
+                    { saveCurrentPosition(); player.seekToNextMediaItem(); touchControls() },
                     size = 60.dp, iconSize = 30.dp,
                 )
             }
@@ -958,7 +1058,10 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                     PlayerIconButton(Icons.Filled.Close, "Close player", onClose, size = 56.dp, iconSize = 28.dp)
                     PlayerIconButton(
                         Icons.Filled.Stop, "Stop playback",
-                        { player.stop(); onClose },
+                        // Save BEFORE stop (r22): stop resets the reported
+                        // position to 0, so the dispose save would be a
+                        // no-op and the pre-stop position would be lost.
+                        { saveCurrentPosition(); player.stop(); onClose },
                         size = 56.dp, iconSize = 28.dp,
                     )
                 }
@@ -1090,6 +1193,45 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             }
                         }
                     }
+                    // Player-local brightness row (r22): nothing here
+                    // shows until the brightness button is tapped. The
+                    // slider is plain Material3 (the player uses zero Gs
+                    // controls); the row is a frost capsule like the other
+                    // option rows. Reset clears the override back to the
+                    // car's brightness; hiding the row does not.
+                    if (showBrightnessRow) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            Row(
+                                Modifier.playerCapsule()
+                                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    "${((playerBrightness ?: carBrightness) * 100).roundToInt()}%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Slider(
+                                    value = playerBrightness ?: carBrightness,
+                                    onValueChange = {
+                                        touchControls()
+                                        playerBrightness = it.coerceIn(0.05f, 1f)
+                                    },
+                                    valueRange = 0.05f..1f,
+                                    modifier = Modifier.width(220.dp).height(48.dp),
+                                )
+                                PlayerTextButton(
+                                    "Reset", selected = playerBrightness == null,
+                                    onClick = { touchControls(); playerBrightness = null },
+                                )
+                            }
+                        }
+                    }
                     Row(verticalAlignment = Alignment.Bottom) {
                         Column(Modifier.weight(1f).padding(end = 12.dp)) {
                             val host = remember(currentIndex) {
@@ -1156,6 +1298,20 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                                     size = 56.dp, iconSize = 28.dp, active = showTextRow || !subtitlesOff,
                                 )
                             }
+                            // Player-local brightness (r22): sits with the
+                            // subtitles/quality buttons; tapping it FIRST
+                            // reveals the slider row above, nothing shows
+                            // before that. This capsule exists only in the
+                            // video branch, so in the audio-only driving
+                            // branch the button is hidden outright (the
+                            // whole capsule is absent there) — it is never
+                            // a visible-but-dead button.
+                            PlayerIconButton(
+                                Icons.Filled.BrightnessMedium, "Brightness",
+                                { openRow("brightness") },
+                                size = 56.dp, iconSize = 28.dp,
+                                active = showBrightnessRow || playerBrightness != null,
+                            )
                             if (!listenMode) {
                                 PlayerIconButton(
                                     Icons.Filled.AspectRatio, "Video scaling",
@@ -1194,6 +1350,84 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             onDriving = { gateOpen = false },
             onPassenger = { passengerAllowed = true; gateOpen = false },
         )
+    }
+    // Resume prompt (r22): player frost chrome only, same dim + capsule
+    // language as the video passenger gate above. Drawn after the gate so
+    // the gate stays on top when both are pending; the user answers the
+    // gate first, then this. Modal: the scrim swallows touches, so the
+    // video cannot start behind an unanswered prompt. Closing the player
+    // without choosing leaves the stored position untouched (the dispose
+    // save at position 0 is a no-op), so the prompt returns next open.
+    if (resumePromptMs != null && error == null) {
+        val candidate = resumePromptMs!!
+        val openingUrl = urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)).clickable(
+                    indication = null,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    onClick = {},
+                ),
+            )
+            Box(
+                Modifier.fillMaxWidth().padding(16.dp)
+                    .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(28.dp)),
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "Resume this video?",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "You left off at ${formatTime(candidate)}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Box(
+                        Modifier.fillMaxWidth().height(52.dp)
+                            .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .clickable(onClick = {
+                                resumePromptMs = null
+                                player.seekTo(candidate)
+                                player.play()
+                                touchControls()
+                            }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "Resume from ${formatTime(candidate)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                    Box(
+                        Modifier.fillMaxWidth().height(52.dp)
+                            .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .clickable(onClick = {
+                                resumePromptMs = null
+                                if (openingUrl != null) PlayerResume.clear(context, openingUrl)
+                                player.seekTo(0)
+                                player.play()
+                                touchControls()
+                            }),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            "Restart",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

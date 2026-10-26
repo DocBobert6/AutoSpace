@@ -369,8 +369,16 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // through to the screen below and audio is untouched. The sheet is
                 // drawn after it, so it stays undimmed and tappable.
                 val brightness by CarSettings.brightness.collectAsState()
-                if (brightness < 1f) {
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - brightness)))
+                // Player-local brightness (r22): while the player holds an
+                // override it REPLACES the global dim (same overlay-alpha
+                // mechanism, never stacked, never a window attribute); the
+                // global setting is untouched and returns when the player
+                // leaves. See PlayerBrightnessOverride in
+                // VideoPlayerScreen.kt.
+                val playerBrightness by PlayerBrightnessOverride.override.collectAsState()
+                val effectiveBrightness = playerBrightness ?: brightness
+                if (effectiveBrightness < 1f) {
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - effectiveBrightness)))
                 }
                 if (BrightnessSheetVisibility.state.value) BrightnessSheet()
                 }
