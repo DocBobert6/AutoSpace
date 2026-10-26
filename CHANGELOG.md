@@ -1,5 +1,30 @@
 # AutoSpace changelog
 
+## 0.4.0-alpha (2026-10-26) — first prerelease
+- First prerelease (not a stable release): version 0.4.0-alpha,
+  versionCode 11, release package `app.autospace`, signed with the fork's
+  own permanent release key, kept out of the repo. The release signing
+  fingerprint is published with the first beta, not here.
+- In-app updates active: Stable, Beta, and Alpha channels restored; the
+  channel default follows the build stage (alpha builds default to
+  Alpha; a saved channel always wins).
+- Onboarding covers the new ground: an Updates page (channel state,
+  auto-check, install permission), an AI answers page (Groq default,
+  Gemini experimental, active provider's privacy line), both
+  phone-microphone toggles on the Car microphone page, and an
+  Experimental page last (floating media, home widgets, vehicle data as
+  its own switch at the bottom; no master switch).
+- AI overlay cleanup: the spoken and displayed "From AI:" prefix is gone
+  entirely; every AI answer still carries the small AI badge, and
+  grounded answers show a provider glyph instead of a source line (globe
+  for Groq, Google G for Gemini), never spoken.
+- Install note: uninstall any debug build first (different package and
+  key); fresh app data — settings, voice shortcuts, AI key, and learned
+  words reset.
+- The 0.3.01-alpha debug line is ended and superseded by this
+  prerelease; the first full public release after the alpha is still
+  planned as a beta.
+
 ## Unreleased (Rename)
 - Provisional name Frostslip replaced by AutoSpace (Robert, 2026-10-24) before any
   code was pushed: repo DocBobert6/AutoSpace, label AutoSpace, applicationId
@@ -214,6 +239,9 @@ in the local worktree; it can be added later by a git push from a local clone.
   beta labelling in the release notes, prerelease marking on the GitHub
   release, no stable-release claim. Debug builds keep their current numbering
   (0.3.01-alpha, versionCode 10) until the beta release itself.
+  CORRECTION (2026-10-26): the alpha prerelease came first — numbering
+  moved to 0.4.0-alpha, versionCode 11 for the alpha; the first full
+  public release is still planned as a beta.
 - Release prep done here: changelog for Phases 1–4, a beta release checklist
   kept with the build log, and the two
   fork-specific user-visible strings updated (accessibility touch-relay
@@ -342,23 +370,24 @@ in the local worktree; it can be added later by a git push from a local clone.
   the app cannot verify the tapper is actually a passenger on a
   driver-visible screen — the gate is an honesty gate.
 
-## Unreleased (Current — 0.3.01-alpha, versionCode 10)
+## Unreleased (Debug line through r40 — superseded by 0.4.0-alpha)
 
 The in-app What's New page (`gearslip/src/main/java/app/autospace/Changelog.kt`,
-rewritten 2026-10-25) is the short driver-facing list. In full, the current
-debug line ships:
+rewritten 2026-10-25) is the short driver-facing list. In full, the debug
+line shipped (through r40, before the 0.4.0-alpha prerelease):
 
-- Frost / Material / plain themes (Frost, Flat, Tactile, Keycap styles;
-  Follow system, Plain Light, Plain Dark, Material You, Material You Light,
-  Material You Dark; pure-black OLED dark mode); flat alphabetical launcher
-  with pinned row, drag-to-reorder, and icon / tile / UI-size sliders;
-  quick brightness (nav bar or dashboard, at most 2 taps).
+- Button styles Frost, Flat, Tactile, Edge, Pitlane; color schemes
+  Neutral, Material You, Night, Pitlane, Circuit, Heritage; independent
+  Light / Dark / System appearance mode; Regular / Pitch dark surfaces
+  (Pitch is pure black); flat alphabetical launcher with pinned row,
+  drag-to-reorder, and icon / tile / UI-size sliders; quick brightness
+  (nav bar or dashboard, at most 2 taps).
 - Browser: no-AI DuckDuckGo default, floating frost bar, tabs with switcher
   and pill-swipe, saved pages and history ("Saved & history"), strict popup
-  blocker with per-site settings, media finder with its own Media3 player,
-  text zoom, find-in-page, open-on-phone handoff, immersive mode and
-  scroll-hiding bar; pages are never themed. Passenger gate on entry while
-  moving (allowance lasts the browser session).
+  blocker, desktop-site toggle with per-host memory, media finder with its
+  own Media3 player, text zoom, find-in-page, open-on-phone handoff,
+  immersive mode and scroll-hiding bar; pages are never themed. Passenger
+  gate on entry while moving (allowance lasts the browser session).
 - Video player (Notscape-style chrome, theme-independent): speed, sleep
   timer, audio tracks, subtitles with a car Settings style picker, quality
   choices, pinch zoom and pan, stall watchdog, hardware skip buttons that
@@ -366,10 +395,14 @@ debug line ships:
 - Screen sharing: Fit default, Fill one tap away, never Stretch; GL
   player-style chrome (glyph buttons), pinch 1x–3x, pan only while zoomed,
   deliberate-tap exit, car Back exit, phone Stop.
-- "Maps (mirrored)" tile (only when Maps is installed); per-vehicle
-  resolutions 720p / 1080p / 2K / 4K resolved only against configs the head
-  unit offers, 2K/4K wired-first with 1080p fallback on encoder failure or
-  black screen.
+- Navigation default Vela Maps (templated); "Maps (mirrored)" tile also
+  present (only when Maps is installed; its removal is planned, not done);
+  per-vehicle resolutions 720p / 1080p / 2K / 4K resolved only against
+  configs the head unit offers, 2K/4K wired-first with 1080p fallback on
+  encoder failure or black screen.
+- Experimental (off by default): floating media card over the map and
+  home widget column (weather, notifications digest, next event); the
+  widget column hides while a nav template panel or turn card shows.
 - Spoken voice: Kokoro-82M entirely on the phone (all 53 voices, American
   Adam default) with Piper fallback; downloads with resume and exact-size
   validation; load-time refusal of bad sets; playback drain fix; silent
@@ -377,13 +410,16 @@ debug line ships:
   words, Parakeet TDT 0.6B v2 final words by default (Canary stays
   available); "Hey AutoSpace" / "Hey Gearslip" hotword (off by default,
   phone-mic option, split-spelling matching).
-- Assistant (keyword matcher, not a language model): navigation, media,
-  calls (answer/decline in the screening window; active-call hang-up needs
-  the dialer), messages (read; reply only to existing threads), brightness
-  and volume, stop navigation, ETA/distance, repeat last direction,
-  "say that again" for the last reply, guarded synonym matching, emergency
-  calls with a spoken confirmation guard, local timer, call-speaker toggle
-  (off by default, next call onward, Bluetooth may still win).
+- Assistant: local keyword matching plus custom voice keywords, and an
+  opt-in AI assistant (Groq default, Gemini experimental; grounded web
+  search, confirmations before actions, emergency never via AI):
+  navigation, media, calls (answer/decline in the screening window;
+  active-call hang-up needs the dialer), messages (read; reply only to
+  existing threads), brightness and volume, stop navigation, ETA/distance,
+  repeat last direction, "say that again" for the last reply, guarded
+  synonym matching, emergency calls with a spoken confirmation guard,
+  local timer, call-speaker toggle (off by default, next call onward,
+  Bluetooth may still win).
 - Perfection round (2026-10-25): assistant-reply voice crash fixed via
   model validation; crash reporter writing to Downloads/AutoSpace;
   hotword phone-mic toggle and broken-car-mic silence fallback; mirror

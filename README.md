@@ -1,8 +1,9 @@
 # AutoSpace
 
 AutoSpace is an Android Auto alternative for the phone: a frosted-glass
-Material 3 interface, a no-AI browser with its own media player, mirrored
-Google Maps, on-device spoken voice, and custom screen resolutions.
+Material 3 interface, a no-AI browser with its own media player, Vela
+navigation, on-device spoken voice, an opt-in AI assistant, and custom
+screen resolutions.
 
 AutoSpace is a fork of [Gearslip](https://github.com/twinksoftware/Gearslip)
 by Twink Software LLC, rebuilt around that interface and feature set. It is
@@ -26,9 +27,10 @@ that mirrors the phone.
 
 ## Features
 
-- **Car interface.** Frost, Flat, Tactile, and Keycap control styles, with
-  themes for Follow system, Plain Light, Plain Dark, Material You, Material
-  You Light, and Material You Dark — including a pure-black OLED dark mode.
+- **Car interface.** Frost, Flat, Tactile, Edge, and Pitlane control styles,
+  with color schemes Neutral, Material You, Night, Pitlane, Circuit, and
+  Heritage, an independent Light / Dark / System appearance mode, and
+  Regular / Pitch dark surfaces (Pitch is pure black).
   A flat alphabetical launcher with a pinned row, drag-to-reorder, and
   sliders for icon, tile, and overall size. Quick brightness is two taps
   away, from the nav bar or the dashboard, and dims the whole car screen.
@@ -38,7 +40,7 @@ that mirrors the phone.
   the phone's speaker for calls; the car's Bluetooth route may still win,
   because call routing belongs to the system dialer.
 - **Navigation.** AutoSpace hosts real Car App Library map apps on the car
-  screen. Vela Maps runs, with rough edges.
+  screen. Vela Maps is the default navigation app, with rough edges.
 - **Music.** Browse, play, and queue tracks from a car-enabled media app,
   with a Now Playing view, an Up Next queue, and lyrics. Type a search, and
   apps that accept one play the best match. Car skip buttons seek within
@@ -64,11 +66,12 @@ that mirrors the phone.
   a player-style chrome row (glyph buttons, no labels) auto-hides.
   Exits never trap you: the car's Back button, the on-screen exit button,
   or the phone's Stop. Touch relay is single-finger while mirroring.
-- **Mirrored Maps.** A "Maps (mirrored)" tile mirrors stock Google Maps
-  from the phone to the car, with touch. It appears only when Maps is
-  installed. This is mirroring, not a native car app: Google Maps only
-  accepts Google's own Android Auto as its car host, so native Maps
-  support is not proven. No patched or re-signed copy of Maps is used.
+- **Mirrored Maps (also present, not the default).** A "Maps (mirrored)"
+  tile mirrors stock Google Maps from the phone to the car, with touch.
+  It appears only when Maps is installed. This is mirroring, not a native
+  car app: Google Maps only accepts Google's own Android Auto as its car
+  host, so native Maps support is not proven. No patched or re-signed
+  copy of Maps is used.
 - **Resolutions.** Per-vehicle resolution (Auto / 720p / 1080p / 2K / 4K),
   resolved only against configurations the head unit actually offers —
   nearest offered size at or below, never an invented one. 2K/4K are
@@ -87,14 +90,26 @@ that mirrors the phone.
   Parakeet TDT 0.6B v2 by default (Canary stays available). A "Hey
   AutoSpace" / "Hey Gearslip" hotword (off by default) listens during a
   car session, with an option to listen on the phone microphone.
-- **Voice commands.** The assistant is a keyword matcher, not a language
-  model: navigate, play music, open apps, read and reply to messages,
-  change brightness and volume, stop navigation, ETA and distance,
-  repeat the last direction, "say that again" for the last reply, and
-  more, including guarded synonym matching. Two honest limits, stated in
-  the replies themselves: ending an active call needs the dialer, and a
-  new message can only be sent by replying to a thread that already
-  exists. Emergency calls always ask for a spoken confirmation first.
+- **Voice commands.** Local commands run on keyword matching (plus your
+  own custom voice keywords): navigate, play music, open apps, read and
+  reply to messages, change brightness and volume, stop navigation, ETA
+  and distance, repeat the last direction, "say that again" for the last
+  reply, and more, including guarded synonym matching. Two honest limits,
+  stated in the replies themselves: ending an active call needs the
+  dialer, and a new message can only be sent by replying to a thread that
+  already exists. Emergency calls always ask for a spoken confirmation
+  first.
+- **AI assistant (opt-in, bring your own key).** When local commands
+  cannot answer, an AI assistant can: Groq is the default provider
+  (`openai/gpt-oss-20b`), Gemini stays as an experimental provider.
+  Answers are short, grounded in web search when the question needs it,
+  and shown with a small AI badge plus a provider glyph (globe for Groq,
+  Google G for Gemini) — never a spoken "From AI:" prefix. Actions the AI
+  suggests (navigate, open an app, search, call, reply, media, volume,
+  brightness, toggles, timers, readouts) are confirmed with you before
+  they run, and emergency calls never go through the AI. The key is
+  stored on the phone in the Android Keystore and never leaves it except
+  to the provider you chose.
 - **Messages and notifications.** New messages appear as a small card on
   the car screen. AutoSpace reads each one aloud, and you reply by voice
   or with a quick reply. Only messages, missed calls, alarms, and
@@ -103,6 +118,11 @@ that mirrors the phone.
   from any cloud account) next to the current and coming weather.
 - **Car controls.** Steering wheel buttons, control knobs, and D-pads
   all work.
+- **Experimental (off by default).** A floating media card over the full
+  map (bottom passenger side, dismissible for the session) and a home
+  widget column (weather, notifications digest, next event) on the driver
+  side. The widget column hides while a navigation panel or turn card is
+  showing, and returns on its own when it clears.
 - **Car preview and couch testing.** The phone app previews the car UI,
   with its own settings page: screen size, density, preview-only theme,
   touch markers, simulated driving, and a test mode that fakes a car
@@ -135,18 +155,24 @@ that mirrors the phone.
   ordinary app can pass another app's audio along.
 - **AutoSpace needs no adb, root, or Shizuku.** Every feature relies on an
   ordinary Android permission or an on-device consent dialog.
-- **No release exists yet.** The first release will be a beta, not a
-  stable release. Until then there is no release channel: debug builds
-  ship only as GitHub Actions artifacts (see below), and the in-app
-  updater never auto-checks a debug build — it checks only when you tap
-  Check now, and finds nothing until a release is published.
+- **First prerelease published: 0.4.0-alpha.** The first public release
+  after the alpha will be a beta, not a stable release. In-app updates
+  are active: Stable, Beta, and Alpha channels, with the channel default
+  following the build stage (alpha builds default to Alpha; a channel
+  you save yourself always wins). Release builds ship as GitHub releases
+  (see below); debug builds still ship only as GitHub Actions artifacts,
+  and the in-app updater never auto-checks a debug build — it checks only
+  when you tap Check now.
 
 ## Verify your download
 
-No release exists yet, so there is no release fingerprint to verify
-against. The block that used to sit here (a fingerprint for
-`app.autospace`) did **not** match any signing key used by this fork and
-has been removed, not carried forward.
+The first prerelease (0.4.0-alpha) is published on the
+[releases page](https://github.com/DocBobert6/AutoSpace/releases), but
+its signing fingerprint is not published here yet: per the fork's plan
+it is published with the first beta release, under its own key. The
+block that used to sit here (a fingerprint for `app.autospace`) did
+**not** match any signing key used by this fork and has been removed,
+not carried forward.
 
 Debug builds are signed with the committed debug key in
 `gearslip/debug.keystore` (standard debug credentials — a shared debug
@@ -172,14 +198,17 @@ the NDK, CMake, and the speech library on the first build.
 CI (`.github/workflows/debug.yml`, on every push to `main` and every pull
 request) builds the same debug APK and publishes it as the
 `AutoSpace-debug-apk` artifact. Debug builds are signed with the committed
-`gearslip/debug.keystore`.
+`gearslip/debug.keystore`. Tagged `v*` pushes run
+`.github/workflows/release.yml`, which builds the signed release APK and
+publishes it as a prerelease.
 
 A release build needs a signing key. Copy `keystore.properties.example`
 to `keystore.properties`, fill in your own values, and run
 `./gradlew :gearslip:assembleRelease`. Git ignores both the properties
 file and the keystore. Never commit a release key.
 
-Current debug line: 0.3.01-alpha, versionCode 10.
+Current line: 0.4.0-alpha, versionCode 11 (release package
+`app.autospace`; debug builds install as `app.autospace.dev`).
 
 ## How AutoSpace talks to cars
 
