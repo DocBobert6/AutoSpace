@@ -495,10 +495,13 @@ private fun CoverArt(art: android.graphics.Bitmap?, modifier: Modifier) {
 
 /**
  * Everything about the track and every control for it, read top to bottom: title and artist,
- * the seek bar, the transport, then like, shuffle and repeat as big icon-only buttons.
+ * the centred transport cluster, like, shuffle and repeat as big icon-only buttons, then the
+ * waveform scrubber last at the bottom (r51 hybrid: the controls column mirrors the video
+ * player's bottom block in layout only — styling stays music's own).
  */
 @Composable
 private fun NowPlayingControls(now: NowPlaying, media: CarMedia, modifier: Modifier) {
+    val accent = rememberPlayerAccent(now)
     Column(
         modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
@@ -516,18 +519,20 @@ private fun NowPlayingControls(now: NowPlaying, media: CarMedia, modifier: Modif
             )
             now.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, maxLines = 2) }
         }
-        PlayerProgress(now, media, Modifier.fillMaxWidth())
-        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth())
+        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true, morphPlay = true, accent = accent)
         PlayModeRow(now, media, size = 56.dp, modifier = Modifier.fillMaxWidth(), maxOther = 2)
+        PlayerProgress(now, media, Modifier.fillMaxWidth(), waveform = true, accent = accent)
     }
 }
 
 /**
  * The player beside the browse list, the queue and the lyrics: no art, which the list needs the
- * room for, just what's playing, the seek bar and the controls.
+ * room for, just what's playing, the transport cluster, the mode row, and the waveform
+ * scrubber last (same r51 hybrid order as the full player).
  */
 @Composable
 private fun CompactPlayer(now: NowPlaying, media: CarMedia, modifier: Modifier) {
+    val accent = rememberPlayerAccent(now)
     Column(
         modifier.verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -544,9 +549,9 @@ private fun CompactPlayer(now: NowPlaying, media: CarMedia, modifier: Modifier) 
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        PlayerProgress(now, media, Modifier.fillMaxWidth())
-        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth())
+        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true, morphPlay = true, accent = accent)
         PlayModeRow(now, media, size = 56.dp, modifier = Modifier.fillMaxWidth())
+        PlayerProgress(now, media, Modifier.fillMaxWidth(), waveform = true, accent = accent)
     }
 }
 

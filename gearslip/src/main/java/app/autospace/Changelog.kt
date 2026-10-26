@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            19, "0.4.8-alpha",
+            listOf(
+                "Music player redesigned toward the video player's layout: Previous, 10-second skip back and forward, play, and next in one centred cluster, with the mode row beneath and the seek bar last at the bottom. The seek bar is now waveform-styled bars, and the progress tint and play button pick up the album art's color when the cover has one, falling back to the scheme color when it does not. The play button also morphs shape when play and pause swap. No swipe between sources, and the floating card is unchanged.",
+            ),
+        ),
+        Release(
             18, "0.4.7-alpha",
             listOf(
                 "Glide typing on the car keyboard: trace a word across the keys without lifting and it inserts on lift when the trace is confident, or offers candidates on the strip when it is weak. A thin trace line follows your finger (its own switch), and the strip previews the live best guess while you trace. Tap typing, flick and long-press hints all work exactly as before below three keys.",
