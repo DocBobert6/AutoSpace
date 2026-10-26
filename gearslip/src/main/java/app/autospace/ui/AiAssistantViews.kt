@@ -159,13 +159,13 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
         SettingsRow(
             "Privacy notice",
             subtitle = "What is sent to Google, and what never is",
-            Modifier.clickable { showNotice = true },
+            modifier = Modifier.clickable { showNotice = true },
         )
         SettingsDivider()
         SettingsRow(
             "Assistant preview",
             subtitle = "Test the assistant without a car session — routing traces and a test suite",
-            Modifier.clickable { onOpenPreview() },
+            modifier = Modifier.clickable { onOpenPreview() },
         )
     }
 

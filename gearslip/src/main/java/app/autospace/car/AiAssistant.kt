@@ -114,39 +114,39 @@ object AiAssistant {
     }
 
     /** True for actions that only read state (no state change, no communication, no navigation). */
-    fun isReadOnly(action: AiAction): Boolean = action is Readout
+    fun isReadOnly(action: AiAction): Boolean = action is AiAction.Readout
 
     /**
      * The confirmation question spoken (and shown) for a proposal, with the concrete target
      * read back in full. Message text is never summarized: the user confirms the exact words.
      */
     fun confirmationText(action: AiAction): String = when (action) {
-        is Navigate -> "Navigate to ${action.destination}?"
-        is OpenApp -> "Open ${action.appLabel}?"
-        is BrowserSearch -> "Search for ${action.term}?"
-        is Call -> "Call ${action.contactName}?"
-        is ReplyMessage -> "Send this to ${action.contactName}: '${action.text}'?"
-        is Media -> when (action.command) {
+        is AiAction.Navigate -> "Navigate to ${action.destination}?"
+        is AiAction.OpenApp -> "Open ${action.appLabel}?"
+        is AiAction.BrowserSearch -> "Search for ${action.term}?"
+        is AiAction.Call -> "Call ${action.contactName}?"
+        is AiAction.ReplyMessage -> "Send this to ${action.contactName}: '${action.text}'?"
+        is AiAction.Media -> when (action.command) {
             "play" -> "Play the music?"
             "pause" -> "Pause the music?"
             "next" -> "Skip to the next track?"
             else -> "Play the previous track?"
         }
-        is Volume -> when (action.mode) {
+        is AiAction.Volume -> when (action.mode) {
             "up" -> "Turn the volume up?"
             "down" -> "Turn the volume down?"
             "mute" -> "Mute the music?"
             else -> "Unmute the music?"
         }
-        is Brightness -> if (action.percent != null) "Set brightness to ${action.percent} percent?" else "Turn brightness up?"
-        is BrightnessDirection -> "Turn brightness ${if (action.direction == "up") "up" else "down"}?"
-        is Toggle -> when (action.setting) {
+        is AiAction.Brightness -> if (action.percent != null) "Set brightness to ${action.percent} percent?" else "Turn brightness up?"
+        is AiAction.BrightnessDirection -> "Turn brightness ${if (action.direction == "up") "up" else "down"}?"
+        is AiAction.Toggle -> when (action.setting) {
             "speak_directions" -> "Turn spoken directions ${if (action.on) "on" else "off"}?"
             "phone_mic" -> "Use the ${if (action.on) "phone" else "car"} microphone for voice commands?"
             else -> if (action.on) "Start screen sharing?" else "Stop screen sharing?"
         }
-        is Timer -> if (action.minutes == 60) "Set a timer for 1 hour?" else "Set a timer for ${action.minutes} minutes?"
-        is Readout -> when (action.what) {
+        is AiAction.Timer -> if (action.minutes == 60) "Set a timer for 1 hour?" else "Set a timer for ${action.minutes} minutes?"
+        is AiAction.Readout -> when (action.what) {
             "battery" -> "Check your phone battery?"
             "eta" -> "Check your arrival estimate?"
             else -> "Read your messages?"
@@ -155,18 +155,18 @@ object AiAssistant {
 
     /** The "Would do:" line the phone preview shows for a proposal (dry run — never executed). */
     fun wouldDoText(action: AiAction): String = when (action) {
-        is Navigate -> "Would do: navigate to ${action.destination}"
-        is OpenApp -> "Would do: open ${action.appLabel}"
-        is BrowserSearch -> "Would do: search for ${action.term}"
-        is Call -> "Would do: call ${action.contactName}"
-        is ReplyMessage -> "Would do: send message to ${action.contactName}: '${action.text}'"
-        is Media -> "Would do: media ${action.command}"
-        is Volume -> "Would do: volume ${action.mode}"
-        is Brightness -> "Would do: set brightness to ${action.percent} percent"
-        is BrightnessDirection -> "Would do: brightness ${action.direction}"
-        is Toggle -> "Would do: turn ${action.setting} ${if (action.on) "on" else "off"}"
-        is Timer -> "Would do: set a timer for ${action.minutes} minutes"
-        is Readout -> "Would do: read ${action.what}"
+        is AiAction.Navigate -> "Would do: navigate to ${action.destination}"
+        is AiAction.OpenApp -> "Would do: open ${action.appLabel}"
+        is AiAction.BrowserSearch -> "Would do: search for ${action.term}"
+        is AiAction.Call -> "Would do: call ${action.contactName}"
+        is AiAction.ReplyMessage -> "Would do: send message to ${action.contactName}: '${action.text}'"
+        is AiAction.Media -> "Would do: media ${action.command}"
+        is AiAction.Volume -> "Would do: volume ${action.mode}"
+        is AiAction.Brightness -> "Would do: set brightness to ${action.percent} percent"
+        is AiAction.BrightnessDirection -> "Would do: brightness ${action.direction}"
+        is AiAction.Toggle -> "Would do: turn ${action.setting} ${if (action.on) "on" else "off"}"
+        is AiAction.Timer -> "Would do: set a timer for ${action.minutes} minutes"
+        is AiAction.Readout -> "Would do: read ${action.what}"
     }
 
     // --- Model reply parsing ---
