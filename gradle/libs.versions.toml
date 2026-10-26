@@ -17,7 +17,7 @@ okhttp = "5.4.0"
 kotlinxSerializationJson = "1.11.0"
 ossLicenses = "17.5.1"
 webkit = "1.16.0"
-androidxMedia = "1.6.0"
+androidxMedia = "1.8.0"
 media3 = "1.11.1"
 
 [libraries]
