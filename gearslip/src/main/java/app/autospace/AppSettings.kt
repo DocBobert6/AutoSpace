@@ -13,6 +13,10 @@ object AppSettings {
     private const val KEY_SEEN_PERMISSIONS_SETUP = "seen_permissions_setup"
     private const val KEY_GEARSLIP_ENABLED = "gearslip_enabled"
 
+    /** r30: learned words typed on the car keyboard (newline-joined, lowercase). */
+    const val KEY_KEYBOARD_LEARNED_WORDS = "car_keyboard_learned_words"
+    private const val KEY_KEYBOARD_SUGGESTIONS = "car_keyboard_suggestions"
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -45,6 +49,14 @@ object AppSettings {
 
     fun setSeenPermissionsSetup(context: Context) {
         prefs(context).edit().putBoolean(KEY_SEEN_PERMISSIONS_SETUP, true).apply()
+    }
+
+    /** r30: suggestion strip on the car keyboard. On by default. */
+    fun keyboardSuggestionsEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_KEYBOARD_SUGGESTIONS, true)
+
+    fun setKeyboardSuggestionsEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_KEYBOARD_SUGGESTIONS, value).apply()
     }
 
     /**

@@ -1,6 +1,8 @@
 package app.autospace.car
 
 import app.autospace.car.theme.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.layout.Arrangement
@@ -8,13 +10,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,13 +34,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.CompositionLocalProvider
@@ -44,10 +55,12 @@ import androidx.compose.ui.unit.coerceIn
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
+import app.autospace.AppSettings
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Whether a [CarKeyboard] is on screen right now, so [CarUi] can give it the row of height the
@@ -108,6 +121,19 @@ object CarKeyboardVisibility {
  * [onDismiss] is null wherever there's no keyboard-shown state independent of the screen itself
  * (a search template, sign-in) - there, the header's own back action is the only way out and no
  * dismiss button is drawn.
+ *
+ * r30 (Gboard look, inside the style system): a 44dp suggestion strip row on top of the keys
+ * (down-arrow dismiss at its left end where Gboard puts its hide-keyboard chevron, up to 3
+ * prefix candidates in the middle, copy/paste/settings-gear toolbar on the right), with the
+ * strip's candidates drawn from learned words (on-device, never logged) plus a bundled
+ * frequency wordlist. Strip off collapses the row to dismiss + gear only, so settings stay
+ * reachable (a strip-off state with no gear would be a one-way door); strip off also returns
+ * dismiss to the bottom row as a down-arrow in the same slot. The gear opens an inline
+ * settings panel in place of the keys (no separate Dialog window, so it behaves identically
+ * on Presentation displays) with strip on/off, clear-learned-words, and a pointer to the UI
+ * size setting. Copy = whole field, paste = append at the end (there is no selection state
+ * to do more with). Keys gain a crisp 1dp bottom edge (the Gboard keycap read) inside their
+ * own clipped shape, and key heights round to whole dp — see the sharpness note at [keyHeight].
  */
 @Composable
 fun CarKeyboard(
@@ -140,6 +166,45 @@ fun CarKeyboard(
     val rows = if (symbols) SYMBOL_ROWS else LETTER_ROWS
     val keyHeight = keyHeight(LocalConfiguration.current.screenHeightDp)
 
+    // r30: strip state, word learning, and the inline settings panel. The
+    // boundary watch learns completed words from BOTH car keys and phone
+    // typing, since both flow through onTextChange into [text].
+    val context = LocalContext.current
+    var stripEnabled by remember { mutableStateOf(KeyboardSuggestions.isStripEnabled(context)) }
+    var showKeyboardSettings by remember { mutableStateOf(false) }
+    var learned by remember { mutableStateOf(KeyboardSuggestions.learnedWords(context)) }
+    var clearedNotice by remember { mutableStateOf(false) }
+    val wordlist = remember { KeyboardSuggestions.loadWordlist(context) }
+    var prevText by remember { mutableStateOf(text) }
+    LaunchedEffect(text) {
+        KeyboardSuggestions.completedWord(prevText, text)?.let { word ->
+            if (KeyboardSuggestions.learnWord(context, word)) {
+                learned = KeyboardSuggestions.learnedWords(context)
+            }
+        }
+        prevText = text
+    }
+    // Submit usually ends a word with no boundary character, so learn it here.
+    val submitWithLearn = {
+        KeyboardSuggestions.currentWord(text).takeIf { it.length >= 2 }?.let { word ->
+            if (KeyboardSuggestions.learnWord(context, word.lowercase())) {
+                learned = KeyboardSuggestions.learnedWords(context)
+            }
+        }
+        onSubmit()
+    }
+    val word = KeyboardSuggestions.currentWord(text)
+    val suggestions = if (stripEnabled && !showKeyboardSettings) {
+        KeyboardSuggestions.candidates(word, learned, wordlist)
+    } else {
+        emptyList()
+    }
+    val clipboard = remember {
+        runCatching {
+            context.getSystemService(android.content.ClipboardManager::class.java)
+        }.getOrNull()
+    }
+
     CompositionLocalProvider(LocalKeyHeight provides keyHeight) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -149,6 +214,57 @@ fun CarKeyboard(
                 Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // r30: the strip row always leads (full row when the strip is
+                // on, dismiss + gear only when it is off, so settings stay
+                // reachable); the settings panel replaces the keys below it.
+                if (stripEnabled) {
+                    SuggestionStripRow(
+                        word = word,
+                        suggestions = suggestions,
+                        title = if (showKeyboardSettings) "Keyboard settings" else null,
+                        onDismiss = onDismiss,
+                        onCandidate = { candidate ->
+                            onTextChange(KeyboardSuggestions.replaceCurrentWord(text, candidate))
+                        },
+                        onCopy = {
+                            if (text.isNotEmpty()) {
+                                runCatching {
+                                    clipboard?.setPrimaryClip(
+                                        android.content.ClipData.newPlainText("Text", text)
+                                    )
+                                }
+                            }
+                        },
+                        onPaste = {
+                            val clip = runCatching {
+                                clipboard?.primaryClip?.getItemAt(0)?.text?.toString()
+                            }.getOrNull()
+                            onTextChange(KeyboardSuggestions.pasteResult(text, clip))
+                        },
+                        onSettings = { showKeyboardSettings = !showKeyboardSettings },
+                    )
+                } else {
+                    MinimalStripRow(
+                        onDismiss = onDismiss,
+                        onSettings = { showKeyboardSettings = !showKeyboardSettings },
+                    )
+                }
+                if (showKeyboardSettings) {
+                    KeyboardSettingsPanel(
+                        stripEnabled = stripEnabled,
+                        onStripChange = { enabled ->
+                            KeyboardSuggestions.setStripEnabled(context, enabled)
+                            stripEnabled = enabled
+                        },
+                        clearedNotice = clearedNotice,
+                        onClearLearned = {
+                            KeyboardSuggestions.clearLearnedWords(context)
+                            learned = emptyList()
+                            clearedNotice = true
+                        },
+                        onDone = { showKeyboardSettings = false },
+                    )
+                } else {
                 rows.dropLast(1).forEach { row ->
                     Row(
                         Modifier.fillMaxWidth(),
@@ -203,15 +319,17 @@ fun CarKeyboard(
                 }
 
                 // Control row: Gboard's bottom row — symbols toggle, comma,
-                // wide space, period, then dismiss (when offered) and submit
-                // in the bottom-right corner, where a thumb expects it. Comma
-                // and period are letters-mode only (the symbols layer already
-                // carries them) and, like space, do not consume the shift.
-                // Gboard proportions (measured 2026-10-25): symbols ~1.4,
-                // comma 1, space ~3.7, period 1, dismiss 1 (the emoji slot,
-                // without an emoji key), submit 1.6. No backspace here: it
-                // stays with the letters above, not next to the key most
-                // likely to be hit right after it by mistake.
+                // wide space, period, then submit in the bottom-right corner,
+                // where a thumb expects it. Comma and period are letters-mode
+                // only (the symbols layer already carries them) and, like
+                // space, do not consume the shift. Gboard proportions
+                // (measured 2026-10-25): symbols ~1.4, comma 1, space ~3.7,
+                // period 1, submit 1.6. No backspace here: it stays with the
+                // letters above, not next to the key most likely to be hit
+                // right after it by mistake. r30: dismiss left this row for
+                // the strip (or, with the strip off, returns here as a
+                // down-arrow in the same slot); the freed weight widens the
+                // space bar by redistribution.
                 Row(
                     Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -224,11 +342,12 @@ fun CarKeyboard(
                     if (!symbols) {
                         Key(".", Modifier.weight(1f)) { onTextChange("$text.") }
                     }
-                    if (onDismiss != null) {
+                    if (!stripEnabled && onDismiss != null) {
                         DismissKey(onDismiss, Modifier.weight(1f))
                     }
-                    SubmitKey(Modifier.weight(1.6f), submitIcon, submitImage, onSubmit)
+                    SubmitKey(Modifier.weight(1.6f), submitIcon, submitImage, submitWithLearn)
                 }
+                } // !showKeyboardSettings
             }
         }
     }
@@ -280,6 +399,9 @@ private fun Key(
                 )
             }
         }
+        // r30: the Gboard keycap read — a crisp bottom edge inside the key's
+        // own clipped shape (see [KeyEdge]).
+        KeyEdge(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
     }
 }
 
@@ -411,6 +533,8 @@ private fun LetterKey(
                 )
             }
         }
+        // r30: the Gboard keycap read (see [KeyEdge]).
+        KeyEdge(colors.container)
     }
 }
 
@@ -481,8 +605,10 @@ private fun DismissKey(onClick: () -> Unit, modifier: Modifier = Modifier) {
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.Close, contentDescription = "Hide keyboard")
+            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Hide keyboard")
         }
+        // r30: down-arrow (was X) + the Gboard keycap read (see [KeyEdge]).
+        KeyEdge(MaterialTheme.colorScheme.surfaceContainerHighest)
     }
 }
 
@@ -504,14 +630,218 @@ private fun SubmitKey(modifier: Modifier, search: Boolean, image: ImageVector?, 
                 contentDescription = "Submit",
             )
         }
+        // r30: the Gboard keycap read (see [KeyEdge]); submit stays primary by construction.
+        KeyEdge(MaterialTheme.colorScheme.primary)
     }
+}
+
+/**
+ * r30: the suggestion strip row — [onDismiss] chevron at the left end (Gboard's
+ * hide-keyboard place), candidates in the middle, copy/paste/settings toolbar on
+ * the right. All buttons are 44dp targets; the row itself is 44dp tall. When
+ * [title] is set (settings panel open) it replaces the candidates.
+ */
+@Composable
+private fun SuggestionStripRow(
+    word: String,
+    suggestions: List<String>,
+    title: String?,
+    onDismiss: (() -> Unit)?,
+    onCandidate: (String) -> Unit,
+    onCopy: () -> Unit,
+    onPaste: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(44.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onDismiss != null) {
+            StripToolButton(onDismiss, "Hide keyboard") {
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+            }
+        }
+        Row(
+            Modifier.weight(1f).fillMaxHeight(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (title != null) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                suggestions.forEach { candidate ->
+                    Box(
+                        Modifier.weight(1f).fillMaxHeight()
+                            .clip(gsButtonShape(RoundedCornerShape(12.dp)))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .clickable { onCandidate(candidate) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            KeyboardSuggestions.matchCase(word, candidate),
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+        StripToolButton(onCopy, "Copy") { Icon(Icons.Filled.ContentCopy, contentDescription = null) }
+        StripToolButton(onPaste, "Paste") { Icon(Icons.Filled.ContentPaste, contentDescription = null) }
+        StripToolButton(onSettings, "Keyboard settings") { Icon(Icons.Filled.Settings, contentDescription = null) }
+    }
+}
+
+/**
+ * r30: the strip-off row — dismiss + gear only. The gear MUST stay reachable
+ * with the strip off, or turning the strip off from the keyboard would be a
+ * one-way door (no other screen offers keyboard settings); copy/paste hide
+ * with the strip, as specified.
+ */
+@Composable
+private fun MinimalStripRow(
+    onDismiss: (() -> Unit)?,
+    onSettings: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().height(44.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (onDismiss != null) {
+            StripToolButton(onDismiss, "Hide keyboard") {
+                Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        StripToolButton(onSettings, "Keyboard settings") { Icon(Icons.Filled.Settings, contentDescription = null) }
+    }
+}
+
+@Composable
+private fun StripToolButton(
+    onClick: () -> Unit,
+    description: String,
+    icon: @Composable () -> Unit,
+) {
+    GsIconBox(
+        onClick = onClick,
+        modifier = Modifier.width(44.dp).height(44.dp),
+        colors = GsColors(
+            MaterialTheme.colorScheme.surfaceContainerHighest,
+            MaterialTheme.colorScheme.onSurface,
+        ),
+        shape = gsButtonShape(RoundedCornerShape(12.dp)),
+    ) {
+        // The description is the semantics label; the icon itself carries none
+        // so screen readers announce it exactly once.
+        icon()
+    }
+}
+
+/**
+ * r30: keyboard settings as an inline panel in place of the keys (NOT a
+ * separate Dialog window — a Dialog created from a Presentation context
+ * risks landing on the wrong display, while this panel is just more keyboard
+ * Column content, so it behaves identically on every car surface). The switch
+ * row follows the app's settings-page precedent: the switch itself is the
+ * target, not the whole row.
+ */
+@Composable
+private fun KeyboardSettingsPanel(
+    stripEnabled: Boolean,
+    onStripChange: (Boolean) -> Unit,
+    clearedNotice: Boolean,
+    onClearLearned: () -> Unit,
+    onDone: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Suggestions", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Show word suggestions above the keys",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            GsSwitch(stripEnabled, onStripChange)
+        }
+        GsButton(onClick = onClearLearned, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+            Text("Clear learned words")
+        }
+        if (clearedNotice) {
+            Text(
+                "Learned words cleared.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
+        Text(
+            "Key size follows the UI size setting (Settings > Appearance).",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 8.dp),
+        )
+        GsButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Done")
+        }
+    }
+}
+
+/**
+ * r30 sharpness, part 2 (part 1 is whole-dp [keyHeight]): the evidence for
+ * why the keyboard read soft while the rest of the UI read sharp. Key labels
+ * are vector text and key shapes are clip-crisp, so no label or shape is
+ * itself blurry — but under Frost (the default style) every key also draws a
+ * 6dp blurred halo (drawSoftShadow: blur = 2x elevation, alpha 0.30), a
+ * top-light gradient, and a 0.97-alpha fill over a board only one surface
+ * step darker. The rest of the UI is flat fills with hard edges, so the
+ * keyboard's silhouette alone dissolved into its board — and the car's video
+ * stream smears soft edges further (the shadow code's own comment says it is
+ * "already soft enough that the car's video compression has nothing crisp
+ * to smear"). The fix is therefore a hard silhouette, not a heavier font:
+ * this 1dp bottom edge inside the key's own clipped shape — the Gboard
+ * keycap read — gives every key a crisp lower edge whatever style's finish
+ * sits behind it, while fills, surfaces, and label styles stay exactly as
+ * specified. Verification is Robert's eye on the head unit, never a
+ * screenshot claim.
+ */
+@Composable
+private fun BoxScope.KeyEdge(container: Color) {
+    val edge = if (container.luminance() > 0.5f) {
+        Color.Black.copy(alpha = 0.20f)
+    } else {
+        Color.Black.copy(alpha = 0.35f)
+    }
+    Box(
+        Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(1.dp).background(edge)
+    )
 }
 
 /**
  * Big enough to hit on a bumpy road, small enough that four rows plus a field plus a few results
  * still fit. A 480-tall screen sets the floor; a taller one (LIVI's 1280x720) gets bigger keys.
+ * r30 sharpness: heights round to whole dp — fractional row positions (e.g. 57.6dp on a
+ * 640-tall screen) put every key edge and label on a subpixel boundary, which the car's
+ * video stream then smears; whole-dp rows keep edges on pixel boundaries.
  */
-private fun keyHeight(screenHeightDp: Int): Dp = (screenHeightDp * 0.09f).dp.coerceIn(44.dp, 64.dp)
+private fun keyHeight(screenHeightDp: Int): Dp =
+    (screenHeightDp * 0.09f).roundToInt().dp.coerceIn(44.dp, 64.dp)
 
 private val LocalKeyHeight = compositionLocalOf { 44.dp }
 
