@@ -40,10 +40,20 @@ object PhoneMirror {
 
     /**
      * Whether touches and video use Fill geometry. Set by the activity from
-     * [app.autospace.car.CarSettings.mirrorFit] before mirroring starts; Fill is
-     * the default. Fit keeps the old letterbox behaviour exactly.
+     * [app.autospace.car.CarSettings.mirrorFit] before mirroring starts; Fit is
+     * the default (audit fix, 2026-10-25, M1: the old comment said Fill
+     * was the default, contradicting the 2026-10-25 Fit reversal).
+     * Fit keeps the old letterbox behaviour exactly.
      */
-    var fillEnabled: Boolean = false
+    // Audit fix (2026-10-25, M1): Fill used to be held twice —
+    // MirrorDisplayState.fill (renderer path) and this flag
+    // (direct path + exit-region check) — synced by hand on every
+    // path, so any future path changing one desynced video geometry
+    // from touch mapping. This is now a single source of truth:
+    // every read/write goes through MirrorDisplayState.fill.
+    var fillEnabled: Boolean
+        get() = MirrorDisplayState.fill
+        set(value) { MirrorDisplayState.fill = value }
 
     /**
      * Wired up by the session, which owns the encoder Surface and so is the only thing that

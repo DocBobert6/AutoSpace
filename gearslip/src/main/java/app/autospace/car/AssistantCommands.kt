@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.car.app.navigation.model.NavigationTemplate
+import app.autospace.GearslipLog
 import app.autospace.call.CallUiState
 import app.autospace.call.CarCalls
 import app.autospace.host.clockTime
@@ -58,7 +59,10 @@ object AssistantCommands {
             VoiceHelp.show()
             return "Here's what you can say."
         }
-        if (heard.matches(Regex("(fuck|f\\*+) (you|off)( too)?"))) return "Fuck you too."
+        // Audit fix (2026-10-25, B8/F8): the old reply swore back
+        // aloud through the car speakers. Wording only — this branch
+        // keeps its position before the emergency-confirmation block.
+        if (heard.matches(Regex("(fuck|f\\*+) (you|off)( too)?"))) return "Let's keep it friendly — what can I do for you?"
 
         // A pending emergency confirmation is answered first: a yes dials, a no or any
         // other command cancels it, and silence cancels it once the window lapses (the
@@ -84,6 +88,7 @@ object AssistantCommands {
         callControlCommand(context, navigator, heard)?.let { return it }
         navigateCommand(context, navigator, frame, heard)?.let { return it }
         playSearchCommand(context, navigator, heard)?.let { return it }
+        replyRepeatCommand(heard)?.let { return it }
         navExtraCommand(heard)?.let { return it }
         togglesCommand(context, navigator, heard)?.let { return it }
         volumeCommand(context, heard)?.let { return it }
@@ -98,6 +103,7 @@ object AssistantCommands {
         messagesCommand(context, heard)?.let { return it }
         browserSearchCommand(navigator, heard)?.let { return it }
         openAppCommand(context, navigator, frame, heard)?.let { return it }
+        synonymCommand(context, navigator, heard)?.let { return it }
 
         return "I don't know how to do that yet."
     }
@@ -361,6 +367,132 @@ object AssistantCommands {
             }
             else -> null
         }
+    }
+
+    /**
+     * "Say that again" / "repeat that" for the assistant's own last
+     * reply (audit fix, 2026-10-25, A1). Returns null when no
+     * assistant reply has played, so the chain falls through to
+     * [navExtraCommand], which answers with the last spoken
+     * direction instead — both repeats keep working, and a
+     * direction prompt (spoken by DirectionsVoice, never an
+     * assistant reply) is never shadowed by an older reply.
+     * Stop-speaking/cancel semantics are untouched: this runs
+     * after cancelCommand, and only answers, never speaks over
+     * anything — CarAssistant.reply() plays the answer.
+     */
+    private fun replyRepeatCommand(heard: String): String? {
+        if (heard !in SAY_AGAIN_PHRASES) return null
+        return CarAssistant.lastAssistantReply
+    }
+
+    private val SAY_AGAIN_PHRASES = setOf("say that again", "repeat that")
+
+    /**
+     * Synonyms + guarded fuzzy matching for ordinary commands
+     * (audit fix, 2026-10-25, F11 — a matcher extension, NOT an
+     * LLM). This runs LAST, after every exact parser, so an exact
+     * match always wins. It only ever re-dispatches to the
+     * no-argument parsers (brightness, volume, media, nav-extra,
+     * settings toggles): emergency and call commands are never
+     * fuzzy-matched — any heard phrase containing an emergency,
+     * call, message, navigation-destination or search token
+     * returns null outright, and the emergency-confirmation guard
+     * above is untouched. "Stop" keeps meaning music: this runs
+     * after cancelCommand, and a bare "stop" is already claimed
+     * by mediaCommand's pause branch in the main chain.
+     * Fuzzy matching is a Levenshtein distance of at most 2 on
+     * a same-token-count canonical phrase, so "brighness up"
+     * works but "brightness" alone never guesses a direction.
+     * Only the canonical phrase is logged, never the raw heard
+     * text.
+     */
+    private fun synonymCommand(context: Context, navigator: CarNavigator, heard: String): String? {
+        val tokens = heard.split(" ")
+        if (tokens.any { it in FUZZY_GUARD_TOKENS }) return null
+        val numeric = Regex("^set (the )?brightness to (\\d{1,3})( percent)?$").find(heard)
+        val canon = SYNONYMS[heard]
+            ?: numeric?.let { "brightness ${it.groupValues[2]}" }
+            ?: fuzzyCanonical(heard)
+            ?: return null
+        GearslipLog.i("assistant: synonym/fuzzy matched canonical '$canon'")
+        // Order mirrors the main chain on purpose: mediaCommand
+        // claims anything starting with "stop", so navExtra and
+        // toggles must run first or "stop navigating" / "stop
+        // screen sharing" would pause the music instead.
+        return navExtraCommand(canon)
+            ?: togglesCommand(context, navigator, canon)
+            ?: volumeCommand(context, canon)
+            ?: brightnessCommand(canon)
+            ?: mediaCommand(canon)
+    }
+
+    private val FUZZY_GUARD_TOKENS = setOf(
+        "call", "emergency", "dial", "text", "message", "navigate", "search", "open", "911",
+    )
+
+    private val SYNONYMS = mapOf(
+        "make it brighter" to "brightness up",
+        "brighten the screen" to "brightness up",
+        "make it dimmer" to "brightness down",
+        "dim the screen" to "brightness down",
+        "turn the volume up" to "volume up",
+        "turn the volume down" to "volume down",
+        "make it louder" to "louder",
+        "make it quieter" to "quieter",
+        "turn the music up" to "volume up",
+        "turn the music down" to "volume down",
+        "start the music" to "play",
+        "stop the music" to "pause",
+        "skip this song" to "next",
+        "go to the next song" to "next",
+        "play the previous song" to "previous",
+        "play the last song" to "previous",
+        "turn on spoken directions" to "turn speak directions on",
+        "turn off spoken directions" to "turn speak directions off",
+        "use the phone mic" to "use phone mic",
+        "use the car mic" to "use car mic",
+        "how much longer" to "how long until we arrive",
+        "how much further" to "how much further",
+    )
+
+    private val FUZZY_CANONICALS = listOf(
+        "brightness up", "brightness down", "volume up", "volume down", "louder", "quieter",
+        "mute", "unmute", "pause", "resume", "next", "previous",
+        "turn speak directions on", "turn speak directions off",
+        "use phone mic", "use car mic", "start screen sharing", "stop screen sharing",
+        "start mirroring", "stop mirroring", "stop navigating", "how far", "eta",
+    )
+
+    private fun fuzzyCanonical(heard: String): String? {
+        val heardTokens = heard.split(" ")
+        var best: String? = null
+        var bestDistance = Int.MAX_VALUE
+        for (canon in FUZZY_CANONICALS) {
+            if (canon.split(" ").size != heardTokens.size) continue
+            val distance = editDistance(heard, canon)
+            if (distance in 1..2 && distance < bestDistance) {
+                best = canon; bestDistance = distance
+            }
+        }
+        return best
+    }
+
+    private fun editDistance(a: String, b: String): Int {
+        val previous = IntArray(b.length + 1) { it }
+        val current = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            current[0] = i
+            for (j in 1..b.length) {
+                current[j] = minOf(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1,
+                )
+            }
+            previous.indices.forEach { previous[it] = current[it] }
+        }
+        return previous[b.length]
     }
 
     /**

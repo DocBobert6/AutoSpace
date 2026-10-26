@@ -19,6 +19,7 @@ object BrowserStore {
     const val KEY_POPUP_STRICT = "browser_popup_strict"
     /** Address bar position (audit/browser build, Notscape's barPosition): "top" or "bottom". */
     private const val KEY_BAR_POSITION = "browser_bar_position"
+    private const val KEY_TEXT_ZOOM = "browser_text_zoom"
     /** Per-site popup settings, JSON object host -> {"allow": bool, "block": bool}. */
     private const val KEY_POPUP_SITES = "browser_popup_sites"
     private const val MAX_HISTORY = 50
@@ -147,5 +148,17 @@ object BrowserStore {
 
     fun setBarAtBottom(context: Context, bottom: Boolean) {
         AppSettings.putString(context, KEY_BAR_POSITION, if (bottom) "bottom" else "top")
+    }
+
+    // ---- Text zoom (audit fix, 2026-10-25, A2) ----
+    // WebView textZoom percent, persisted like the bar position
+    // so a chosen size survives tab switches and sessions.
+    // 100 is the WebView default; 50..200 keeps pages readable
+    // without breaking layouts that assume near-default sizes.
+    fun textZoom(context: Context): Int =
+        AppSettings.getString(context, KEY_TEXT_ZOOM, "100").toIntOrNull()?.coerceIn(50, 200) ?: 100
+
+    fun setTextZoom(context: Context, zoom: Int) {
+        AppSettings.putString(context, KEY_TEXT_ZOOM, zoom.coerceIn(50, 200).toString())
     }
 }

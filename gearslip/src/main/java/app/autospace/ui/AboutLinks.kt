@@ -70,41 +70,8 @@ internal object GearslipLinks {
 @Composable
 internal fun DonateRows() {
 }
-@Composable
-internal fun MoneroDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = { Icon(Icons.Filled.Favorite, contentDescription = null) },
-        title = { Text("Support with Monero") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Send any amount to this address from your Monero wallet.")
-                SelectionContainer {
-                    Text(
-                        GearslipLinks.MONERO,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { GearslipLinks.openMoneroWallet(context) }, Modifier.fillMaxWidth()) {
-                    Text("Open in wallet")
-                }
-                OutlinedButton(onClick = { GearslipLinks.copyMonero(context) }, Modifier.fillMaxWidth()) {
-                    Text("Copy address")
-                }
-                TextButton(onClick = onDismiss, Modifier.fillMaxWidth()) {
-                    Text("Close")
-                }
-            }
-        },
-    )
-}
-
+// Audit fix (2026-10-25, B7/R2): MoneroDialog deleted —
+// it had no caller since DonateRows() was emptied.
 /** The About section's links: the chat room, the source code, and credits. */
 @Composable
 internal fun AboutLinkRows() {
@@ -116,14 +83,9 @@ internal fun AboutLinkRows() {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    SettingsRow(
-        "Join the chat on Matrix",
-        Modifier.clickable { GearslipLinks.open(context, GearslipLinks.MATRIX) },
-        subtitle = "Talk with other drivers about cars, apps, and AutoSpace",
-        icon = Icons.AutoMirrored.Filled.Send,
-        trailing = arrow,
-    )
-    SettingsDivider()
+    // Audit fix (2026-10-25, B5/R1): the upstream Matrix row is
+    // removed with the intro actions — no replacement link is
+    // invented; one can be added when Robert supplies his own.
     SettingsRow(
         "Source code",
         Modifier.clickable { GearslipLinks.open(context, GearslipLinks.SOURCE) },

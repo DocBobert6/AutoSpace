@@ -77,6 +77,20 @@ internal fun UsageStatsChoices(modifier: Modifier = Modifier) {
  */
 @Composable
 internal fun ColumnScope.UsageStatsRows() {
+    // Audit fix (2026-10-25, F9): while there is no stats server
+    // the opt-in itself is hidden — the section becomes the
+    // informational note only, instead of offering a switch that
+    // enables sending to nowhere. The full rows return as-is if a
+    // server is ever configured.
+    if (BuildConfig.STATS_URL.isBlank()) {
+        Text(
+            buildNote() ?: "This build has no stats server, so usage notes are off and nothing is sent.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 56.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        )
+        return
+    }
     val context = LocalContext.current
     var on by remember { mutableStateOf(UsageStats.enabled(context)) }
     var choices by remember { mutableStateOf(UsageStats.choices(context)) }
@@ -217,7 +231,13 @@ internal fun WorkedCard(car: String, onSeeWhatsSent: () -> Unit, modifier: Modif
                 }
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(onClick = { WorkedPrompt.answer(context, share = false) }) { Text("Not now") }
-                Button(onClick = { WorkedPrompt.answer(context, share = true) }) { Text("Share") }
+                // Audit fix (2026-10-25, F9): with no stats server
+                // there is nothing to share to, so the opt-in is
+                // hidden instead of offering a Share that sends
+                // nothing. It returns as-is if a server is configured.
+                if (BuildConfig.STATS_URL.isNotBlank()) {
+                    Button(onClick = { WorkedPrompt.answer(context, share = true) }) { Text("Share") }
+                }
             }
         }
     }

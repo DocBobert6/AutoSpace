@@ -70,6 +70,9 @@ object CarAssistant {
     )
 
     private val _state = MutableStateFlow(State())
+    /** Last assistant reply that started playing (A1); never message text. */
+    var lastAssistantReply: String? = null
+        private set
     val state: StateFlow<State> = _state
 
     /** Set once a recognition result comes in; [reply] clears it once handled. */
@@ -78,6 +81,13 @@ object CarAssistant {
 
     private var appContext: Context? = null
     private var recognizer: SpeechRecognizer? = null
+    // Audit fix (2026-10-25, V2): the system-speech path owns one
+    // listeningActive count from markListeningStart() until the
+    // recognizer is released. The old code decremented only in the
+    // result/error callbacks, so a release without a callback (cancel,
+    // teardown) left the count stuck and gated the hotword off.
+    // releaseRecognizer() now owns the decrement, exactly once.
+    private var systemListening = false
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -175,6 +185,13 @@ object CarAssistant {
             _state.value = State(Phase.ERROR, reply = message)
         })
         if (started) {
+            // Audit fix (2026-10-25, A1): the last reply that
+            // actually started playing, for "say that again".
+            // VoiceReply speaks through say(), never reply(), so
+            // message text can never land here — only the
+            // assistant's own words. A blank reply returns early
+            // above and never overwrites this.
+            lastAssistantReply = text
             acquireSpeechFocus(context)
         } else {
             _state.value = State(
@@ -280,6 +297,7 @@ object CarAssistant {
         // (The sherpa path's worker waits for the release; this path relies on the
         // recognizer opening its microphone after the hotword loop's next chunk.)
         SpeechEngine.markListeningStart()
+        systemListening = true
         val r = SpeechRecognizer.createSpeechRecognizer(context)
         recognizer = r
         r.setRecognitionListener(object : RecognitionListener {
@@ -292,13 +310,11 @@ object CarAssistant {
 
             override fun onError(error: Int) {
                 releaseRecognizer()
-                SpeechEngine.markListeningEnd()
                 onError(errorMessage(error))
             }
 
             override fun onResults(results: Bundle?) {
                 releaseRecognizer()
-                SpeechEngine.markListeningEnd()
                 val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                 if (text.isBlank()) onError("Didn't catch that.") else onResult(text)
             }
@@ -322,6 +338,10 @@ object CarAssistant {
         SpeechEngine.cancel()
         recognizer?.let { runCatching { it.cancel() }; it.destroy() }
         recognizer = null
+        if (systemListening) {
+            systemListening = false
+            SpeechEngine.markListeningEnd()
+        }
     }
 
     private fun errorMessage(code: Int): String = when (code) {

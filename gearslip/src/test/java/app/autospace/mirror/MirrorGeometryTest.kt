@@ -126,6 +126,23 @@ class MirrorGeometryTest {
         }
     }
 
+    // Audit fix (2026-10-25, M2): on a frame narrower than the
+    // old 336px chrome row / 120px pill floor, the row and pill
+    // must shrink to the frame instead of starting off-screen.
+    @Test
+    fun narrowFrameChromeAndPillClampToFrame() {
+        val w = 300f
+        val h = 200f
+        val pill = MirrorGeometry.pillRegion(w, h)
+        assertTrue(pill.left >= 0f && pill.right <= w && pill.top >= 0f && pill.bottom <= h)
+        val buttons = MirrorGeometry.chromeButtons(w, h)
+        assertEquals(4, buttons.size)
+        buttons.forEach { b ->
+            assertTrue(b.left >= 0f && b.top >= 0f && b.right <= w && b.bottom <= h)
+        }
+        for (i in 0 until buttons.size - 1) assertTrue(buttons[i].right <= buttons[i + 1].left)
+    }
+
     @Test
     fun sameAspectFitEqualsFill() {
         val f = MirrorGeometry.fit(1920f, 1080f, 1920f, 1080f)

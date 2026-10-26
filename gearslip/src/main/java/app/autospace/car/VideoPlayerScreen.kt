@@ -1477,9 +1477,10 @@ private fun formatTime(ms: Long): String {
 /** Notscape's subtitle styling (0.0.991), from the Video player settings
  * values. Applies only when at least one subtitle option is set — until
  * then the player's default (the system caption style) stands untouched.
- * Car limits: no Settings page writes these yet (reported follow-up), and
- * only system typefaces are mapped — Notscape's bundled opensans/inter
- * fonts and custom font files have no AutoSpace resource to load from. */
+ * Car limits: the Subtitles section in car Settings writes these
+ * (audit fix, 2026-10-25), and only system typefaces are mapped —
+ * Notscape's bundled opensans/inter fonts and custom font files have
+ * no AutoSpace resource to load from. */
 private fun applySubtitleStyle(context: android.content.Context, view: PlayerView) {
     val font = CarSettings.subtitleFont()
     val size = CarSettings.subtitleSize()

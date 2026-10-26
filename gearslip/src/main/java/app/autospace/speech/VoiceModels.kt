@@ -3,6 +3,7 @@ package app.autospace.speech
 import android.content.Context
 import app.autospace.GearslipLog
 import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CountDownLatch
@@ -210,6 +211,33 @@ object VoiceModels {
     }
 
     fun state(engine: Engine): StateFlow<State> = states.getValue(engine).asStateFlow()
+
+    /**
+     * Audit fix (2026-10-25, V6): Settings read the state computed
+     * once at init(), while VoiceEngine gates on live validation
+     * every call — files changed outside the app mid-run left the
+     * two disagreeing (the UI-layer version of the old
+     * Downloaded-vs-engine-unavailable case). Recompute on entering
+     * the spoken-voice sections. Reads only, never downloads, and
+     * never overwrites an in-flight Downloading state.
+     */
+    fun refreshStates(context: Context) {
+        if (!initialised) {
+            init(context)
+            return
+        }
+        val app = context.applicationContext
+        Engine.entries.forEach { e ->
+            val current = states.getValue(e).value
+            if (current is State.Downloading) return@forEach
+            val failure = validationFailure(app, e)
+            states.getValue(e).value = when {
+                failure == null -> State.Ready
+                anyFilePresent(app, e) -> State.Failed(failure)
+                else -> State.Missing
+            }
+        }
+    }
 
     fun selectVoice(context: Context, voice: KokoroVoice) {
         _selectedVoice.value = voice
@@ -419,6 +447,10 @@ object VoiceModels {
     fun delete(context: Context, engine: Engine) {
         cancelled = engine
         dir(context, engine).deleteRecursively()
+        // Audit fix (2026-10-25, A5): Delete clears the kept
+        // partial too — otherwise a later download would silently
+        // resume bytes the user just chose to throw away.
+        File(dir(context, engine).parentFile, "${engine.id}.partial").deleteRecursively()
         states.getValue(engine).value = State.Missing
         VoiceEngine.unload()
     }
@@ -431,7 +463,19 @@ object VoiceModels {
         cancelled = null
         worker.execute {
             val target = dir(app, engine)
-            val partial = File(target.parentFile, "${engine.id}.partial").apply { deleteRecursively(); mkdirs() }
+            // Audit fix (2026-10-25, A5): the partial directory
+            // is KEPT across attempts now, so an interrupted
+            // download resumes instead of restarting (~350 MB
+            // Kokoro, ~68 MB Piper, 355 espeak files). What is
+            // still deleted at the start is the target set, as
+            // before: a set only lands there after it validates,
+            // so a Failed target is corrupt and must not be kept.
+            // A partial can never read as Ready — validation
+            // reads the target dir only, and the swap below still
+            // requires validation to pass — so kept bytes are
+            // inert until a completed set passes the exact-size
+            // table byte-for-byte.
+            val partial = File(target.parentFile, "${engine.id}.partial").apply { mkdirs() }
             var stage = "starting download"
             try {
                 // 2026-10-25: retry from Failed clears the incomplete set
@@ -448,21 +492,33 @@ object VoiceModels {
                 var total = engine.downloadMb * 1_048_576L
                 var done = 0L
                 var currentDetail = ""
+                // Bytes of the current model file already on disk
+                // from a previous attempt: progress counts them,
+                // so a resumed file's percent never jumps backwards.
+                var fileBase = 0L
                 fun progress(read: Long) {
                     if (cancelled == engine) throw InterruptedException("cancelled")
-                    state.value = State.Downloading(downloadPercent(done + read, total), currentDetail)
+                    state.value = State.Downloading(downloadPercent(done + fileBase + read, total), currentDetail)
                 }
                 for (name in engine.files) {
                     stage = "downloading $name"
                     currentDetail = name
-                    val conn = open("https://huggingface.co/${engine.repo}/resolve/main/$name")
-                    val length = conn.contentLengthLong
                     val file = File(partial, name)
-                    CountingStream(conn.inputStream, ::progress).use { input ->
-                        file.outputStream().use { input.copyTo(it, 256 * 1024) }
-                    }
+                    fileBase = if (file.isFile) file.length() else 0L
+                    // One probe connection learns the current
+                    // length (a re-uploaded file may have a new
+                    // one); the resumable fetch below then either
+                    // skips, Range-resumes, or fully downloads.
+                    val probe = open("https://huggingface.co/${engine.repo}/resolve/main/$name")
+                    val length = probe.contentLengthLong
+                    runCatching { probe.disconnect() }
+                    fetchResumable(
+                        "https://huggingface.co/${engine.repo}/resolve/main/$name",
+                        file, length, ::progress,
+                    )
                     check(length <= 0 || file.length() == length) { "$name arrived cut short" }
                     done += file.length()
+                    state.value = State.Downloading(downloadPercent(done, total), currentDetail)
                 }
                 // espeak-ng-data is a directory: list it, then fetch file by file.
                 // 2026-10-25 (Robert: downloads go "very slow" after
@@ -500,13 +556,19 @@ object VoiceModels {
                         pool.execute {
                             try {
                                 if (cancelled == engine) throw InterruptedException("cancelled")
-                                val conn = open("https://huggingface.co/${engine.repo}/resolve/main/${hf.path}")
-                                val length = conn.contentLengthLong
+                                // Audit fix (2026-10-25, A5): espeak
+                                // files resume like the model files —
+                                // the listing already carries each
+                                // file's size, so no probe is needed.
+                                // Completion accounting is unchanged
+                                // (final length added once), so a
+                                // resumed file cannot double-count.
                                 val file = File(partial, hf.path).apply { parentFile?.mkdirs() }
-                                conn.inputStream.use { input ->
-                                    file.outputStream().use { input.copyTo(it, 256 * 1024) }
-                                }
-                                check(length <= 0 || file.length() == length) { "file ${hf.path} arrived cut short" }
+                                fetchResumable(
+                                    "https://huggingface.co/${engine.repo}/resolve/main/${hf.path}",
+                                    file, hf.size,
+                                )
+                                check(hf.size <= 0 || file.length() == hf.size) { "file ${hf.path} arrived cut short" }
                                 val n = finished.incrementAndGet()
                                 val d = doneAtomic.addAndGet(file.length())
                                 state.value = State.Downloading(
@@ -543,7 +605,18 @@ object VoiceModels {
                 GearslipLog.i("voice: downloaded ${engine.label}")
                 state.value = State.Ready
             } catch (e: Exception) {
-                partial.deleteRecursively()
+                // Audit fix (2026-10-25, A5): a network/stage
+                // failure or a cancel KEEPS the partial, so the
+                // next attempt resumes it. The one exception is a
+                // validation failure: lengths already matched
+                // there, so the bytes themselves are wrong and
+                // resuming them would fail identically forever —
+                // that partial is deleted and the next attempt
+                // starts clean. (A changed upstream file that
+                // keeps its exact size would also slip past a
+                // length resume; Delete clears the partial, and
+                // validation + load refusal still gate the set.)
+                if (stage == "validating download") partial.deleteRecursively()
                 if (cancelled == engine) {
                     state.value = State.Missing
                 } else {
@@ -585,6 +658,66 @@ object VoiceModels {
             if (obj.optString("type") == "file") out += HfFile(obj.getString("path"), obj.optLong("size", 0))
         }
         return out
+    }
+
+    /**
+     * Downloads [file] from [url], resuming from a partial file
+     * when one exists (audit fix, 2026-10-25, A5). [expected] is
+     * the current server length, or <= 0 when unknown.
+     * - Existing length == expected: the file is already whole;
+     *   skipped, and its length is returned for progress.
+     * - Existing length < expected: a Range request appends the
+     *   rest. A 200 (server ignored Range) or 416 (range no
+     *   longer valid) falls back to a full download, truncating
+     *   first. Any other status fails by name.
+     * - Existing length > expected, or unknown length with a
+     *   partial present: full download, truncating first — a
+     *   stale partial must never be trusted past its length.
+     * [onBytes] reports bytes read by THIS fetch only; the
+     * caller adds the already-present base for progress.
+     * The final length is returned, and checked against
+     * [expected] when known, so a cut-short fetch still fails
+     * instead of validating later.
+     */
+    private fun fetchResumable(
+        url: String,
+        file: File,
+        expected: Long,
+        onBytes: ((Long) -> Unit)? = null,
+    ): Long {
+        val existing = if (file.isFile) file.length() else 0L
+        if (expected > 0 && existing == expected) return existing
+        if (existing > 0 && expected > 0 && existing < expected) {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                instanceFollowRedirects = true
+                setRequestProperty("Range", "bytes=$existing-")
+            }
+            when (conn.responseCode) {
+                206 -> {
+                    file.parentFile?.mkdirs()
+                    CountingStream(conn.inputStream, onBytes ?: { _ -> }).use { input ->
+                        FileOutputStream(file, true).use { input.copyTo(it, 256 * 1024) }
+                    }
+                    check(file.length() == expected) { "resumed file arrived cut short" }
+                    return file.length()
+                }
+                200, 416 -> {
+                    // Server ignored Range, or the range is no
+                    // longer valid: fall through to a full download.
+                    runCatching { conn.disconnect() }
+                }
+                else -> check(false) { "the server answered ${conn.responseCode}" }
+            }
+        }
+        val conn = open(url)
+        file.parentFile?.mkdirs()
+        CountingStream(conn.inputStream, onBytes ?: { _ -> }).use { input ->
+            file.outputStream().use { input.copyTo(it, 256 * 1024) }
+        }
+        check(expected <= 0 || file.length() == expected) { "file arrived cut short" }
+        return file.length()
     }
 
     private fun open(url: String): HttpURLConnection =

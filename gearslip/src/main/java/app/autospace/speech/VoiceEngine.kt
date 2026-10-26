@@ -31,7 +31,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * Synthesis runs on its own thread and is waited on for at most
  * [SYNTH_TIMEOUT_S] seconds, so a stuck native generate can't wedge the
  * directions thread the way an unbounded wait would; a timed-out
- * synthesis is simply dropped and the next prompt queues behind it.
+ * synthesis is dropped AND the wedged executor is replaced (audit
+ * fix, 2026-10-25): interrupting a native call cannot stop it, so
+ * merely cancelling the future would leave every later synthesis
+ * queued behind the stuck task. The orphaned thread is abandoned
+ * (logged loudly) and cached engine references are dropped so the
+ * fresh thread creates its own instances instead of generating on
+ * one a hung native call may still hold.
  * Playback is an AudioTrack on the media usage, the same stream system
  * TTS used, so it reaches the car speakers exactly the way the old
  * voice did (USB pipe or Bluetooth) and never the phone speaker alone.
@@ -62,7 +68,33 @@ object VoiceEngine {
     /** A turn prompt or reply that takes longer than this to render is dropped. */
     private const val SYNTH_TIMEOUT_S = 20L
 
-    private val synthExecutor = Executors.newSingleThreadExecutor { Thread(it, "gearslip-voice-synth") }
+    @Volatile private var synthExecutor = Executors.newSingleThreadExecutor { Thread(it, "gearslip-voice-synth") }
+    private val synthExecutorLock = Object()
+    private val synthPending = AtomicInteger(0)
+
+    /**
+     * Audit fix (2026-10-25, V1): a native generate ignores thread
+     * interruption, so cancelling a timed-out future cannot free the
+     * single synth thread. Replace the executor instead, drop the
+     * cached engine references (the hung task keeps its own local
+     * reference; the fresh thread must never generate on the same
+     * instance), and orphan the old thread loudly. Callers must only
+     * ever reach the executor through the [synthExecutor] property,
+     * never a captured reference, so a replacement takes effect.
+     */
+    private fun replaceWedgedSynthExecutor() {
+        synchronized(synthExecutorLock) {
+            val old = synthExecutor
+            synthExecutor = Executors.newSingleThreadExecutor { Thread(it, "gearslip-voice-synth") }
+            synchronized(lock) {
+                kokoro = null
+                kokoroLang = null
+                piper = null
+            }
+            old.shutdownNow()
+            GearslipLog.w("voice: synth executor replaced after wedge; old thread orphaned, cached engines dropped")
+        }
+    }
     private val playExecutor = Executors.newSingleThreadExecutor { Thread(it, "gearslip-voice-play") }
     private val main = Handler(Looper.getMainLooper())
 
@@ -125,13 +157,21 @@ object VoiceEngine {
     fun synthesize(context: Context, text: String): Synthesized? {
         if (text.isBlank()) return null
         val app = context.applicationContext
+        synthPending.incrementAndGet()
         val future: Future<Synthesized?> = synthExecutor.submit<Synthesized?> {
-            runCatching { synthesizeNow(app, text) }.getOrNull()
+            try {
+                runCatching { synthesizeNow(app, text) }.getOrNull()
+            } finally {
+                synthPending.decrementAndGet()
+            }
         }
         return try {
             future.get(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
-            GearslipLog.w("voice: synthesis timed out after ${SYNTH_TIMEOUT_S}s")
+            future.cancel(true)
+            lastFailure = "synthesis timed out"
+            GearslipLog.w("voice: synthesis timed out after ${SYNTH_TIMEOUT_S}s; synth queue pending=${synthPending.get()}; replacing wedged executor")
+            replaceWedgedSynthExecutor()
             null
         } catch (e: Exception) {
             GearslipLog.w("voice: synthesis failed: ${e.message}")
@@ -505,7 +545,9 @@ object VoiceEngine {
      * the row never sticks on "Stop").
      */
     private fun synthesizePreview(app: Context, voice: VoiceModels.KokoroVoice?, text: String): Synthesized? {
+        synthPending.incrementAndGet()
         val future: Future<Synthesized?> = synthExecutor.submit<Synthesized?> {
+            try {
             runCatching {
                 if (voice != null) {
                     if (!validKokoroVoice(voice)) {
@@ -544,11 +586,17 @@ object VoiceEngine {
                 GearslipLog.w("voice: preview synthesis threw ${it.javaClass.simpleName}: ${it.message}")
                 lastFailure = "preview threw ${it.javaClass.simpleName}"
             }.getOrNull()
+            } finally {
+                synthPending.decrementAndGet()
+            }
         }
         return try {
             future.get(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
-            GearslipLog.w("voice: preview synthesis timed out after ${SYNTH_TIMEOUT_S}s")
+            future.cancel(true)
+            lastFailure = "preview synthesis timed out"
+            GearslipLog.w("voice: preview synthesis timed out after ${SYNTH_TIMEOUT_S}s; synth queue pending=${synthPending.get()}; replacing wedged executor")
+            replaceWedgedSynthExecutor()
             null
         } catch (e: Exception) {
             GearslipLog.w("voice: preview synthesis failed: ${e.message}")

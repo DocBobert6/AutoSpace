@@ -418,7 +418,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_BRIGHTNESS, brightnessFlow.value.toString())
     }
 
-    private val mirrorFitFlow = MutableStateFlow(MirrorFit.FILL)
+    // Audit fix (2026-10-25, M1): the flow used to initialise to
+    // FILL while init() migrates any stored value to FIT, so any
+    // reader before init() saw the reversed default. FIT from birth.
+    private val mirrorFitFlow = MutableStateFlow(MirrorFit.FIT)
 
     /** Screen-sharing fit; Fit is the default. Applies the next time mirroring starts. */
     val mirrorFit: StateFlow<MirrorFit> = mirrorFitFlow
@@ -447,6 +450,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_PIPE_AUDIO, on.toString())
         if (pipeAudioFlow.value == on) return
         pipeAudioFlow.value = on
+        // Audit note (2026-10-25, B10): this coupling runs ONCE —
+        // only while speak-directions was never set — so toggling
+        // pipe audio later never silently changes it again.
         if (AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, "") == "") speakDirectionsFlow.value = on
         if (on) CarAudio.request() else CarAudio.release()
     }
@@ -508,11 +514,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     /**
      * Subtitle styling values (Notscape subFont/subSize/subColor/subBg/
-     * subEdge). No Settings UI writes them yet — that page is the reported
-     * follow-up — so until then every read returns its default and the
-     * player's subtitle view keeps the system caption style untouched,
-     * exactly as Notscape does when nothing is set. Guarded: the player
-     * screen can compose before init in principle, and must never crash.
+     * subEdge), written by the Subtitles section in car Settings
+     * (audit fix, 2026-10-25). Until any is set, every read returns
+     * its default and the player's subtitle view keeps the system
+     * caption style untouched, exactly as Notscape does when nothing
+     * is set. Guarded: the player screen can compose before init in
+     * principle, and must never crash.
      */
     fun subtitleSetting(key: String, default: String): String = runCatching {
         AppSettings.getString(app, key, default)
@@ -522,6 +529,14 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun subtitleColor(): String = subtitleSetting(KEY_SUB_COLOR, "")
     fun subtitleBg(): String = subtitleSetting(KEY_SUB_BG, "")
     fun subtitleEdge(): String = subtitleSetting(KEY_SUB_EDGE, "")
+    // Audit fix (2026-10-25, B3/F5): the Settings page below
+    // finally writes these; until it existed every read returned
+    // its default and the player kept the system caption style.
+    fun setSubtitleFont(value: String) = AppSettings.putString(app, KEY_SUB_FONT, value)
+    fun setSubtitleSize(value: String) = AppSettings.putString(app, KEY_SUB_SIZE, value)
+    fun setSubtitleColor(value: String) = AppSettings.putString(app, KEY_SUB_COLOR, value)
+    fun setSubtitleBg(value: String) = AppSettings.putString(app, KEY_SUB_BG, value)
+    fun setSubtitleEdge(value: String) = AppSettings.putString(app, KEY_SUB_EDGE, value)
 
     fun setCarSensorsEnabled(on: Boolean) {
         carSensorsFlow.value = on

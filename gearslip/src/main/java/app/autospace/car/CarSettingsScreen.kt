@@ -303,6 +303,8 @@ fun CarSettingsScreen() {
 
         VoiceSettings()
 
+        SubtitleSettings()
+
         ExperimentalFeatureRow(
             title = "Use the phone's speech recognition",
             description = "Listens through the phone's own speech service instead of AutoSpace's. On " +
@@ -443,10 +445,57 @@ fun CarSettingsScreen() {
  * is downloaded, assistant replies and spoken directions stay silent, and
  * this section is where the driver fixes that.
  */
+/**
+ * Subtitle styling for the video player (audit fix, 2026-10-25,
+ * B3/F5): the player already read these five keys and honoured
+ * them, but nothing wrote them, so the player always kept the
+ * system caption style. Values match exactly what
+ * VideoPlayerScreen.applySubtitleStyle maps; an empty value means
+ * "system default" for that row, and leaving all five empty keeps
+ * the system caption style untouched (the guarded fallback).
+ */
+@Composable
+private fun SubtitleSettings() {
+    var font by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleFont()) }
+    var size by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleSize().ifEmpty { "100" }) }
+    var color by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleColor()) }
+    var bg by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleBg()) }
+    var edge by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleEdge()) }
+    GsSectionHeader("Subtitles")
+    GsGroupedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                "How subtitles look in the video player. Applies to the next video played; " +
+                    "leaving everything on System default keeps the system's caption style.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ChoiceRow("Font", listOf("" to "System default", "roboto" to "Sans", "serif" to "Serif", "mono" to "Monospace"), font) {
+                font = it; CarSettings.setSubtitleFont(it)
+            }
+            ChoiceRow("Size", listOf("80" to "80%", "100" to "100%", "125" to "125%", "150" to "150%"), size) {
+                size = it; CarSettings.setSubtitleSize(it)
+            }
+            ChoiceRow("Colour", listOf("" to "System default", "yellow" to "Yellow", "cyan" to "Cyan", "green" to "Green", "magenta" to "Magenta", "red" to "Red", "blue" to "Blue", "black" to "Black"), color) {
+                color = it; CarSettings.setSubtitleColor(it)
+            }
+            ChoiceRow("Background", listOf("" to "Transparent", "black50" to "Black 50%", "black75" to "Black 75%", "black" to "Black", "white75" to "White 75%"), bg) {
+                bg = it; CarSettings.setSubtitleBg(it)
+            }
+            ChoiceRow("Edge", listOf("" to "Outline", "shadow" to "Drop shadow", "none" to "None"), edge) {
+                edge = it; CarSettings.setSubtitleEdge(it)
+            }
+        }
+    }
+}
+
 @Composable
 private fun VoiceSettings() {
     val context = LocalContext.current
     remember { VoiceModels.init(context) }
+    // Audit fix (2026-10-25, V6): re-validate on entering the
+    // section so Settings cannot show a stale Downloaded/Failed.
+    androidx.compose.runtime.LaunchedEffect(Unit) { VoiceModels.refreshStates(context) }
     val kokoroState by VoiceModels.state(Engine.KOKORO).collectAsState()
     val piperState by VoiceModels.state(Engine.PIPER).collectAsState()
     val selectedVoice by VoiceModels.selectedVoice.collectAsState()

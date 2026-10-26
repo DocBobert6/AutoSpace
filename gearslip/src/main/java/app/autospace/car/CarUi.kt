@@ -476,11 +476,14 @@ private fun DebugBuildBadge(modifier: Modifier = Modifier) {
 private fun BreadcrumbBar(navigator: CarNavigator) {
     val trail = navigator.trail
     if (trail.size <= 1) return
+    // Audit fix (2026-10-25, F4): the only on-screen back path
+    // was 32dp, below the 44dp car target floor. Bar and button
+    // are 44dp now, with larger crumb touch padding.
     Row(
-        Modifier.fillMaxWidth().height(40.dp).padding(start = 2.dp, end = 10.dp),
+        Modifier.fillMaxWidth().height(44.dp).padding(start = 2.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", navigator::back, size = 32.dp, iconSize = 20.dp)
+        GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", navigator::back, size = 44.dp, iconSize = 24.dp)
         Spacer(Modifier.width(2.dp))
         trail.forEachIndexed { index, crumb ->
             val isLast = index == trail.lastIndex
@@ -494,7 +497,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
                 modifier = if (isLast) Modifier else Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { navigator.jumpTo(index) }
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
             )
             if (!isLast) {
                 Text(

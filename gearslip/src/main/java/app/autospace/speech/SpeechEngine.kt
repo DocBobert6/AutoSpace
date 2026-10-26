@@ -192,7 +192,10 @@ object SpeechEngine {
             main.removeCallbacks(idleUnload)
             main.postDelayed(idleUnload, IDLE_UNLOAD_MS)
             if (id != run) return@execute
-            post(onHeard)
+            // Audit fix (2026-10-25, V3): onHeard was posted twice —
+            // once via stream()'s onStopped callback above and once
+            // here. The onStopped post is the exactly-once signal;
+            // this second post is dropped so callers see it once.
             post { if (text.isEmpty()) onError("Didn't catch that.") else onResult(text) }
             } finally {
                 // Cleared when the phrase's worker task ends, before its result posts;

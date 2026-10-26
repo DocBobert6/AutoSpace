@@ -167,7 +167,11 @@ internal fun introColors(): IntroColors {
 }
 
 /** In the order shown: what's new, what to pick, housekeeping, then the people behind it. */
-private enum class IntroStep { WELCOME, WIRELESS, KNOBS, VOICE, THEME, APPS, GRAPHENE, CHAT, THANKS }
+// Audit fix (2026-10-25, B5/R1): the CHAT step (upstream Matrix
+// room) is removed — this fork must not funnel users into the
+// upstream author's chat. A saved "CHAT" step from an older build
+// falls back to WELCOME via the coerceAtLeast(0) lookup below.
+private enum class IntroStep { WELCOME, WIRELESS, KNOBS, VOICE, THEME, APPS, GRAPHENE, THANKS }
 
 private val Pop = CubicBezierEasing(0.3f, 1.6f, 0.5f, 1f)
 private val Rise = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f)
@@ -222,19 +226,18 @@ fun IntroScreen(onDone: () -> Unit) {
                 },
                 outlined = true,
             ) { ShieldIcon(c.onSecondaryC, c.secondaryC) }
+            // Audit fix (2026-10-25, B6/F9): the old copy implied
+            // usage notes reach an author; there is no stats server
+            // and nothing ever uploads, so the thanks no longer says
+            // so. The Liberapay action is removed with it (B5/R1):
+            // this fork has no donation recipient configured, and
+            // must not solicit donations for the upstream author.
             IntroStep.THANKS -> BadgeStep(c, ::cq, ::cqSp, c.tertiaryC, "Thank you.",
-                "Thanks to your usage notes, AutoSpace is confirmed to work in cars newer than 2020. " +
-                    "Each note shows which cars work and which still fail, so I know what to fix next.", step,
+                "Thank you for trying AutoSpace. The list below shows which cars are " +
+                    "confirmed to work so far — if yours works, that's one more confirmed.", step,
                 action = "See which cars work" to { GearslipLinks.open(context, GearslipLinks.CARS) },
                 outlined = true,
-                secondAction = "Support on Liberapay" to { GearslipLinks.open(context, GearslipLinks.LIBERAPAY) },
             ) { HeartIcon(c.onTertiaryC) }
-            IntroStep.CHAT -> BadgeStep(c, ::cq, ::cqSp, c.primaryC, "Come say hi.",
-                "AutoSpace has a chat room on Matrix. Talk with other drivers about cars, apps, and " +
-                    "where AutoSpace is headed.", step,
-                action = "Join on Matrix" to { GearslipLinks.open(context, GearslipLinks.MATRIX) },
-                outlined = true,
-            ) { ChatIcon(c.onPrimaryC, c.primaryC) }
             IntroStep.APPS -> BadgeStep(c, ::cq, ::cqSp, c.secondaryC, "Good company.",
                 "Free, open-source apps that work well in the car. The first in each row works best. Tap one to see it on GitHub.", step,
                 extra = { AppPicks(c, ::cq, ::cqSp, step) }) { StarIcon(c.onSecondaryC) }

@@ -34,6 +34,12 @@ object DirectionsVoice {
 
     @Volatile private var link: AudioLink? = null
     @Volatile private var running = false
+    // Audit fix (2026-10-25, V4): detach() used to clear [running]
+    // while the watch thread might still be in its sleep, so a fast
+    // re-attach started a second thread ticking the shared stage
+    // machine. The generation stamps each watch thread; only the
+    // current generation's thread ticks, and a stale thread exits.
+    @Volatile private var watchGeneration = 0
     private val speaker = Executors.newSingleThreadExecutor { Thread(it, "gearslip-directions").apply { isDaemon = true } }
     @Volatile private var latest = 0
 
@@ -52,8 +58,9 @@ object DirectionsVoice {
         if (running) return
         running = true
         turnKey = null
+        val generation = ++watchGeneration
         Thread({
-            while (running) {
+            while (running && generation == watchGeneration) {
                 runCatching { tick() }.onFailure { GearslipLog.w("guidance: ${it.message}") }
                 Thread.sleep(TICK_MS)
             }
@@ -64,6 +71,9 @@ object DirectionsVoice {
         if (this.link !== link) return
         this.link = null
         running = false
+        // Bumps the generation so a sleeping old thread exits on
+        // wake instead of ticking alongside a re-attached thread.
+        watchGeneration++
     }
 
     private fun tick() {
@@ -179,7 +189,10 @@ object DirectionsVoice {
 
     /** Newest wins: a prompt still waiting when the next one arrives is already out of date. */
     private fun say(text: String) {
-        lastSpoken = text
+        // Audit fix (2026-10-25, V5): lastSpoken used to be set
+        // here, before any render, so "repeat that" could repeat a
+        // prompt that never sounded (no voice, generate failure).
+        // It is now set in play() only after a successful render.
         val id = ++latest
         speaker.execute {
             if (id != latest) return@execute
@@ -191,9 +204,17 @@ object DirectionsVoice {
         val context = appContext ?: return
         val sink = link ?: return
         val pcm = VoiceEngine.synthesizeForSink(context, text, sink.sampleRate, sink.channels) ?: run {
-            GearslipLog.w("guidance: no voice downloaded, a turn went unspoken")
+            // Audit fix (2026-10-25, B9): the old line blamed "no
+            // voice downloaded" for ANY null synthesis, including
+            // generate failures on fully downloaded voices — the
+            // same blame-the-files error fixed in user-visible
+            // text in round 3. Name the stage instead.
+            val stage = VoiceEngine.lastFailure ?: "no voice downloaded"
+            GearslipLog.w("guidance: a turn went unspoken (stage: $stage)")
             return
         }
+        // V5: only a rendered prompt becomes repeatable.
+        lastSpoken = text
         stream(sink, pcm)
         GearslipLog.i("guidance: spoke a turn (${pcm.size / (2 * sink.channels) * 1000 / sink.sampleRate} ms)")
     }

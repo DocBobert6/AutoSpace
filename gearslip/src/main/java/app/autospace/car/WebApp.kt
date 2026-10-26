@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import android.app.DownloadManager
+import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Environment
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -45,6 +47,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
@@ -223,6 +227,14 @@ fun WebApp(content: String) {
     // untouched by this.
     var addressSelected by remember { mutableStateOf(false) }
     var listsOpen by remember { mutableStateOf(false) }
+    // Audit fix (2026-10-25, A2/A3): browser text zoom (persisted
+    // in BrowserStore, applied to the active tab) and find-in-page
+    // state. The find bar follows tab switches: the active-tab
+    // effect below re-runs the query on the new tab's WebView.
+    var textZoom by remember { mutableStateOf(BrowserStore.textZoom(context)) }
+    var findOpen by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findMatches by remember { mutableStateOf("") }
     fun newTab() {
         val tab = BrowserTab(nextTabId++, ProjectedContent.DEFAULT_URL)
         tabs.add(tab)
@@ -264,7 +276,14 @@ fun WebApp(content: String) {
         mainHandler.post { runCatching { v?.destroy() } }
     }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
-    LaunchedEffect(activeTabId) { web = activeTab.view }
+    // Also (A2) applies the stored text zoom to the newly active
+    // tab and re-runs an open find query on it, so zoom/find
+    // follow tab switches instead of silently resetting.
+    LaunchedEffect(activeTabId) {
+        web = activeTab.view
+        web?.settings?.textZoom = textZoom
+        if (findOpen && findQuery.isNotEmpty()) web?.findAllAsync(findQuery)
+    }
     var bookmarks by remember { mutableStateOf<List<String>>(emptyList()) }
     var historyList by remember { mutableStateOf<List<String>>(emptyList()) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
@@ -446,7 +465,7 @@ fun WebApp(content: String) {
         }
         if (addressEditing || fieldText != null || settingsMenuOpen || tabsOpen ||
             sheetOpen || listsOpen || jsDialog != null || showPopupNotice ||
-            fullscreenView != null || gateOpen) return
+            fullscreenView != null || gateOpen || findOpen) return
         val delta = scrollY - oldScrollY
         if (delta > 0) {
             scrollHideAccum.up = 0
@@ -503,6 +522,10 @@ fun WebApp(content: String) {
                 tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
+                // Audit fix (2026-10-25, A2): an open find bar
+                // closes first, clearing the page highlights, and
+                // never steps back a page while it is up.
+                findOpen -> { findOpen = false; web?.clearMatches(); true }
                 // Immersive exit sits here, after every overlay
                 // above and before page history: head-unit BACK
                 // exits immersive FIRST, and only a second BACK
@@ -828,6 +851,15 @@ fun WebApp(content: String) {
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
                             activeTab.view?.also { web = it } ?: WebView(context).apply {
+                                // Audit fix (2026-10-25, A2): new tabs
+                                // start at the stored text zoom, and
+                                // report find matches for the find bar.
+                                settings.textZoom = BrowserStore.textZoom(context)
+                                setFindListener { active, matches, _ ->
+                                    mainHandler.post {
+                                        findMatches = if (matches > 0) "$active of $matches" else ""
+                                    }
+                                }
                                 settings.javaScriptEnabled = true
                                 settings.domStorageEnabled = true
                                 settings.loadWithOverviewMode = true
@@ -975,6 +1007,23 @@ fun WebApp(content: String) {
             // that first keypress the selection is spent and typing
             // appends normally. The clear X in the pill and a fresh pill
             // tap re-select; submit/dismiss clear the selection.
+            // Audit fix (2026-10-25, A2): find-in-page keyboard.
+            // Typing re-runs findAllAsync on every change (empty
+            // clears the highlights); submit jumps to the next
+            // match; dismiss closes the bar and clears highlights.
+            // It never touches the address edit above, and the
+            // passenger gate still appears first while moving.
+            if (findOpen && !addressEditing) {
+                CarKeyboard(
+                    text = findQuery,
+                    onTextChange = { updated ->
+                        findQuery = updated
+                        if (updated.isEmpty()) web?.clearMatches() else web?.findAllAsync(updated)
+                    },
+                    onSubmit = { web?.findNext(true) },
+                    onDismiss = { findOpen = false; web?.clearMatches() },
+                )
+            }
             if (addressEditing) {
                 CarKeyboard(
                     text = addressText,
@@ -1048,6 +1097,55 @@ fun WebApp(content: String) {
                 }
             }
         }
+        // Audit fix (2026-10-25, A2): find-in-page pill. It rides
+        // the top-START corner (the immersive exit pill owns the
+        // top-end), dropping below a visible top bar exactly like
+        // that pill, so the two never overlap. Prev/Next step
+        // through matches; Close clears the highlights. The pill
+        // only shows the query — typing happens in the CarKeyboard
+        // below, so this never needs its own text field.
+        if (findOpen) {
+            val pillTop = if (!barBottom && !barHiddenByScroll) 60.dp else 12.dp
+            Box(
+                Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = pillTop, bottom = 12.dp),
+                contentAlignment = Alignment.TopStart,
+            ) {
+                Box(
+                    Modifier.height(44.dp)
+                        .frostBar(RoundedCornerShape(50), 6.dp)
+                        .padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (findQuery.isEmpty()) "Find in page" else findQuery,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 12.dp).widthIn(max = 220.dp),
+                        )
+                        if (findMatches.isNotEmpty()) {
+                            Text(
+                                findMatches,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                        Box(Modifier.size(44.dp).clickable { web?.findNext(false) }, contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowUp, "Previous match", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
+                        }
+                        Box(Modifier.size(44.dp).clickable { web?.findNext(true) }, contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowDown, "Next match", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
+                        }
+                        Box(Modifier.size(44.dp).clickable { findOpen = false; web?.clearMatches() }, contentAlignment = Alignment.Center) {
+                            androidx.compose.material3.Icon(Icons.Filled.Close, "Close find", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
+                        }
+                    }
+                }
+            }
+        }
         // Friendly error page (Phase 3.4, item 2): replaces the log-only error.
         // The WebView stays composed underneath, so Retry just reloads it.
         // Phase 8: a kit panel, not a bare column, like every other browser
@@ -1103,6 +1201,34 @@ fun WebApp(content: String) {
                 onOpenTabs = { settingsMenuOpen = false; tabsOpen = true },
                 onCloseMenu = { settingsMenuOpen = false },
                 onCloseBrowser = { settingsMenuOpen = false; navigator.forceBack() },
+                textZoom = textZoom,
+                onTextZoom = { zoom ->
+                    val clamped = zoom.coerceIn(50, 200)
+                    BrowserStore.setTextZoom(context, clamped)
+                    textZoom = clamped
+                    activeTab.view?.settings?.textZoom = clamped
+                },
+                onFindInPage = { settingsMenuOpen = false; findQuery = ""; findMatches = ""; findOpen = true },
+                // Audit fix (2026-10-25, A3): share intent to the
+                // phone browser. The car tab is untouched — nothing
+                // here closes it, switches it, or reloads it — and
+                // the passenger gate is unaffected because this
+                // only fires from the settings menu, which the gate
+                // already stands in front of while moving.
+                onOpenOnPhone = {
+                    settingsMenuOpen = false
+                    val url = activeTab.currentUrl
+                    if (url.isNotBlank()) {
+                        runCatching {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, url)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(Intent.createChooser(send, "Open on phone"))
+                        }
+                    }
+                },
             )
         }
         if (listsOpen) {
@@ -1302,6 +1428,12 @@ private fun BrowserSettingsMenu(
     onOpenTabs: () -> Unit,
     onCloseMenu: () -> Unit,
     onCloseBrowser: () -> Unit,
+    // Audit fix (2026-10-25, A2/A3): text zoom, find-in-page,
+    // and open-on-phone, all from this same sheet.
+    textZoom: Int,
+    onTextZoom: (Int) -> Unit,
+    onFindInPage: () -> Unit,
+    onOpenOnPhone: () -> Unit,
 ) {
     @Composable
     fun MenuRow(label: String, checked: Boolean, onClick: () -> Unit) {
@@ -1398,6 +1530,34 @@ private fun BrowserSettingsMenu(
                         onPopupSetting(BrowserStore.PopupSetting.BLOCK)
                     }
                 }
+                MenuSection("Text size")
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    GsButton(onClick = { onTextZoom(textZoom - 25) }, modifier = Modifier.weight(1f)) { Text("A−") }
+                    Text(
+                        "$textZoom%",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        modifier = Modifier.widthIn(min = 56.dp),
+                    )
+                    GsButton(onClick = { onTextZoom(textZoom + 25) }, modifier = Modifier.weight(1f)) { Text("A+") }
+                }
+                Text(
+                    "Larger or smaller page text, 50% to 200%. Saved, so it applies to every tab.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuSection("Page")
+                MenuRow("Find in page", false) { onFindInPage() }
+                MenuRow("Open on phone", false) { onOpenOnPhone() }
+                Text(
+                    "Open on phone shares this page's address to the phone's browser; the car tab stays open.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 MenuSection("Browser")
                 MenuRow("Saved & history", false) { onOpenLists() }
                 MenuRow("Tabs", false) { onOpenTabs() }

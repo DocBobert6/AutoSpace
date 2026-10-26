@@ -182,7 +182,9 @@ object MirrorGeometry {
      * and capped at 360px wide, the exit button lives in the corner.
      */
     fun pillRegion(frameW: Float, frameH: Float): FrameRect {
-        val w = minOf(frameW * 0.28f, 360f).coerceAtLeast(120f)
+        // Audit fix (2026-10-25, M2): the old floor forced 120px
+        // even on a narrower frame, pushing the pill off-frame.
+        val w = minOf(frameW * 0.28f, 360f, frameW).coerceAtLeast(0f)
         val h = 64f
         val top = 16f
         return FrameRect((frameW - w) / 2f, top, (frameW + w) / 2f, top + h)
@@ -198,11 +200,18 @@ object MirrorGeometry {
      * relay to the phone.
      */
     fun chromeButtons(frameW: Float, frameH: Float): List<FrameRect> {
-        val size = (minOf(frameW, frameH) * 0.14f).coerceIn(72f, 144f)
+        // Audit fix (2026-10-25, M2): four buttons at >=72px plus
+        // gaps total >=336px, so on a narrower frame the row's start
+        // went negative and edge buttons clipped. Shrink to fit.
+        var size = (minOf(frameW, frameH) * 0.14f).coerceIn(72f, 144f)
         val gap = 16f
-        val total = 4 * size + 3 * gap
+        var total = 4 * size + 3 * gap
+        if (frameW > 0f && total > frameW) {
+            size = ((frameW - 3 * gap) / 4f).coerceAtLeast(0f)
+            total = 4 * size + 3 * gap
+        }
         val top = frameH - size - 24f
-        val start = (frameW - total) / 2f
+        val start = ((frameW - total) / 2f).coerceAtLeast(0f)
         return (0 until 4).map { i ->
             val left = start + i * (size + gap)
             FrameRect(left, top, left + size, top + size)

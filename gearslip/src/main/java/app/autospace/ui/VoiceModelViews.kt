@@ -34,6 +34,9 @@ import app.autospace.car.CarSettings
 import app.autospace.speech.VoiceEngine
 import app.autospace.speech.VoiceModels
 import app.autospace.speech.VoiceTrace
+import app.autospace.GearslipLog
+import app.autospace.speech.HotwordListener
+import app.autospace.speech.SpeechEngine
 
 /**
  * Which speech model the voice assistant listens with, and downloading it. Each is fetched once
@@ -106,6 +109,9 @@ internal fun VoiceModelSection() {
 internal fun SpokenVoiceSection() {
     val context = LocalContext.current
     remember { VoiceModels.init(context) }
+    // Audit fix (2026-10-25, V6): see car VoiceSettings — re-validate
+    // on entering so the rows cannot show a stale state.
+    androidx.compose.runtime.LaunchedEffect(Unit) { VoiceModels.refreshStates(context) }
     val kokoroState by VoiceModels.state(VoiceModels.Engine.KOKORO).collectAsState()
     val piperState by VoiceModels.state(VoiceModels.Engine.PIPER).collectAsState()
     val selectedVoice by VoiceModels.selectedVoice.collectAsState()
@@ -342,6 +348,76 @@ internal fun SpokenVoiceSection() {
             }
             Switch(checked = hotword, onCheckedChange = { CarSettings.setHotword(it) })
         }
+        // Audit fix (2026-10-25, A4): one-shot hotword test.
+        // A SINGLE listen through the existing Kroko recognizer
+        // (SpeechEngine.listen, the same one-shot button commands
+        // use), reporting matched/not-matched only. HARD
+        // BOUNDARIES: it never starts the continuous car loop,
+        // never changes any toggle, and never logs or shows a
+        // transcript — only the matched-phrase constant is
+        // logged, exactly like the loop itself. It needs no car
+        // test; the car loop still needs a real drive.
+        HotwordTestRow(krokoReady = liveState is State.Ready)
+    }
+}
+
+/**
+ * One-shot hotword test row for phone Settings (A4). The result
+ * is a fixed sentence, never the recognised words.
+ */
+@Composable
+private fun HotwordTestRow(krokoReady: Boolean) {
+    val context = LocalContext.current
+    var testing by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<String?>(null) }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Test hotword listening", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Say “Hey AutoSpace” once. This reports only whether the wake phrase matched — " +
+                    "it never records or shows what you said, never starts continuous listening, " +
+                    "and never changes any setting.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (result != null) {
+                Text(
+                    result!!,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                testing = true
+                result = null
+                SpeechEngine.listen(
+                    context,
+                    cue = true,
+                    onHeard = {},
+                    onResult = { raw ->
+                        val matched = HotwordListener.findHotword(SpeechEngine.clean(raw)) != null
+                        GearslipLog.i("hotword test: " + if (matched) "matched" else "not matched")
+                        testing = false
+                        result = if (matched) {
+                            "Heard “Hey AutoSpace” — hotword matching works."
+                        } else {
+                            "Didn't hear the wake phrase — try again, closer to the phone."
+                        }
+                    },
+                    onError = { message ->
+                        testing = false
+                        result = message
+                    },
+                )
+            },
+            enabled = !testing && krokoReady,
+        ) { Text(if (testing) "Listening…" else "Test") }
     }
 }
 
