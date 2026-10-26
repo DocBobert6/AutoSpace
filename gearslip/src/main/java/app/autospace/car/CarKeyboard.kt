@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -307,6 +308,7 @@ private fun LetterKey(
     onShortcut: (() -> Unit)? = null,
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val gestureScope = rememberCoroutineScope()
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
     val shape = RoundedCornerShape(12.dp)
     Box(
@@ -329,7 +331,7 @@ private fun LetterKey(
                         var gestureDone = false
                         var timeoutJob: Job? = null
                         if (hint != null && onShortcut != null) {
-                            timeoutJob = launch {
+                            timeoutJob = gestureScope.launch {
                                 delay(longPressTimeoutMs)
                                 if (!gestureDone && tracker.onTimeout() == KeyPressOutcome.SHORTCUT) {
                                     onShortcut()
@@ -345,7 +347,14 @@ private fun LetterKey(
                             if (!change.pressed) {
                                 gestureDone = true
                                 timeoutJob?.cancel()
-                                outcome = if (change.changedToUpOrCancelled()) tracker.onUp() else KeyPressOutcome.NONE
+                                // A lift ends the press as a tap (tracker
+                                // decides). A system cancel also arrives here
+                                // as !pressed and is treated the same: the
+                                // keyboard has no competing gesture consumer
+                                // (no scroll, no nested detectors), so a true
+                                // cancel only occurs as the view detaches,
+                                // where the insert lands in a dying field.
+                                outcome = tracker.onUp()
                                 if (outcome == KeyPressOutcome.TAP) onLetter()
                                 break
                             }
