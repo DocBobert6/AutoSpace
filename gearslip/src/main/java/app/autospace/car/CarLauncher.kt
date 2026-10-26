@@ -344,10 +344,11 @@ fun CarLauncher() {
         ) {
             Icon(Icons.Filled.Search, contentDescription = null)
             Spacer(Modifier.width(8.dp))
-            Text(
-                if (query.isBlank()) "Search apps" else query,
+            KeyboardFieldText(
+                text = query,
+                placeholder = "Search apps",
                 style = MaterialTheme.typography.titleMedium,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                showCaret = searching,
             )
         }
         if (pinned.isNotEmpty()) {

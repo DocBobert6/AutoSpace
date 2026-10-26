@@ -1328,13 +1328,12 @@ private fun WebPageSetting() {
             color = MaterialTheme.colorScheme.surfaceBright,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                url.ifEmpty { "DuckDuckGo (default) - tap to set a different page" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (url.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            KeyboardFieldText(
+                url,
+                "DuckDuckGo (default) - tap to set a different page",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                showCaret = editing,
             )
         }
         Text(

@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,6 +162,13 @@ fun CarKeyboard(
     val latestChange by rememberUpdatedState(onTextChange)
     val latestSubmit by rememberUpdatedState(onSubmit)
     val latestDismiss by rememberUpdatedState(onDismiss)
+    // r49: inserts read the CURRENT text (see [KeyInsert]) — LetterKey's pointerInput
+    // block outlives keystrokes, so a lambda closing over a `text` snapshot goes stale
+    // between taps (the video-audit defect: fast typing overwrote recent chars, one tap
+    // even wiped a whole query). Fed from rememberUpdatedState, the same pattern the
+    // PhoneTyping callbacks above already use, so "current" really is current.
+    val latestText = rememberUpdatedState(text)
+    val keyInsert = remember { KeyInsert({ latestText.value }, { latestChange(it) }) }
     val phoneField = remember {
         PhoneTyping.open(text, { latestChange(it) }, { latestSubmit() }, onDismiss?.let { { latestDismiss?.invoke() } })
     }
@@ -283,10 +291,10 @@ fun CarKeyboard(
                             val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
                             LetterKey(label, Modifier.weight(1f), hint = hint,
                                 onLetter = {
-                                    onTextChange(text + label)
+                                    keyInsert.append(label)
                                     shifted = false
                                 },
-                                onShortcut = hint?.let { { onTextChange(text + it) } },
+                                onShortcut = hint?.let { { keyInsert.append(it) } },
                             )
                         }
                         if (staggered) Spacer(Modifier.weight(0.5f))
@@ -311,10 +319,10 @@ fun CarKeyboard(
                         val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
                         LetterKey(label, Modifier.weight(1f), hint = hint,
                             onLetter = {
-                                onTextChange(text + label)
+                                keyInsert.append(label)
                                 shifted = false
                             },
-                            onShortcut = hint?.let { { onTextChange(text + it) } },
+                            onShortcut = hint?.let { { keyInsert.append(it) } },
                         )
                     }
                     Key("⌫", Modifier.weight(1.4f)) {
@@ -353,6 +361,71 @@ fun CarKeyboard(
                 }
                 } // !showKeyboardSettings
             }
+        }
+    }
+}
+
+/**
+ * r49: the insertion-point line for a [CarKeyboard]-driven display. The displays below
+ * are not editable text fields (a pill, a card, a bar), so no cursor exists by
+ * construction — that was the video audit's "no line showing where I'm typing". A drawn
+ * bar, not a text glyph: the old "|" / "▏" characters rendered at whatever width the
+ * font gave them and drifted with the style. Static, never blinking: a looping caret
+ * animation while driving buys nothing and fights the motion rules.
+ */
+@Composable
+fun KeyboardCaret(modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .padding(horizontal = 2.dp)
+            .width(2.dp)
+            .height(20.dp)
+            .background(MaterialTheme.colorScheme.onSurface)
+    )
+}
+
+/**
+ * r49: a [CarKeyboard]-driven field display with its caret. [text] is the live field
+ * value; [placeholder] shows (muted) when it is empty, with the caret first — the
+ * insertion point is at position 0, not after the placeholder. The text takes its share
+ * without filling it (`weight(1f, fill = false)`), so a short value keeps the caret
+ * hugging its last character while a long one still ellipsizes and keeps the caret at
+ * the visible end. Pass [showCaret] false wherever the keyboard is closed (a pill or
+ * card that also serves as a closed trigger); it defaults to true for displays that
+ * only exist while typing.
+ */
+@Composable
+fun KeyboardFieldText(
+    text: String,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    placeholderColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    maxLines: Int = 1,
+    showCaret: Boolean = true,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        if (text.isEmpty()) {
+            if (showCaret) KeyboardCaret()
+            Text(
+                placeholder,
+                style = style,
+                color = placeholderColor,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        } else {
+            Text(
+                text,
+                style = style,
+                color = color,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (showCaret) KeyboardCaret()
         }
     }
 }
@@ -558,6 +631,32 @@ private fun LetterKey(
         }
         // r30: the Gboard keycap read (see [KeyEdge]).
         KeyEdge(colors.container)
+    }
+}
+
+/**
+ * r49: the insert path for [LetterKey], kept pure so the hazard is unit-testable.
+ *
+ * LetterKey's `.pointerInput(hint, label)` block captures its lambdas at creation and
+ * restarts only when hint/label change, so a lambda closing over a `text` snapshot goes
+ * stale between keystrokes — the video-audit defect (t=27.50: one q-tap wiped a 10-char
+ * query because its base was ""). This holder never holds a snapshot: it reads the
+ * CURRENT text through [currentText] at insert time. The pointerInput block holds the
+ * holder, not the string, and [CarKeyboard] feeds it from rememberUpdatedState, so the
+ * provider is current by construction. One fix here covers every field, since all of
+ * them are controlled text + onTextChange.
+ */
+class KeyInsert(
+    private val currentText: () -> String,
+    private val onTextChange: (String) -> Unit,
+) {
+    fun append(insert: String) {
+        onTextChange(currentText() + insert)
+    }
+
+    fun dropLast() {
+        val current = currentText()
+        if (current.isNotEmpty()) onTextChange(current.dropLast(1))
     }
 }
 

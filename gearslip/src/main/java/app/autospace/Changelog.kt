@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            17, "0.4.6-alpha",
+            listOf(
+                "Car keyboard typing fixed for good: fast typing no longer overwrites recent letters, and one tap can no longer wipe a whole search — every key now appends to the current text. Every keyboard field also shows a caret line at the typing position, so it is always visible where the next character will land.",
+            ),
+        ),
+        Release(
             16, "0.4.5-alpha",
             listOf(
                 "New Verve look: a vivid violet color scheme and a rounder button style, each picked on its own in Appearance. Switches spring softly when parked and snap instantly while driving, and cards take Verve's rounder corner.",

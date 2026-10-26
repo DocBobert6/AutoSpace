@@ -200,11 +200,10 @@ private fun ReplyPane(n: CarNotification, onDone: () -> Unit) {
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.weight(1f),
             ) {
-                Text(
-                    if (text.isEmpty()) "Reply to ${n.title.ifBlank { n.appLabel }}" else "$text|",
-                    color = if (text.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                // r49: the drawn caret replaces the old "$text|" pipe character.
+                KeyboardFieldText(
+                    text,
+                    "Reply to ${n.title.ifBlank { n.appLabel }}",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 )
             }

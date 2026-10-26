@@ -352,13 +352,12 @@ private fun ContactSearchField(query: String, active: Boolean, onToggle: () -> U
         color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            query.ifEmpty { "Search contacts" },
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        KeyboardFieldText(
+            query,
+            "Search contacts",
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            showCaret = active,
         )
     }
 }

@@ -253,6 +253,7 @@ private fun SearchContent(template: SearchTemplate, modifier: Modifier) {
                 query,
                 template.searchHint.orEmpty(),
                 Modifier.weight(1f).clickable { typing = true },
+                showCaret = typing,
                 onClear = {
                     query = ""
                     delegate.textChanged("")
@@ -293,6 +294,9 @@ internal fun SearchField(
     modifier: Modifier = Modifier,
     searchIcon: Boolean = true,
     onClear: (() -> Unit)? = null,
+    // r49: the caret shows only while the keyboard is actually open — the search
+    // callers pass their typing flag; sign-in leaves the default (always open).
+    showCaret: Boolean = true,
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
@@ -313,13 +317,12 @@ internal fun SearchField(
                 )
                 Spacer(Modifier.width(12.dp))
             }
-            Text(
-                query.ifEmpty { hint.ifEmpty { "Search" } },
-                style = MaterialTheme.typography.titleMedium,
-                color = if (query.isEmpty()) muted else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            KeyboardFieldText(
+                query,
+                hint.ifEmpty { "Search" },
                 modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                showCaret = showCaret,
             )
             if (onClear != null && query.isNotEmpty()) {
                 GsIconButton(

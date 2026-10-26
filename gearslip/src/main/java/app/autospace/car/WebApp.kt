@@ -939,19 +939,23 @@ fun WebApp(content: String) {
                             // selection itself is visible in the pill.
                             if (addressEditing) {
                                 if (addressText.isEmpty()) {
-                                    Text(
-                                        "Type an address or search…",
-                                        maxLines = 1,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        KeyboardCaret()
+                                        Text(
+                                            "Type an address or search…",
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
                                 } else {
                                     val shown = if (addressText.length <= 40) addressText
                                         else "…" + addressText.takeLast(38)
-                                    val label = if (addressSelected) shown else shown + "▏"
+                                    // r49: the drawn caret replaces the old "▏" glyph; while
+                                    // selected there is no caret, the highlight is the marker.
                                     if (addressSelected) {
                                         Text(
-                                            label,
+                                            shown,
                                             maxLines = 1,
                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                             modifier = Modifier.background(
@@ -961,11 +965,14 @@ fun WebApp(content: String) {
                                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                                         )
                                     } else {
-                                        Text(
-                                            label,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                shown,
+                                                maxLines = 1,
+                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            )
+                                            KeyboardCaret()
+                                        }
                                     }
                                 }
                             } else {
@@ -1412,12 +1419,11 @@ fun WebApp(content: String) {
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                     )
-                    Text(
-                        if (engineEditText.isEmpty()) "https://example.com/search?q=%s" else engineEditText,
+                    KeyboardFieldText(
+                        engineEditText,
+                        "https://example.com/search?q=%s",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (engineEditText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         "Must start with https:// and contain %s where the search terms go.",
@@ -1532,13 +1538,13 @@ fun WebApp(content: String) {
                     contentAlignment = Alignment.Center,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            if (findQuery.isEmpty()) "Find in page" else findQuery,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                        KeyboardFieldText(
+                            findQuery,
+                            "Find in page",
                             modifier = Modifier.padding(start = 12.dp).widthIn(max = 220.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            placeholderColor = MaterialTheme.colorScheme.onSurface,
+                            showCaret = findOpen && !addressEditing && !engineEditing,
                         )
                         if (findMatches.isNotEmpty()) {
                             Text(
@@ -2015,11 +2021,10 @@ private fun BrowserStartPage(
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Text(
-                if (searchText.isEmpty()) "Search or type an address…" else searchText,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (searchText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            KeyboardFieldText(
+                searchText,
+                "Search or type an address…",
+                showCaret = searchEditing,
             )
         }
         Text(
@@ -2747,7 +2752,12 @@ private fun JsDialogOverlay(dialog: JsDialogState, onDismiss: () -> Unit) {
                 ) {
                     Text(dialog.message, style = MaterialTheme.typography.bodyLarge)
                     if (dialog is JsDialogState.Prompt) {
-                        Text(promptText, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        KeyboardFieldText(
+                            promptText,
+                            "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         when (dialog) {

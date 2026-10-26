@@ -273,6 +273,7 @@ private fun SearchPanel(
                 query,
                 "Search $appLabel",
                 Modifier.weight(1f).clickable { typing = true },
+                showCaret = typing,
                 onClear = {
                     query = ""
                     typing = true
