@@ -613,6 +613,19 @@ private fun AboutAndExperimentalPage() {
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
 
+    // r53: the master switch — a control, not a feature row, so it stays
+    // visible like the Hide/Show row itself (see ExperimentalMaster).
+    ExperimentalFeatureRow(
+        title = "All experimental features",
+        description = "Turns on the whole floating look at once: floating media, home widgets, " +
+            "and frosted map chrome, and shows the experimental rows below. Turning it off " +
+            "turns floating media and home widgets back off; frosted chrome and the row " +
+            "visibility stay as they are. Vehicle data is never touched — it stays its own " +
+            "switch at the bottom of the list. Turning any one feature off makes this read off again.",
+        checked = ExperimentalMaster.isOn(floatingMedia, homeWidgets),
+    ) { on ->
+        applyMasterWrites(if (on) ExperimentalMaster.onWrites() else ExperimentalMaster.offWrites())
+    }
     ChoiceRow(
         "Experimental features",
         listOf(false to "Hide", true to "Show"),
@@ -1226,7 +1239,23 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * Individually-switched experimental features, shown once the driver has opted into
  * experimental features as a whole. Each is its own row - a title, what it does, and a switch -
  * so the list reads fine whether there's one entry or several.
+ *
+ * Order (r53, audit #4 D1 + Robert's 2026-10-26 correction): floating media,
+ * frosted map chrome, home widgets, then vehicle data LAST — vehicle data is
+ * never part of the master switch (see ExperimentalMaster) and sits last as
+ * its own switch. The master row itself lives in AboutAndExperimentalPage
+ * above the Hide/Show row, always visible; this list only renders when the
+ * rows are shown.
  */
+
+/** r53: applies one master-switch action's writes through the existing setters, field by field. */
+private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
+    writes.experimentalFeatures?.let { CarSettings.setExperimentalFeaturesEnabled(it) }
+    writes.floatingMedia?.let { CarSettings.setFloatingMediaEnabled(it) }
+    writes.homeWidgets?.let { CarSettings.setHomeWidgetsEnabled(it) }
+    writes.widgetsDismissed?.let { CarSettings.setWidgetsDismissed(it) }
+    writes.frostedMapChrome?.let { CarSettings.setFrostedMapChromeEnabled(it) }
+}
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
@@ -1235,14 +1264,6 @@ private fun ExperimentalFeaturesList(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        ExperimentalFeatureRow(
-            title = "Vehicle data",
-            description = "Adds a Vehicle data tile: a live, raw dump of the head unit's sensor " +
-                "channel. Field labels (speed, RPM, fuel...) are carried over from other " +
-                "reverse-engineering projects and unverified against this car - treat them as a " +
-                "guess, not a fact, until you've watched one change for yourself.",
-            checked = carSensors,
-        ) { CarSettings.setCarSensorsEnabled(it) }
         ExperimentalFeatureRow(
             title = "Floating media over map (experimental)",
             description = "Home shows the map full-screen with the player as a floating card " +
@@ -1277,6 +1298,16 @@ private fun ExperimentalFeaturesList(
                 Text("Show widget column again", style = MaterialTheme.typography.titleMedium)
             }
         }
+        // r53: vehicle data LAST, as its own switch — never part of the
+        // master switch (see ExperimentalMaster).
+        ExperimentalFeatureRow(
+            title = "Vehicle data",
+            description = "Adds a Vehicle data tile: a live, raw dump of the head unit's sensor " +
+                "channel. Field labels (speed, RPM, fuel...) are carried over from other " +
+                "reverse-engineering projects and unverified against this car - treat them as a " +
+                "guess, not a fact, until you've watched one change for yourself.",
+            checked = carSensors,
+        ) { CarSettings.setCarSensorsEnabled(it) }
     }
 }
 

@@ -341,9 +341,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val floatingMediaEnabled: StateFlow<Boolean> = floatingMediaFlow
 
     /**
-     * Widget layer (r37): the three-widget Home column, behind one master
-     * experimental switch, default OFF. Classic Home is byte-for-byte when
-     * off; the column renders only over the floating full-bleed map base.
+     * Widget layer (r37): the three-widget Home column, behind the
+     * experimental-features Show switch, default OFF. Classic Home is
+     * byte-for-byte when off; the column renders only over the floating
+     * full-bleed map base.
      */
     val homeWidgetsEnabled: StateFlow<Boolean> = homeWidgetsFlow
 
@@ -353,16 +354,20 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      * media card's own surface at the pinned 0.92 alpha) instead of the
      * opaque chrome. Experimental and off by default; classic opaque
      * chrome returns when off. It joins the floating-look master suite:
-     * the future master switch sets this alongside floating media and
-     * home widgets, and the individual toggle keeps working after.
+     * the r53 master switch sets this ON alongside floating media and
+     * home widgets (turning the master OFF leaves it as-is), and the
+     * individual toggle keeps working after.
      */
     val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
 
     /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
-     * Re-enabled only from the widget settings row, never by cycling the
-     * master switch or the floating toggle.
+     * Re-enabled only from the widget settings row, or by turning the
+     * r53 "All experimental features" master switch ON — never by
+     * cycling the experimental-features Hide/Show row or the floating
+     * toggle. (The pre-r53 wording's "master switch" meant the Hide/Show
+     * row; the r53 master is a different control and DOES clear this on ON.)
      */
     val widgetsDismissed: StateFlow<Boolean> = widgetsDismissedFlow
 

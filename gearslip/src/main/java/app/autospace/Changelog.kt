@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            21, "0.4.10-alpha",
+            listOf(
+                "A new \"All experimental features\" switch at the top of the experimental settings turns on the whole floating look at once: floating media, home widgets, and frosted map chrome. Turning it off turns floating media and home widgets back off; vehicle data stays its own switch at the bottom of the list and is never touched by the master.",
+            ),
+        ),
+        Release(
             20, "0.4.9-alpha",
             listOf(
                 "Glide typing fixed in the app launcher: tracing a word no longer scrolls the keyboard away before you lift, so glides insert on lift when confident and offer strip candidates when weak, as they should. Tap typing, flick and long-press hints are unchanged.",
