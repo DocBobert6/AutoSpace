@@ -109,6 +109,17 @@ fun gsButtonShape(fallback: Shape): Shape {
 fun cardShapeForLook(rectangularButtons: Boolean, corner: Dp, fallback: Shape): Shape =
     if (rectangularButtons) RoundedCornerShape(corner) else fallback
 
+/**
+ * r32: texture reads once per surface. A control sitting on a Pitlane panel
+ * (which already draws its own stronger weave + grain) skips its own
+ * weave/grain — two independent 8dp grids at different phases compounded
+ * into a busy moiré on the audited Appearance page. Bevel, hairline, LED
+ * and rim still draw; only the material pattern is suppressed. Pure so it
+ * is unit-testable; [gsSurface] feeds it the current look + panel flag.
+ */
+fun shouldDrawControlTexture(look: ControlLook, onTexturedPanel: Boolean): Boolean =
+    !onTexturedPanel && (look.weaveAlpha > 0f || look.grainAlpha > 0f)
+
 /** The current theme's control look, swapped for its light-mode variant on a light UI. */
 @Composable
 fun gsLook(): ControlLook {
@@ -194,7 +205,11 @@ fun Modifier.gsSurface(
         // pitLanePanel. Suppressed wherever the container is transparent
         // (this whole block is inside the alpha > 0 gate), and the LED,
         // rivets, and borders all draw over it.
-        if (look.weaveAlpha > 0f || look.grainAlpha > 0f) {
+        // r32: on a textured panel the panel's own weave + grain already
+        // texture this surface (see shouldDrawControlTexture) — a control
+        // drawing its own second grid on top is what made the audited page
+        // read busy instead of subtle.
+        if (shouldDrawControlTexture(look, LocalOnPitlanePanel.current)) {
             val weave = look.weaveAlpha
             val grain = look.grainAlpha
             val thread = if (effContainer.luminance() > 0.5f) Color.Black else Color.White
@@ -236,7 +251,10 @@ fun Modifier.gsSurface(
                         drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
                     }
                     if (grain > 0f) {
-                        drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1f))
+                        // r32: grain was a 1px stroke while weave is 1dp —
+                        // same 1dp stroke now (see pitLanePanelTexture);
+                        // alphas unchanged.
+                        drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1.dp.toPx()))
                     }
                 }
             }

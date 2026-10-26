@@ -1040,7 +1040,13 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
     // slider thumb and the nav bar's active pill, so it reads as
     // "selected" in every theme including all-black OLED.
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        // r32: ChoiceRow titles ARE section headers, so under Pitlane they
+        // render engraved like every other section header (GsSectionHeader).
+        // Other styles keep the exact SemiBold title they have today.
+        // (GsSectionHeader's engraved branch adds its 4dp bottom padding,
+        // so the title-card gap is 12dp under Pitlane only.)
+        if (gsLook().engravedHeader) GsSectionHeader(title)
+        else Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 options.chunked(3).forEach { rowOptions ->

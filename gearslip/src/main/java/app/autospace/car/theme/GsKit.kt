@@ -14,6 +14,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,6 +126,17 @@ fun Modifier.frostBar(shape: Shape = GsKit.PillShape, elevation: Dp = 6.dp): Mod
  */
 val LocalOledDark = compositionLocalOf { false }
 
+/**
+ * r32: true while composing inside a panel that draws its own Pitlane
+ * material (GsGroupedCard / GsPanelCard / GsSheetSurface under a look with
+ * weave or rivets). Controls inside such a panel skip their own weave +
+ * grain (see shouldDrawControlTexture) so the material reads once per
+ * surface instead of two misaligned grids compounding into a moiré. The
+ * provider value is the panel's own texture gate, so under any other style
+ * it is false and nothing changes.
+ */
+val LocalOnPitlanePanel = compositionLocalOf { false }
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -135,13 +147,19 @@ fun GsGroupedCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cardShape = gsButtonShape(GsKit.CardShape)
+    val look = gsLook()
+    val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
-        content = { Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() } }
+        content = {
+            CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+            }
+        }
     )
 }
 
@@ -156,13 +174,19 @@ fun GsPanelCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val cardShape = gsButtonShape(GsKit.CardShape)
+    val look = gsLook()
+    val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
-        content = { Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() } }
+        content = {
+            CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+            }
+        }
     )
 }
 
@@ -175,12 +199,18 @@ fun GsSheetSurface(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val sheetShape = gsButtonShape(GsKit.SheetShape)
+    val look = gsLook()
+    val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
         modifier = modifier.pitLanePanelBorder(sheetShape),
         color = GsKit.sheetColor(),
         shape = sheetShape,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
-        content = { Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() } }
+        content = {
+            CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+            }
+        }
     )
 }
 
@@ -201,13 +231,22 @@ fun GsSheetSurface(
  * decoration. Browser sheets are chrome, not pages: they follow the panel
  * treatment like every other sheet, while WebView page content is untouched.
  */
+/**
+ * r32: the panel bevel, aligned to the control bevel. r26 set panels weaker
+ * (0.30/0.45 dark, 0.25/0.35 light) and the audit found the panel edge
+ * indiscernible — panels are the surfaces that must read raised at a
+ * glance, so they now carry the same edge as controls (0.50/0.60 dark,
+ * 0.45/0.55 light). Pure so it is unit-testable. (top, bottom) alphas.
+ */
+fun pitlanePanelBevel(dark: Boolean): Pair<Float, Float> =
+    if (dark) 0.50f to 0.60f else 0.45f to 0.55f
+
 @Composable
 fun Modifier.pitLanePanelBorder(shape: Shape): Modifier {
     val look = gsLook()
     if (look.weaveAlpha <= 0f && !look.rivets) return this
     val dark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
-    val top = if (dark) 0.30f else 0.25f
-    val bottom = if (dark) 0.45f else 0.35f
+    val (top, bottom) = pitlanePanelBevel(dark)
     return this.border(
         1.dp,
         Brush.verticalGradient(
@@ -264,7 +303,11 @@ fun Modifier.pitLanePanelTexture(): Modifier {
         onDrawBehind {
             drawPath(even, thread.copy(alpha = weave), style = weaveStroke)
             drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
-            drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1f))
+            // r32: grain was a 1px stroke while weave is 1dp — on a
+            // high-density car display grain rendered ~3x thinner than
+            // weave and fell below visibility. Same 1dp stroke now;
+            // alphas unchanged.
+            drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1.dp.toPx()))
             if (screws && size.width >= 64.dp.toPx() && size.height >= 40.dp.toPx()) {
                 val r = 2.5.dp.toPx()
                 val inset = 6.dp.toPx()
