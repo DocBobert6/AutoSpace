@@ -44,9 +44,13 @@ class PlayerResumeTest {
     }
 
     @Test fun codecKeepsInsertionOrderAndOverwritesDuplicates() {
+        // LinkedHashMap put on an existing key updates the value in place
+        // without moving it: decode order stays first-seen (a, b), with
+        // a's value replaced. (PlayerResume.save re-inserts explicitly
+        // when it wants most-recent-last; decode does not reorder.)
         val raw = "a|10000|60000\nb|20000|60000\na|30000|60000\n"
         val decoded = PlayerResume.decode(raw)
-        assertEquals(listOf("b", "a"), decoded.keys.toList())
+        assertEquals(listOf("a", "b"), decoded.keys.toList())
         assertEquals(PlayerResume.Entry(30_000L, 60_000L), decoded["a"])
     }
 }
