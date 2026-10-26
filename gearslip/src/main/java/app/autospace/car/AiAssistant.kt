@@ -41,6 +41,13 @@ object AiAssistant {
     const val CONNECT_TIMEOUT_MS = 5_000
     /** Read timeout for a Gemini request: one attempt, then the unavailable message. */
     const val REQUEST_TIMEOUT_MS = 15_000
+    /**
+     * Read timeout for a grounded-capable fallback request (r27): grounding adds a search
+     * step, so these calls get longer than the plain 15 s. The tool is attached on every
+     * fallback request (spec §1), so every fallback call uses this timeout; the no-cost
+     * validation GET keeps [REQUEST_TIMEOUT_MS]. Single attempt still, no retries.
+     */
+    const val GROUNDED_REQUEST_TIMEOUT_MS = 25_000
     /** An AI confirmation unanswered for this long is a DECLINE (see [decideConfirmation]). */
     const val CONFIRM_TIMEOUT_MS = 10_000L
     /** Spoken answers are capped at this many words, cut at a sentence boundary. */
@@ -68,7 +75,11 @@ object AiAssistant {
             "{\"action\": \"brightness\", \"percent\": 0-100} or {\"action\": \"brightness\", \"direction\": \"up\"|\"down\"} or " +
             "{\"action\": \"toggle\", \"setting\": \"speak_directions\"|\"phone_mic\"|\"screen_sharing\", \"on\": true|false} or " +
             "{\"action\": \"timer\", \"minutes\": 1-240} or {\"action\": \"readout\", \"what\": \"battery\"|\"eta\"|\"messages\"}. " +
-            "Otherwise reply with ONLY the spoken answer text, nothing else."
+            "Otherwise reply with ONLY the spoken answer text, nothing else. " +
+            "For current facts (weather, news, scores, prices, times), use the search results " +
+            "and state the information as of the search time. Never present a searched fact " +
+            "as timeless. If a question needs a place and none is given, ask for the place " +
+            "instead of guessing one."
 
     /** Privacy notice substance (§6 of the spec), shown before first enable and linked from settings. */
     const val PRIVACY_NOTICE =
@@ -78,7 +89,10 @@ object AiAssistant {
             "or history to the AI — only the words you just said (and, for an action you confirm, " +
             "the exact thing you approved). Turn AI answers off anytime in Settings > AI assistant, " +
             "and remove your key there too. Without a network connection, AI answers are unavailable " +
-            "and the local assistant keeps working. Google's own terms govern Google's side."
+            "and the local assistant keeps working. When a question needs current information, " +
+            "the assistant may run a Google Search through the same Gemini connection. No new " +
+            "company receives your words, and location is never sent. " +
+            "Google's own terms govern Google's side."
 
     // --- Session badge: "From AI:" is spoken on the FIRST AI answer per session only. ---
     private var firstAnswerSpoken = false
@@ -375,6 +389,55 @@ object AiAssistant {
         return "emergency" in t || "ambulance" in t || "911" in t || "nine one one" in t ||
             "call the police" in t || "get help" in t
     }
+
+    // --- Place-dependent questions, option 1 (r27): the place must be in the question. ---
+
+    /**
+     * Words that make a question place-dependent: without a place there is no correct
+     * answer, only a guess from somewhere else. Kept deliberately narrow — a general
+     * question that happens to mention rain in passing ("is rain good for plants") is
+     * not place-dependent, but the classifier only ever sees this AFTER the built-in /
+     * keyword / fuzzy chain has passed, so a local command never reaches this check.
+     */
+    private val PLACE_DEPENDENT_WORDS = setOf(
+        "weather", "forecast", "rain", "raining", "rainy", "snow", "snowing", "snowy",
+        "temperature", "humidity", "humid", "windy", "wind",
+    )
+    /** Words that are times, not places — stripped when looking for a place phrase. */
+    private val TIME_WORDS = setOf(
+        "today", "tonight", "tomorrow", "this", "next", "weekend", "week", "morning",
+        "afternoon", "evening", "now", "currently", "later",
+    )
+    private val PLACE_PREPOSITIONS = setOf("in", "at", "near", "around", "for")
+
+    /** True when the normalized utterance asks something that needs a place to answer. */
+    fun isPlaceDependentQuestion(normalized: String): Boolean {
+        val tokens = normalized.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        if (tokens.any { it in PLACE_DEPENDENT_WORDS }) return true
+        // "how hot/cold is it outside" is a weather question; without "outside" it is
+        // ambiguous ("how hot is the oven") and is left to the model, not this guard.
+        val joined = tokens.joinToString(" ")
+        return (joined.contains("how hot") || joined.contains("how cold")) &&
+            ("outside" in tokens || "out" in tokens)
+    }
+
+    /**
+     * True when the normalized utterance names a place after a place preposition
+     * ("weather in Dry Ridge", "will it rain in Cincinnati tomorrow"). Trailing time
+     * words are stripped first, so "in Cincinnati tomorrow" still counts and "for
+     * today" does not. No location is ever read here — this only reads the user's
+     * own words, which is the whole point of option 1.
+     */
+    fun hasPlace(normalized: String): Boolean {
+        val t = normalized.lowercase()
+        val match = Regex("""\b(in|at|near|around|for)\s+([a-z][a-z ]*)$""").find(t) ?: return false
+        val placeTokens = match.groupValues[2].trim().split(Regex("\\s+"))
+            .filter { it.isNotEmpty() && it !in TIME_WORDS && it !in PLACE_PREPOSITIONS }
+        return placeTokens.isNotEmpty()
+    }
+
+    /** The visual source line for a grounded answer; null for ungrounded ones. Never spoken. */
+    fun sourceLine(grounded: Boolean): String? = if (grounded) "via Google Search" else null
 
     // --- Log redaction: a Gemini API key must never survive into a log, trace, or report. ---
 

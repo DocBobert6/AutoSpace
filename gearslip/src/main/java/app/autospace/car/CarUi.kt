@@ -229,7 +229,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         CarAssistant.pendingCommand.collect { heard ->
             if (heard != null) {
                 val reply = AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
-                CarAssistant.reply(reply, fromAi = AssistantCommands.lastReplyWasAi)
+                CarAssistant.reply(
+                    reply,
+                    fromAi = AssistantCommands.lastReplyWasAi,
+                    grounded = AssistantCommands.lastReplyGrounded,
+                    sourceCount = AssistantCommands.lastReplySourceCount,
+                )
             }
         }
     }

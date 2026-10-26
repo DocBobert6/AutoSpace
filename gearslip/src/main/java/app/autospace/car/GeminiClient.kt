@@ -9,12 +9,12 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
-import org.json.JSONObject
 
 /**
  * Gemini API client (r25): one HTTPS request per AI turn, no SDK, no new dependency —
- * [HttpURLConnection] plus the framework's `org.json`, which is the same shape the rest of
- * the app uses for its hand-rolled HTTP. The API key travels only in the `x-goog-api-key`
+ * [HttpURLConnection] plus a hand-built request string (r27: the body is built as a
+ * string so unit tests can pin it on the JVM, where the framework's `org.json` is a
+ * stub). The API key travels only in the `x-goog-api-key`
  * request header, never in a URL (so it cannot land in a log line, a proxy log, or a
  * referrer), and neither request bodies nor response bodies are ever logged — only the
  * outcome class (ok / invalid key / quota / unavailable), never the user's words.
@@ -28,7 +28,11 @@ object GeminiClient {
 
     /** Outcome classes only — no bodies, no keys, no utterances in any of these. */
     sealed class Result {
-        data class Ok(val text: String) : Result()
+        /**
+         * The reply text, plus its grounding outcome (r27): [grounded] true only when
+         * web chunks came back, [sourceCount] how many. Chunk contents are never carried.
+         */
+        data class Ok(val text: String, val grounded: Boolean = false, val sourceCount: Int = 0) : Result()
         /** 400/401/403 from Google: the key is wrong, revoked, or lacks API access. */
         object InvalidKey : Result()
         /** 429 from Google: quota or rate limit on the user's key. */
@@ -77,41 +81,92 @@ object GeminiClient {
     }
 
     /**
+     * The generateContent request body, built as a string (not org.json) so the unit
+     * tests can pin it on the JVM, where org.json is a stub. The device path uses
+     * exactly this string.
+     *
+     * r27 grounding, verified against Google's own docs at build time (see BUILD_LOG
+     * r27): the classic generateContent endpoint takes a `tools` array whose grounding
+     * entry is the `googleSearch` object — the canonical REST JSON name for the Google
+     * Search tool. (The SDKs spell it `google_search` in code and serialize it to
+     * `googleSearch` on the wire; Google's protojson also accepts the snake_case proto
+     * name, but the shipped request uses the canonical REST name.) An empty object
+     * means "search only when the question needs current information" — the model
+     * decides, the app never pre-decides, and no location field is ever sent: there is
+     * no userLocation, latLng, or retrieval config in this body, because option 1 puts
+     * the place in the user's own words.
+     */
+    fun buildRequestBody(utterance: String): String {
+        fun jsonString(value: String): String {
+            val out = StringBuilder()
+            out.append('"')
+            for (ch in value) {
+                when (ch) {
+                    '"' -> out.append("\\\"")
+                    '\\' -> out.append("\\\\")
+                    '\n' -> out.append("\\n")
+                    '\r' -> out.append("\\r")
+                    '\t' -> out.append("\\t")
+                    else -> if (ch.code < 0x20) out.append("\\u%04x".format(ch.code)) else out.append(ch)
+                }
+            }
+            out.append('"')
+            return out.toString()
+        }
+        return "{" +
+            "\"systemInstruction\":{\"parts\":[{\"text\":${jsonString(AiAssistant.SYSTEM_PROMPT)}}]}," +
+            "\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":${jsonString(utterance)}}]}]," +
+            "\"generationConfig\":{\"maxOutputTokens\":${AiAssistant.MAX_OUTPUT_TOKENS}}," +
+            "\"tools\":[{\"googleSearch\":{}}]" +
+            "}"
+    }
+
+    /** Grounding outcome reduced to what the UI may show: grounded yes/no + source count. */
+    data class Grounding(val grounded: Boolean, val sourceCount: Int)
+
+    /**
+     * Reads candidates[0].groundingMetadata.groundingChunks and counts its web chunks.
+     * Chunk contents (titles, URIs) are counted and then dropped — they never reach a
+     * log, a trace, or the screen. A reply with search queries but no chunks counts
+     * as ungrounded: the "via Google Search" line is claimed only when sources exist.
+     */
+    fun extractGrounding(responseJson: String): Grounding {
+        val root = try {
+            JsonMini.parse(responseJson) as? JsonMini.Value.Obj
+        } catch (e: Exception) {
+            null
+        } ?: return Grounding(false, 0)
+        val candidates = (root.objField("candidates") as? JsonMini.Value.Arr)?.list ?: return Grounding(false, 0)
+        if (candidates.isEmpty()) return Grounding(false, 0)
+        val first = candidates[0] as? JsonMini.Value.Obj ?: return Grounding(false, 0)
+        val metadata = first.objField("groundingMetadata") as? JsonMini.Value.Obj ?: return Grounding(false, 0)
+        val chunks = (metadata.objField("groundingChunks") as? JsonMini.Value.Arr)?.list ?: return Grounding(false, 0)
+        val webChunks = chunks.count { (it as? JsonMini.Value.Obj)?.objField("web") != null }
+        return Grounding(webChunks > 0, webChunks)
+    }
+
+    /**
      * One generateContent call: the fixed system prompt plus the transcribed utterance only.
      * No contacts, numbers, messages, history, or location are sent — the request body is
-     * exactly those two texts. A single attempt: on any failure the caller speaks the plain
-     * unavailable message, never a guessed answer.
+     * exactly those two texts plus the grounding tool. A single attempt: on any failure
+     * the caller speaks the plain unavailable message, never a guessed answer.
+     *
+     * r27: the read timeout is the grounded timeout, because the tool is attached on
+     * every fallback request — there is no separate ungrounded fallback call. The key
+     * validation GET keeps the plain 15 s timeout.
      */
     fun generate(key: String, utterance: String): Result {
         if (key.isBlank()) return Result.InvalidKey
         return try {
-            val body = JSONObject().apply {
-                put("systemInstruction", JSONObject().apply {
-                    put("parts", org.json.JSONArray().apply {
-                        put(JSONObject().apply { put("text", AiAssistant.SYSTEM_PROMPT) })
-                    })
-                })
-                put("contents", org.json.JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("parts", org.json.JSONArray().apply {
-                            put(JSONObject().apply { put("text", utterance) })
-                        })
-                    })
-                })
-                put("generationConfig", JSONObject().apply {
-                    put("maxOutputTokens", AiAssistant.MAX_OUTPUT_TOKENS)
-                })
-            }
             val conn = (URL(AiAssistant.GENERATE_URL).openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
                 setRequestProperty("x-goog-api-key", key)
                 setRequestProperty("Content-Type", "application/json")
                 connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
-                readTimeout = AiAssistant.REQUEST_TIMEOUT_MS
+                readTimeout = AiAssistant.GROUNDED_REQUEST_TIMEOUT_MS
             }
-            conn.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
+            conn.outputStream.use { it.write(buildRequestBody(utterance).toByteArray(StandardCharsets.UTF_8)) }
             val code = conn.responseCode
             if (code != 200) {
                 runCatching { conn.errorStream?.close() }
@@ -132,8 +187,10 @@ object GeminiClient {
                 GearslipLog.i("assistant: ai generate empty reply")
                 Result.Unavailable
             } else {
-                GearslipLog.i("assistant: ai generate ok")
-                Result.Ok(reply)
+                val grounding = extractGrounding(text)
+                // Count only — chunk titles and URIs are never logged.
+                GearslipLog.i("assistant: ai generate ok grounded=${grounding.grounded} sources=${grounding.sourceCount}")
+                Result.Ok(reply, grounding.grounded, grounding.sourceCount)
             }
         } catch (e: Exception) {
             GearslipLog.i("assistant: ai generate failed class=${e.javaClass.simpleName}")

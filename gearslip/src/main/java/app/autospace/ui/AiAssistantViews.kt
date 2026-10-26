@@ -85,7 +85,9 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
         "AI assistant",
         footer = "AI answers use your own Gemini API key and are off by default. Local commands " +
             "always run first and never need the network; the AI is only a fallback when no " +
-            "local command matches, and it never acts without your confirmation.",
+            "local command matches, and it never acts without your confirmation. Questions " +
+            "needing current information may run a Google Search through the same connection; " +
+            "location is never sent.",
     ) {
         SettingsRow(
             "AI answers",
@@ -308,6 +310,12 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
                     if (t.params.isNotBlank()) Text("Parameters: ${t.params}", style = MaterialTheme.typography.bodyMedium)
                     if (t.handler == AssistantPreview.Handler.AI) {
                         Text("AI", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
+                        // r27: grounded yes/no only — never chunk contents, and the source
+                        // count is a live value the preview cannot know, so it says so.
+                        Text(
+                            if (t.grounded) "Grounded: yes — via Google Search (source count shown live)" else "Grounded: no",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
                     Text(
                         if (t.wouldConfirm) "Would ask for confirmation before acting." else "No confirmation needed.",

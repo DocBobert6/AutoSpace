@@ -188,6 +188,15 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
+                    // Grounded source line (r27): shown, never spoken; the count is not
+                    // shown here — the line claims a source exists, not how many.
+                    AiAssistant.sourceLine(state.grounded)?.let { line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
                 }
                 Text(
                     big,

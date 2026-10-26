@@ -50,8 +50,8 @@ class AiAssistantTest {
     @Test fun cannedSuiteSkipsAiCasesWithGatesClosed() {
         val result = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
         assertEquals(0, result.failed)
-        assertEquals(3, result.skipped)
-        assertEquals(AssistantPreview.CANNED_CASES.size - 3, result.passed)
+        assertEquals(6, result.skipped)
+        assertEquals(AssistantPreview.CANNED_CASES.size - 6, result.passed)
     }
 
     // --- Confirmation defaults: silence / timeout / ambiguity / unknown = DECLINE ---
@@ -183,5 +183,82 @@ class AiAssistantTest {
         assertTrue(prompt.isNotBlank())
         assertTrue(prompt.contains("Never invent addresses"))
         assertTrue(prompt.contains("JSON object"))
+    }
+
+    // --- r27 grounding: request body, metadata counting, place rule, preview trace ---
+
+    @Test fun requestBodyCarriesGroundingToolAndNoLocation() {
+        val body = GeminiClient.buildRequestBody("weather in dry ridge")
+        assertTrue(body.contains("\"tools\":[{\"googleSearch\":{}}]"))
+        assertTrue(body.contains("\"maxOutputTokens\":300"))
+        assertFalse(body.contains("userLocation"))
+        assertFalse(body.contains("latLng"))
+        assertFalse(body.contains("latitude"))
+        assertFalse(body.contains("location"))
+        // The utterance round-trips through the escaping: quotes and backslashes stay valid JSON.
+        val escaped = GeminiClient.buildRequestBody("say \"hi\" \\ now")
+        val parsed = JsonMini.parse(escaped) as JsonMini.Value.Obj
+        val contents = (parsed.objField("contents") as JsonMini.Value.Arr).list
+        val parts = ((contents[0] as JsonMini.Value.Obj).objField("parts") as JsonMini.Value.Arr).list
+        assertEquals("say \"hi\" \\ now", (parts[0] as JsonMini.Value.Obj).objField("text")?.asString())
+    }
+
+    @Test fun groundingChunksCountedContentsNeverKept() {
+        val grounded = """{"candidates": [{"content": {"parts": [{"text": "Sunny."}]}, "groundingMetadata": {"webSearchQueries": ["weather dry ridge"], "groundingChunks": [{"web": {"uri": "https://a.example", "title": "A"}}, {"web": {"uri": "https://b.example", "title": "B"}}, {"web": {"uri": "https://c.example", "title": "C"}}]}}]}"""
+        val g = GeminiClient.extractGrounding(grounded)
+        assertTrue(g.grounded)
+        assertEquals(3, g.sourceCount)
+        val queriesOnly = """{"candidates": [{"content": {"parts": [{"text": "Sunny."}]}, "groundingMetadata": {"webSearchQueries": ["weather dry ridge"]}}]}"""
+        assertEquals(GeminiClient.Grounding(false, 0), GeminiClient.extractGrounding(queriesOnly))
+        assertEquals(GeminiClient.Grounding(false, 0), GeminiClient.extractGrounding("""{"candidates": [{"content": {"parts": [{"text": "Hi"}]}}]}"""))
+        assertEquals(GeminiClient.Grounding(false, 0), GeminiClient.extractGrounding("not json"))
+    }
+
+    @Test fun placeRuleOptionOne() {
+        assertTrue(AiAssistant.isPlaceDependentQuestion("what is the weather today"))
+        assertTrue(AiAssistant.isPlaceDependentQuestion("will it rain tomorrow"))
+        assertTrue(AiAssistant.isPlaceDependentQuestion("how hot is it outside"))
+        assertFalse(AiAssistant.isPlaceDependentQuestion("what is the capital of france"))
+        assertFalse(AiAssistant.isPlaceDependentQuestion("how hot is the oven"))
+        assertTrue(AiAssistant.hasPlace("weather in dry ridge"))
+        assertTrue(AiAssistant.hasPlace("will it rain in cincinnati tomorrow"))
+        assertTrue(AiAssistant.hasPlace("weather for dry ridge this weekend"))
+        assertFalse(AiAssistant.hasPlace("what is the weather today"))
+        assertFalse(AiAssistant.hasPlace("will it rain tomorrow"))
+        assertFalse(AiAssistant.hasPlace("weather for today"))
+    }
+
+    @Test fun sourceLineOnlyForGrounded() {
+        assertEquals("via Google Search", AiAssistant.sourceLine(true))
+        assertEquals(null, AiAssistant.sourceLine(false))
+    }
+
+    @Test fun groundedTimeoutLongerThanPlain() {
+        assertTrue(AiAssistant.GROUNDED_REQUEST_TIMEOUT_MS > AiAssistant.REQUEST_TIMEOUT_MS)
+        assertEquals(25_000, AiAssistant.GROUNDED_REQUEST_TIMEOUT_MS)
+    }
+
+    @Test fun previewPlaceGuardAndGroundedFlags() {
+        val withPlace = AssistantPreview.classify("weather in dry ridge", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
+        assertEquals(AssistantPreview.Handler.AI, withPlace.handler)
+        assertTrue(withPlace.grounded)
+        val noPlace = AssistantPreview.classify("what is the weather today", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
+        assertEquals(AssistantPreview.Handler.AI, noPlace.handler)
+        assertFalse(noPlace.grounded)
+        assertEquals("For which place?", noPlace.spoken)
+        val news = AssistantPreview.classify("what is the latest news", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
+        assertTrue(news.grounded)
+        val general = AssistantPreview.classify("what is the capital of france", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
+        assertFalse(general.grounded)
+        // Gates closed: place-less weather is unmatched, never a guessed forecast.
+        val closed = AssistantPreview.classify("what is the weather today", AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
+        assertEquals(AssistantPreview.Handler.UNMATCHED, closed.handler)
+    }
+
+    @Test fun privacyNoticeNamesGroundingWithoutNewParty() {
+        val notice = AiAssistant.PRIVACY_NOTICE
+        assertTrue(notice.contains("Google Search"))
+        assertTrue(notice.contains("No new company receives your words"))
+        assertTrue(notice.contains("location is never sent"))
     }
 }

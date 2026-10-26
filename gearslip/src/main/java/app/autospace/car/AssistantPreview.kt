@@ -41,6 +41,13 @@ object AssistantPreview {
         val wouldConfirm: Boolean = false,
         /** The spoken text that would result (confirmation question, answer, or refusal). */
         val spoken: String = "",
+        /**
+         * r27: whether the live path would carry a grounded answer for this utterance.
+         * A preview heuristic (see [likelyGrounded]), not a network call — the live
+         * source count is only known after Gemini replies, so [sourceCount] stays 0 here.
+         */
+        val grounded: Boolean = false,
+        val sourceCount: Int = 0,
     )
 
     /** The dry-run banner text, shared by the preview screen and the suite summary. */
@@ -265,13 +272,44 @@ object AssistantPreview {
         }
         // AI fallback: only when every gate passes; otherwise today's unmatched behavior.
         if (aiGates) {
+            // Place rule, option 1 (r27), mirroring the live path: a place-dependent
+            // question with no place in the utterance is answered with a question,
+            // never with a forecast from somewhere else — and no location is read.
+            if (AiAssistant.isPlaceDependentQuestion(heard) && !AiAssistant.hasPlace(heard)) {
+                return Trace(
+                    utterance, heard, handler = Handler.AI,
+                    detail = "Place-dependent question with no place — asks for a place, no location used",
+                    spoken = "For which place?",
+                )
+            }
+            val grounded = likelyGrounded(heard)
             return Trace(
                 utterance, heard, handler = Handler.AI, wouldConfirm = true,
-                detail = "AI fallback — would call Gemini with this utterance only",
+                detail = if (grounded) {
+                    "AI fallback, grounded search expected — would call Gemini with this utterance only (source count shown live)"
+                } else {
+                    "AI fallback — would call Gemini with this utterance only"
+                },
                 spoken = "(AI answer, or one confirmed proposal — never executed from preview)",
+                grounded = grounded,
             )
         }
         return Trace(utterance, heard, handler = Handler.UNMATCHED, detail = "No local match; AI gates closed", spoken = "I don't know how to do that yet.")
+    }
+
+    /**
+     * Preview-only guess at whether the live reply would come back grounded (r27).
+     * It mirrors the request, not the model: a place-dependent question that names its
+     * place, or a question about current facts (news, scores, prices, latest), is the
+     * kind the model searches for. General knowledge stays ungrounded. The live flag
+     * comes from Gemini's grounding metadata, never from this guess.
+     */
+    fun likelyGrounded(normalized: String): Boolean {
+        val tokens = normalized.split(" ").filter { it.isNotEmpty() }
+        if (AiAssistant.isPlaceDependentQuestion(normalized) && AiAssistant.hasPlace(normalized)) return true
+        return tokens.any {
+            it in setOf("news", "headlines", "score", "scores", "stock", "stocks", "price", "prices", "latest", "current")
+        }
     }
 
     private fun fuzzyCanonical(heard: String): String? {
@@ -334,6 +372,9 @@ object AssistantPreview {
         Case("brighness up", Handler.FUZZY, "Fuzzy, distance 1 → brightness up"),
         Case("what is the capital of France", Handler.AI, "AI fallback sample — skipped when gates closed"),
         Case("tell me a joke", Handler.AI, "AI fallback sample — skipped when gates closed"),
+        Case("weather in dry ridge", Handler.AI, "Grounded answer path — place present, skipped when gates closed"),
+        Case("what is the weather today", Handler.AI, "Place-less weather — asks for a place, no location used, skipped when gates closed"),
+        Case("what is the latest news", Handler.AI, "Grounded current-facts path, skipped when gates closed"),
         Case("call Mom and navigate home", Handler.AMBIGUOUS, "Two actions — two confirmations, never one batch"),
         Case("blorp glorp", Handler.AI, "No local match — AI fallback with gates open; unmatched when gates closed"),
         Case("open spotify", Handler.BUILTIN, "Generic open-app command"),

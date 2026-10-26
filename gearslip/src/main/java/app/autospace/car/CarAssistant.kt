@@ -69,6 +69,12 @@ object CarAssistant {
         val ready: Boolean = false,
         /** True when the reply being shown is an AI answer (r25 badge); local replies never set this. */
         val fromAi: Boolean = false,
+        /**
+         * True when the reply being shown is a grounded AI answer (r27 source line);
+         * [sourceCount] is how many web sources backed it. Local replies never set these.
+         */
+        val grounded: Boolean = false,
+        val sourceCount: Int = 0,
     )
 
     private val _state = MutableStateFlow(State())
@@ -155,14 +161,14 @@ object CarAssistant {
      * voice model downloaded, the overlay says so and points at Settings
      * instead of leaving the driver waiting on silence.
      */
-    fun reply(text: String, fromAi: Boolean = false) {
+    fun reply(text: String, fromAi: Boolean = false, grounded: Boolean = false, sourceCount: Int = 0) {
         _pendingCommand.value = null
         val context = appContext
         if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
             return
         }
-        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi)
+        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)

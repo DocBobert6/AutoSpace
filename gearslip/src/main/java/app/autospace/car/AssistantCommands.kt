@@ -72,12 +72,24 @@ object AssistantCommands {
     var lastReplyWasAi = false
         private set
 
+    /**
+     * Grounding outcome of the last AI answer (r27); CarUi reads it for the
+     * "via Google Search" line. Reset on every [handle] call, and only ever set on an
+     * Answer path — a confirmation sheet is not an answer and carries no source line.
+     */
+    var lastReplyGrounded = false
+        private set
+    var lastReplySourceCount = 0
+        private set
+
     /** The one local timer, if any: a main-thread delayed runnable, never a calendar entry. */
     private var timerHandler: Handler? = null
     private var timerRunnable: Runnable? = null
 
     suspend fun handle(context: Context, navigator: CarNavigator, frame: CarEnvironment.Frame, heardRaw: String): String {
         lastReplyWasAi = false
+        lastReplyGrounded = false
+        lastReplySourceCount = 0
         val heard = natural(heardRaw)
         VoiceHelp.hide()
         if (heard in HELP_WORDS || heard.startsWith("what can i say") || heard.startsWith("what can you do")) {
@@ -285,19 +297,31 @@ object AssistantCommands {
             emergencyPendingUntil = SystemClock.elapsedRealtime() + EMERGENCY_CONFIRM_MS
             return "Do you want me to start an emergency call? That needs your confirmation."
         }
+        // Place rule, option 1 (r27): a place-dependent question with no place in the
+        // utterance is answered with a question, not a forecast — before any network
+        // call, and without reading device location or any stored place. This is a
+        // local reply, not an AI answer, so the badge stays off.
+        if (AiAssistant.isPlaceDependentQuestion(heard) && !AiAssistant.hasPlace(heard)) {
+            GearslipLog.i("assistant: ai place requested")
+            return "For which place?"
+        }
         val key = AiKeyStore.loadKey(context) ?: return null
         val result = withContext(Dispatchers.IO) { GeminiClient.generate(key, heard) }
         val modelText = when (result) {
             is GeminiClient.Result.Ok -> result.text
             else -> return "AI answer isn't available right now."
         }
+        val grounded = result.grounded
+        val sourceCount = result.sourceCount
         return when (val parsed = AiAssistant.parseModelReply(modelText, heard)) {
             is AiAssistant.ParsedReply.Answer -> {
                 val capped = AiAssistant.capAnswer(parsed.text)
                 val spoken = if (AiAssistant.needsAiPrefix()) "From AI: $capped" else capped
                 AiAssistant.markAiAnswerSpoken()
                 lastReplyWasAi = true
-                GearslipLog.i("assistant: ai answer")
+                lastReplyGrounded = grounded
+                lastReplySourceCount = sourceCount
+                GearslipLog.i("assistant: ai answer grounded=$grounded sources=$sourceCount")
                 spoken
             }
             is AiAssistant.ParsedReply.Refused -> parsed.reason
