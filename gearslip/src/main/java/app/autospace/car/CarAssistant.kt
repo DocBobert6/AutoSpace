@@ -6,12 +6,15 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.content.ContextCompat
+import app.autospace.GearslipLog
 import app.autospace.call.CallUiState
 import app.autospace.call.CarCalls
+import app.autospace.speech.ListenWatchdogPolicy
 import app.autospace.speech.SpeechEngine
 import app.autospace.speech.VoiceEngine
 import app.autospace.speech.VoiceFocus
@@ -91,6 +94,12 @@ object CarAssistant {
 
     private var appContext: Context? = null
     private var recognizer: SpeechRecognizer? = null
+    // r44: when the current LISTENING/THINKING phase began, for the
+    // stale-phase restart in startOnMainThread.
+    private var busySinceMs = 0L
+    // r44: the system recognizer's watchdog runnable, so a wedged
+    // service can be ended from releaseRecognizer().
+    private var systemWatchdog: Runnable? = null
     // Audit fix (2026-10-25, V2): the system-speech path owns one
     // listeningActive count from markListeningStart() until the
     // recognizer is released. The old code decremented only in the
@@ -119,7 +128,19 @@ object CarAssistant {
 
     private fun startOnMainThread() {
         val context = appContext ?: return
-        if (_state.value.phase == Phase.LISTENING || _state.value.phase == Phase.THINKING) return
+        val phase = _state.value.phase
+        if (phase == Phase.LISTENING || phase == Phase.THINKING) {
+            // r44: a phase left parked by a listen that ended without
+            // a callback (or a dead command consumer) used to no-op
+            // every later start forever. A live listen still wins —
+            // only a phase with no live listen behind it (LISTENING)
+            // or older than any legit think (THINKING) restarts, via
+            // the same cancel() a stop press uses, and falls through
+            // to a fresh listen below.
+            if (!isStalePhase(phase, SpeechEngine.listeningActive, SystemClock.uptimeMillis() - busySinceMs)) return
+            GearslipLog.w("assistant: stale $phase phase restarted")
+            cancel()
+        }
 
         if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) !=
             PackageManager.PERMISSION_GRANTED
@@ -135,12 +156,17 @@ object CarAssistant {
         VoiceEngine.stop()
         releaseSpeechFocus()
         _state.value = State(Phase.LISTENING)
+        busySinceMs = SystemClock.uptimeMillis()
         listenOnce(
             onListening = { _state.value = _state.value.copy(ready = true) },
             onPartial = { text -> _state.value = _state.value.copy(heard = text) },
-            onHeard = { _state.value = _state.value.copy(phase = Phase.THINKING) },
+            onHeard = {
+                _state.value = _state.value.copy(phase = Phase.THINKING)
+                busySinceMs = SystemClock.uptimeMillis()
+            },
             onResult = { text ->
                 _state.value = _state.value.copy(phase = Phase.THINKING, heard = text)
+                busySinceMs = SystemClock.uptimeMillis()
                 _pendingCommand.value = text
             },
             onError = { message -> _state.value = State(Phase.ERROR, reply = message) },
@@ -347,11 +373,27 @@ object CarAssistant {
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             },
         )
+        // r44: the system recognizer has no timeout of its own — a
+        // wedged service used to leave the assistant parked in
+        // LISTENING with the hotword gated off. The watchdog ends it
+        // with an error instead; releaseRecognizer() cancels it, so a
+        // normally-ending listen never fires it.
+        val watchdog = Runnable {
+            if (systemListening) {
+                GearslipLog.w("assistant: system recognizer watchdog fired")
+                releaseRecognizer()
+                onError("Speech recognition failed.")
+            }
+        }
+        systemWatchdog = watchdog
+        mainHandler.postDelayed(watchdog, ListenWatchdogPolicy.SYSTEM_LISTEN_TIMEOUT_MS)
     }
 
     fun stopListening() = releaseRecognizer()
 
     private fun releaseRecognizer() {
+        systemWatchdog?.let { mainHandler.removeCallbacks(it) }
+        systemWatchdog = null
         SpeechEngine.cancel()
         recognizer?.let { runCatching { it.cancel() }; it.destroy() }
         recognizer = null
@@ -372,5 +414,9 @@ object CarAssistant {
     fun shutdown() {
         releaseRecognizer()
         VoiceEngine.unload()
+        // r44: shutdown used to leave the phase wherever it was, so a
+        // parked LISTENING/THINKING greeted the next session.
+        _state.value = State(Phase.IDLE)
+        _pendingCommand.value = null
     }
 }

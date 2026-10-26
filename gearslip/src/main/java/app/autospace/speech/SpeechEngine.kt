@@ -29,6 +29,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.max
 
 /**
@@ -63,6 +64,8 @@ object SpeechEngine {
     /** How long the car gets to start sending once asked, before the phone's microphone takes over. */
     private const val CAR_FIRST_AUDIO_MS = 1_500L
     private const val CAR_GAP_MS = 1_000L
+    /** The phone mic's poll deadline: the car-mic gap discipline, applied to the phone's reads. */
+    private const val PHONE_POLL_MS = 1_000L
     private const val CUE_MS = 150
     /** The car plays what the phone sends a moment late; waiting this out keeps the beep off the recording. */
     private const val CUE_TAIL_MS = 250L
@@ -87,6 +90,15 @@ object SpeechEngine {
      */
     private val idleUnload = Runnable { unloadFinal("after ${IDLE_UNLOAD_MS / 60_000} minutes without use") }
     @Volatile private var run = 0
+    /**
+     * r44: the id of the most recent listen() call. A task that ends
+     * superseded tells its caller apart by this: bumped by a newer
+     * listen, it stays silent (the new listen drives the caller);
+     * bumped by cancel() alone, it owes the caller an error.
+     */
+    @Volatile private var latestListenId = 0
+    /** r44: the mic the running listen task opened, so the watchdog can close it from the main thread. */
+    @Volatile private var activeMic: Mic? = null
 
     /**
      * True while a button-press (or dictated) phrase is being listened for. [HotwordListener]
@@ -170,16 +182,56 @@ object SpeechEngine {
             return
         }
         val id = ++run
+        latestListenId = id
+        // r44: exactly one terminal callback per listen, ever. The
+        // normal posts keep their run guard; the watchdog's and the
+        // superseded task's posts use the gate alone, because by
+        // definition the run has already moved past them.
+        val delivered = AtomicBoolean(false)
+        val finished = AtomicBoolean(false)
         fun post(block: () -> Unit) { main.post { if (id == run) block() } }
+        fun postTerminal(block: () -> Unit) {
+            main.post { if (id == run && delivered.compareAndSet(false, true)) block() }
+        }
+        fun postSuperseded() {
+            main.post { if (delivered.compareAndSet(false, true)) onError("Stopped.") }
+        }
         // Brings Parakeet back if it was unloaded, while the driver talks.
         main.removeCallbacks(idleUnload)
         finalWorker.execute { ensureFinalLoaded(app) }
         markListeningStart()
+        // r44: the whole-task watchdog. A listen that is still going
+        // at the deadline is wedged (the unbounded phone-mic read was
+        // the proven shape); invalidate it, close its mic, and end
+        // the caller with an error instead of parking it in LISTENING
+        // until the process dies. The task's finally cancels this
+        // check and sets finished, so a normally-ending task never
+        // fires it; the finished flag covers the firing race itself.
+        val watchdog = ListenWatchdog(onFire = {
+            // Only the still-current task may fire: if a newer
+            // listen or a cancel already bumped the run, that owner
+            // answers the caller, and this watchdog must not bump
+            // past the new task's id.
+            if (id == run) {
+                run++
+                activeMic?.let { mic -> runCatching { mic.close() } }
+                GearslipLog.w("speech: listen watchdog fired for run $id after ${ListenWatchdogPolicy.LISTEN_WATCHDOG_MS} ms")
+                main.post { if (delivered.compareAndSet(false, true)) onError("The microphone isn't responding — try again.") }
+            }
+        })
+        watchdog.arm(SystemClock.uptimeMillis())
+        val watchdogCheck = Runnable { if (!finished.get()) watchdog.check(SystemClock.uptimeMillis()) }
+        main.postDelayed(watchdogCheck, ListenWatchdogPolicy.LISTEN_WATCHDOG_MS)
         worker.execute {
             try {
-            if (id != run) return@execute
-            if (!SpeechModels.isReady(app, SpeechModels.selected.value)) return@execute post { onError(NOT_DOWNLOADED) }
-            val r = ensureLoaded(app) ?: return@execute post { onError(NOT_LOADED) }
+            if (id != run) {
+                // r44: superseded with no replacement — the caller is
+                // owed an error, not silence (see latestListenId).
+                if (shouldDeliverSupersedeError(id, latestListenId, run)) postSuperseded()
+                return@execute
+            }
+            if (!SpeechModels.isReady(app, SpeechModels.selected.value)) return@execute postTerminal { onError(NOT_DOWNLOADED) }
+            val r = ensureLoaded(app) ?: return@execute postTerminal { onError(NOT_LOADED) }
             // The hotword loop closes its microphone on [listeningActive] within one
             // 100 ms chunk; wait for that before opening this phrase's microphone, so
             // the car's single microphone channel is never held by both at once.
@@ -187,27 +239,37 @@ object SpeechEngine {
             VoiceFocus.acquire(app)
             val text = try {
                 if (cue) cue()
-                if (id != run) return@execute
+                if (id != run) {
+                    if (shouldDeliverSupersedeError(id, latestListenId, run)) postSuperseded()
+                    return@execute
+                }
                 post(onListening)
                 stream(app, r, id, onSpeaking = { post(onSpeaking) }, onPartial = { post { onPartial(it) } }, onStopped = { post(onHeard) })
             } catch (t: Throwable) {
                 GearslipLog.e("speech: listening failed", t)
-                return@execute post { onError("The microphone isn't available right now.") }
+                return@execute postTerminal { onError("The microphone isn't available right now.") }
             } finally {
                 VoiceFocus.release()
             }
             main.removeCallbacks(idleUnload)
             main.postDelayed(idleUnload, IDLE_UNLOAD_MS)
-            if (id != run) return@execute
+            if (id != run) {
+                if (shouldDeliverSupersedeError(id, latestListenId, run)) postSuperseded()
+                return@execute
+            }
             // Audit fix (2026-10-25, V3): onHeard was posted twice —
             // once via stream()'s onStopped callback above and once
             // here. The onStopped post is the exactly-once signal;
             // this second post is dropped so callers see it once.
-            post { if (text.isEmpty()) onError("Didn't catch that.") else onResult(text) }
+            postTerminal { if (text.isEmpty()) onError("Didn't catch that.") else onResult(text) }
             } finally {
                 // Cleared when the phrase's worker task ends, before its result posts;
                 // the assistant's own phase (LISTENING/THINKING/SPEAKING) keeps the
                 // hotword suspended through the reply that follows.
+                // r44: finished + watchdog cancel first, so a normally-ending
+                // task can never trip its own watchdog on the main thread.
+                finished.set(true)
+                main.removeCallbacks(watchdogCheck)
                 markListeningEnd()
             }
         }
@@ -233,6 +295,8 @@ object SpeechEngine {
         // one-shot listens): see [openListenMic]. The system-speech path
         // bypasses this and keeps the phone recognizer's own routing.
         val (mic, source) = openListenMic()
+        // r44: the watchdog closes this from the main thread on expiry.
+        activeMic = mic
         val s = r.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)
@@ -281,6 +345,10 @@ object SpeechEngine {
             while (r.isReady(s)) r.decode(s)
             last = clean(r.getResult(s).text)
         } finally {
+            // r44: cleared only if this task's mic is still the active
+            // one — a replacement worker's task must not lose its mic
+            // to this task's late finally.
+            if (activeMic === mic) activeMic = null
             mic.close()
             s.release()
         }
@@ -544,11 +612,36 @@ object SpeechEngine {
         check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord didn't initialize" }
         recorder.startRecording()
         GearslipLog.i("speech: listening through the phone's microphone")
+        // r44: the recorder's read used to block forever with no
+        // timeout — the proven wedge shape. Reads now go through a
+        // producer thread into a queue the consumer polls (the
+        // car-mic gap discipline), so the listen loop always gets
+        // back to its run check even if the recorder itself never
+        // returns; a producer parked that way is a daemon thread, not
+        // a wedged listen.
+        val frames = MicFrameQueue(PHONE_POLL_MS)
+        val closed = AtomicBoolean(false)
+        Thread({
+            val buf = ShortArray(CHUNK)
+            while (!closed.get()) {
+                val n = try {
+                    recorder.read(buf, 0, buf.size)
+                } catch (t: Throwable) {
+                    -1
+                }
+                if (n < 0) break
+                if (n == 0) continue
+                frames.offer(buf.copyOf(n))
+            }
+            frames.markEnded()
+        }, "gearslip-phone-mic").apply { isDaemon = true; start() }
         return object : Mic {
-            override fun read(frame: ShortArray) = recorder.read(frame, 0, frame.size)
+            override fun read(frame: ShortArray) = frames.poll(frame)
             override fun close() {
+                if (!closed.compareAndSet(false, true)) return
                 runCatching { recorder.stop() }
                 recorder.release()
+                frames.markEnded()
             }
         }
     }

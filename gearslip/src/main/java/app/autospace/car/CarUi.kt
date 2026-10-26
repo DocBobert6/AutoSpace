@@ -32,6 +32,7 @@ import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.host.CarAppConnection
 import app.autospace.host.display
 import app.autospace.host.text
+import app.autospace.GearslipLog
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.PlayArrow
@@ -226,7 +227,16 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     LaunchedEffect(navigator) {
         CarAssistant.pendingCommand.collect { heard ->
             if (heard != null) {
-                val reply = AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
+                // r44: a throw here used to kill this effect forever
+                // and park the assistant in THINKING. The command
+                // fails spoken, aloud, and the effect lives for the
+                // next command.
+                val reply = try {
+                    AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
+                } catch (t: Throwable) {
+                    GearslipLog.e("assistant: command failed", t)
+                    "Sorry, that command failed."
+                }
                 CarAssistant.reply(
                     reply,
                     fromAi = AssistantCommands.lastReplyWasAi,

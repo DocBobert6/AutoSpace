@@ -114,18 +114,40 @@ object VoiceReply {
         main.postDelayed({ if (nid == run) finish() }, LINGER_MS)
     }
 
+    /**
+     * r44 backstop for a spoken step whose onDone/onSilent never
+     * arrives: interrupted play on the car path suppresses onDone by
+     * design, so without this a step parks its phase forever. The
+     * guard is removed the moment the step ends normally, and only
+     * fires while the phase is still the one the step started in —
+     * so a step that advanced (offer's dictate, confirm's countdown)
+     * can never trip it. Firing fails exactly like a silent render:
+     * carrying on as if the driver heard it would be wrong.
+     */
+    private fun sayWithTimeout(id: Int, phase: Phase, text: String, onDone: () -> Unit) {
+        val guard = Runnable { if (id == run && _state.value.phase == phase) silentSpeechError(id) }
+        main.postDelayed(guard, SAY_TIMEOUT_MS)
+        CarAssistant.say(text, onDone = {
+            main.removeCallbacks(guard)
+            onDone()
+        }, onSilent = {
+            main.removeCallbacks(guard)
+            silentSpeechError(id)
+        })
+    }
+
     /** Reads [n]'s newest messages aloud. */
     fun read(n: CarNotification) {
         val id = begin(State(Phase.READING, n))
-        CarAssistant.say(spoken(n), onDone = {
-            if (id != run) return@say
+        sayWithTimeout(id, Phase.READING, spoken(n)) {
+            if (id != run) return@sayWithTimeout
             when {
                 n.reply == null -> finish()
                 // The microphone is silent during a call, so there's no point asking.
                 CarCalls.state.value is CallUiState.Active -> idleAfterRead(id)
                 else -> offer(id)
             }
-        }, onSilent = { silentSpeechError(id) })
+        }
     }
 
     /**
@@ -134,8 +156,8 @@ object VoiceReply {
      */
     private fun offer(id: Int) {
         _state.value = _state.value.copy(phase = Phase.OFFERING, heard = "", until = 0L, span = 0L, held = 0f)
-        CarAssistant.say("Do you want to reply?", onDone = {
-            if (id != run) return@say
+        sayWithTimeout(id, Phase.OFFERING, "Do you want to reply?") {
+            if (id != run) return@sayWithTimeout
             val until = SystemClock.uptimeMillis() + OFFER_MS
             _state.value = _state.value.copy(until = until, span = OFFER_MS)
             // The recognizer gives up on its own; this only covers one that doesn't.
@@ -152,7 +174,7 @@ object VoiceReply {
                     if (id != run) return@dictate
                     if (isYes(text)) {
                         _state.value = _state.value.copy(phase = Phase.ASKING, heard = "", until = 0L, span = 0L, held = 0f)
-                        CarAssistant.say("Go ahead.", onDone = { if (id == run) listen(id) })
+                        sayWithTimeout(id, Phase.ASKING, "Go ahead.") { if (id == run) listen(id) }
                     } else {
                         close()
                     }
@@ -160,7 +182,7 @@ object VoiceReply {
                 // No answer counts as no: the message has been heard, so the card goes.
                 onError = { if (id == run) close() },
             )
-        }, onSilent = { silentSpeechError(id) })
+        }
     }
 
     private fun idleAfterRead(id: Int) {
@@ -200,13 +222,22 @@ object VoiceReply {
     }
 
     private fun ask(id: Int) {
-        CarAssistant.say("What's your reply?", onDone = {
-            if (id == run) listen(id)
-        }, onSilent = { silentSpeechError(id) })
+        sayWithTimeout(id, Phase.ASKING, "What's your reply?") { if (id == run) listen(id) }
     }
 
     private fun listen(id: Int) {
         _state.value = _state.value.copy(phase = Phase.LISTENING, heard = "")
+        // r44: the engine watchdog (45 s) normally ends a wedged
+        // listen first; this only covers a dictate that never calls
+        // back at all. The phase guard means a normally-advanced
+        // flow can never trip it.
+        main.postDelayed({
+            if (id == run && _state.value.phase == Phase.LISTENING) {
+                CarAssistant.stopListening()
+                _state.value = _state.value.copy(phase = Phase.ERROR, error = "Didn't catch that.")
+                lingerThenIdle(id)
+            }
+        }, LISTEN_TIMEOUT_MS)
         CarAssistant.dictate(
             onPartial = { text -> if (id == run) _state.value = _state.value.copy(heard = text) },
             onResult = { text -> if (id == run) confirm(id, text) },
@@ -221,12 +252,12 @@ object VoiceReply {
     private fun confirm(id: Int, text: String) {
         _state.value = _state.value.copy(phase = Phase.CONFIRMING, heard = text, until = 0L, span = 0L, held = 0f)
         // The countdown starts once the driver has heard the whole reply, not while it's read out.
-        CarAssistant.say("Sending: $text", onDone = {
-            if (id != run) return@say
+        sayWithTimeout(id, Phase.CONFIRMING, "Sending: $text") {
+            if (id != run) return@sayWithTimeout
             startCountdown(id, SEND_DELAY_MS)
             // A moment for the read-back to finish playing in the car before the microphone opens.
             main.postDelayed({ if (id == run) listenForCommand(id) }, ECHO_MS)
-        }, onSilent = { silentSpeechError(id) })
+        }
     }
 
     /** Sends in [ms]. */
@@ -414,4 +445,13 @@ object VoiceReply {
     private const val OFFER_MS = 6_500L
     private const val OFFER_GRACE_MS = 1_500L
     private const val RELISTEN_MS = 400L
+    /**
+     * r44 backstop for a spoken step that never ends (see
+     * sayWithTimeout). Long on purpose: a long message read can
+     * legitimately take over a minute, so this only catches a true
+     * wedge, never a slow read.
+     */
+    private const val SAY_TIMEOUT_MS = 180_000L
+    /** r44: longer than the engine's 45 s watchdog, so the engine's own error normally wins. */
+    private const val LISTEN_TIMEOUT_MS = 60_000L
 }
