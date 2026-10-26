@@ -31,6 +31,7 @@ object Changelog {
                 "Voice commands open apps, navigate, play music, read and reply to messages, and change brightness and volume. Say 'say that again' to hear the last reply repeated.",
                 "Subtitles in the video player follow the style you pick in the car's Settings.",
                 "Voice downloads resume where they stopped instead of starting over, and a download that fails names the file and the reason.",
+                "Color schemes are palettes now; light and dark is its own control, and the old scheme choices carry over exactly.",
                 "The car preview on the phone has its own settings: screen size, density, theme, touch markers, simulated driving, and a test mode that fakes a car session on the couch.",
                 "Crash reports now write themselves to Downloads/AutoSpace, so a failure leaves a readable record.",
             ),

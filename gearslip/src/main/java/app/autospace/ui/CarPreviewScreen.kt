@@ -91,6 +91,7 @@ fun CarPreviewScreen(onBack: () -> Unit, onOpenPreviewSettings: () -> Unit) {
     val previewDensity by PreviewSettings.densityDpi.collectAsStateWithLifecycle()
     val previewStyle by PreviewSettings.styleId.collectAsStateWithLifecycle()
     val previewColours by PreviewSettings.colours.collectAsStateWithLifecycle()
+    val previewMode by PreviewSettings.previewMode.collectAsStateWithLifecycle()
     val previewDarkType by PreviewSettings.darkType.collectAsStateWithLifecycle()
     val touchIndicators by PreviewSettings.touchIndicators.collectAsStateWithLifecycle()
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -106,11 +107,12 @@ fun CarPreviewScreen(onBack: () -> Unit, onOpenPreviewSettings: () -> Unit) {
     // Preview-only theme override; null when every picker sits on
     // "use the car's setting", in which case the preview renders
     // exactly as the real car UI would.
-    val themeOverride = if (previewStyle == null && previewColours == null && previewDarkType == null) {
+    val themeOverride = if (previewStyle == null && previewColours == null && previewMode == null && previewDarkType == null) {
         null
     } else {
         PreviewThemeOverride(
-            appTheme = previewColours,
+            colorScheme = previewColours,
+            appearanceMode = previewMode,
             uiThemeId = previewStyle,
             darkType = previewDarkType,
         )

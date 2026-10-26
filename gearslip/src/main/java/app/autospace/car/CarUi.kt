@@ -98,8 +98,10 @@ import java.util.Date
 /**
  * The whole car screen: the current screen on top, the nav bar along the bottom.
  *
- * Colours follow AppTheme: plain Light/Dark are neutral, Material You Light/Dark and
- * Follow phone use the phone's wallpaper colours. The size setting scales everything by
+ * Colours follow the split axes (SchemeMode.kt): the color scheme is the
+ * palette (Neutral is plain, Material You uses the phone's wallpaper
+ * colours), and the appearance mode — Light, Dark, or System — decides
+ * the light/dark variant. The size setting scales everything by
  * changing the density, so text, icons and touch targets grow together.
  */
 /**
@@ -110,7 +112,8 @@ import java.util.Date
  * the override is applied only where the preview passes one.
  */
 data class PreviewThemeOverride(
-    val appTheme: AppTheme?,
+    val colorScheme: ColorScheme?,
+    val appearanceMode: AppearanceMode?,
     val uiThemeId: String?,
     val darkType: DarkModeType?,
 )
@@ -119,7 +122,8 @@ data class PreviewThemeOverride(
 fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     val scale by CarSettings.scale.collectAsState()
     val phoneDark by CarEnvironment.phoneDark.collectAsState()
-    val appTheme by CarSettings.effectiveAppTheme.collectAsState()
+    val appTheme by CarSettings.effectiveColorScheme.collectAsState()
+    val appearanceMode by CarSettings.appearanceMode.collectAsState()
     val uiThemeId by CarSettings.uiTheme.collectAsState()
     val mediaApp by CarServices.mediaApp.collectAsState()
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
@@ -127,8 +131,11 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     val darkType by CarSettings.darkModeType.collectAsState()
     // Preview-only overrides, applied after the unconditional
     // collects so the real path (previewTheme == null) reads exactly
-    // what it read before.
-    val effAppTheme = previewTheme?.appTheme ?: appTheme
+    // what it read before. A null field falls back to the car's own
+    // setting, so a preview that overrides only the scheme still
+    // follows the car's mode, and vice versa.
+    val effScheme = previewTheme?.colorScheme ?: appTheme
+    val effMode = previewTheme?.appearanceMode ?: appearanceMode
     val effUiThemeId = previewTheme?.uiThemeId ?: uiThemeId
     val effDarkType = previewTheme?.darkType ?: darkType
     // Phase 9 immersive player: CarUi reads the player's published
@@ -149,45 +156,33 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     // mirroring ends, PhoneMirror.onEnded restarts CarUi with chrome
     // back, so nothing here needs to restore it.
     val mirrorActive by PhoneMirror.active.collectAsState()
-    val dark = when (effAppTheme) {
-        AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
-        AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
-        AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK, AppTheme.NIGHT -> true
-        // r23: Pitlane is always dark (carbon black is the scheme);
-        // Circuit and Heritage follow the phone's light/dark, like
-        // FOLLOW_SYSTEM — there is no forced-light/forced-dark variant
-        // of them, so a phone in dark mode never shows their light
-        // variant and vice versa.
-        AppTheme.PITLANE -> true
-        AppTheme.CIRCUIT, AppTheme.HERITAGE -> phoneDark
-    }
+    // r35: dark follows the split axes through resolveDark (SchemeMode.kt),
+    // the single place the rule lives. Night and Pitlane are always dark;
+    // every other scheme follows the mode control, with System deferring
+    // to the phone. Circuit and Heritage follow the mode control now, not
+    // the phone directly — that is the split, not a behavior change for
+    // any stored value (their old phone-following value migrates to
+    // System, which defers to the phone exactly as before).
+    val dark = resolveDark(effScheme, effMode, phoneDark)
     // Theme set, Phase 7 (Robert 2026-10-24 23:58, correcting the 22:32 five):
-    // Follow system = PLAIN scheme following the phone's light/dark; Plain
-    // Light / Dark = the neutral scheme below for EVERY style (the wallpaper-
-    // dynamic scheme washed Frost tiles pale peach in Phases 1–5, and plain
-    // means plain here); Material You = dynamic scheme following the phone;
-    // Material You Light / Dark = dynamic schemes forced to that variant.
-    // The old PHONE value migrated to MATERIAL_YOU on load, so no stored
-    // install changes look from this split. Dark mode type (Regular vs OLED)
-    // applies to plain Dark, Material You Dark, and the dark variant of both
-    // Follow options, across all styles. r23 adds Pitlane (always dark),
-    // Circuit and Heritage (phone light/dark) as further scheme choices
-    // in the same when below; DarkModeType does not alter them, and Auto
-    // night still overrides all three to NIGHT. Browser PAGES stay unthemed
+    // Neutral = the plain scheme; Material You = the dynamic scheme, whose
+    // light/dark variant follows the mode control; Night = pure black,
+    // always dark; Pitlane = carbon black, always dark. r23 added Pitlane,
+    // Circuit and Heritage as further scheme choices in the same when
+    // below; DarkModeType does not alter them, and Auto night still
+    // overrides all three to NIGHT. Browser PAGES stay unthemed
     // (Phase 3 correction) — this scheme is chrome only, and it flows into
     // the video player chrome too (its black scrims over video are untouched).
-    val colors = when (effAppTheme) {
-        AppTheme.LIGHT, AppTheme.DARK, AppTheme.FOLLOW_SYSTEM -> neutralFrostScheme(dark, effDarkType == DarkModeType.OLED)
-        AppTheme.NIGHT -> nightColorScheme()
+    val colors = when (effScheme) {
+        ColorScheme.NEUTRAL -> neutralFrostScheme(dark, effDarkType == DarkModeType.OLED)
+        ColorScheme.NIGHT -> nightColorScheme()
         // r23: the new schemes ignore DarkModeType — their backgrounds
         // are scheme-defined. Auto night still overrides them to NIGHT
-        // above (via effectiveAppTheme), exactly as for every scheme.
-        AppTheme.PITLANE -> pitlaneScheme()
-        AppTheme.CIRCUIT -> circuitScheme(dark)
-        AppTheme.HERITAGE -> heritageScheme(dark)
-        AppTheme.MATERIAL_YOU_LIGHT -> dynamicLightColorScheme(appContext)
-        AppTheme.MATERIAL_YOU_DARK -> if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
-        AppTheme.MATERIAL_YOU -> if (dark) {
+        // above (via effectiveColorScheme), exactly as for every scheme.
+        ColorScheme.PITLANE -> pitlaneScheme()
+        ColorScheme.CIRCUIT -> circuitScheme(dark)
+        ColorScheme.HERITAGE -> heritageScheme(dark)
+        ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
     }
@@ -282,7 +277,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         // hairline outline when this is true, so a dark surface on the
         // pure-black OLED background still reads as a surface, and the
         // frost gradient still has an edge to shade.
-        LocalOledDark provides ((dark && effDarkType == DarkModeType.OLED) || effAppTheme == AppTheme.NIGHT),
+        LocalOledDark provides ((dark && effDarkType == DarkModeType.OLED) || effScheme == ColorScheme.NIGHT),
     ) {
         MaterialTheme(colorScheme = colors) {
           CompositionLocalProvider(LocalIndication provides FocusRingIndication(MaterialTheme.colorScheme.primary)) {

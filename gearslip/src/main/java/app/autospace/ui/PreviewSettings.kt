@@ -2,9 +2,12 @@ package app.autospace.ui
 
 import android.content.Context
 import app.autospace.AppSettings
-import app.autospace.car.AppTheme
+import app.autospace.car.AppearanceMode
+import app.autospace.car.ColorScheme
 import app.autospace.car.DarkModeType
 import app.autospace.car.PreviewThemeOverride
+import app.autospace.car.isLegacyThemeName
+import app.autospace.car.migrateLegacyTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +35,7 @@ object PreviewSettings {
     private const val KEY_DENSITY = "preview_density"
     private const val KEY_STYLE = "preview_style"
     private const val KEY_COLOURS = "preview_colours"
+    private const val KEY_PREVIEW_MODE = "preview_mode"
     private const val KEY_DARK_TYPE = "preview_dark_type"
     private const val KEY_TOUCH = "preview_touch_indicators"
 
@@ -39,8 +43,10 @@ object PreviewSettings {
     private val densityFlow = MutableStateFlow(160)
     /** GsTheme id, or null for "use the car's own style". */
     private val styleFlow = MutableStateFlow<String?>(null)
-    /** AppTheme, or null for "use the car's own colours". */
-    private val coloursFlow = MutableStateFlow<AppTheme?>(null)
+    /** ColorScheme, or null for "use the car's own colours". */
+    private val coloursFlow = MutableStateFlow<ColorScheme?>(null)
+    /** AppearanceMode, or null for "use the car's own mode". */
+    private val previewModeFlow = MutableStateFlow<AppearanceMode?>(null)
     /** DarkModeType, or null for "use the car's own dark type". */
     private val darkTypeFlow = MutableStateFlow<DarkModeType?>(null)
     private val touchFlow = MutableStateFlow(false)
@@ -48,7 +54,8 @@ object PreviewSettings {
     val size: StateFlow<Size> = sizeFlow.asStateFlow()
     val densityDpi: StateFlow<Int> = densityFlow.asStateFlow()
     val styleId: StateFlow<String?> = styleFlow.asStateFlow()
-    val colours: StateFlow<AppTheme?> = coloursFlow.asStateFlow()
+    val colours: StateFlow<ColorScheme?> = coloursFlow.asStateFlow()
+    val previewMode: StateFlow<AppearanceMode?> = previewModeFlow.asStateFlow()
     val darkType: StateFlow<DarkModeType?> = darkTypeFlow.asStateFlow()
     val touchIndicators: StateFlow<Boolean> = touchFlow.asStateFlow()
 
@@ -76,8 +83,30 @@ object PreviewSettings {
                 styleFlow.value = it
             }
         }
-        AppSettings.getString(app, KEY_COLOURS, "").ifEmpty { null }?.let {
-            runCatching { AppTheme.valueOf(it) }.getOrNull()?.let { t -> coloursFlow.value = t }
+        // r35: the preview's stored colours value migrates through the
+        // same table as the car setting (see SchemeMode.kt). A legacy
+        // name becomes its palette plus the mode it embedded, and the
+        // mode is persisted alongside it; a new palette name (NEUTRAL
+        // etc.) parses as a scheme with the mode left null, i.e. the
+        // car's own mode. Unknown names stay null, i.e. the car's own
+        // colours, exactly as before. Note MATERIAL_YOU is both a new
+        // palette name and a legacy name: the legacy branch wins, so a
+        // stored MATERIAL_YOU always means palette + SYSTEM — which is
+        // also what the old MATERIAL_YOU value meant (follow the phone),
+        // so no stored preview changes look.
+        AppSettings.getString(app, KEY_COLOURS, "").ifEmpty { null }?.let { stored ->
+            if (isLegacyThemeName(stored)) {
+                val (scheme, mode) = migrateLegacyTheme(stored)
+                coloursFlow.value = scheme
+                previewModeFlow.value = mode
+                AppSettings.putString(app, KEY_COLOURS, scheme.name)
+                AppSettings.putString(app, KEY_PREVIEW_MODE, mode.name)
+            } else {
+                runCatching { ColorScheme.valueOf(stored) }.getOrNull()?.let { coloursFlow.value = it }
+            }
+        }
+        AppSettings.getString(app, KEY_PREVIEW_MODE, "").ifEmpty { null }?.let {
+            runCatching { AppearanceMode.valueOf(it) }.getOrNull()?.let { previewModeFlow.value = it }
         }
         AppSettings.getString(app, KEY_DARK_TYPE, "").ifEmpty { null }?.let {
             runCatching { DarkModeType.valueOf(it) }.getOrNull()?.let { t -> darkTypeFlow.value = t }
@@ -101,9 +130,14 @@ object PreviewSettings {
         AppSettings.putString(context.applicationContext, KEY_STYLE, id ?: "")
     }
 
-    fun setColours(context: Context, theme: AppTheme?) {
-        coloursFlow.value = theme
-        AppSettings.putString(context.applicationContext, KEY_COLOURS, theme?.name ?: "")
+    fun setColours(context: Context, scheme: ColorScheme?) {
+        coloursFlow.value = scheme
+        AppSettings.putString(context.applicationContext, KEY_COLOURS, scheme?.name ?: "")
+    }
+
+    fun setPreviewMode(context: Context, mode: AppearanceMode?) {
+        previewModeFlow.value = mode
+        AppSettings.putString(context.applicationContext, KEY_PREVIEW_MODE, mode?.name ?: "")
     }
 
     fun setDarkType(context: Context, type: DarkModeType?) {
@@ -124,8 +158,9 @@ object PreviewSettings {
     fun themeOverride(): PreviewThemeOverride? {
         val style = styleFlow.value
         val colours = coloursFlow.value
+        val mode = previewModeFlow.value
         val dark = darkTypeFlow.value
-        if (style == null && colours == null && dark == null) return null
-        return PreviewThemeOverride(appTheme = colours, uiThemeId = style, darkType = dark)
+        if (style == null && colours == null && mode == null && dark == null) return null
+        return PreviewThemeOverride(colorScheme = colours, appearanceMode = mode, uiThemeId = style, darkType = dark)
     }
 }

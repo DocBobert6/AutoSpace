@@ -1524,7 +1524,7 @@ private fun VideoPassengerGateDialog(
 // wears Notscape's playerCapsule — the kit frostBar material — and NOT a
 // Gs control, and it must NOT vary with GsTheme (Frost/Flat/Tactile/
 // Keycap). Colours come from MaterialTheme's scheme (neutral/dynamic per
-// AppTheme), exactly as Notscape's do; on-video labels stay WHITE.
+// scheme + mode), exactly as Notscape's do; on-video labels stay WHITE.
 // Notscape's playerCapsule passes elevation 4dp (the kit default is 6dp);
 // the car build uses 4dp to match Notscape's player, not the kit default.
 // Car sizes are scale, not style, and stay: prev/next 60dp, skip 72dp,

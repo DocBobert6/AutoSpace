@@ -133,7 +133,7 @@ class GsThemeTest {
         // The rename is display-only: the stored id never moves, and the
         // scheme enum is untouched.
         assertEquals("pitlane", GsThemes.Pitlane.id)
-        assertEquals(AppTheme.PITLANE, AppTheme.valueOf("PITLANE"))
+        assertEquals(ColorScheme.PITLANE, ColorScheme.valueOf("PITLANE"))
         // Rectangular buttons still Pit Lane-only; no checker anywhere.
         assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.rectangularButtons })
         assertFalse(GsThemes.builtIn.any { it.control.checkerStrip })
@@ -142,11 +142,12 @@ class GsThemeTest {
 
     @Test
     fun newSchemeSlotsExistAndFrostIsStillDefault() {
-        // Stored by these exact names in car_app_theme; a rename of the
+        // Stored by these exact names in car_scheme (r35: the palette
+        // axis; the mode lives in car_appearance_mode); a rename of the
         // picker label must not change the stored name.
-        assertEquals(AppTheme.PITLANE, AppTheme.valueOf("PITLANE"))
-        assertEquals(AppTheme.CIRCUIT, AppTheme.valueOf("CIRCUIT"))
-        assertEquals(AppTheme.HERITAGE, AppTheme.valueOf("HERITAGE"))
+        assertEquals(ColorScheme.PITLANE, ColorScheme.valueOf("PITLANE"))
+        assertEquals(ColorScheme.CIRCUIT, ColorScheme.valueOf("CIRCUIT"))
+        assertEquals(ColorScheme.HERITAGE, ColorScheme.valueOf("HERITAGE"))
         assertEquals("frost", GsThemes.default.id)
     }
 }

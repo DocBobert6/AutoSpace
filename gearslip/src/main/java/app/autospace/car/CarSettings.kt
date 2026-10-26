@@ -23,29 +23,12 @@ enum class Units { AUTO, IMPERIAL, METRIC }
 
 /**
  * The car UI's own colours. Separate from [NightMode], which is about the light outside (the map).
- * Phase 7 (Robert 2026-10-24 23:58): FOLLOW_SYSTEM is the plain scheme following the phone's
- * light/dark; MATERIAL_YOU is the dynamic scheme following the phone's light/dark. The old
- * PHONE value was dynamic-following-the-phone, i.e. exactly MATERIAL_YOU, so stored PHONE
- * values migrate to MATERIAL_YOU on load (see init) rather than silently falling back to plain.
+ * r35 (Robert 2026-10-26): the old single AppTheme value mixed palettes with modes (Follow
+ * system / Light / Dark / Material You Light / Dark). It is split into two axes, which live in
+ * SchemeMode.kt: [ColorScheme] (palettes only: Neutral, Material You, Night, Pitlane, Circuit,
+ * Heritage) and [AppearanceMode] (Light / Dark / System). The old stored value migrates once
+ * in init() below; the old key then retires unread.
  */
-/**
- * r23 additions, all opt-in (stored by name in car_app_theme; unknown names
- * still fall back to FOLLOW_SYSTEM, so existing installs never move):
- * PITLANE — the stock-car paired scheme (provisional name, same as the
- * Pitlane button style; the pickers are separate axes, so sharing the name
- * is unambiguous): carbon-black surfaces, white text, red primary, yellow
- * highlight, NO blue. Always dark. CIRCUIT — Robert's confirmed palette,
- * final name decided 2026-10-25 (never 'Apex', never the temporary 'Custom
- * palette'): dark background #000000, primary #007AC2, secondary #E4002B,
- * tertiary #FFD659; light variant white background with the same three
- * accents; follows the phone's light/dark like FOLLOW_SYSTEM. HERITAGE —
- * vintage motorsport (provisional name): deep racing green + cream +
- * brass/gold, dark and light variants, also following the phone's
- * light/dark. The new schemes ignore DarkModeType (their backgrounds are
- * scheme-defined, not Regular/Pitch variants); Auto night still
- * overrides all three to NIGHT, exactly as for every other scheme.
- */
-enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK, NIGHT, PITLANE, CIRCUIT, HERITAGE }
 
 /**
  * What a dark theme's backgrounds are made of. REGULAR = dark-gray surfaces
@@ -87,7 +70,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_AUTOPLAY = "car_autoplay"
     // KEY_PLAYER_TITLE retired with playerTitle (see above); the stored
     // value is simply never read again.
+    // KEY_APP_THEME retired in r35 with the scheme/mode split (see
+    // SchemeMode.kt): the stored value migrates once to KEY_SCHEME +
+    // KEY_APPEARANCE_MODE and is then never read again.
     private const val KEY_THEME = "car_app_theme"
+    private const val KEY_SCHEME = "car_scheme"
+    private const val KEY_APPEARANCE_MODE = "car_appearance_mode"
     private const val KEY_BRIGHTNESS = "car_brightness"
     private const val KEY_MIRROR_FIT = "car_mirror_fit"
     private const val KEY_UI_THEME = "car_ui_theme"
@@ -142,8 +130,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val autoplayFlow = MutableStateFlow(false)
     // (playerTitle removed: the nav pill shows title AND skip buttons
     // together now, so the old Skip-buttons-vs-Song-title choice is dead.)
-    private val themeFlow = MutableStateFlow(AppTheme.FOLLOW_SYSTEM)
-    val appTheme: StateFlow<AppTheme> = themeFlow
+    private val schemeFlow = MutableStateFlow(ColorScheme.NEUTRAL)
+    /** The user's chosen palette; Auto night may override what renders (see [effectiveColorScheme]). */
+    val colorScheme: StateFlow<ColorScheme> = schemeFlow
+    private val modeFlow = MutableStateFlow(AppearanceMode.SYSTEM)
+    /** Light / Dark / System; Night and Pitlane force dark while active, stored mode untouched. */
+    val appearanceMode: StateFlow<AppearanceMode> = modeFlow
     private val autoNightModeFlow = MutableStateFlow(AutoNightMode.OFF)
     val autoNightMode: StateFlow<AutoNightMode> = autoNightModeFlow
     private val autoNightStartFlow = MutableStateFlow(21 * 60)
@@ -158,10 +150,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      * except that an active Auto night switches it to NIGHT (see NightAuto
      * for the precedence rule). The stored scheme never changes.
      */
-    val effectiveAppTheme: StateFlow<AppTheme> =
-        combine(themeFlow, autoNightActiveFlow) { theme, active ->
-            if (active && theme != AppTheme.NIGHT) AppTheme.NIGHT else theme
-        }.stateIn(settingsScope, SharingStarted.Eagerly, AppTheme.FOLLOW_SYSTEM)
+    val effectiveColorScheme: StateFlow<ColorScheme> =
+        combine(schemeFlow, autoNightActiveFlow) { scheme, active ->
+            effectiveScheme(scheme, active)
+        }.stateIn(settingsScope, SharingStarted.Eagerly, ColorScheme.NEUTRAL)
     /** Dark-mode surface type; see [DarkModeType]. Default OLED preserves the pre-Phase-7 dark look. */
     val darkModeType: StateFlow<DarkModeType> = darkTypeFlow
     private val brightnessFlow = MutableStateFlow(1f)
@@ -362,16 +354,35 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
         lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
         lastMediaFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA, "").ifEmpty { null }
-        // Phase 7 migration: the old PHONE value was dynamic-following-the-phone,
-        // which is exactly the new MATERIAL_YOU — migrate it (and persist the
-        // migrated value) instead of falling back to plain and changing the look.
-        // Unknown values fall back to FOLLOW_SYSTEM, the plain follow-system theme.
-        val storedTheme = AppSettings.getString(app, KEY_THEME, AppTheme.FOLLOW_SYSTEM.name)
-        themeFlow.value = when (storedTheme) {
-            "PHONE" -> AppTheme.MATERIAL_YOU.also {
-                AppSettings.putString(app, KEY_THEME, AppTheme.MATERIAL_YOU.name)
+        // r35 migration, same one-time pattern as PHONE -> MATERIAL_YOU
+        // above: the old car_app_theme value mixed a palette with a mode,
+        // so it splits into car_scheme + car_appearance_mode via
+        // migrateLegacyTheme (see SchemeMode.kt) and the old key is
+        // cleared, so the migration can never re-run and overwrite a
+        // later choice. Both new keys are always written together here,
+        // so a later init that finds either one present trusts the new
+        // keys and never looks at the old key again. A fresh install
+        // (no keys at all) lands on NEUTRAL + SYSTEM, which is exactly
+        // the old FOLLOW_SYSTEM default look.
+        val storedScheme = AppSettings.getString(app, KEY_SCHEME, "")
+        val storedMode = AppSettings.getString(app, KEY_APPEARANCE_MODE, "")
+        if (storedScheme.isEmpty() && storedMode.isEmpty()) {
+            val legacy = AppSettings.getString(app, KEY_THEME, "")
+            val (scheme, mode) = if (legacy.isEmpty()) {
+                ColorScheme.NEUTRAL to AppearanceMode.SYSTEM
+            } else {
+                migrateLegacyTheme(legacy)
             }
-            else -> runCatching { AppTheme.valueOf(storedTheme) }.getOrDefault(AppTheme.FOLLOW_SYSTEM)
+            schemeFlow.value = scheme
+            modeFlow.value = mode
+            AppSettings.putString(app, KEY_SCHEME, scheme.name)
+            AppSettings.putString(app, KEY_APPEARANCE_MODE, mode.name)
+            if (legacy.isNotEmpty()) AppSettings.putString(app, KEY_THEME, "")
+        } else {
+            schemeFlow.value = runCatching { ColorScheme.valueOf(storedScheme) }
+                .getOrDefault(ColorScheme.NEUTRAL)
+            modeFlow.value = runCatching { AppearanceMode.valueOf(storedMode) }
+                .getOrDefault(AppearanceMode.SYSTEM)
         }
         darkTypeFlow.value = runCatching {
             DarkModeType.valueOf(AppSettings.getString(app, KEY_DARK_TYPE, DarkModeType.OLED.name))
@@ -519,9 +530,14 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_LAST_MEDIA, component)
     }
 
-    fun setAppTheme(theme: AppTheme) {
-        themeFlow.value = theme
-        AppSettings.putString(app, KEY_THEME, theme.name)
+    fun setColorScheme(scheme: ColorScheme) {
+        schemeFlow.value = scheme
+        AppSettings.putString(app, KEY_SCHEME, scheme.name)
+    }
+
+    fun setAppearanceMode(mode: AppearanceMode) {
+        modeFlow.value = mode
+        AppSettings.putString(app, KEY_APPEARANCE_MODE, mode.name)
     }
 
     /** Persists a driver-set brightness; clamped so the screen can never go fully black. */

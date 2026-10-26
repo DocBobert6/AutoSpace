@@ -30,7 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import app.autospace.car.AppTheme
+import app.autospace.car.AppearanceMode
+import app.autospace.car.ColorScheme
 import app.autospace.car.DarkModeType
 import app.autospace.car.TestMode
 import app.autospace.notify.CarMotion
@@ -57,6 +58,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
     val density by PreviewSettings.densityDpi.collectAsState()
     val style by PreviewSettings.styleId.collectAsState()
     val colours by PreviewSettings.colours.collectAsState()
+    val previewMode by PreviewSettings.previewMode.collectAsState()
     val darkType by PreviewSettings.darkType.collectAsState()
     val touch by PreviewSettings.touchIndicators.collectAsState()
     val simMode by CarMotion.simMode.collectAsState()
@@ -122,35 +124,36 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
 
             SettingsSection("Preview colors") {
                 RadioRow("Use car setting", colours == null) { PreviewSettings.setColours(context, null) }
-                RadioRow("Follow system", colours == AppTheme.FOLLOW_SYSTEM) {
-                    PreviewSettings.setColours(context, AppTheme.FOLLOW_SYSTEM)
+                RadioRow("Neutral", colours == ColorScheme.NEUTRAL) {
+                    PreviewSettings.setColours(context, ColorScheme.NEUTRAL)
                 }
-                RadioRow("Plain Light", colours == AppTheme.LIGHT) {
-                    PreviewSettings.setColours(context, AppTheme.LIGHT)
+                RadioRow("Material You", colours == ColorScheme.MATERIAL_YOU) {
+                    PreviewSettings.setColours(context, ColorScheme.MATERIAL_YOU)
                 }
-                RadioRow("Plain Dark", colours == AppTheme.DARK) {
-                    PreviewSettings.setColours(context, AppTheme.DARK)
+                RadioRow("Night", colours == ColorScheme.NIGHT) {
+                    PreviewSettings.setColours(context, ColorScheme.NIGHT)
                 }
-                RadioRow("Material You", colours == AppTheme.MATERIAL_YOU) {
-                    PreviewSettings.setColours(context, AppTheme.MATERIAL_YOU)
+                RadioRow("Pitlane", colours == ColorScheme.PITLANE) {
+                    PreviewSettings.setColours(context, ColorScheme.PITLANE)
                 }
-                RadioRow("Material You Light", colours == AppTheme.MATERIAL_YOU_LIGHT) {
-                    PreviewSettings.setColours(context, AppTheme.MATERIAL_YOU_LIGHT)
+                RadioRow("Circuit", colours == ColorScheme.CIRCUIT) {
+                    PreviewSettings.setColours(context, ColorScheme.CIRCUIT)
                 }
-                RadioRow("Material You Dark", colours == AppTheme.MATERIAL_YOU_DARK) {
-                    PreviewSettings.setColours(context, AppTheme.MATERIAL_YOU_DARK)
+                RadioRow("Heritage", colours == ColorScheme.HERITAGE) {
+                    PreviewSettings.setColours(context, ColorScheme.HERITAGE)
                 }
-                RadioRow("Night", colours == AppTheme.NIGHT) {
-                    PreviewSettings.setColours(context, AppTheme.NIGHT)
+            }
+
+            SettingsSection("Preview mode") {
+                RadioRow("Use car setting", previewMode == null) { PreviewSettings.setPreviewMode(context, null) }
+                RadioRow("Light", previewMode == AppearanceMode.LIGHT) {
+                    PreviewSettings.setPreviewMode(context, AppearanceMode.LIGHT)
                 }
-                RadioRow("Pitlane", colours == AppTheme.PITLANE) {
-                    PreviewSettings.setColours(context, AppTheme.PITLANE)
+                RadioRow("Dark", previewMode == AppearanceMode.DARK) {
+                    PreviewSettings.setPreviewMode(context, AppearanceMode.DARK)
                 }
-                RadioRow("Circuit", colours == AppTheme.CIRCUIT) {
-                    PreviewSettings.setColours(context, AppTheme.CIRCUIT)
-                }
-                RadioRow("Heritage", colours == AppTheme.HERITAGE) {
-                    PreviewSettings.setColours(context, AppTheme.HERITAGE)
+                RadioRow("System", previewMode == AppearanceMode.SYSTEM) {
+                    PreviewSettings.setPreviewMode(context, AppearanceMode.SYSTEM)
                 }
             }
 

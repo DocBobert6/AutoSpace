@@ -173,7 +173,8 @@ private fun AppearancePage() {
     val scale by CarSettings.scale.collectAsState()
     val iconSize by CarSettings.iconSize.collectAsState()
     val tileSize by CarSettings.tileSize.collectAsState()
-    val theme by CarSettings.appTheme.collectAsState()
+    val scheme by CarSettings.colorScheme.collectAsState()
+    val appearanceMode by CarSettings.appearanceMode.collectAsState()
     val darkType by CarSettings.darkModeType.collectAsState()
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
@@ -269,40 +270,44 @@ private fun AppearancePage() {
 
     ChoiceRow(
         "Color scheme",
-        listOf(
-            AppTheme.FOLLOW_SYSTEM to "Follow system",
-            AppTheme.LIGHT to "Light",
-            AppTheme.DARK to "Dark",
-            AppTheme.MATERIAL_YOU to "Material You",
-            AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
-            AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
-            AppTheme.NIGHT to "Night",
-            AppTheme.PITLANE to "Pitlane",
-            AppTheme.CIRCUIT to "Circuit",
-            AppTheme.HERITAGE to "Heritage",
-        ),
-        theme,
-    ) { CarSettings.setAppTheme(it) }
+        colorSchemes.map { it to it.displayName },
+        scheme,
+    ) { CarSettings.setColorScheme(it) }
     Text(
-        "Follow system is the plain neutral theme following the phone's " +
-            "light/dark. Light and Dark are plain neutral themes, no " +
-            "wallpaper colors. Material You follows the phone's wallpaper " +
-            "colors and light/dark; Material You Light / Dark use the " +
-            "phone's wallpaper colors, forced to that variant. Night is " +
-            "the dedicated night-driving scheme: pure black, warm gray " +
-            "text, amber accents. Pitlane is the stock-car scheme: " +
+        "Neutral is the plain theme, no wallpaper colors. Material You " +
+            "follows the phone's wallpaper colors; its light/dark variant " +
+            "follows the mode control below. Night is the dedicated " +
+            "night-driving scheme: pure black, warm gray text, amber " +
+            "accents, always dark. Pitlane is the stock-car scheme: " +
             "carbon black, white text, red and yellow, no blue, always " +
             "dark. Circuit is black with blue, red, and yellow accents " +
             "(white in its light variant). Heritage is deep racing green " +
             "with cream text and brass gold accents. Circuit and Heritage " +
-            "follow the phone's light/dark; Auto night still switches " +
+            "follow the mode control; Auto night still switches " +
             "every scheme to Night.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     ChoiceRow(
-        "Dark mode",
+        "Appearance mode",
+        appearanceModes.map { it to it.displayName },
+        appearanceMode,
+    ) { CarSettings.setAppearanceMode(it) }
+    Text(
+        "Light and Dark force that variant for every scheme that has " +
+            "one. System follows the phone's light/dark. Night and " +
+            "Pitlane are always dark, so while one of them is active " +
+            "the screen stays dark whatever mode is picked here; your " +
+            "mode applies again when you choose another scheme." +
+            if (schemeForcesDark(scheme)) " Right now ${scheme.displayName} " +
+                "is active, so the screen is dark." else "",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    ChoiceRow(
+        "Dark surfaces",
         listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "Pitch"),
         darkType,
     ) { CarSettings.setDarkModeType(it) }
@@ -310,8 +315,7 @@ private fun AppearancePage() {
         "Regular dark uses dark-gray surfaces, no pure black. Pitch " +
             "uses pure-black backgrounds and surfaces; panels are " +
             "separated by their edges, not by gray fills. Applies to " +
-            "plain Dark, Material You Dark, and the dark variant of " +
-            "both Follow options, in every style. While Night is " +
+            "Neutral and Material You when dark, in every style. While Night is " +
             "active, the background is pure black no matter which " +
             "dark type is picked.",
         style = MaterialTheme.typography.bodyMedium,
