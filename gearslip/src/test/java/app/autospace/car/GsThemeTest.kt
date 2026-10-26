@@ -40,8 +40,20 @@ class GsThemeTest {
     }
 
     @Test
+    fun r31DisplayNamesAreOneWordAndIdsUnchanged() {
+        // r31 rename round: "Pit Lane" -> "Pitlane" display-only. The id and
+        // stored value never move; this pins both halves of that promise.
+        // "Pitch" (dark type) lives in composable picker lists, not in a
+        // JVM-testable data source, so it is verified by source grep + dex
+        // scan at push time, not faked as a unit test here.
+        assertEquals("Pitlane", GsThemes.Pitlane.name)
+        assertEquals("pitlane", GsThemes.Pitlane.id)
+        assertEquals("pitlane", GsThemes.byId("pitlane").id)
+    }
+
+    @Test
     fun pitlaneIsBuiltInWithSquaredThickStyleAndNoChecker() {
-        assertTrue(GsThemes.builtIn.any { it.id == "pitlane" && it.name == "Pit Lane" })
+        assertTrue(GsThemes.builtIn.any { it.id == "pitlane" && it.name == "Pitlane" })
         assertEquals("pitlane", GsThemes.byId("pitlane").id)
         val look = GsThemes.Pitlane.control
         assertEquals(6, look.corner.value.toInt())

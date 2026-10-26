@@ -1115,7 +1115,7 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
  * #E10600 is never body text on black (~4.0:1) — it is primary buttons
  * (white on red ~5.0:1) and accents; yellow #FFD200 on black is ~14:1.
  * DarkModeType does not alter it: carbon black is the scheme, not a
- * Regular/True Black variant.
+ * Regular/Pitch variant.
  */
 private fun pitlaneScheme(): androidx.compose.material3.ColorScheme {
     val black = androidx.compose.ui.graphics.Color.Black

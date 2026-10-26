@@ -42,7 +42,7 @@ enum class Units { AUTO, IMPERIAL, METRIC }
  * vintage motorsport (provisional name): deep racing green + cream +
  * brass/gold, dark and light variants, also following the phone's
  * light/dark. The new schemes ignore DarkModeType (their backgrounds are
- * scheme-defined, not Regular/True Black variants); Auto night still
+ * scheme-defined, not Regular/Pitch variants); Auto night still
  * overrides all three to NIGHT, exactly as for every other scheme.
  */
 enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK, NIGHT, PITLANE, CIRCUIT, HERITAGE }
@@ -52,7 +52,7 @@ enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIG
  * (#1C1C1E/#2C2C2E family, no pure-black background); OLED = pure-black #000000
  * backgrounds AND surfaces since Phase 10 (the dark look AutoSpace shipped
  * before Phase 7, kept as the default so existing installs do not change look).
- * Display name is "True Black" (the stored value stays OLED, so existing
+ * Display name is "Pitch" (the stored value stays OLED, so existing
  * installs keep their setting with no migration). Applies to plain Dark,
  * Material You Dark, and the dark variant of both Follow options, across all
  * styles. For dynamic dark + OLED, the dynamic accent and content colors are

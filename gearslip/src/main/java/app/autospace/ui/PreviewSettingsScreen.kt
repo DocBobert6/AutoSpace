@@ -117,7 +117,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Flat", style == "flat") { PreviewSettings.setStyle(context, "flat") }
                 RadioRow("Tactile", style == "tactile") { PreviewSettings.setStyle(context, "tactile") }
                 RadioRow("Edge", style == "edge") { PreviewSettings.setStyle(context, "edge") }
-                RadioRow("Pit Lane", style == "pitlane") { PreviewSettings.setStyle(context, "pitlane") }
+                RadioRow("Pitlane", style == "pitlane") { PreviewSettings.setStyle(context, "pitlane") }
             }
 
             SettingsSection("Preview colors") {
@@ -143,7 +143,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Night", colours == AppTheme.NIGHT) {
                     PreviewSettings.setColours(context, AppTheme.NIGHT)
                 }
-                RadioRow("Pit Lane", colours == AppTheme.PITLANE) {
+                RadioRow("Pitlane", colours == AppTheme.PITLANE) {
                     PreviewSettings.setColours(context, AppTheme.PITLANE)
                 }
                 RadioRow("Circuit", colours == AppTheme.CIRCUIT) {
@@ -159,7 +159,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Regular", darkType == DarkModeType.REGULAR) {
                     PreviewSettings.setDarkType(context, DarkModeType.REGULAR)
                 }
-                RadioRow("True Black", darkType == DarkModeType.OLED) {
+                RadioRow("Pitch", darkType == DarkModeType.OLED) {
                     PreviewSettings.setDarkType(context, DarkModeType.OLED)
                 }
             }

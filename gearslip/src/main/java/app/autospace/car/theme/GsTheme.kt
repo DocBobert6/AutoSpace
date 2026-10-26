@@ -177,9 +177,10 @@ object GsThemes {
     )
 
     /**
-     * Pit Lane (2026-10-26, r23; display name corrected 2026-10-26, r26):
-     * the stock-car button style. Display name is "Pit Lane" (two words,
-     * Robert 2026-10-26 01:36); the id stays "pitlane" and stored values
+     * Pitlane (2026-10-26, r23; display name corrected 2026-10-26, r26;
+     * renamed to one word 2026-10-26, r31):
+     * the stock-car button style. Display name is "Pitlane" (one word,
+     * Robert 2026-10-26 ~06:46); the id stays "pitlane" and stored values
      * never move — a display-string change only. Switch-panel language:
      * squared 6dp corners, solid color blocking (topLight 0, no gradient,
      * no shadow), and the thickest edge the kit can express — a full-alpha
@@ -211,7 +212,7 @@ object GsThemes {
      */
     val Pitlane = GsTheme(
         id = "pitlane",
-        name = "Pit Lane",
+        name = "Pitlane",
         control = ControlLook(
             corner = 6.dp,
             topLight = 0f,

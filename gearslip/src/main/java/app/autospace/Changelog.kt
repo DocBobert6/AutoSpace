@@ -18,7 +18,7 @@ object Changelog {
         Release(
             10, "0.3.01-alpha",
             listOf(
-                "AutoSpace is a fork of Gearslip, with a rebuilt look: Frost, Material You and plain styles, in light and dark, with a pure-black True Black dark mode.",
+                "AutoSpace is a fork of Gearslip, with a rebuilt look: Frost, Material You and plain styles, in light and dark, with a pure-black Pitch dark mode.",
                 "The launcher is a flat alphabetical grid with a pinned row, drag-to-reorder, and sliders for icon, tile and overall size.",
                 "The browser searches with no-AI DuckDuckGo, and has tabs, saved pages and history, a strict popup blocker, and a media finder that plays a page's video and audio in AutoSpace's own player.",
                 "The video player has speed, sleep timer, audio tracks, subtitles and quality choices, pinch zoom and pan, and a passenger gate: video plays while driving only once you confirm you're a passenger, otherwise you hear the audio.",

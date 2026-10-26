@@ -277,7 +277,7 @@ private fun AppearancePage() {
             AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
             AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
             AppTheme.NIGHT to "Night",
-            AppTheme.PITLANE to "Pit Lane",
+            AppTheme.PITLANE to "Pitlane",
             AppTheme.CIRCUIT to "Circuit",
             AppTheme.HERITAGE to "Heritage",
         ),
@@ -290,7 +290,7 @@ private fun AppearancePage() {
             "colors and light/dark; Material You Light / Dark use the " +
             "phone's wallpaper colors, forced to that variant. Night is " +
             "the dedicated night-driving scheme: pure black, warm gray " +
-            "text, amber accents. Pit Lane is the stock-car scheme: " +
+            "text, amber accents. Pitlane is the stock-car scheme: " +
             "carbon black, white text, red and yellow, no blue, always " +
             "dark. Circuit is black with blue, red, and yellow accents " +
             "(white in its light variant). Heritage is deep racing green " +
@@ -303,11 +303,11 @@ private fun AppearancePage() {
 
     ChoiceRow(
         "Dark mode",
-        listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "True Black"),
+        listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "Pitch"),
         darkType,
     ) { CarSettings.setDarkModeType(it) }
     Text(
-        "Regular dark uses dark-gray surfaces, no pure black. True Black " +
+        "Regular dark uses dark-gray surfaces, no pure black. Pitch " +
             "uses pure-black backgrounds and surfaces; panels are " +
             "separated by their edges, not by gray fills. Applies to " +
             "plain Dark, Material You Dark, and the dark variant of " +
