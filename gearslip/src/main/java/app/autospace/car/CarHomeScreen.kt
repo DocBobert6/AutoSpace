@@ -52,6 +52,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.media.NowPlaying
+import app.autospace.notify.CarMotion
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -68,6 +70,8 @@ fun CarHome() {
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
     val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
+    val widgetsOn by CarSettings.homeWidgetsEnabled.collectAsStateWithLifecycle()
+    val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -108,6 +112,11 @@ fun CarHome() {
     val showFloatingCard = shouldShowFloatingCard(
         floatingOn, phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
+    )
+    // r37 widget layer: driver-side column over the full-bleed map base
+    // only (floating ON). Classic split hides it and stays byte-for-byte.
+    val showWidgetColumn = shouldShowWidgetColumn(
+        widgetsOn, floatingOn, widgetsDismissed, onHome, panel,
     )
 
     // Phase 8: 12dp outer padding (so rounded corners actually show against
@@ -162,6 +171,28 @@ fun CarHome() {
                     contentAlignment = Alignment.BottomEnd,
                 ) {
                     FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
+                }
+            }
+            if (showWidgetColumn) {
+                // CarMotion.moving is a plain value, not a flow — poll it
+                // like VideoPlayerScreen/CarWhatsNew do (1 s; GPS only
+                // updates every 2 s). It gates only the narrow-frame
+                // parked exception; the poll runs only while the column
+                // could render, never on classic Home.
+                val moving by produceState(CarMotion.moving) {
+                    while (true) { value = CarMotion.moving; delay(1_000) }
+                }
+                // Driver side (start in LTR), top-anchored below the top
+                // inset (proposal §3); the media card sits bottom-end, so
+                // the two never collide, and neither enters the nav bar's
+                // turn-pill row below this Box. The nav app's own turn UI
+                // at the top of its surface is checked visually on device
+                // (test list) — no numeric turn zone is claimed in code.
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    contentAlignment = Alignment.TopStart,
+                ) {
+                    WidgetColumn(maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)))
                 }
             }
         } else {

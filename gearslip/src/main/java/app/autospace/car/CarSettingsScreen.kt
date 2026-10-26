@@ -603,6 +603,8 @@ private fun AboutAndExperimentalPage() {
     val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
+    val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
+    val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
 
     ChoiceRow(
@@ -611,7 +613,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia)
+        ExperimentalFeaturesList(carSensors, floatingMedia, homeWidgets, widgetsDismissed)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1220,7 +1222,9 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * so the list reads fine whether there's one entry or several.
  */
 @Composable
-private fun ExperimentalFeaturesList(carSensors: Boolean, floatingMedia: Boolean) {
+private fun ExperimentalFeaturesList(
+    carSensors: Boolean, floatingMedia: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
+) {
     Column(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1241,6 +1245,23 @@ private fun ExperimentalFeaturesList(carSensors: Boolean, floatingMedia: Boolean
                 "returns when this is off.",
             checked = floatingMedia,
         ) { CarSettings.setFloatingMediaEnabled(it) }
+        ExperimentalFeatureRow(
+            title = "Home widgets (experimental)",
+            description = "Shows weather, notification digest, and next event as a column " +
+                "over the full-screen map when floating media is on. Widgets appear " +
+                "only on that floating base — classic Home is unchanged when this " +
+                "is off. Dismissing the column hides it until you bring it back " +
+                "here, across drives.",
+            checked = homeWidgets,
+        ) { CarSettings.setHomeWidgetsEnabled(it) }
+        if (widgetsDismissed) {
+            GsButton(
+                onClick = { CarSettings.setWidgetsDismissed(false) },
+                tone = GsTone.Tonal, modifier = Modifier.height(56.dp),
+            ) {
+                Text("Show widget column again", style = MaterialTheme.typography.titleMedium)
+            }
+        }
     }
 }
 

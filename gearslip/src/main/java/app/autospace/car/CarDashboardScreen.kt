@@ -158,7 +158,7 @@ private fun EventRow(event: AgendaEvent) {
 }
 
 /** "Today" events show just a time; later days get a weekday so a week's list stays readable. */
-private fun eventWhen(event: AgendaEvent): String {
+internal fun eventWhen(event: AgendaEvent): String {
     val zone = if (event.allDay) TimeZone.getTimeZone("UTC") else TimeZone.getDefault()
     val start = Calendar.getInstance(zone).apply { timeInMillis = event.startMillis }
     val today = Calendar.getInstance()
@@ -169,9 +169,12 @@ private fun eventWhen(event: AgendaEvent): String {
     return SimpleDateFormat("EEE", Locale.getDefault()).apply { timeZone = zone }.format(Date(event.startMillis)) + " " + time
 }
 
-private data class AgendaEvent(val title: String, val startMillis: Long, val allDay: Boolean)
+internal data class AgendaEvent(val title: String, val startMillis: Long, val allDay: Boolean)
 
 @Volatile private var cachedAgenda: List<AgendaEvent>? = null
+
+/** Widget layer (r37): the dashboard's cached agenda, if it was warmed. */
+internal fun cachedAgendaSnapshot(): List<AgendaEvent>? = cachedAgenda
 
 /** Loads the weather and the agenda ahead of time, so the dashboard opens with both in place. */
 fun warmDashboard(context: Context) {
@@ -184,7 +187,7 @@ fun warmDashboard(context: Context) {
  * event already under way still shows, a week ahead so tomorrow's does too, and skips ones
  * that have finished.
  */
-private fun fetchAgenda(context: Context): List<AgendaEvent> {
+internal fun fetchAgenda(context: Context): List<AgendaEvent> {
     if (context.checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
         return emptyList()
     }

@@ -101,6 +101,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SUB_EDGE = "car_sub_edge"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_FLOATING_MEDIA = "car_floating_media"
+    private const val KEY_HOME_WIDGETS = "car_home_widgets"
+    private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
     private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
@@ -182,6 +184,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val playerSkipSecFlow = MutableStateFlow(10)
     private val carSensorsFlow = MutableStateFlow(false)
     private val floatingMediaFlow = MutableStateFlow(false)
+    private val homeWidgetsFlow = MutableStateFlow(false)
+    private val widgetsDismissedFlow = MutableStateFlow(false)
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
 
@@ -335,6 +339,21 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val floatingMediaEnabled: StateFlow<Boolean> = floatingMediaFlow
 
     /**
+     * Widget layer (r37): the three-widget Home column, behind one master
+     * experimental switch, default OFF. Classic Home is byte-for-byte when
+     * off; the column renders only over the floating full-bleed map base.
+     */
+    val homeWidgetsEnabled: StateFlow<Boolean> = homeWidgetsFlow
+
+    /**
+     * Column-level widget dismissal, REMEMBERED across drives (persisted
+     * pref, §7(5)) — unlike the floating card's per-session dismissal.
+     * Re-enabled only from the widget settings row, never by cycling the
+     * master switch or the floating toggle.
+     */
+    val widgetsDismissed: StateFlow<Boolean> = widgetsDismissedFlow
+
+    /**
      * Whether the car screen's own "drive safely" warning has already been shown and dismissed
      * once, from this same install. Separate from the phone side's own compat/safety dialogs -
      * a driver who only ever plugs in and never opens the phone app should still see this once,
@@ -440,6 +459,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
         floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
+        homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
+        widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
             Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
@@ -674,6 +695,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setFloatingMediaEnabled(on: Boolean) {
         floatingMediaFlow.value = on
         AppSettings.putString(app, KEY_FLOATING_MEDIA, on.toString())
+    }
+
+    fun setHomeWidgetsEnabled(on: Boolean) {
+        homeWidgetsFlow.value = on
+        AppSettings.putString(app, KEY_HOME_WIDGETS, on.toString())
+    }
+
+    fun setWidgetsDismissed(dismissed: Boolean) {
+        widgetsDismissedFlow.value = dismissed
+        AppSettings.putString(app, KEY_WIDGETS_DISMISSED, dismissed.toString())
     }
 
     fun setNightMode(mode: NightMode) {
