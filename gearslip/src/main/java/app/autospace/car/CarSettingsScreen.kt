@@ -511,9 +511,14 @@ private fun VoicePage() {
     // phone only, never on a head unit. This line just says whether it is on or off.
     androidx.compose.runtime.LaunchedEffect(context) { AiKeyStore.ensureLoaded(context) }
     val aiEnabled by AiKeyStore.enabled.collectAsState()
+    val aiProvider by AiKeyStore.provider.collectAsState()
     GsSectionHeader("AI assistant")
     Text(
-        "AI answers: ${if (aiEnabled) "on" else "off"} — manage on your phone in Settings > AI assistant.",
+        // r40: read-only, as before — the provider name is shown, but no key entry,
+        // toggle, or key display ever appears on a head unit.
+        "AI answers: ${if (aiEnabled) "on" else "off"} — ${aiProvider.displayName}" +
+            (if (aiProvider.isExperimental) " (experimental)" else "") +
+            " — manage on your phone in Settings > AI assistant.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

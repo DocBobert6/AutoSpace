@@ -233,6 +233,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     fromAi = AssistantCommands.lastReplyWasAi,
                     grounded = AssistantCommands.lastReplyGrounded,
                     sourceCount = AssistantCommands.lastReplySourceCount,
+                    provider = AssistantCommands.lastReplyProvider,
                 )
             }
         }

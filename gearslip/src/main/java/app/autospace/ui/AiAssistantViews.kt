@@ -24,6 +24,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -46,6 +47,7 @@ import app.autospace.car.AiAssistant
 import app.autospace.car.AiKeyStore
 import app.autospace.car.AssistantPreview
 import app.autospace.car.GeminiClient
+import app.autospace.car.GroqClient
 import app.autospace.car.VoiceShortcuts
 import app.autospace.speech.VoiceEngine
 import kotlinx.coroutines.Dispatchers
@@ -53,28 +55,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Phone Settings section for the AI assistant (r25). This is the ONLY place the Gemini
- * API key is entered, tested, or removed — keys are never typed on a head unit, and the
- * car side only ever shows a read-only on/off line. The key field is password-masked,
- * the stored value is never displayed (not even masked — masked forms leak length), and
- * every status line says only whether a key is saved and whether it tested valid.
+ * Phone Settings section for the AI assistant (r25, provider-aware r40). This is the
+ * ONLY place an AI provider's API key is entered, tested, or removed — keys are never
+ * typed on a head unit, and the car side only ever shows a read-only line. Each
+ * provider has its own key block below; the key field is password-masked, the stored
+ * value is never displayed (not even masked — masked forms leak length), and every
+ * status line says only whether a key is saved and whether it tested valid.
  */
 @Composable
 internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     LaunchedEffect(context) { AiKeyStore.ensureLoaded(context) }
     val enabled by AiKeyStore.enabled.collectAsState()
-    val keyState by AiKeyStore.keyState.collectAsState()
-    var keyInput by remember { mutableStateOf("") }
-    var saveNote by remember { mutableStateOf<String?>(null) }
-    var testNote by remember { mutableStateOf<String?>(null) }
-    var testing by remember { mutableStateOf(false) }
+    val provider by AiKeyStore.provider.collectAsState()
     var showNotice by remember { mutableStateOf(false) }
-    var showRemoveConfirm by remember { mutableStateOf(false) }
 
     fun enable() {
-        if (!AiKeyStore.noticeAcked(context)) {
+        if (!AiKeyStore.noticeAcked(context, provider)) {
             showNotice = true
         } else {
             AiKeyStore.setEnabled(context, true)
@@ -83,10 +80,11 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
 
     SettingsSection(
         "AI assistant",
-        footer = "AI answers use your own Gemini API key and are off by default. Local commands " +
+        footer = "AI answers use your own API key — Groq by default, Gemini as an " +
+            "experimental option — and are off by default. Local commands " +
             "always run first and never need the network; the AI is only a fallback when no " +
             "local command matches, and it never acts without your confirmation. Questions " +
-            "needing current information may run a Google Search through the same connection; " +
+            "needing current information may run a web search through the same connection; " +
             "location is never sent.",
     ) {
         SettingsRow(
@@ -100,67 +98,30 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
             },
         )
         SettingsDivider()
-        SettingsRow(
-            "Gemini API key",
-            subtitle = when (keyState) {
-                AiKeyStore.KeyState.NO_KEY -> "No key saved"
-                AiKeyStore.KeyState.SAVED_UNTESTED -> "Key saved, not yet tested"
-                AiKeyStore.KeyState.VALID -> "Key valid"
-                AiKeyStore.KeyState.INVALID -> "Key invalid — check the key"
-            },
-        )
-        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(
-                value = keyInput,
-                onValueChange = { keyInput = it; saveNote = null },
-                label = { Text("Paste your Gemini API key") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    if (AiKeyStore.saveKey(context, keyInput)) {
-                        keyInput = ""
-                        saveNote = "Key saved. Test it below to confirm it works."
-                    } else {
-                        saveNote = "Enter a key first."
-                    }
-                }) { Text("Save key") }
-                OutlinedButton(
-                    enabled = !testing && keyState != AiKeyStore.KeyState.NO_KEY,
-                    onClick = {
-                        testing = true
-                        testNote = null
-                        scope.launch {
-                            val verdict = withContext(Dispatchers.IO) { AiKeyStore.testKey(context) }
-                            testNote = when (verdict) {
-                                GeminiClient.KeyCheck.VALID -> "Key valid."
-                                GeminiClient.KeyCheck.INVALID -> "Key invalid — check the key and try again."
-                                GeminiClient.KeyCheck.UNKNOWN -> "Couldn't reach Google — check the network and try again."
-                            }
-                            testing = false
-                        }
-                    },
-                ) { Text(if (testing) "Testing…" else "Test key") }
-                OutlinedButton(
-                    enabled = keyState != AiKeyStore.KeyState.NO_KEY,
-                    onClick = { showRemoveConfirm = true },
-                ) { Text("Remove key") }
-            }
-            saveNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            testNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-            Text(
-                "Model: ${AiAssistant.MODEL_ID} (${AiAssistant.API_VERSION}, ${AiAssistant.API_HOST})",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        // r40: the provider picker. Groq is the default; Gemini is labelled
+        // experimental wherever it is shown. Switching never moves a key.
+        AiAssistant.Provider.entries.forEach { p ->
+            SettingsRow(
+                p.displayName + (if (p.isExperimental) " (experimental)" else "") +
+                    (if (p == AiAssistant.Provider.DEFAULT) " — default" else ""),
+                subtitle = when (p) {
+                    AiAssistant.Provider.GROQ -> "Fast answers, with a web search when a question needs current information"
+                    AiAssistant.Provider.GEMINI -> "Kept as an experimental option"
+                },
+                modifier = Modifier.clickable { AiKeyStore.setProvider(context, p) },
+                trailing = {
+                    RadioButton(selected = p == provider, onClick = null)
+                },
             )
         }
         SettingsDivider()
+        ProviderKeySection(AiAssistant.Provider.GROQ)
+        SettingsDivider()
+        ProviderKeySection(AiAssistant.Provider.GEMINI)
+        SettingsDivider()
         SettingsRow(
             "Privacy notice",
-            subtitle = "What is sent to Google, and what never is",
+            subtitle = "What is sent to ${provider.displayName}, and what never is",
             modifier = Modifier.clickable { showNotice = true },
         )
         SettingsDivider()
@@ -175,10 +136,17 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
         AlertDialog(
             onDismissRequest = { showNotice = false },
             title = { Text("AI answers: what happens") },
-            text = { Text(AiAssistant.PRIVACY_NOTICE) },
+            // r40: the dialog shows the ACTIVE provider's wording — no single
+            // generic notice, because Groq and Gemini differ on training.
+            text = {
+                Text(
+                    if (provider == AiAssistant.Provider.GROQ) AiAssistant.GROQ_PRIVACY_NOTICE
+                    else AiAssistant.PRIVACY_NOTICE,
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
-                    AiKeyStore.ackNotice(context)
+                    AiKeyStore.ackNotice(context, provider)
                     showNotice = false
                     AiKeyStore.setEnabled(context, true)
                 }) { Text("Turn on AI answers") }
@@ -186,14 +154,97 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
             dismissButton = { TextButton(onClick = { showNotice = false }) { Text("Not now") } },
         )
     }
+}
+
+/**
+ * One provider's key block (r40): masked field + Save / Test key / Remove key +
+ * status line + model line. The stored value is never displayed (not even masked —
+ * masked forms leak length), and every status line says only whether a key is saved
+ * and whether it tested valid. Each block keeps its own input state.
+ */
+@Composable
+private fun ProviderKeySection(provider: AiAssistant.Provider) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val keyState by AiKeyStore.keyState(provider).collectAsState()
+    var keyInput by remember { mutableStateOf("") }
+    var saveNote by remember { mutableStateOf<String?>(null) }
+    var testNote by remember { mutableStateOf<String?>(null) }
+    var testing by remember { mutableStateOf(false) }
+    var showRemoveConfirm by remember { mutableStateOf(false) }
+
+    val title = when (provider) {
+        AiAssistant.Provider.GROQ -> "Groq API key"
+        AiAssistant.Provider.GEMINI -> "Gemini API key"
+    }
+    SettingsRow(
+        title,
+        subtitle = when (keyState) {
+            AiKeyStore.KeyState.NO_KEY -> "No key saved"
+            AiKeyStore.KeyState.SAVED_UNTESTED -> "Key saved, not yet tested"
+            AiKeyStore.KeyState.VALID -> "Key valid"
+            AiKeyStore.KeyState.INVALID -> "Key invalid — check the key"
+        },
+    )
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            value = keyInput,
+            onValueChange = { keyInput = it; saveNote = null },
+            label = { Text("Paste your $title") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                if (AiKeyStore.saveKey(context, provider, keyInput)) {
+                    keyInput = ""
+                    saveNote = "Key saved. Test it below to confirm it works."
+                } else {
+                    saveNote = "Enter a key first."
+                }
+            }) { Text("Save key") }
+            OutlinedButton(
+                enabled = !testing && keyState != AiKeyStore.KeyState.NO_KEY,
+                onClick = {
+                    testing = true
+                    testNote = null
+                    scope.launch {
+                        val verdict = withContext(Dispatchers.IO) { AiKeyStore.testKey(context, provider) }
+                        testNote = when (verdict) {
+                            GeminiClient.KeyCheck.VALID -> "Key valid."
+                            GeminiClient.KeyCheck.INVALID -> "Key invalid — check the key and try again."
+                            GeminiClient.KeyCheck.UNKNOWN -> "Couldn't reach ${provider.displayName} — check the network and try again."
+                        }
+                        testing = false
+                    }
+                },
+            ) { Text(if (testing) "Testing…" else "Test key") }
+            OutlinedButton(
+                enabled = keyState != AiKeyStore.KeyState.NO_KEY,
+                onClick = { showRemoveConfirm = true },
+            ) { Text("Remove key") }
+        }
+        saveNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        testNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        Text(
+            when (provider) {
+                AiAssistant.Provider.GROQ -> "Model: ${GroqClient.MODEL_ID} (${GroqClient.API_HOST}/openai/v1)"
+                AiAssistant.Provider.GEMINI -> "Model: ${AiAssistant.MODEL_ID} (${AiAssistant.API_VERSION}, ${AiAssistant.API_HOST})"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     if (showRemoveConfirm) {
         AlertDialog(
             onDismissRequest = { showRemoveConfirm = false },
-            title = { Text("Remove the AI key?") },
-            text = { Text("The stored key is wiped and AI answers turn off. You can paste a key again anytime.") },
+            title = { Text("Remove the ${provider.displayName} key?") },
+            text = { Text("The stored key is wiped. AI answers turn off too if this is the active provider. You can paste a key again anytime.") },
             confirmButton = {
                 TextButton(onClick = {
-                    AiKeyStore.removeKey(context)
+                    AiKeyStore.removeKey(context, provider)
                     keyInput = ""
                     testNote = null
                     saveNote = null
@@ -222,7 +273,8 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
     }
     val keywords by VoiceShortcuts.shortcuts.collectAsState()
     val aiOn by AiKeyStore.enabled.collectAsState()
-    val keyState by AiKeyStore.keyState.collectAsState()
+    val provider by AiKeyStore.provider.collectAsState()
+    val keyState by AiKeyStore.keyState(provider).collectAsState()
 
     var input by remember { mutableStateOf("") }
     var trace by remember { mutableStateOf<AssistantPreview.Trace?>(null) }
@@ -252,7 +304,7 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
         aiOn && keyState != AiKeyStore.KeyState.NO_KEY && GeminiClient.networkAvailable(context)
 
     fun classify() {
-        trace = AssistantPreview.classify(input, keywords, aiGates())
+        trace = AssistantPreview.classify(input, keywords, aiGates(), provider)
         traceDecision = null
         playNote = null
     }
@@ -313,7 +365,11 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
                         // r27: grounded yes/no only — never chunk contents, and the source
                         // count is a live value the preview cannot know, so it says so.
                         Text(
-                            if (t.grounded) "Grounded: yes — via Google Search (source count shown live)" else "Grounded: no",
+                            if (t.grounded) {
+                                // r40: the grounded line never says Google for a Groq answer.
+                                val via = if (provider == AiAssistant.Provider.GROQ) "web search" else "Google Search"
+                                "Grounded: yes — via $via (source count shown live)"
+                            } else "Grounded: no",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -349,7 +405,7 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Button(onClick = {
-            suite = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates())
+            suite = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates(), provider)
             confirmResults = AssistantPreview.runConfirmationCases()
         }, modifier = Modifier.fillMaxWidth()) { Text("Run all tests") }
         suite?.let { s ->
@@ -389,11 +445,11 @@ internal fun AssistantPreviewScreen(onBack: () -> Unit) {
                 testing = true
                 testNote = null
                 scope.launch {
-                    val verdict = withContext(Dispatchers.IO) { AiKeyStore.testKey(context) }
+                    val verdict = withContext(Dispatchers.IO) { AiKeyStore.testKey(context, provider) }
                     testNote = when (verdict) {
                         GeminiClient.KeyCheck.VALID -> "Key valid."
                         GeminiClient.KeyCheck.INVALID -> "Key invalid — check the key and try again."
-                        GeminiClient.KeyCheck.UNKNOWN -> "Couldn't reach Google — check the network and try again."
+                        GeminiClient.KeyCheck.UNKNOWN -> "Couldn't reach ${provider.displayName} — check the network and try again."
                     }
                     testing = false
                 }

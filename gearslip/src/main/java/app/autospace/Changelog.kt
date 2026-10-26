@@ -30,6 +30,7 @@ object Changelog {
                 "It listens with Kroko live words and Parakeet final words, and answers to 'Hey AutoSpace' hands-free. A broken car microphone can fall back to the phone's.",
                 "Voice commands open apps, navigate, play music, read and reply to messages, and change brightness and volume. Say 'say that again' to hear the last reply repeated.",
                 "AI answers now use the current stable Flash model, so they keep working for new keys.",
+            "AI answers now use Groq by default, with Gemini kept as an experimental option you can switch back to.",
                 "Subtitles in the video player follow the style you pick in the car's Settings.",
                 "Voice downloads resume where they stopped instead of starting over, and a download that fails names the file and the reason.",
                 "Color schemes are palettes now; light and dark is its own control, and the old scheme choices carry over exactly.",

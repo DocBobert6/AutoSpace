@@ -70,9 +70,11 @@ object CrashReporter {
         "test message:",
         "media status: -> track",
         "starting a session over Wi-Fi to",
-        // AI key guard (r25): any tail line containing a Gemini-shaped key token is
-        // dropped whole — the second guard beside GearslipLog's scrub.
+        // AI key guard (r25, Groq-shaped tokens r40): any tail line containing a
+        // Gemini- or Groq-shaped key token is dropped whole — the second guard
+        // beside GearslipLog's scrub.
         "AIza",
+        "gsk_",
     )
 
     private fun markerFile(context: Context): File =

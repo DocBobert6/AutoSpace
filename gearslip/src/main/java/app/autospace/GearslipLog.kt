@@ -196,10 +196,11 @@ object GearslipLog {
     }
 
     private fun write(level: String, message: String, tag: String = "APP") {
-        // AI key guard (r25): a Gemini-shaped token (AIza…) is scrubbed before the line
-        // reaches logcat, the live buffer, a sink, or the file — so a key can never leak
-        // through a log line even if some caller accidentally logs one. The crash
-        // reporter's tail filter drops such lines outright, as a second guard.
+        // AI key guard (r25, Groq-shaped tokens r40): a Gemini-shaped token (AIza…)
+        // or Groq-shaped token (gsk_…) is scrubbed before the line reaches logcat,
+        // the live buffer, a sink, or the file — so a key can never leak through a
+        // log line even if some caller accidentally logs one. The crash reporter's
+        // tail filter drops such lines outright, as a second guard.
         val clean = app.autospace.car.AiAssistant.AiRedaction.scrub(message)
         when (level) {
             "W" -> Log.w(TAG, clean)

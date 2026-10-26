@@ -97,6 +97,21 @@ object AiAssistant {
             "as timeless. If a question needs a place and none is given, ask for the place " +
             "instead of guessing one."
 
+    /**
+     * The AI providers (r40). Groq is the default; Gemini is kept as an experimental
+     * option, never removed. Fresh installs default to Groq; users with a stored
+     * Gemini key stay on Gemini until they switch (see [AiKeyStore]).
+     */
+    enum class Provider(val displayName: String, val isExperimental: Boolean) {
+        GROQ("Groq", false),
+        GEMINI("Gemini", true);
+
+        companion object {
+            /** The provider a fresh install uses (keyless → AI inert until a key is added). */
+            val DEFAULT = GROQ
+        }
+    }
+
     /** Privacy notice substance (§6 of the spec), shown before first enable and linked from settings. */
     const val PRIVACY_NOTICE =
         "When AI answers are on, what you say to the assistant is sent to Google's Gemini API " +
@@ -109,6 +124,26 @@ object AiAssistant {
             "the assistant may run a Google Search through the same Gemini connection. No new " +
             "company receives your words, and location is never sent. " +
             "Google's own terms govern Google's side."
+
+    /**
+     * Groq privacy notice substance (r40), shown before first enable when Groq is the
+     * active provider, and linked from settings. No single generic notice: Groq's
+     * terms state it does not train on prompts without explicit permission and does
+     * not permanently retain them — the opposite of the unpaid-Gemini wording above —
+     * so each provider's dialog says its own provider's truth.
+     */
+    const val GROQ_PRIVACY_NOTICE =
+        "When AI answers are on, what you say to the assistant is sent to Groq's API " +
+            "to generate the answer. Your API key stays on this phone and is never sent anywhere " +
+            "except to Groq's API. AutoSpace does not send your contacts, messages, location, " +
+            "or history to the AI — only the words you just said (and, for an action you confirm, " +
+            "the exact thing you approved). Turn AI answers off anytime in Settings > AI assistant, " +
+            "and remove your key there too. Without a network connection, AI answers are unavailable " +
+            "and the local assistant keeps working. When a question needs current information, " +
+            "the assistant may run a web search through the same Groq connection. No new " +
+            "company receives your words, and location is never sent. " +
+            "Groq does not train on your prompts without your explicit permission and does not " +
+            "permanently retain them. Groq's own terms govern Groq's side."
 
     // --- Session badge: "From AI:" is spoken on the FIRST AI answer per session only. ---
     private var firstAnswerSpoken = false
@@ -352,12 +387,25 @@ object AiAssistant {
      * alone exceeds the cap, it is spoken whole rather than cut mid-sentence.
      */
     /**
-     * Spoken failure message for a non-Ok generate outcome (r38). ModelUnavailable
-     * gets its OWN plain message — a retired model must never masquerade as the
-     * generic "isn't available right now". Callers pass only non-Ok outcomes here.
+     * Spoken failure message for a non-Ok generate outcome (r38, extended r40).
+     * ModelUnavailable gets its OWN plain message — a retired model must never
+     * masquerade as the generic "isn't available right now". Quota gets its OWN
+     * message too (r40, absorbing the pending 429 proposal): a rate limit is
+     * temporary and retryable, and the driver should hear that, not a dead end.
+     * Provider-specific reset notes live here, not in speech: Groq's limit resets
+     * per the retry-after window on the 429; Gemini's daily quota resets at
+     * midnight Pacific. Callers pass only non-Ok outcomes here.
      */
     fun failureMessage(result: GeminiClient.Result): String = when (result) {
         is GeminiClient.Result.ModelUnavailable -> "That AI model isn't available."
+        is GeminiClient.Result.Quota -> "AI answers are rate-limited right now — try again in a bit."
+        else -> "AI answer isn't available right now."
+    }
+
+    /** The same failure mapping for the Groq path (r40) — same words, same classes. */
+    fun failureMessage(result: GroqClient.Result): String = when (result) {
+        is GroqClient.Result.ModelUnavailable -> "That AI model isn't available."
+        is GroqClient.Result.Quota -> "AI answers are rate-limited right now — try again in a bit."
         else -> "AI answer isn't available right now."
     }
 
@@ -462,25 +510,37 @@ object AiAssistant {
         return placeTokens.isNotEmpty()
     }
 
-    /** The visual source line for a grounded answer; null for ungrounded ones. Never spoken. */
-    fun sourceLine(grounded: Boolean): String? = if (grounded) "via Google Search" else null
+    /**
+     * The visual source line for a grounded answer; null for ungrounded ones. Never
+     * spoken. Provider-neutral by construction: the Groq line must NOT say Google
+     * ("via web search"), while the Gemini line keeps "via Google Search".
+     */
+    fun sourceLine(grounded: Boolean, provider: Provider): String? = when {
+        !grounded -> null
+        provider == Provider.GROQ -> "via web search"
+        else -> "via Google Search"
+    }
 
     // --- Log redaction: a Gemini API key must never survive into a log, trace, or report. ---
 
     /**
-     * Scrubs Gemini-shaped API key tokens (`AIza` + 10 or more key characters) from one
-     * log line. [GearslipLog] applies this to every line it records, and the crash
-     * reporter's tail filter drops any line containing `AIza` outright — two independent
+     * Scrubs API key tokens from one log line: Gemini-shaped (`AIza` + 10 or more key
+     * characters) and Groq-shaped (`gsk_` + 10 or more key characters, r40).
+     * [GearslipLog] applies this to every line it records, and the crash reporter's
+     * tail filter drops any line containing either marker outright — two independent
      * guards, so a key can neither leak in full nor in a masked form that leaks length.
      * The key value itself is never compared here: only its shape.
      */
     object AiRedaction {
         private val KEY_TOKEN = Regex("AIza[0-9A-Za-z_\\-]{10,}")
+        private val GROQ_KEY_TOKEN = Regex("gsk_[0-9A-Za-z_\\-]{10,}")
         const val KEY_MARKER = "AIza"
+        const val GROQ_KEY_MARKER = "gsk_"
 
-        fun scrub(line: String): String = KEY_TOKEN.replace(line, "[api key redacted]")
+        fun scrub(line: String): String =
+            GROQ_KEY_TOKEN.replace(KEY_TOKEN.replace(line, "[api key redacted]"), "[api key redacted]")
 
         /** True when a line must be dropped whole rather than scrubbed (crash-report tails). */
-        fun mustDrop(line: String): Boolean = KEY_MARKER in line
+        fun mustDrop(line: String): Boolean = KEY_MARKER in line || GROQ_KEY_MARKER in line
     }
 }

@@ -82,6 +82,13 @@ object AssistantCommands {
     var lastReplySourceCount = 0
         private set
 
+    /**
+     * Provider of the last AI answer (r40); CarUi reads it for the source line, so a
+     * Groq answer never claims "via Google Search". Reset on every [handle] call.
+     */
+    var lastReplyProvider: AiAssistant.Provider = AiAssistant.Provider.GEMINI
+        private set
+
     /** The one local timer, if any: a main-thread delayed runnable, never a calendar entry. */
     private var timerHandler: Handler? = null
     private var timerRunnable: Runnable? = null
@@ -90,6 +97,7 @@ object AssistantCommands {
         lastReplyWasAi = false
         lastReplyGrounded = false
         lastReplySourceCount = 0
+        lastReplyProvider = AiAssistant.Provider.GEMINI
         val heard = natural(heardRaw)
         VoiceHelp.hide()
         if (heard in HELP_WORDS || heard.startsWith("what can i say") || heard.startsWith("what can you do")) {
@@ -305,26 +313,52 @@ object AssistantCommands {
             GearslipLog.i("assistant: ai place requested")
             return "For which place?"
         }
-        val key = AiKeyStore.loadKey(context) ?: return null
-        val result = withContext(Dispatchers.IO) { GeminiClient.generate(key, heard) }
+        // r40: the active provider picks the client. Both clients return their own
+        // Result type with the same shape (Ok text + grounding, or a failure class),
+        // so the branches below handle each explicitly — no shared supertype is
+        // invented just to merge them, and neither client's mapping is reinterpreted.
+        val provider = AiKeyStore.activeProvider(context)
+        val key = AiKeyStore.loadKey(context, provider) ?: return null
+        val result: Any = withContext(Dispatchers.IO) {
+            when (provider) {
+                AiAssistant.Provider.GROQ -> GroqClient.generate(key, heard)
+                AiAssistant.Provider.GEMINI -> GeminiClient.generate(key, heard)
+            }
+        }
         val modelText = when (result) {
             is GeminiClient.Result.Ok -> result.text
+            is GroqClient.Result.Ok -> result.text
             else -> {
                 // r38: a retired model gets its own plain message and its own log
                 // line, so a future retirement never again masquerades as the
                 // generic "isn't available right now".
-                if (result is GeminiClient.Result.ModelUnavailable) GearslipLog.i("assistant: ai generate model unavailable")
-                return AiAssistant.failureMessage(result)
+                if (result is GeminiClient.Result.ModelUnavailable ||
+                    result is GroqClient.Result.ModelUnavailable
+                ) GearslipLog.i("assistant: ai generate model unavailable")
+                return when (result) {
+                    is GeminiClient.Result -> AiAssistant.failureMessage(result)
+                    is GroqClient.Result -> AiAssistant.failureMessage(result)
+                    else -> "AI answer isn't available right now."
+                }
             }
         }
-        val grounded = result.grounded
-        val sourceCount = result.sourceCount
+        val grounded = when (result) {
+            is GeminiClient.Result.Ok -> result.grounded
+            is GroqClient.Result.Ok -> result.grounded
+            else -> false
+        }
+        val sourceCount = when (result) {
+            is GeminiClient.Result.Ok -> result.sourceCount
+            is GroqClient.Result.Ok -> result.sourceCount
+            else -> 0
+        }
         return when (val parsed = AiAssistant.parseModelReply(modelText, heard)) {
             is AiAssistant.ParsedReply.Answer -> {
                 val capped = AiAssistant.capAnswer(parsed.text)
                 val spoken = if (AiAssistant.needsAiPrefix()) "From AI: $capped" else capped
                 AiAssistant.markAiAnswerSpoken()
                 lastReplyWasAi = true
+                lastReplyProvider = provider
                 lastReplyGrounded = grounded
                 lastReplySourceCount = sourceCount
                 GearslipLog.i("assistant: ai answer grounded=$grounded sources=$sourceCount")

@@ -190,7 +190,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                     )
                     // Grounded source line (r27): shown, never spoken; the count is not
                     // shown here — the line claims a source exists, not how many.
-                    AiAssistant.sourceLine(state.grounded)?.let { line ->
+                    AiAssistant.sourceLine(state.grounded, state.provider)?.let { line ->
                         Text(
                             line,
                             style = MaterialTheme.typography.labelSmall,

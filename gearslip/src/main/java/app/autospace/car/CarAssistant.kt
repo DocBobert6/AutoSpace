@@ -75,6 +75,8 @@ object CarAssistant {
          */
         val grounded: Boolean = false,
         val sourceCount: Int = 0,
+        /** Provider of the reply being shown (r40) — picks the source line's wording. */
+        val provider: AiAssistant.Provider = AiAssistant.Provider.GEMINI,
     )
 
     private val _state = MutableStateFlow(State())
@@ -161,14 +163,20 @@ object CarAssistant {
      * voice model downloaded, the overlay says so and points at Settings
      * instead of leaving the driver waiting on silence.
      */
-    fun reply(text: String, fromAi: Boolean = false, grounded: Boolean = false, sourceCount: Int = 0) {
+    fun reply(
+        text: String,
+        fromAi: Boolean = false,
+        grounded: Boolean = false,
+        sourceCount: Int = 0,
+        provider: AiAssistant.Provider = AiAssistant.Provider.GEMINI,
+    ) {
         _pendingCommand.value = null
         val context = appContext
         if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
             return
         }
-        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount)
+        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)

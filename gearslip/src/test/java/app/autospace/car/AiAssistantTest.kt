@@ -50,8 +50,8 @@ class AiAssistantTest {
     @Test fun cannedSuiteSkipsAiCasesWithGatesClosed() {
         val result = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
         assertEquals(0, result.failed)
-        assertEquals(6, result.skipped)
-        assertEquals(AssistantPreview.CANNED_CASES.size - 6, result.passed)
+        assertEquals(8, result.skipped)
+        assertEquals(AssistantPreview.CANNED_CASES.size - 8, result.passed)
     }
 
     // --- Confirmation defaults: silence / timeout / ambiguity / unknown = DECLINE ---
@@ -229,8 +229,10 @@ class AiAssistantTest {
     }
 
     @Test fun sourceLineOnlyForGrounded() {
-        assertEquals("via Google Search", AiAssistant.sourceLine(true))
-        assertEquals(null, AiAssistant.sourceLine(false))
+        assertEquals("via Google Search", AiAssistant.sourceLine(true, AiAssistant.Provider.GEMINI))
+        assertEquals("via web search", AiAssistant.sourceLine(true, AiAssistant.Provider.GROQ))
+        assertEquals(null, AiAssistant.sourceLine(false, AiAssistant.Provider.GEMINI))
+        assertEquals(null, AiAssistant.sourceLine(false, AiAssistant.Provider.GROQ))
     }
 
     @Test fun groundedTimeoutLongerThanPlain() {
@@ -289,7 +291,120 @@ class AiAssistantTest {
     @Test fun modelUnavailableMessageIsDistinctFromGeneric() {
         assertEquals("That AI model isn't available.", AiAssistant.failureMessage(GeminiClient.Result.ModelUnavailable))
         assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.InvalidKey))
-        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.Quota))
+        // r40: quota gets its own retryable message (absorbs the pending 429 proposal).
+        assertEquals("AI answers are rate-limited right now — try again in a bit.", AiAssistant.failureMessage(GeminiClient.Result.Quota))
         assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.Unavailable))
+    }
+
+    // --- r40 Groq provider: default, model config, errors, two-call grounding, redaction ---
+
+    @Test fun providerDefaultIsGroqAndGeminiIsExperimental() {
+        assertEquals(AiAssistant.Provider.GROQ, AiAssistant.Provider.DEFAULT)
+        assertFalse(AiAssistant.Provider.GROQ.isExperimental)
+        assertTrue(AiAssistant.Provider.GEMINI.isExperimental)
+        assertEquals("Groq", AiAssistant.Provider.GROQ.displayName)
+        assertEquals("Gemini", AiAssistant.Provider.GEMINI.displayName)
+    }
+
+    @Test fun groqModelConfigPinnedWithFallback() {
+        assertEquals("openai/gpt-oss-20b", GroqClient.MODEL_ID)
+        assertEquals(listOf("openai/gpt-oss-120b"), GroqClient.MODEL_FALLBACKS)
+        // No Llama model may ever be pinned: they left Free/Developer tiers in Aug 2026.
+        (listOf(GroqClient.MODEL_ID) + GroqClient.MODEL_FALLBACKS).forEach { id ->
+            assertFalse(id.lowercase().contains("llama"))
+        }
+        assertEquals("https://api.groq.com/openai/v1/chat/completions", GroqClient.CHAT_URL)
+        assertEquals("https://api.groq.com/openai/v1/models", GroqClient.MODELS_URL)
+        assertEquals("low", GroqClient.REASONING_EFFORT)
+    }
+
+    @Test fun groqHttpCodeMapping() {
+        assertEquals(GroqClient.Result.InvalidKey, GroqClient.resultForHttpCode(401))
+        assertEquals(GroqClient.Result.ModelUnavailable, GroqClient.resultForHttpCode(404))
+        assertEquals(GroqClient.Result.Quota, GroqClient.resultForHttpCode(429))
+        // Deliberately unlike Gemini: a Groq 400 is a bad request, not a bad key.
+        assertEquals(GroqClient.Result.Unavailable, GroqClient.resultForHttpCode(400))
+        assertEquals(GroqClient.Result.Unavailable, GroqClient.resultForHttpCode(403))
+        assertEquals(GroqClient.Result.Unavailable, GroqClient.resultForHttpCode(500))
+    }
+
+    @Test fun groqFailureMessagesMatchGeminiMapping() {
+        assertEquals("That AI model isn't available.", AiAssistant.failureMessage(GroqClient.Result.ModelUnavailable))
+        assertEquals("AI answers are rate-limited right now — try again in a bit.", AiAssistant.failureMessage(GroqClient.Result.Quota))
+        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GroqClient.Result.InvalidKey))
+        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GroqClient.Result.Unavailable))
+    }
+
+    @Test fun groqSearchBodyHasBrowserSearchAndNoStructuredOutput() {
+        val body = GroqClient.buildSearchRequestBody("what is the weather in dry ridge")
+        assertTrue(body.contains("\"tools\":[{\"type\":\"browser_search\"}]"))
+        assertFalse(body.contains("response_format"))
+        assertTrue(body.contains("\"reasoning_effort\":\"low\""))
+        assertTrue(body.contains("\"include_reasoning\":false"))
+        // gpt-oss does not support reasoning_format: it must never be sent.
+        assertFalse(body.contains("reasoning_format"))
+        assertTrue(body.contains("\"max_completion_tokens\":600"))
+        assertTrue(body.contains("\"model\":\"openai/gpt-oss-20b\""))
+        val parsed = JsonMini.parse(body) as JsonMini.Value.Obj
+        val contents = (parsed.objField("messages") as JsonMini.Value.Arr).list
+        val user = (contents[1] as JsonMini.Value.Obj).objField("content")?.asString()
+        assertEquals("what is the weather in dry ridge", user)
+    }
+
+    @Test fun groqAnswerBodyInjectsResultsAndHasNoTools() {
+        val body = GroqClient.buildAnswerRequestBody("what is the weather in dry ridge", "Sunny, 72 degrees.")
+        assertTrue(body.contains("Web search results:"))
+        assertTrue(body.contains("Sunny, 72 degrees."))
+        assertTrue(body.contains("User question: what is the weather in dry ridge"))
+        assertFalse(body.contains("browser_search"))
+        assertFalse(body.contains("\"tools\""))
+        assertTrue(body.contains("\"max_completion_tokens\":300"))
+        val plain = GroqClient.buildAnswerRequestBody("tell me a joke", null)
+        assertTrue(plain.contains("tell me a joke"))
+        assertFalse(plain.contains("Web search results:"))
+    }
+
+    @Test fun groqExtractContentIgnoresReasoning() {
+        val withReasoning = """{"choices": [{"message": {"role": "assistant", "content": "Hello", "reasoning": "secret chain of thought"}}]}"""
+        assertEquals("Hello", GroqClient.extractContent(withReasoning))
+        assertEquals(null, GroqClient.extractContent("""{"choices": [{"message": {"role": "assistant"}}]}"""))
+        assertEquals(null, GroqClient.extractContent("""{"choices": []}"""))
+        assertEquals(null, GroqClient.extractContent("not json"))
+    }
+
+    @Test fun groqCitationsCounted() {
+        assertEquals(2, GroqClient.countCitations("a 〖1†L1-L2〗 b 〖2†L3〗 c"))
+        assertEquals(0, GroqClient.countCitations("no markers here"))
+    }
+
+    @Test fun groqKeyTokenScrubbedFromLogLines() {
+        val line = "assistant: something gsk_abc1234567890XYZ_abcdefg happened"
+        val scrubbed = AiAssistant.AiRedaction.scrub(line)
+        assertFalse(scrubbed.contains("gsk_abc1234567890XYZ_abcdefg"))
+        assertTrue(scrubbed.contains("[api key redacted]"))
+        assertTrue(AiAssistant.AiRedaction.mustDrop(line))
+        assertEquals("assistant: nothing secret here", AiAssistant.AiRedaction.scrub("assistant: nothing secret here"))
+        assertFalse(AiAssistant.AiRedaction.mustDrop("assistant: nothing secret here"))
+    }
+
+    @Test fun groqPrivacyNoticeStatesNoTraining() {
+        val notice = AiAssistant.GROQ_PRIVACY_NOTICE
+        assertTrue(notice.contains("does not train"))
+        assertTrue(notice.contains("does not permanently retain"))
+        assertFalse(notice.contains("Google"))
+        assertTrue(notice.contains("location is never sent"))
+    }
+
+    @Test fun previewProviderDetailNamesGroq() {
+        val groq = AssistantPreview.classify(
+            "what is the capital of france", AssistantPreview.FIXTURE_KEYWORDS,
+            aiGates = true, provider = AiAssistant.Provider.GROQ,
+        )
+        assertTrue(groq.detail.contains("Groq"))
+        val gemini = AssistantPreview.classify(
+            "what is the capital of france", AssistantPreview.FIXTURE_KEYWORDS,
+            aiGates = true, provider = AiAssistant.Provider.GEMINI,
+        )
+        assertTrue(gemini.detail.contains("Gemini"))
     }
 }

@@ -126,6 +126,8 @@ object AssistantPreview {
         utterance: String,
         keywords: List<VoiceShortcut> = emptyList(),
         aiGates: Boolean = false,
+        /** r40: the active provider, so the trace names the provider that would be called. */
+        provider: AiAssistant.Provider = AiAssistant.Provider.GEMINI,
     ): Trace {
         val heard = normalize(utterance)
         if (heard.isBlank()) {
@@ -286,9 +288,9 @@ object AssistantPreview {
             return Trace(
                 utterance, heard, handler = Handler.AI, wouldConfirm = true,
                 detail = if (grounded) {
-                    "AI fallback, grounded search expected — would call Gemini with this utterance only (source count shown live)"
+                    "AI fallback, grounded search expected — would call ${provider.displayName} with this utterance only (source count shown live)"
                 } else {
-                    "AI fallback — would call Gemini with this utterance only"
+                    "AI fallback — would call ${provider.displayName} with this utterance only"
                 },
                 spoken = "(AI answer, or one confirmed proposal — never executed from preview)",
                 grounded = grounded,
@@ -375,6 +377,8 @@ object AssistantPreview {
         Case("weather in dry ridge", Handler.AI, "Grounded answer path — place present, skipped when gates closed"),
         Case("what is the weather today", Handler.AI, "Place-less weather — asks for a place, no location used, skipped when gates closed"),
         Case("what is the latest news", Handler.AI, "Grounded current-facts path, skipped when gates closed"),
+        Case("what was the score of the bengals game yesterday", Handler.AI, "Groq AI fallback sample — skipped when gates closed"),
+        Case("will it rain in cincinnati tomorrow", Handler.AI, "Groq grounded path — place present, skipped when gates closed"),
         Case("call Mom and navigate home", Handler.AMBIGUOUS, "Two actions — two confirmations, never one batch"),
         Case("blorp glorp", Handler.AI, "No local match — AI fallback with gates open; unmatched when gates closed"),
         Case("open spotify", Handler.BUILTIN, "Generic open-app command"),
@@ -399,12 +403,16 @@ object AssistantPreview {
      * Runs the canned suite. AI cases are skipped (not failed) when the gates are closed;
      * every other case must match its expected handler exactly.
      */
-    fun runSuite(keywords: List<VoiceShortcut> = FIXTURE_KEYWORDS, aiGates: Boolean = false): SuiteResult {
+    fun runSuite(
+        keywords: List<VoiceShortcut> = FIXTURE_KEYWORDS,
+        aiGates: Boolean = false,
+        provider: AiAssistant.Provider = AiAssistant.Provider.GEMINI,
+    ): SuiteResult {
         val results = CANNED_CASES.map { case ->
             if (case.expected == Handler.AI && !aiGates) {
                 CaseResult(case, null, passed = false, skipped = true)
             } else {
-                val actual = classify(case.utterance, keywords, aiGates).handler
+                val actual = classify(case.utterance, keywords, aiGates, provider).handler
                 CaseResult(case, actual, passed = actual == case.expected, skipped = false)
             }
         }
