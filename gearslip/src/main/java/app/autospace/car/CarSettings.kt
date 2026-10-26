@@ -28,7 +28,24 @@ enum class Units { AUTO, IMPERIAL, METRIC }
  * PHONE value was dynamic-following-the-phone, i.e. exactly MATERIAL_YOU, so stored PHONE
  * values migrate to MATERIAL_YOU on load (see init) rather than silently falling back to plain.
  */
-enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK, NIGHT }
+/**
+ * r23 additions, all opt-in (stored by name in car_app_theme; unknown names
+ * still fall back to FOLLOW_SYSTEM, so existing installs never move):
+ * PITLANE — the stock-car paired scheme (provisional name, same as the
+ * Pitlane button style; the pickers are separate axes, so sharing the name
+ * is unambiguous): carbon-black surfaces, white text, red primary, yellow
+ * highlight, NO blue. Always dark. CIRCUIT — Robert's confirmed palette,
+ * final name decided 2026-10-25 (never 'Apex', never the temporary 'Custom
+ * palette'): dark background #000000, primary #007AC2, secondary #E4002B,
+ * tertiary #FFD659; light variant white background with the same three
+ * accents; follows the phone's light/dark like FOLLOW_SYSTEM. HERITAGE —
+ * vintage motorsport (provisional name): deep racing green + cream +
+ * brass/gold, dark and light variants, also following the phone's
+ * light/dark. The new schemes ignore DarkModeType (their backgrounds are
+ * scheme-defined, not Regular/True Black variants); Auto night still
+ * overrides all three to NIGHT, exactly as for every other scheme.
+ */
+enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK, NIGHT, PITLANE, CIRCUIT, HERITAGE }
 
 /**
  * What a dark theme's backgrounds are made of. REGULAR = dark-gray surfaces

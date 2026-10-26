@@ -38,4 +38,37 @@ class GsThemeTest {
         assertTrue(GsThemes.builtIn.any { it.id == "flat" })
         assertTrue(GsThemes.builtIn.any { it.id == "tactile" })
     }
+
+    @Test
+    fun pitlaneIsBuiltInWithSquaredThickCheckerStyle() {
+        assertTrue(GsThemes.builtIn.any { it.id == "pitlane" && it.name == "Pitlane" })
+        assertEquals("pitlane", GsThemes.byId("pitlane").id)
+        val look = GsThemes.Pitlane.control
+        assertEquals(6, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(1f, look.hairlineAlpha, 0.001f)
+        assertEquals(0.50f, look.bevelTop, 0.001f)
+        assertEquals(0.60f, look.bevelBottom, 0.001f)
+        assertEquals(0, look.shadow.value.toInt())
+        assertEquals(1f, look.containerAlpha, 0.001f)
+        // Checker strip is the selected indicator, and it replaces the
+        // inset shadow on this style — never both, never a background.
+        assertTrue(look.checkerStrip)
+        assertEquals(0f, look.insetAlpha, 0.001f)
+        val light = checkNotNull(look.light)
+        assertEquals(6, light.corner.value.toInt())
+        assertTrue(light.checkerStrip)
+        // No other built-in style wears the checker strip.
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.checkerStrip })
+    }
+
+    @Test
+    fun newSchemeSlotsExistAndFrostIsStillDefault() {
+        // Stored by these exact names in car_app_theme; a rename of the
+        // picker label must not change the stored name.
+        assertEquals(AppTheme.PITLANE, AppTheme.valueOf("PITLANE"))
+        assertEquals(AppTheme.CIRCUIT, AppTheme.valueOf("CIRCUIT"))
+        assertEquals(AppTheme.HERITAGE, AppTheme.valueOf("HERITAGE"))
+        assertEquals("frost", GsThemes.default.id)
+    }
 }

@@ -117,6 +117,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Flat", style == "flat") { PreviewSettings.setStyle(context, "flat") }
                 RadioRow("Tactile", style == "tactile") { PreviewSettings.setStyle(context, "tactile") }
                 RadioRow("Edge", style == "edge") { PreviewSettings.setStyle(context, "edge") }
+                RadioRow("Pitlane", style == "pitlane") { PreviewSettings.setStyle(context, "pitlane") }
             }
 
             SettingsSection("Preview colors") {
@@ -141,6 +142,15 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 }
                 RadioRow("Night", colours == AppTheme.NIGHT) {
                     PreviewSettings.setColours(context, AppTheme.NIGHT)
+                }
+                RadioRow("Pitlane", colours == AppTheme.PITLANE) {
+                    PreviewSettings.setColours(context, AppTheme.PITLANE)
+                }
+                RadioRow("Circuit", colours == AppTheme.CIRCUIT) {
+                    PreviewSettings.setColours(context, AppTheme.CIRCUIT)
+                }
+                RadioRow("Heritage", colours == AppTheme.HERITAGE) {
+                    PreviewSettings.setColours(context, AppTheme.HERITAGE)
                 }
             }
 

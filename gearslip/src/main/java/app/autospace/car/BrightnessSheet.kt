@@ -116,6 +116,11 @@ fun BrightnessSheet() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Night", theme == AppTheme.NIGHT, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.NIGHT) }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChoice("Pitlane", theme == AppTheme.PITLANE, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.PITLANE) }
+                    ThemeChoice("Circuit", theme == AppTheme.CIRCUIT, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.CIRCUIT) }
+                    ThemeChoice("Heritage", theme == AppTheme.HERITAGE, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.HERITAGE) }
+                }
                 Text("Night mode (maps)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Auto", night == NightMode.AUTO, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.AUTO) }

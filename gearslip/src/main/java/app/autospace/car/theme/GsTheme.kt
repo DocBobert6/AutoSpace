@@ -78,6 +78,13 @@ data class ControlLook(
      * and which costs phone heat.
      */
     val containerAlpha: Float = 1f,
+    /**
+     * r23: when true, a latched (selected) control wears a small
+     * black-and-white checker strip along its top edge instead of the
+     * inset shadow — Pitlane's selected indicator. Only ever drawn on
+     * latched controls, never as a background or fill.
+     */
+    val checkerStrip: Boolean = false,
     /** Replaces this look when the UI is light, for effects that only work on one background. */
     val light: ControlLook? = null,
 )
@@ -116,6 +123,59 @@ object GsThemes {
                 pressedDim = 0.18f,
                 containerAlpha = 1f,
                 holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
+    /**
+     * Pitlane (2026-10-26, r23): the stock-car button style, provisional
+     * name — Robert names it finally, and a rename is a one-line name
+     * change (the id stays "pitlane"). Switch-panel language: squared
+     * 6dp corners, solid color blocking (topLight 0, no gradient, no
+     * shadow), and the thickest edge the kit can express — a full-alpha
+     * hairline stacked with a strong 1px bevel. ControlLook has no
+     * border-width field, so there is no wider stroke to reach for; the
+     * stacked hairline + bevel IS the thick border, and it is reported
+     * as such rather than claimed as a wider one. Bold labels are NOT
+     * expressible through ControlLook (it carries no typeface or weight
+     * — the style changes controls, not typefaces, per instruction), so
+     * the bold feeling comes from the thick edge + solid containers +
+     * pairing with the Pitlane color scheme's high-contrast carbon
+     * black/white/red/yellow, not from heavier text. The face is flat,
+     * so the hold marker is the DOT. Selected indicator: a small
+     * checker strip on latched controls only (see checkerStrip) — never
+     * a checkerboard background, never a full-pattern fill; insetAlpha
+     * is 0 because the strip replaces the inset shadow here. The light
+     * variant keeps the same squared, thick-edged language on light
+     * surfaces (the style never forces carbon-black surfaces — colors
+     * come from the color scheme, so Pitlane-on-light reads squared and
+     * thick-edged over the light scheme's surfaces).
+     */
+    val Pitlane = GsTheme(
+        id = "pitlane",
+        name = "Pitlane",
+        control = ControlLook(
+            corner = 6.dp,
+            topLight = 0f,
+            hairlineAlpha = 1f,
+            bevelTop = 0.50f,
+            bevelBottom = 0.60f,
+            shadow = 0.dp,
+            pressedDim = 0.20f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            checkerStrip = true,
+            light = ControlLook(
+                corner = 6.dp,
+                topLight = 0f,
+                hairlineAlpha = 0.90f,
+                bevelTop = 0.45f,
+                bevelBottom = 0.55f,
+                shadow = 0.dp,
+                pressedDim = 0.20f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+                checkerStrip = true,
             ),
         ),
     )
@@ -211,7 +271,9 @@ object GsThemes {
     // Stored "keycap" never reaches byId's fallback — CarSettings migrates it to
     // "edge" on load — so a Keycap user lands on Edge, not on Frost.
     // Classic = Flat / Tactile / Edge, kept unchanged for existing users.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge)
+    // r23: Pitlane appended last, so existing users' stored styles are
+    // untouched and nobody moves to it automatically.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }
