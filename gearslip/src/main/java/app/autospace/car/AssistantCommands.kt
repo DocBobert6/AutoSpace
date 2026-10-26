@@ -309,7 +309,13 @@ object AssistantCommands {
         val result = withContext(Dispatchers.IO) { GeminiClient.generate(key, heard) }
         val modelText = when (result) {
             is GeminiClient.Result.Ok -> result.text
-            else -> return "AI answer isn't available right now."
+            else -> {
+                // r38: a retired model gets its own plain message and its own log
+                // line, so a future retirement never again masquerades as the
+                // generic "isn't available right now".
+                if (result is GeminiClient.Result.ModelUnavailable) GearslipLog.i("assistant: ai generate model unavailable")
+                return AiAssistant.failureMessage(result)
+            }
         }
         val grounded = result.grounded
         val sourceCount = result.sourceCount

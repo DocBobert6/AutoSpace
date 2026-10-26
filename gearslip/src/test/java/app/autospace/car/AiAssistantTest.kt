@@ -261,4 +261,35 @@ class AiAssistantTest {
         assertTrue(notice.contains("No new company receives your words"))
         assertTrue(notice.contains("location is never sent"))
     }
+
+    // --- r38 model re-pin: current stable Flash + 404 as its own outcome ---
+
+    @Test fun modelIdIsCurrentStableFlash() {
+        assertEquals("gemini-3.8-flash", AiAssistant.MODEL_ID)
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+            AiAssistant.GENERATE_URL,
+        )
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash",
+            AiAssistant.MODEL_URL,
+        )
+    }
+
+    @Test fun httpCodeMappingPins404AsModelUnavailable() {
+        assertEquals(GeminiClient.Result.ModelUnavailable, GeminiClient.resultForHttpCode(404))
+        assertEquals(GeminiClient.Result.InvalidKey, GeminiClient.resultForHttpCode(400))
+        assertEquals(GeminiClient.Result.InvalidKey, GeminiClient.resultForHttpCode(401))
+        assertEquals(GeminiClient.Result.InvalidKey, GeminiClient.resultForHttpCode(403))
+        assertEquals(GeminiClient.Result.Quota, GeminiClient.resultForHttpCode(429))
+        assertEquals(GeminiClient.Result.Unavailable, GeminiClient.resultForHttpCode(500))
+        assertEquals(GeminiClient.Result.Unavailable, GeminiClient.resultForHttpCode(503))
+    }
+
+    @Test fun modelUnavailableMessageIsDistinctFromGeneric() {
+        assertEquals("That AI model isn't available.", AiAssistant.failureMessage(GeminiClient.Result.ModelUnavailable))
+        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.InvalidKey))
+        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.Quota))
+        assertEquals("AI answer isn't available right now.", AiAssistant.failureMessage(GeminiClient.Result.Unavailable))
+    }
 }

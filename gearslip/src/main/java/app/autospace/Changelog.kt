@@ -29,6 +29,7 @@ object Changelog {
                 "AutoSpace speaks with Kokoro-82M, entirely on the phone — 53 voices, American Adam by default — with Piper as fallback. No voice ships in the app; download one once in Settings.",
                 "It listens with Kroko live words and Parakeet final words, and answers to 'Hey AutoSpace' hands-free. A broken car microphone can fall back to the phone's.",
                 "Voice commands open apps, navigate, play music, read and reply to messages, and change brightness and volume. Say 'say that again' to hear the last reply repeated.",
+                "AI answers now use the current stable Flash model, so they keep working for new keys.",
                 "Subtitles in the video player follow the style you pick in the car's Settings.",
                 "Voice downloads resume where they stopped instead of starting over, and a download that fails names the file and the reason.",
                 "Color schemes are palettes now; light and dark is its own control, and the old scheme choices carry over exactly.",

@@ -37,8 +37,24 @@ object GeminiClient {
         object InvalidKey : Result()
         /** 429 from Google: quota or rate limit on the user's key. */
         object Quota : Result()
+        /** 404 from Google: the model is retired or unavailable to this key/project (r38). */
+        object ModelUnavailable : Result()
         /** Everything else: timeout, no route, 5xx, malformed reply. */
         object Unavailable : Result()
+    }
+
+    /**
+     * Pure HTTP-status → outcome mapping (r38), so unit tests can pin it without a
+     * network call. Called only for non-200 responses: 400/401/403 = bad key,
+     * 404 = model retired/unavailable to this key or project (its own outcome, never
+     * folded into the generic unavailable message), 429 = quota, anything else =
+     * unavailable.
+     */
+    fun resultForHttpCode(code: Int): Result = when (code) {
+        400, 401, 403 -> Result.InvalidKey
+        404 -> Result.ModelUnavailable
+        429 -> Result.Quota
+        else -> Result.Unavailable
     }
 
     /** Validation outcome for the Test key button (a GET, not a generation — zero tokens). */
@@ -56,6 +72,12 @@ object GeminiClient {
      * The cheapest possible key validation: GET the pinned model resource. A 200 means the
      * key authenticates and the model exists; 400/401/403 means the key is bad; anything
      * else is UNKNOWN (network trouble, not a verdict on the key). No generation, no tokens.
+     *
+     * Limitation (r38, learned the hard way): a 200 here does NOT prove generateContent
+     * will succeed — Google may keep a model in the catalogue while refusing generation
+     * for keys/projects that never used it (gemini-2.5-flash: GET 200, POST 404). This
+     * check validates the key only; it is deliberately not a generation probe, so it
+     * stays zero-token.
      */
     fun validateKey(key: String): KeyCheck {
         if (key.isBlank()) return KeyCheck.INVALID
@@ -172,11 +194,7 @@ object GeminiClient {
                 runCatching { conn.errorStream?.close() }
                 conn.disconnect()
                 GearslipLog.i("assistant: ai generate http=$code")
-                return when (code) {
-                    400, 401, 403 -> Result.InvalidKey
-                    429 -> Result.Quota
-                    else -> Result.Unavailable
-                }
+                return resultForHttpCode(code)
             }
             val text = conn.inputStream.use { stream ->
                 BufferedReader(InputStreamReader(stream, StandardCharsets.UTF_8)).readText()

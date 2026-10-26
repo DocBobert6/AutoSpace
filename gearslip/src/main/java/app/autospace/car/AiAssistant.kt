@@ -23,14 +23,30 @@ object AiAssistant {
     /** API version segment of the REST path. */
     const val API_VERSION = "v1beta"
     /**
-     * Pinned Flash-class model id. Verified against Google's model docs at build time
-     * (Vertex AI model card lists `gemini-2.5-flash`; the REST reference shows
-     * `v1beta/models/gemini-2.5-flash:generateContent` with the `x-goog-api-key` header).
-     * This is the stable alias, not a dated `-001` snapshot, so it tracks the current
-     * 2.5 Flash build. If Google ever returns 404 for it, Test key surfaces the plain
-     * API error and AI answers degrade to the unavailable message — never a guessed answer.
+     * Pinned Flash-class model id. Verified 2026-10-26 against Google's official docs
+     * (ai.google.dev Gemini API changelog + Gemini 3.8 Flash guide + Firebase AI Logic
+     * grounding page): `gemini-3.8-flash` went generally available 2026-09-02 as
+     * Google's most intelligent Flash model, and it lists Google Search grounding
+     * support with the same `tools: [{googleSearch: {}}]` generateContent shape this
+     * app sends. It is the current stable full Flash model — not lite, not preview.
+     *
+     * Why not the older ids: `gemini-2.5-flash` (pinned r25–r37) returns 404 on
+     * generateContent for keys/projects that never used it, while the model catalogue
+     * still lists it — Google's 2026-09-18 changelog entry limits 2.5 access to users
+     * who actively used it in the past, and directs new projects to 3.5 Flash-Lite or
+     * 3.8 Flash. That is exactly the r38 failure: Test key (a GET on the model
+     * resource) read Valid while every generateContent POST 404d. Test key therefore
+     * CANNOT detect this retirement class — it checks the key, not generation — and
+     * that limitation is documented here and on validateKey so it is not re-learned.
+     * `gemini-3.7-flash` and `gemini-3.5-flash` are also out: Google's 2026-10-08
+     * changelog entry deprecated them and routes their requests to 3.8 and 3.6
+     * respectively, so pinning either would silently run a different model.
+     *
+     * If Google ever returns 404 for this id, it maps to ModelUnavailable (r38) with
+     * its own plain spoken message — never the generic unavailable message, and never
+     * a guessed answer.
      */
-    const val MODEL_ID = "gemini-2.5-flash"
+    const val MODEL_ID = "gemini-3.8-flash"
     /** Full generateContent URL, without any key (the key travels only in the header). */
     const val GENERATE_URL = "https://$API_HOST/$API_VERSION/models/$MODEL_ID:generateContent"
     /** Full model resource URL, used only by the no-generation-cost Test key check. */
@@ -335,6 +351,16 @@ object AiAssistant {
      * multi-paragraph monologue. Exception, documented: when even the first sentence
      * alone exceeds the cap, it is spoken whole rather than cut mid-sentence.
      */
+    /**
+     * Spoken failure message for a non-Ok generate outcome (r38). ModelUnavailable
+     * gets its OWN plain message — a retired model must never masquerade as the
+     * generic "isn't available right now". Callers pass only non-Ok outcomes here.
+     */
+    fun failureMessage(result: GeminiClient.Result): String = when (result) {
+        is GeminiClient.Result.ModelUnavailable -> "That AI model isn't available."
+        else -> "AI answer isn't available right now."
+    }
+
     fun capAnswer(text: String): String {
         val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
         if (words.size <= ANSWER_WORD_CAP) return text.trim()
