@@ -180,8 +180,9 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 if (small.isNotBlank()) {
                     Text(small, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                // AI badge (r25 §4): every AI answer carries a visible "AI" mark; the
-                // spoken "From AI:" prefix runs only on the first answer per session.
+                // AI badge (r25 §4, prefix removed r41): every AI answer carries a visible
+                // "AI" mark, and that badge is the SOLE AI indicator — the vehicle never
+                // says "From AI", and no prefix appears in the big overlay text either.
                 if (state.fromAi) {
                     Text(
                         "AI",

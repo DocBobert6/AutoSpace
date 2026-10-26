@@ -117,13 +117,14 @@ private fun statusLine(state: State): String = when (state) {
 }
 
 /**
- * The channels the dialog offers. Empty for now: every release so far goes out as GitHub's latest,
- * so Beta and Alpha would offer the same as Stable. Add them back once a pre-release ships:
- *   Triple(UpdateChecker.Channel.STABLE, "Stable", "Finished releases only"),
- *   Triple(UpdateChecker.Channel.BETA, "Beta", "Test versions that are nearly done"),
- *   Triple(UpdateChecker.Channel.ALPHA, "Alpha", "Every test version, first. Expect bugs"),
+ * The channels the dialog offers. Restored in r41, the first release round: pre-releases
+ * now ship, so Beta and Alpha no longer offer the same as Stable.
  */
-private val CHANNELS = emptyList<Triple<UpdateChecker.Channel, String, String>>()
+private val CHANNELS = listOf(
+    Triple(UpdateChecker.Channel.STABLE, "Stable", "Finished releases only"),
+    Triple(UpdateChecker.Channel.BETA, "Beta", "Test versions that are nearly done"),
+    Triple(UpdateChecker.Channel.ALPHA, "Alpha", "Every test version, first. Expect bugs"),
+)
 
 /** The one Settings row for updates. Checking, the channel and automatic checks all sit behind it. */
 @Composable

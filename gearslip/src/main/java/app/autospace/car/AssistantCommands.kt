@@ -355,8 +355,10 @@ object AssistantCommands {
         return when (val parsed = AiAssistant.parseModelReply(modelText, heard)) {
             is AiAssistant.ParsedReply.Answer -> {
                 val capped = AiAssistant.capAnswer(parsed.text)
-                val spoken = if (AiAssistant.needsAiPrefix()) "From AI: $capped" else capped
-                AiAssistant.markAiAnswerSpoken()
+                // r41: the spoken answer is the capped text, nothing more — the
+                // vehicle never says "From AI". The small visual AI badge in
+                // the overlay is the sole AI indicator.
+                val spoken = capped
                 lastReplyWasAi = true
                 lastReplyProvider = provider
                 lastReplyGrounded = grounded

@@ -145,21 +145,11 @@ object AiAssistant {
             "Groq does not train on your prompts without your explicit permission and does not " +
             "permanently retain them. Groq's own terms govern Groq's side."
 
-    // --- Session badge: "From AI:" is spoken on the FIRST AI answer per session only. ---
-    private var firstAnswerSpoken = false
-
-    /** True when the next AI answer should carry the spoken "From AI:" prefix. */
-    fun needsAiPrefix(): Boolean = !firstAnswerSpoken
-
-    /** Marks that an AI answer has been spoken this session. */
-    fun markAiAnswerSpoken() {
-        firstAnswerSpoken = true
-    }
-
-    /** A new car session (or app start) restores the first-answer prefix. */
-    fun resetSession() {
-        firstAnswerSpoken = false
-    }
+    // --- No spoken AI prefix (r41): the vehicle never says "From AI" — the
+    // small visual AI badge in the overlay is the sole AI indicator. The
+    // first-answer-prefix machinery from r25 (flag, needsAiPrefix,
+    // markAiAnswerSpoken, resetSession) was removed outright, not gated,
+    // on user feedback on r40; do not re-add it without re-deciding that.
 
     // --- Actions the AI may propose: exactly the local families, nothing new. ---
 

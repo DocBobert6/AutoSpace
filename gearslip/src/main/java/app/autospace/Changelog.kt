@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            11, "0.4.0-alpha",
+            listOf(
+                "First release build: updates now arrive through the app itself, and the first-run guide covers updates, AI answers, and the experimental features.",
+            ),
+        ),
+        Release(
             10, "0.3.01-alpha",
             listOf(
                 "AutoSpace is a fork of Gearslip, with a rebuilt look: Frost, Material You and plain styles, in light and dark, with a pure-black Pitch dark mode.",

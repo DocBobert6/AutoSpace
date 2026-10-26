@@ -81,7 +81,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.autospace.AppSettings
+import app.autospace.car.AiAssistant
+import app.autospace.car.AiKeyStore
 import app.autospace.car.CarSettings
+import app.autospace.update.UpdateChecker
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.RadioButton
@@ -180,26 +183,42 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
     // outright in that case). Same persisted setting as car Settings
     // (CarSettings.phoneMicForVoice, default off); toggling in either place
     // reflects in the other, since both read the same flow.
+    // r41: the hotword phone-microphone switch joins this page — the mic
+    // workaround needs BOTH toggles, and the guide used to carry only one.
     add(
         GuidePage(
             title = "Car microphone.",
             explanation = "If your car's microphone doesn't work, AutoSpace can listen " +
                 "through the phone's microphone instead, for voice commands and " +
-                "voice replies. This does NOT affect phone calls.",
+                "voice replies — including listening for \"Hey AutoSpace\". This does NOT affect phone calls.",
             icon = { MicIcon(it) },
             optional = true,
             content = {
                 val phoneMic by CarSettings.phoneMicForVoice.collectAsState()
-                Row(
-                    Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Use phone microphone for voice commands",
-                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-                        modifier = Modifier.weight(1f),
-                    )
-                    Switch(checked = phoneMic, onCheckedChange = CarSettings::setPhoneMicForVoice)
+                val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Use phone microphone for voice commands",
+                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(checked = phoneMic, onCheckedChange = CarSettings::setPhoneMicForVoice)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Listen for \"Hey AutoSpace\" on the phone microphone",
+                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(checked = hotwordPhoneMic, onCheckedChange = CarSettings::setHotwordPhoneMic)
+                    }
                 }
             },
         ),
@@ -342,6 +361,64 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         ),
     )
 
+    // --- Updates (r41, first release round): the channel this build defaults to,
+    // the automatic-check switch, and the allow-installs action — the three things
+    // a driver needs before the first in-app update can arrive. Ungated: the
+    // channel state matters on every install, not just a first run with no
+    // channel picked yet.
+    add(
+        GuidePage(
+            title = "Updates.",
+            explanation = "New versions arrive through the app itself: AutoSpace checks GitHub " +
+                "once a day and offers what it finds. Android installs it after you " +
+                "allow installs from AutoSpace once — the button below opens that permission.",
+            icon = glyph(Icons.Filled.Check),
+            optional = true,
+            actionLabel = "Allow installs from AutoSpace",
+            onAction = {
+                context.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}")),
+                )
+            },
+            content = {
+                val channel = UpdateChecker.channel(context)
+                val channelLine = when (channel) {
+                    UpdateChecker.Channel.STABLE -> "Update channel: Stable — finished releases only."
+                    UpdateChecker.Channel.BETA -> "Update channel: Beta — test versions that are nearly done."
+                    UpdateChecker.Channel.ALPHA -> "Update channel: Alpha — every test version, first. Expect bugs."
+                }
+                var auto by remember { mutableStateOf(UpdateChecker.autoCheckEnabled(context)) }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        channelLine,
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                    )
+                    Text(
+                        "Change it anytime in Settings > Updates.",
+                        style = TextStyle(fontSize = 15.sp),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Check automatically",
+                            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = auto,
+                            onCheckedChange = {
+                                auto = it
+                                UpdateChecker.setAutoCheckEnabled(context, it)
+                            },
+                        )
+                    }
+                }
+            },
+        ),
+    )
+
     // --- Car audio: always asked, and it decides whether the adb pages below show ---------
     add(
         GuidePage(
@@ -399,6 +476,46 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         )
     }
 
+    // --- AI answers (r41): opt-in explanation plus where the key goes, right
+    // after the spoken-voice page — the voice family stays together. The
+    // privacy line follows the ACTIVE provider (Groq's no-training wording
+    // vs Gemini's Google-terms wording); there is no single generic notice.
+    // Ungated: the explanation matters even for a driver who never opts in.
+    add(
+        GuidePage(
+            title = "AI answers.",
+            explanation = "AI answers are off until you opt in. Turn them on in Settings > " +
+                "AI assistant and add a key there — Groq is the default, Gemini is " +
+                "kept as an experimental option. When on, only the words you just " +
+                "said go to the provider: contacts, messages, location, and history never do.",
+            icon = { MicIcon(it) },
+            optional = true,
+            content = {
+                val guideContext = LocalContext.current
+                LaunchedEffect(Unit) { AiKeyStore.ensureLoaded(guideContext) }
+                val provider by AiKeyStore.provider.collectAsState()
+                val privacyLine = if (provider == AiAssistant.Provider.GROQ) {
+                    "Groq does not train on your prompts without your explicit permission " +
+                        "and does not permanently retain them."
+                } else {
+                    "With Gemini, what you say goes to Google's API under Google's own terms."
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Active provider: ${provider.displayName}" +
+                            if (provider.isExperimental) " (experimental)" else "",
+                        style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+                    )
+                    Text(privacyLine, style = TextStyle(fontSize = 15.sp))
+                    Text(
+                        "The full notice is in Settings > AI assistant.",
+                        style = TextStyle(fontSize = 15.sp),
+                    )
+                }
+            },
+        ),
+    )
+
     // --- Optional: each is skipped once its actual effect is already in place --------
     if (!hasProjectMediaOp(context)) {
         add(
@@ -452,6 +569,34 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
             ),
         )
     }
+
+    // --- Experimental (r41): the floating-look extras and vehicle data, as
+    // switches in guide style. Vehicle data is its OWN switch at the very
+    // bottom of this page, never bundled with the floating pair. NO master
+    // switch here — that is a later round. Ungated: these are choices, not
+    // permissions, so there is nothing to auto-skip on.
+    add(
+        GuidePage(
+            title = "Experimental.",
+            explanation = "Two extras change how Home looks: floating media puts the player " +
+                "over the full-screen map, and home widgets add weather, messages, " +
+                "and next event beside it. Vehicle data is separate: a live, raw " +
+                "dump of the car's sensor channel, with field labels carried over " +
+                "from other projects and unverified — treat them as a guess, not a fact.",
+            icon = glyph(Icons.Filled.Build),
+            optional = true,
+            content = {
+                val floating by CarSettings.floatingMediaEnabled.collectAsState()
+                val widgets by CarSettings.homeWidgetsEnabled.collectAsState()
+                val sensors by CarSettings.carSensorsEnabled.collectAsState()
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GuideSwitch("Floating media over map", floating, CarSettings::setFloatingMediaEnabled)
+                    GuideSwitch("Home widgets", widgets, CarSettings::setHomeWidgetsEnabled)
+                    GuideSwitch("Vehicle data", sensors, CarSettings::setCarSensorsEnabled)
+                }
+            },
+        ),
+    )
 
     // Usage notes were the last page here until 2026-10-25;
     // removed with the rest of the notes surface (no stats server,
@@ -545,6 +690,22 @@ private fun AudioCard(title: String, tag: String?, body: String, selected: Boole
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+    }
+}
+
+/** One labeled switch in guide style, as the microphone pages use. */
+@Composable
+private fun GuideSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.weight(1f),
+        )
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

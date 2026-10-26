@@ -100,10 +100,35 @@ object UpdateChecker {
     /** Which releases count as updates. Each channel also takes everything the one before it does. */
     enum class Channel { STABLE, BETA, ALPHA }
 
+    /**
+     * The channel for a build that never picked one, from the version's own stage (r41):
+     * an alpha build defaults to Alpha, a beta build to Beta, anything else to Stable.
+     * Pure, so the unit test pins it without a device.
+     */
+    fun defaultChannelForVersion(versionName: String): Channel {
+        val lower = versionName.lowercase()
+        return when {
+            "alpha" in lower -> Channel.ALPHA
+            "beta" in lower -> Channel.BETA
+            else -> Channel.STABLE
+        }
+    }
+
+    /**
+     * Resolves the effective channel from its three inputs, in precedence order: an
+     * explicitly saved channel always wins; the old beta on/off switch means Alpha
+     * (it used to mean every pre-release); otherwise the version's stage decides.
+     * Pure, so the unit test pins the precedence without a device.
+     */
+    internal fun resolveChannel(savedName: String?, oldBeta: Boolean, versionName: String): Channel {
+        savedName?.let { saved -> Channel.entries.firstOrNull { it.name == saved }?.let { return it } }
+        if (oldBeta) return Channel.ALPHA
+        return defaultChannelForVersion(versionName)
+    }
+
     fun channel(context: Context): Channel {
         val p = prefs(context)
-        p.getString(KEY_CHANNEL, null)?.let { saved -> Channel.entries.firstOrNull { it.name == saved }?.let { return it } }
-        return if (p.getBoolean(KEY_BETA, false)) Channel.ALPHA else Channel.STABLE
+        return resolveChannel(p.getString(KEY_CHANNEL, null), p.getBoolean(KEY_BETA, false), BuildConfig.VERSION_NAME)
     }
 
     /**

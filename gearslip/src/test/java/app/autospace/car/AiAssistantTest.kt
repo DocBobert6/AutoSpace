@@ -409,4 +409,28 @@ class AiAssistantTest {
         )
         assertTrue(gemini.detail.contains("Gemini"))
     }
+
+    // --- r41: no spoken "From AI:" prefix, ever (user feedback on r40) ---
+    // No test pinned the old first-answer rule (verified by grep when it was
+    // removed), so these pin the new rule instead of silently relying on the
+    // deletion: the spoken answer is the capped text, and the old machinery
+    // must stay deleted.
+
+    @Test fun spokenAiAnswerIsCappedTextWithNoPrefix() {
+        assertEquals("The score was 35 to 13.", AiAssistant.capAnswer("The score was 35 to 13."))
+        val capped = AiAssistant.capAnswer((1..80).joinToString(" ") { "word" })
+        assertFalse(capped.startsWith("From AI:"))
+        assertTrue(capped.endsWith("That's the short version."))
+    }
+
+    @Test fun spokenPrefixMachineryIsGone() {
+        // If any of these members come back, the removal has to be
+        // re-decided, not silently re-shipped.
+        val methods = AiAssistant::class.java.declaredMethods.map { it.name }.toSet()
+        val fields = AiAssistant::class.java.declaredFields.map { it.name }.toSet()
+        assertFalse("needsAiPrefix must stay deleted", "needsAiPrefix" in methods)
+        assertFalse("markAiAnswerSpoken must stay deleted", "markAiAnswerSpoken" in methods)
+        assertFalse("resetSession must stay deleted", "resetSession" in methods)
+        assertFalse("firstAnswerSpoken must stay deleted", "firstAnswerSpoken" in fields)
+    }
 }
