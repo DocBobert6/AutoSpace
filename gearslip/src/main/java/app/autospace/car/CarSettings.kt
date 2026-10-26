@@ -112,6 +112,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SUB_BG = "car_sub_bg"
     private const val KEY_SUB_EDGE = "car_sub_edge"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
+    private const val KEY_FLOATING_MEDIA = "car_floating_media"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
     private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
@@ -188,6 +189,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val playerSpeedFlow = MutableStateFlow(1f)
     private val playerSkipSecFlow = MutableStateFlow(10)
     private val carSensorsFlow = MutableStateFlow(false)
+    private val floatingMediaFlow = MutableStateFlow(false)
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
 
@@ -333,6 +335,14 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val carSensorsEnabled: StateFlow<Boolean> = carSensorsFlow
 
     /**
+     * Floating Home (r34): Home shows the map full-bleed with the player
+     * as a floating card over it instead of side-by-side. Experimental
+     * and off by default; classic Home is byte-for-byte when off. It
+     * graduates only on Robert's drive tests — never on a builder's say-so.
+     */
+    val floatingMediaEnabled: StateFlow<Boolean> = floatingMediaFlow
+
+    /**
      * Whether the car screen's own "drive safely" warning has already been shown and dismissed
      * once, from this same install. Separate from the phone side's own compat/safety dialogs -
      * a driver who only ever plugs in and never opens the phone app should still see this once,
@@ -418,6 +428,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
+        floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
             Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
@@ -642,6 +653,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setCarSensorsEnabled(on: Boolean) {
         carSensorsFlow.value = on
         AppSettings.putString(app, KEY_CAR_SENSORS, on.toString())
+    }
+
+    fun setFloatingMediaEnabled(on: Boolean) {
+        floatingMediaFlow.value = on
+        AppSettings.putString(app, KEY_FLOATING_MEDIA, on.toString())
     }
 
     fun setNightMode(mode: NightMode) {

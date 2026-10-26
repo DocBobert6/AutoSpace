@@ -598,6 +598,7 @@ private fun ConnectionPage() {
 private fun AboutAndExperimentalPage() {
     val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
+    val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
 
     ChoiceRow(
@@ -606,7 +607,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors)
+        ExperimentalFeaturesList(carSensors, floatingMedia)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1215,7 +1216,7 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * so the list reads fine whether there's one entry or several.
  */
 @Composable
-private fun ExperimentalFeaturesList(carSensors: Boolean) {
+private fun ExperimentalFeaturesList(carSensors: Boolean, floatingMedia: Boolean) {
     Column(
         Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -1228,6 +1229,14 @@ private fun ExperimentalFeaturesList(carSensors: Boolean) {
                 "guess, not a fact, until you've watched one change for yourself.",
             checked = carSensors,
         ) { CarSettings.setCarSensorsEnabled(it) }
+        ExperimentalFeatureRow(
+            title = "Floating media over map (experimental)",
+            description = "Home shows the map full-screen with the player as a floating card " +
+                "over it, instead of side-by-side. The card is a frosted approximation, " +
+                "not live blur, and it never covers turn instructions. Classic Home " +
+                "returns when this is off.",
+            checked = floatingMedia,
+        ) { CarSettings.setFloatingMediaEnabled(it) }
     }
 }
 

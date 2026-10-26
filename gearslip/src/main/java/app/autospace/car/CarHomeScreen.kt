@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -66,9 +67,12 @@ fun CarHome() {
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
+    val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
+    // Cycling the toggle back on re-enables a card dismissed earlier in the session.
+    LaunchedEffect(floatingOn) { if (floatingOn) FloatingHomeState.reset() }
 
     val navigator = LocalCarNavigator.current
     val panel = navigator.sidePanel
@@ -83,6 +87,17 @@ fun CarHome() {
         if (onHome) seenHome[0] = true
     }
     val splitScreen = phase == CarMedia.Phase.READY && now.isActive && panel != SidePanel.NONE
+
+    // r34 floating Home: the toggle (default OFF) swaps the split for a
+    // full-bleed map with a floating media card. The lyrics column is the
+    // one exception — it keeps the classic split, since lyrics is a view
+    // the driver explicitly opened, not a player placement. Everything
+    // below in the else branch is the classic Home, verbatim.
+    val useFloating = floatingOn && panel != SidePanel.LYRICS
+    val showFloatingCard = shouldShowFloatingCard(
+        floatingOn, phase == CarMedia.Phase.READY && now.isActive,
+        FloatingHomeState.dismissed.value, panel, onHome,
+    )
 
     // Phase 8: 12dp outer padding (so rounded corners actually show against
     // the backdrop), 12dp gap, map 1.75 / media 1.0 — the media pane is
@@ -116,6 +131,29 @@ fun CarHome() {
     // cover) go square instead of rounded. Square inner corners beat
     // dots on the map.
     Box(Modifier.fillMaxSize()) {
+        if (useFloating) {
+            // Full-bleed map: no Row padding and no frame overlay — the map
+            // IS the background here, so masking its edges would defeat the
+            // point. The card is an ordinary Compose surface in the window
+            // layer above the map SurfaceView (same mechanism as
+            // HomeFrameOverlay), so it survives CarAppStage's deliberate
+            // SurfaceView recreation as an independent node. Bottom-end
+            // (passenger side) reserves the driver side for the later
+            // widget column; 12dp in from the frame edges, and above the
+            // nav bar, which sits below this Box in-flow — so the card
+            // clears the bar and can never cover the turn zone.
+            Box(Modifier.fillMaxSize()) {
+                MapPane(navStatus, frame)
+            }
+            if (showFloatingCard) {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().padding(12.dp),
+                    contentAlignment = Alignment.BottomEnd,
+                ) {
+                    FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
+                }
+            }
+        } else {
         Row(
             Modifier.fillMaxSize().padding(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -138,6 +176,7 @@ fun CarHome() {
             }
         }
         HomeFrameOverlay(Modifier.fillMaxSize())
+        }
     }
 }
 

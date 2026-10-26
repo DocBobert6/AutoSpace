@@ -941,6 +941,10 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
     if (phase != CarMedia.Phase.READY || !now.isActive) return
     // Docked beside the map, the player is already on screen - the pill steps aside for it.
     if (navigator.sidePanel == SidePanel.CONTROLS && navigator.current == CarScreen.Home) return
+    // Floating card over the map shows the same controls - the pill steps aside for it too,
+    // and comes back the moment the card is dismissed.
+    val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
+    if (shouldStepAsidePillForFloatingCard(floatingOn, FloatingHomeState.dismissed.value, navigator.current == CarScreen.Home)) return
     // The media screen is the full player already; the pill would only repeat its controls.
     if (navigator.current == CarScreen.Media) return
     val context = LocalContext.current
