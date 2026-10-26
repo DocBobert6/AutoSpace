@@ -66,7 +66,16 @@ object PreviewSettings {
         }
         AppSettings.getString(app, KEY_DENSITY, "160").toIntOrNull()
             ?.let { d -> if (d in DPIS) densityFlow.value = d }
-        AppSettings.getString(app, KEY_STYLE, "").ifEmpty { null }?.let { styleFlow.value = it }
+        // r20: a preview override stored on "keycap" migrates to "edge", same as the
+        // car setting — otherwise the preview would silently fall back to Frost.
+        AppSettings.getString(app, KEY_STYLE, "").ifEmpty { null }?.let {
+            if (it == "keycap") {
+                styleFlow.value = "edge"
+                AppSettings.putString(app, KEY_STYLE, "edge")
+            } else {
+                styleFlow.value = it
+            }
+        }
         AppSettings.getString(app, KEY_COLOURS, "").ifEmpty { null }?.let {
             runCatching { AppTheme.valueOf(it) }.getOrNull()?.let { t -> coloursFlow.value = t }
         }

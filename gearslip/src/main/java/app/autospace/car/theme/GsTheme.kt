@@ -83,10 +83,41 @@ data class ControlLook(
 )
 
 object GsThemes {
-    val Keycap = GsTheme(
-        id = "keycap",
-        name = "Keycap",
-        control = ControlLook(lip = 4.dp, pressedScale = 1f, holdMarker = HoldMarkerStyle.PEEL),
+    /**
+     * Edge (2026-10-25, r20): Keycap's successor, picked by Robert from the six
+     * replacement options. The outline IS the style — a strong hairline, a 1px bevel
+     * on the edge only, and nothing else: no gradient (topLight 0), no shadow, no lip.
+     * The face is flat, so the hold marker is the DOT, not the PEEL (which needs a
+     * raised face to lift from). New id "edge": the old "keycap" id is never reused
+     * for a different look, and CarSettings migrates stored "keycap" to "edge" on load.
+     */
+    val Edge = GsTheme(
+        id = "edge",
+        name = "Edge",
+        control = ControlLook(
+            corner = 16.dp,
+            topLight = 0f,
+            hairlineAlpha = 0.85f,
+            bevelTop = 0.35f,
+            bevelBottom = 0.45f,
+            shadow = 0.dp,
+            pressedDim = 0.18f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            // Light variant: the same outline, slightly softer — hairline 0.70 and
+            // bevels a step lower, so the edge reads on white without shouting.
+            light = ControlLook(
+                corner = 16.dp,
+                topLight = 0f,
+                hairlineAlpha = 0.70f,
+                bevelTop = 0.30f,
+                bevelBottom = 0.40f,
+                shadow = 0.dp,
+                pressedDim = 0.18f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
     )
 
     val Tactile = GsTheme(
@@ -176,8 +207,11 @@ object GsThemes {
     // redundant with the App theme's Material You, and its pure-Material-3 look
     // (16dp corner, DOT hold marker) was effectively the same as Flat. Existing
     // users stored on "material" land on Frost via byId's fallback, as logged.
-    // Classic = Flat / Tactile / Keycap, kept unchanged for existing users.
-    val builtIn = listOf(Frost, Flat, Tactile, Keycap)
+    // r20: Keycap REMOVED from builtIn and replaced in its slot by Edge (see above).
+    // Stored "keycap" never reaches byId's fallback — CarSettings migrates it to
+    // "edge" on load — so a Keycap user lands on Edge, not on Frost.
+    // Classic = Flat / Tactile / Edge, kept unchanged for existing users.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

@@ -116,7 +116,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Frost", style == "frost") { PreviewSettings.setStyle(context, "frost") }
                 RadioRow("Flat", style == "flat") { PreviewSettings.setStyle(context, "flat") }
                 RadioRow("Tactile", style == "tactile") { PreviewSettings.setStyle(context, "tactile") }
-                RadioRow("Keycap", style == "keycap") { PreviewSettings.setStyle(context, "keycap") }
+                RadioRow("Edge", style == "edge") { PreviewSettings.setStyle(context, "edge") }
             }
 
             SettingsSection("Preview colors") {

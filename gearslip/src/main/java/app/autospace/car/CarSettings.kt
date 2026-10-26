@@ -355,7 +355,15 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         autoNightStartFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_START, "${21 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 21 * 60
         autoNightEndFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_END, "${7 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 7 * 60
         tileSizeFlow.value = AppSettings.getString(app, KEY_TILE_SIZE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
-        uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
+        // r20 migration, same pattern as PHONE -> MATERIAL_YOU above: Keycap was
+        // replaced by Edge, so a stored "keycap" becomes "edge" (and the migrated
+        // value is persisted) instead of falling through byId to Frost.
+        val storedUiTheme = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
+        uiThemeFlow.value = if (storedUiTheme == "keycap") {
+            GsThemes.Edge.id.also { AppSettings.putString(app, KEY_UI_THEME, GsThemes.Edge.id) }
+        } else {
+            storedUiTheme
+        }
         brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
         // 2026-10-25: the default is FIT, reversing the earlier
         // Fill default — Fill on a portrait phone crops the top and
