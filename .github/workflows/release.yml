@@ -36,8 +36,8 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          # The build moves its APKs to <root>/build/Gearslip-<variant>.apk (see renameApk).
-          apk=build/Gearslip-release.apk
+          # The build moves its APKs to <root>/build/AutoSpace-<variant>.apk (see renameApk).
+          apk=build/AutoSpace-release.apk
           test -f "$apk" || { echo "no APK at $apk"; ls -R build | head -50; exit 1; }
           echo "path=$apk" >> "$GITHUB_OUTPUT"
 
