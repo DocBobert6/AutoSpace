@@ -104,7 +104,7 @@ class MicSelectionTest {
     }
 
     @Test
-    fun onlyTheFirstN samplesCount() {
+    fun onlyTheFirstNSamplesCount() {
         // A loud sample past n must not count: frames are cut to CHUNKs,
         // and a short final chunk must not read stale tail samples.
         val tracker = SilenceTracker()
