@@ -38,7 +38,7 @@ import app.autospace.BuildConfig
 import app.autospace.CertProvider
 import app.autospace.car.TestMode
 
-private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, RECOMMENDED_APPS }
+private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, RECOMMENDED_APPS, ASSISTANT_PREVIEW }
 
 /** Three screens and a back stack of depth one: no navigation library needed. */
 @Composable
@@ -69,7 +69,7 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
     var backTo by rememberSaveable { mutableStateOf(Screen.SETTINGS) }
     BackHandler(enabled = screen != Screen.HOME && screen != Screen.INTRO) {
         screen = when (screen) {
-            Screen.RECOMMENDED_APPS, Screen.LOGS, Screen.CAR_PREVIEW, Screen.CAR_PREVIEW_SETTINGS -> Screen.SETTINGS
+            Screen.RECOMMENDED_APPS, Screen.LOGS, Screen.CAR_PREVIEW, Screen.CAR_PREVIEW_SETTINGS, Screen.ASSISTANT_PREVIEW -> Screen.SETTINGS
             Screen.HELP, Screen.WHATS_NEW -> backTo
             else -> Screen.HOME
         }
@@ -122,6 +122,7 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
                 )
                 Screen.WHATS_NEW -> WhatsNewScreen(onBack = { screen = backTo })
                 Screen.LOGS -> LogsScreen(onBack = { screen = Screen.SETTINGS })
+                Screen.ASSISTANT_PREVIEW -> AssistantPreviewScreen(onBack = { screen = Screen.SETTINGS })
                 Screen.SETTINGS -> SettingsScreen(
                     onBack = { screen = Screen.HOME },
                     onOpenRecommendedApps = { screen = Screen.RECOMMENDED_APPS },
@@ -130,6 +131,7 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
                     onOpenCarPreview = { screen = Screen.CAR_PREVIEW },
                     onOpenCarPreviewSettings = { screen = Screen.CAR_PREVIEW_SETTINGS },
                     onOpenLogs = { screen = Screen.LOGS },
+                    onOpenAssistantPreview = { screen = Screen.ASSISTANT_PREVIEW },
                     onReplayTutorial = { screen = Screen.SETUP_GUIDE },
                     onReplayIntro = { Intro.replay(context); introReturn = Screen.SETTINGS; screen = Screen.INTRO },
                 )

@@ -502,6 +502,17 @@ private fun VoicePage() {
             )
         }
     }
+
+    // AI assistant (r25): read-only here — the key is entered, tested, and removed on the
+    // phone only, never on a head unit. This line just says whether it is on or off.
+    androidx.compose.runtime.LaunchedEffect(context) { AiKeyStore.ensureLoaded(context) }
+    val aiEnabled by AiKeyStore.enabled.collectAsState()
+    GsSectionHeader("AI assistant")
+    Text(
+        "AI answers: ${if (aiEnabled) "on" else "off"} — manage on your phone in Settings > AI assistant.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

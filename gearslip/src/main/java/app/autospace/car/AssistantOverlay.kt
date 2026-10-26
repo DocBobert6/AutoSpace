@@ -12,6 +12,10 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -42,6 +46,8 @@ import app.autospace.R
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * What the assistant hears and says, laid over the bottom of whatever screen is up: a dark shade
@@ -51,8 +57,37 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun AssistantOverlay(modifier: Modifier = Modifier) {
     val state by CarAssistant.state.collectAsState()
-    if (state.phase == CarAssistant.Phase.IDLE) return
+    val pending by AssistantCommands.aiPending.collectAsState()
+    // The sheet must outlive the spoken question: once the question finishes speaking the
+    // phase returns to IDLE, but the proposal stays open until its window lapses or the
+    // user answers — so the overlay stays up for a pending proposal even while idle.
+    if (state.phase == CarAssistant.Phase.IDLE && pending == null) return
     val context = LocalContext.current
+    val navigator = LocalCarNavigator.current
+    val frame by CarEnvironment.frame.collectAsState()
+    val scope = rememberCoroutineScope()
+    // While moving, confirmations are voice-only (r25 §5.4): the sheet hides, so a moving
+    // driver never faces a tap target — the spoken question plus yes/no still works.
+    // CarMotion.moving is a polled value, so poll it while a proposal is open.
+    val moving by produceState(initialValue = false, pending) {
+        while (pending != null) {
+            value = app.autospace.notify.CarMotion.moving
+            delay(2_000)
+        }
+    }
+    // Expiry clears the proposal silently: no unsolicited speech while driving. A voice
+    // answer after expiry is handled by the next handle() call, which declines it the
+    // same way.
+    LaunchedEffect(pending) {
+        val p = pending ?: return@LaunchedEffect
+        val wait = p.expiresAt - android.os.SystemClock.elapsedRealtime()
+        if (wait > 0) {
+            delay(wait)
+            if (AssistantCommands.aiPending.value == p) AssistantCommands.clearPendingAiAction()
+        } else if (AssistantCommands.aiPending.value == p) {
+            AssistantCommands.clearPendingAiAction()
+        }
+    }
     val listening = state.phase == CarAssistant.Phase.LISTENING && state.ready
     val glow = MaterialTheme.colorScheme.primary
     val glow2 = MaterialTheme.colorScheme.tertiary
@@ -83,6 +118,57 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             }
             .padding(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 20.dp),
     ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // AI confirmation sheet (r25 §5.2): the proposal's exact question, with 44dp+
+        // Accept / Decline. Taps execute through the same pending-action path a voice
+        // "yes" takes — never a second execution route. Hidden while moving (voice-only
+        // there, per §5.4), and hidden once the window lapses.
+        val proposal = pending
+        if (proposal != null && !moving) {
+            GsSheetSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "AI suggests:",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                    Text(
+                        proposal.question,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(
+                            onClick = {
+                                scope.launch {
+                                    val result = AssistantCommands.acceptPendingAiAction(context, navigator, frame)
+                                    if (result != null) CarAssistant.reply(result)
+                                }
+                            },
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        ) { Text("Accept") }
+                        GsButton(
+                            tone = GsTone.Tonal,
+                            onClick = {
+                                if (AssistantCommands.declinePendingAiAction()) {
+                                    CarAssistant.reply("Okay, not doing that.")
+                                }
+                            },
+                            modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                        ) { Text("Decline") }
+                    }
+                    Text(
+                        "Say yes or no, or tap. No answer means no.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        if (state.phase != CarAssistant.Phase.IDLE) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             PulsingMic(listening)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -93,6 +179,15 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 }
                 if (small.isNotBlank()) {
                     Text(small, color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                // AI badge (r25 §4): every AI answer carries a visible "AI" mark; the
+                // spoken "From AI:" prefix runs only on the first answer per session.
+                if (state.fromAi) {
+                    Text(
+                        "AI",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
                 }
                 Text(
                     big,
@@ -112,6 +207,8 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 }) { Text("Grant") }
             }
             GsIconButton(Icons.Filled.Close, "Dismiss", CarAssistant::cancel)
+        }
+        }
         }
     }
 }

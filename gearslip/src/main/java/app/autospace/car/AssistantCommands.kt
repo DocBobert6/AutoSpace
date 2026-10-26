@@ -23,6 +23,9 @@ import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -47,15 +50,39 @@ object AssistantCommands {
     /** Uptime until which a spoken "yes" counts as confirming an emergency call, else 0. */
     private var emergencyPendingUntil = 0L
 
+    /**
+     * One AI-proposed action awaiting confirmation, or null. Mirrors the emergency pattern:
+     * the next command answers it, and the car overlay sheet (see [AssistantOverlay])
+     * shows the same proposal with Accept/Decline buttons. The proposal is DATA, never
+     * code — execution happens only through [executeAiAction] after an exact accept.
+     */
+    data class PendingAiAction(val action: AiAssistant.AiAction, val question: String, val expiresAt: Long)
+
+    private val _aiPending = MutableStateFlow<PendingAiAction?>(null)
+
+    /** The pending AI proposal, for the overlay confirmation sheet. Null when none is open. */
+    val aiPending: StateFlow<PendingAiAction?> = _aiPending.asStateFlow()
+
+    /**
+     * True when the reply [handle] just produced is an AI answer (for CarUi's AI badge).
+     * Reset at the start of every [handle] call; set only by the AI answer path. Local
+     * refusals, confirmations, and executed local actions are not AI answers, so the badge
+     * never appears on them.
+     */
+    var lastReplyWasAi = false
+        private set
+
     /** The one local timer, if any: a main-thread delayed runnable, never a calendar entry. */
     private var timerHandler: Handler? = null
     private var timerRunnable: Runnable? = null
 
     suspend fun handle(context: Context, navigator: CarNavigator, frame: CarEnvironment.Frame, heardRaw: String): String {
+        lastReplyWasAi = false
         val heard = natural(heardRaw)
         VoiceHelp.hide()
         if (heard in HELP_WORDS || heard.startsWith("what can i say") || heard.startsWith("what can you do")) {
             emergencyPendingUntil = 0L
+            _aiPending.value = null
             VoiceHelp.show()
             return "Here's what you can say."
         }
@@ -81,6 +108,27 @@ object AssistantCommands {
                 return "Canceled. I won't call."
             } else {
                 emergencyPendingUntil = 0L
+            }
+        }
+
+        // An AI confirmation (r25) is answered the same way: the next command answers it.
+        // An exact accept word inside the window executes the one proposed action; an exact
+        // decline word declines it with a plain reply; anything else — including an expired
+        // window — declines it silently and the utterance is then handled normally below
+        // (mirroring the emergency block's else branch, so a fresh command is never eaten
+        // by a stale proposal). The AI never interprets the answer: matching is local
+        // and exact, so a vague "uh-huh" can never execute anything.
+        val pendingAi = _aiPending.value
+        if (pendingAi != null) {
+            _aiPending.value = null
+            if (SystemClock.elapsedRealtime() <= pendingAi.expiresAt) {
+                when (AiAssistant.matchConfirmation(heard)) {
+                    AiAssistant.ConfirmationDecision.ACCEPT ->
+                        return executeAiAction(context, navigator, frame, pendingAi.action)
+                    AiAssistant.ConfirmationDecision.DECLINE ->
+                        return "Okay, not doing that."
+                    AiAssistant.ConfirmationDecision.UNKNOWN -> Unit // Declined; fall through.
+                }
             }
         }
 
@@ -112,8 +160,207 @@ object AssistantCommands {
         browserSearchCommand(navigator, heard)?.let { return it }
         openAppCommand(context, navigator, frame, heard)?.let { return it }
         synonymCommand(context, navigator, heard)?.let { return it }
+        // AI fallback (r25) sits LAST on purpose, after every exact built-in, keyword, and
+        // fuzzy path: a local command must never take a network round-trip, and a keyword
+        // or built-in must never lose to an AI guess. When AI is off, keyless, or offline,
+        // this returns null and behavior is exactly today's unmatched reply.
+        aiFallbackCommand(context, navigator, frame, heard)?.let { return it }
 
         return "I don't know how to do that yet."
+    }
+
+    /**
+     * The overlay sheet's tap path: Accept executes the one pending proposal (or nothing
+     * when it expired — the sheet hides at expiry, so this is only a race guard), Decline
+     * clears it. Returns the spoken result for Accept, null when there was nothing to do.
+     * The caller speaks the result through [CarAssistant.reply], the same path a voice
+     * acceptance takes.
+     */
+    suspend fun acceptPendingAiAction(
+        context: Context,
+        navigator: CarNavigator,
+        frame: CarEnvironment.Frame,
+    ): String? {
+        val pending = _aiPending.value ?: return null
+        _aiPending.value = null
+        if (SystemClock.elapsedRealtime() > pending.expiresAt) return null
+        return executeAiAction(context, navigator, frame, pending.action)
+    }
+
+    /** Clears a pending AI proposal without executing it. True when one was actually open. */
+    fun declinePendingAiAction(): Boolean {
+        val had = _aiPending.value != null
+        _aiPending.value = null
+        return had
+    }
+
+    /** Clears a pending AI proposal silently (overlay dismiss, cancel) — never executes it. */
+    fun clearPendingAiAction() {
+        _aiPending.value = null
+    }
+
+    /**
+     * Executes ONE already-confirmed AI action by re-dispatching through the exact local
+     * command functions, with canonical phrasings — never through a new execution path.
+     * Re-resolution is deliberate: a contact, thread, or app that vanished between proposal
+     * and acceptance fails plainly instead of executing against stale data. Read-only
+     * proposals never reach here through the confirmation path (they execute directly in
+     * [aiFallbackCommand]); this function handles them too, for the tap path's completeness.
+     */
+    private suspend fun executeAiAction(
+        context: Context,
+        navigator: CarNavigator,
+        frame: CarEnvironment.Frame,
+        action: AiAssistant.AiAction,
+    ): String {
+        return when (action) {
+            is AiAssistant.AiAction.Navigate ->
+                navigateCommand(context, navigator, frame, "navigate to ${action.destination}")
+                    ?: "I couldn't navigate there."
+            is AiAssistant.AiAction.OpenApp ->
+                openAppCommand(context, navigator, frame, "open ${action.appLabel}")
+                    ?: "I couldn't find that app any more."
+            is AiAssistant.AiAction.BrowserSearch ->
+                browserSearchCommand(navigator, "search for ${action.term}")
+                    ?: "I couldn't search for that."
+            is AiAssistant.AiAction.Call ->
+                callCommand(context, "call ${action.contactName}")
+                    ?: "I couldn't call ${action.contactName}."
+            is AiAssistant.AiAction.ReplyMessage ->
+                messagesCommand(context, "text ${action.contactName} that ${action.text}")
+                    ?: "That message can't be sent any more."
+            is AiAssistant.AiAction.Media ->
+                mediaCommand(action.command) ?: "Nothing's playing."
+            is AiAssistant.AiAction.Volume -> volumeCommand(
+                context,
+                when (action.mode) {
+                    "up" -> "volume up"
+                    "down" -> "volume down"
+                    "mute" -> "mute"
+                    else -> "unmute"
+                },
+            ) ?: "Couldn't change the volume."
+            is AiAssistant.AiAction.Brightness ->
+                brightnessCommand("brightness ${action.percent}") ?: "Couldn't change the brightness."
+            is AiAssistant.AiAction.BrightnessDirection ->
+                brightnessCommand("brightness ${action.direction}") ?: "Couldn't change the brightness."
+            is AiAssistant.AiAction.Toggle -> togglesCommand(
+                context,
+                navigator,
+                when (action.setting) {
+                    "speak_directions" -> "turn speak directions ${if (action.on) "on" else "off"}"
+                    "phone_mic" -> if (action.on) "use phone mic" else "use car mic"
+                    else -> if (action.on) "start screen sharing" else "stop screen sharing"
+                },
+            ) ?: "Couldn't change that setting."
+            is AiAssistant.AiAction.Timer ->
+                timerCommand("set a timer for ${action.minutes} minutes") ?: "Couldn't set that timer."
+            is AiAssistant.AiAction.Readout -> when (action.what) {
+                "battery" -> batteryCommand(context, "phone battery")
+                "eta" -> navExtraCommand("eta")
+                else -> messagesCommand(context, "read my messages")
+            } ?: "Couldn't read that out."
+        }
+    }
+
+    /**
+     * AI fallback (r25), gated three ways before any network happens: opt-in ON, a key
+     * stored, and a validated network route. Any gate failing returns null, which keeps
+     * today's unmatched behavior byte-for-byte — no error about AI, no partial attempt.
+     * The model receives the transcribed utterance ONLY (normalized, as the local parsers
+     * see it); contacts, numbers, messages, history, and location are never sent.
+     */
+    private suspend fun aiFallbackCommand(
+        context: Context,
+        navigator: CarNavigator,
+        frame: CarEnvironment.Frame,
+        heard: String,
+    ): String? {
+        if (!AiKeyStore.aiAvailable(context)) return null
+        if (!GeminiClient.networkAvailable(context)) return null
+        // Vague emergency phrasing never reaches the model as an action candidate: it
+        // offers the LOCAL emergency flow instead, which then follows the existing
+        // spoken-confirmation guard. The AI itself never dials emergency numbers.
+        if (AiAssistant.isEmergencyLike(heard)) {
+            emergencyPendingUntil = SystemClock.elapsedRealtime() + EMERGENCY_CONFIRM_MS
+            return "Do you want me to start an emergency call? That needs your confirmation."
+        }
+        val key = AiKeyStore.loadKey(context) ?: return null
+        val result = withContext(Dispatchers.IO) { GeminiClient.generate(key, heard) }
+        val modelText = when (result) {
+            is GeminiClient.Result.Ok -> result.text
+            else -> return "AI answer isn't available right now."
+        }
+        return when (val parsed = AiAssistant.parseModelReply(modelText, heard)) {
+            is AiAssistant.ParsedReply.Answer -> {
+                val capped = AiAssistant.capAnswer(parsed.text)
+                val spoken = if (AiAssistant.needsAiPrefix()) "From AI: $capped" else capped
+                AiAssistant.markAiAnswerSpoken()
+                lastReplyWasAi = true
+                GearslipLog.i("assistant: ai answer")
+                spoken
+            }
+            is AiAssistant.ParsedReply.Refused -> parsed.reason
+            is AiAssistant.ParsedReply.EmergencyOffer -> {
+                emergencyPendingUntil = SystemClock.elapsedRealtime() + EMERGENCY_CONFIRM_MS
+                "Do you want me to start an emergency call? That needs your confirmation."
+            }
+            is AiAssistant.ParsedReply.Proposal -> resolveProposal(context, navigator, frame, parsed.action)
+        }
+    }
+
+    /**
+     * Proposal-time resolution: an AI target that does not resolve against existing data
+     * is refused here, never confirmed. Contact/app/thread names are resolved the same
+     * way the local commands resolve them (substring match on stored contacts, the app
+     * entry list, the reply-able notification threads), and the confirmation reads back
+     * the RESOLVED name — so "call Mom" confirms "Call Mom Smith?" only when Mom Smith
+     * is actually in contacts. Navigation destinations were already overlap-checked in
+     * [AiAssistant.parseModelReply]; read-only proposals execute directly (they change
+     * no state, send nothing, and navigate nowhere).
+     */
+    private suspend fun resolveProposal(
+        context: Context,
+        navigator: CarNavigator,
+        frame: CarEnvironment.Frame,
+        action: AiAssistant.AiAction,
+    ): String {
+        val confirmed: AiAssistant.AiAction = when (action) {
+            is AiAssistant.AiAction.Call -> {
+                if (!hasCallPermissions(context)) {
+                    return "AutoSpace needs the phone and contacts permissions first, from the phone screen."
+                }
+                val match = withContext(Dispatchers.IO) {
+                    loadContacts(context).firstOrNull { it.name.lowercase().contains(action.contactName.lowercase()) }
+                } ?: return "I couldn't find ${action.contactName} in your contacts."
+                AiAssistant.AiAction.Call(match.name)
+            }
+            is AiAssistant.AiAction.OpenApp -> {
+                val match = bestMatch(allEntries(context), action.appLabel) { it.label }
+                    ?: return "I couldn't find an app called ${action.appLabel}."
+                AiAssistant.AiAction.OpenApp(match.label)
+            }
+            is AiAssistant.AiAction.ReplyMessage -> {
+                val thread = CarNotifications.history.value.firstOrNull { n ->
+                    n.reply != null && (squash(n.title).contains(squash(action.contactName)) ||
+                        squash(n.appLabel).contains(squash(action.contactName)) ||
+                        n.lines.any { line -> line.sender?.let { squash(it).contains(squash(action.contactName)) } == true })
+                } ?: return "I can't send a new message to ${action.contactName} from the car — " +
+                    "I can only reply to a message they've already sent. Say 'read my messages' first."
+                AiAssistant.AiAction.ReplyMessage(thread.title.ifBlank { thread.appLabel }, action.text)
+            }
+            else -> action
+        }
+        if (AiAssistant.isReadOnly(confirmed)) {
+            return executeAiAction(context, navigator, frame, confirmed)
+        }
+        _aiPending.value = PendingAiAction(
+            confirmed,
+            AiAssistant.confirmationText(confirmed),
+            SystemClock.elapsedRealtime() + AiAssistant.CONFIRM_TIMEOUT_MS,
+        )
+        GearslipLog.i("assistant: ai proposal awaiting confirmation")
+        return AiAssistant.confirmationText(confirmed)
     }
 
     /**

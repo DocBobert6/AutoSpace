@@ -84,6 +84,7 @@ fun SettingsScreen(
     onOpenCarPreview: () -> Unit,
     onOpenCarPreviewSettings: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenAssistantPreview: () -> Unit,
     onReplayTutorial: () -> Unit,
     onReplayIntro: () -> Unit,
 ) {
@@ -123,6 +124,9 @@ fun SettingsScreen(
             // Custom voice shortcuts (r19): beside the voice sections, where someone
             // looking for voice settings finds them. The car side lists them read-only.
             VoiceShortcutsSection()
+            // AI assistant (r25): beside the voice sections for the same reason — the
+            // key is entered, tested, and removed here, never on a head unit.
+            AiAssistantSection(onOpenAssistantPreview)
             // Call speaker, same state as car Settings: a call-audio choice, not a
             // voice model, so it gets its own section rather than joining the above.
             CallSpeakerSection()

@@ -67,6 +67,8 @@ object CarAssistant {
         val missingPermission: Boolean = false,
         /** False from the press until the microphone is actually open, so the overlay doesn't claim to listen early. */
         val ready: Boolean = false,
+        /** True when the reply being shown is an AI answer (r25 badge); local replies never set this. */
+        val fromAi: Boolean = false,
     )
 
     private val _state = MutableStateFlow(State())
@@ -143,6 +145,7 @@ object CarAssistant {
         VoiceEngine.stop()
         releaseSpeechFocus()
         _pendingCommand.value = null
+        AssistantCommands.clearPendingAiAction()
         _state.value = State(Phase.IDLE)
     }
 
@@ -152,14 +155,14 @@ object CarAssistant {
      * voice model downloaded, the overlay says so and points at Settings
      * instead of leaving the driver waiting on silence.
      */
-    fun reply(text: String) {
+    fun reply(text: String, fromAi: Boolean = false) {
         _pendingCommand.value = null
         val context = appContext
         if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
             return
         }
-        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text)
+        _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
             _state.value = _state.value.copy(phase = Phase.IDLE)

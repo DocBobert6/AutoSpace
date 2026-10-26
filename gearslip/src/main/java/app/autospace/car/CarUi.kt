@@ -214,7 +214,11 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     // somewhere to play it.
     LaunchedEffect(Unit) { if (CarSettings.pipeAudio.value) app.autospace.audio.CarAudio.request() }
     // A new version gets one card in the top right, a few seconds in and only while parked.
-    LaunchedEffect(Unit) { app.autospace.update.UpdateChecker.onCarConnected(appContext) }
+    // A new car session also restores the AI answer's spoken "From AI:" prefix (r25).
+    LaunchedEffect(Unit) {
+        app.autospace.update.UpdateChecker.onCarConnected(appContext)
+        AiAssistant.resetSession()
+    }
     // The map follows the light outside, whatever the app's own theme is set to.
     LaunchedEffect(darkOutside) { CarServices.nav.pushConfiguration() }
 
@@ -225,7 +229,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         CarAssistant.pendingCommand.collect { heard ->
             if (heard != null) {
                 val reply = AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
-                CarAssistant.reply(reply)
+                CarAssistant.reply(reply, fromAi = AssistantCommands.lastReplyWasAi)
             }
         }
     }

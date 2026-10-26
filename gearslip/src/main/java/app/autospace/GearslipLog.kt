@@ -196,12 +196,17 @@ object GearslipLog {
     }
 
     private fun write(level: String, message: String, tag: String = "APP") {
+        // AI key guard (r25): a Gemini-shaped token (AIza…) is scrubbed before the line
+        // reaches logcat, the live buffer, a sink, or the file — so a key can never leak
+        // through a log line even if some caller accidentally logs one. The crash
+        // reporter's tail filter drops such lines outright, as a second guard.
+        val clean = app.autospace.car.AiAssistant.AiRedaction.scrub(message)
         when (level) {
-            "W" -> Log.w(TAG, message)
-            "E" -> Log.e(TAG, message)
-            else -> if (debug) Log.i(TAG, message)
+            "W" -> Log.w(TAG, clean)
+            "E" -> Log.e(TAG, clean)
+            else -> if (debug) Log.i(TAG, clean)
         }
-        val line = "${stamp.format(Date())} $level ${tag.padEnd(5)} $message"
+        val line = "${stamp.format(Date())} $level ${tag.padEnd(5)} $clean"
         synchronized(live) {
             live.addLast(line)
             while (live.size > MAX_LIVE_LINES) live.removeFirst()
