@@ -208,7 +208,11 @@ internal fun PlayerProgress(now: NowPlaying, media: CarMedia, modifier: Modifier
     }
     Column(modifier) {
         val fraction = position.toFloat() / now.durationMs
-        val seekTo = { f: Float -> media.seek((f * now.durationMs).toLong()) }
+        // Explicit (Float) -> Unit: media.seek() itself is Unit? (nullable controller), and a
+        // hoisted val without this annotation infers (Float) -> Unit?, which the seek-bar
+        // parameters reject. The annotation restores the lambda-body-to-Unit coercion the
+        // original inline lambda got for free.
+        val seekTo: (Float) -> Unit = { f -> media.seek((f * now.durationMs).toLong()) }
         val enabled = now.canDo(PlaybackState.ACTION_SEEK_TO)
         if (waveform) {
             WaveformSeekBar(
