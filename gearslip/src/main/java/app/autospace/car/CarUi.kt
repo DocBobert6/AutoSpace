@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import app.autospace.R
 import app.autospace.car.theme.GsColors
+import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
@@ -434,6 +436,7 @@ private fun CarSafetyWizard(onDone: () -> Unit) {
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 shape = RoundedCornerShape(28.dp),
                 modifier = Modifier.fillMaxWidth(),
+                border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
             ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Drive safely", style = ChromeType.headline, fontWeight = FontWeight.Bold)
@@ -613,6 +616,7 @@ private fun CarNavBar(navigator: CarNavigator) {
         shape = gsShape(),
         color = MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT).padding(horizontal = 10.dp)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
@@ -1088,12 +1092,12 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
         surfaceContainerLow = black,
         surfaceContainer = black,
         surfaceContainerHigh = black,
-        surfaceContainerHighest = black,
+        surfaceContainerHighest = PitchSurfaceStepColor,
         surfaceBright = black,
         surfaceDim = black,
         surfaceTint = black,
         onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFC7C7CC),
-        outline = androidx.compose.ui.graphics.Color(0xFF38383A),
+        outline = PitchOutlineColor,
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
     )
 }
@@ -1387,12 +1391,25 @@ private fun nightColorScheme(): androidx.compose.material3.ColorScheme {
  * with onSurfaceVariant lifted to #C7C7CC for contrast on black;
  * Regular = dark-grey backgrounds, no pure black anywhere.
  */
+/**
+ * Pitch (r33, audit #3): Pitch-gated values. PitchOutline lifts the Pitch
+ * outline token (#38383A -> #6E6E73, hairline 1.20:1 -> ~1.63:1 blended at
+ * 0.45 alpha over black); PitchSurfaceStep is the single near-black step
+ * token (surfaceContainerHighest in Pitch only, ~1.06:1 vs black — a whisper
+ * step that reads on OLED because black pixels are fully off). Used ONLY by
+ * the Pitch (OLED) branches below; Regular dark, light, Night, Pitlane,
+ * Circuit, Heritage keep their own tokens. Stored DarkModeType.OLED is
+ * untouched; only these display values change.
+ */
+internal val PitchOutlineColor = androidx.compose.ui.graphics.Color(0xFF6E6E73)
+internal val PitchSurfaceStepColor = androidx.compose.ui.graphics.Color(0xFF0A0A0C)
+
 private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.compose.material3.ColorScheme {
     val white = androidx.compose.ui.graphics.Color.White
     val black = androidx.compose.ui.graphics.Color.Black
     return if (!dark) androidx.compose.material3.lightColorScheme(
         primary = androidx.compose.ui.graphics.Color(0xFF007AFF),
-        onPrimary = white,
+        onPrimary = black,
         primaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
         onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFF001D36),
         secondary = androidx.compose.ui.graphics.Color(0xFF5A5A5E),
@@ -1416,7 +1433,7 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
         surfaceTint = white,
     ) else if (oled) androidx.compose.material3.darkColorScheme(
         primary = androidx.compose.ui.graphics.Color(0xFF0A84FF),
-        onPrimary = white,
+        onPrimary = black,
         primaryContainer = androidx.compose.ui.graphics.Color(0xFF003A6B),
         onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
         secondary = androidx.compose.ui.graphics.Color(0xFFAEAEB2),
@@ -1431,10 +1448,10 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
         surfaceContainerLow = black,
         surfaceContainer = black,
         surfaceContainerHigh = black,
-        surfaceContainerHighest = black,
+        surfaceContainerHighest = PitchSurfaceStepColor,
         surfaceBright = black,
         surfaceDim = black,
-        outline = androidx.compose.ui.graphics.Color(0xFF38383A),
+        outline = PitchOutlineColor,
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
         error = androidx.compose.ui.graphics.Color(0xFFFF453A),
         onError = white,
@@ -1442,7 +1459,7 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
     ) else androidx.compose.material3.darkColorScheme(
         // Regular dark: the same tokens, one step up — no pure black anywhere.
         primary = androidx.compose.ui.graphics.Color(0xFF0A84FF),
-        onPrimary = white,
+        onPrimary = black,
         primaryContainer = androidx.compose.ui.graphics.Color(0xFF003A6B),
         onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFD7E9FF),
         secondary = androidx.compose.ui.graphics.Color(0xFFAEAEB2),

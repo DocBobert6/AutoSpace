@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import android.os.SystemClock
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +38,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.R
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsProgressBar
 import app.autospace.car.theme.GsTone
@@ -136,6 +139,7 @@ private fun PopupCard(until: Long, span: Long, modifier: Modifier, held: Float =
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shadowElevation = 8.dp,
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         modifier = modifier.padding(12.dp).widthIn(min = 300.dp, max = 400.dp).fillMaxWidth(0.34f),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
