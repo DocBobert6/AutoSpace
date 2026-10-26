@@ -277,7 +277,7 @@ private fun AppearancePage() {
             AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
             AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
             AppTheme.NIGHT to "Night",
-            AppTheme.PITLANE to "Pitlane",
+            AppTheme.PITLANE to "Pit Lane",
             AppTheme.CIRCUIT to "Circuit",
             AppTheme.HERITAGE to "Heritage",
         ),
@@ -290,7 +290,7 @@ private fun AppearancePage() {
             "colors and light/dark; Material You Light / Dark use the " +
             "phone's wallpaper colors, forced to that variant. Night is " +
             "the dedicated night-driving scheme: pure black, warm gray " +
-            "text, amber accents. Pitlane is the stock-car scheme: " +
+            "text, amber accents. Pit Lane is the stock-car scheme: " +
             "carbon black, white text, red and yellow, no blue, always " +
             "dark. Circuit is black with blue, red, and yellow accents " +
             "(white in its light variant). Heritage is deep racing green " +

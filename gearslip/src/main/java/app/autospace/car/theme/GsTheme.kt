@@ -87,6 +87,45 @@ data class ControlLook(
      */
     val rectangularButtons: Boolean = false,
     /**
+     * r26 (Pit Lane only): carbon-fiber weave line alpha on control faces,
+     * drawn with Canvas at low alpha under content and borders. 0 for none.
+     * Panel cards (GsGroupedCard/GsPanelCard/GsSheetSurface) draw the same
+     * weave stronger (see pitLanePanel) — panels are where the weave reads.
+     */
+    val weaveAlpha: Float = 0f,
+    /** r26 (Pit Lane only): brushed-metal horizontal grain streak alpha. 0 for none. */
+    val grainAlpha: Float = 0f,
+    /**
+     * r26 (Pit Lane only): corner screw dots on panel cards and sheets
+     * (pitLanePanel), never on buttons/tiles — corners only, never scattered.
+     */
+    val rivets: Boolean = false,
+    /**
+     * r26 (Pit Lane only): a small lit LED dot on latched controls, drawn
+     * at the top-end corner in ADDITION to the primary fill + bold label
+     * (never a replacement). Not a checker: a single dot, no strip.
+     */
+    val ledDot: Boolean = false,
+    /**
+     * r26 (Pit Lane only): switches render as metal bat-lever toggles
+     * (GsSwitch) instead of the squared track-and-knob. Travel and hit
+     * area unchanged; only the drawing changes.
+     */
+    val batToggle: Boolean = false,
+    /**
+     * r26 (Pit Lane only): section headers (GsSectionHeader) render as
+     * engraved panel labels — small, plain, letterspaced, inset. Headers
+     * only; body/button/tile labels are untouched.
+     */
+    val engravedHeader: Boolean = false,
+    /**
+     * r26 (Pit Lane only): the hard bevel draws on latched controls too.
+     * Other styles keep the old rule (bevel suppressed while latched, so
+     * the pressed-in read stays clean); Pit Lane's bevel is the panel
+     * edge, not a selection cue, so it stays on latched controls.
+     */
+    val bevelOnLatched: Boolean = false,
+    /**
      * RETIRED in r24: formerly drew a small black-and-white checker strip
      * along the top edge of latched controls under Pitlane. Robert
      * disliked the checker under Pitlane and under Circuit, so r24 removes
@@ -138,11 +177,12 @@ object GsThemes {
     )
 
     /**
-     * Pitlane (2026-10-26, r23): the stock-car button style, provisional
-     * name — Robert names it finally, and a rename is a one-line name
-     * change (the id stays "pitlane"). Switch-panel language: squared
-     * 6dp corners, solid color blocking (topLight 0, no gradient, no
-     * shadow), and the thickest edge the kit can express — a full-alpha
+     * Pit Lane (2026-10-26, r23; display name corrected 2026-10-26, r26):
+     * the stock-car button style. Display name is "Pit Lane" (two words,
+     * Robert 2026-10-26 01:36); the id stays "pitlane" and stored values
+     * never move — a display-string change only. Switch-panel language:
+     * squared 6dp corners, solid color blocking (topLight 0, no gradient,
+     * no shadow), and the thickest edge the kit can express — a full-alpha
      * hairline stacked with a strong 1px bevel. ControlLook has no
      * border-width field, so there is no wider stroke to reach for; the
      * stacked hairline + bevel IS the thick border, and it is reported
@@ -150,22 +190,28 @@ object GsThemes {
      * expressible through ControlLook (it carries no typeface or weight
      * — the style changes controls, not typefaces, per instruction), so
      * the bold feeling comes from the thick edge + solid containers +
-     * pairing with the Pitlane color scheme's high-contrast carbon
+     * pairing with the Pit Lane color scheme's high-contrast carbon
      * black/white/red/yellow, not from heavier text. The face is flat,
      * so the hold marker is the DOT. r24: the checker strip on latched
-     * controls is REMOVED entirely (Robert disliked it under Pitlane and
+     * controls is REMOVED entirely (Robert disliked it under Pit Lane and
      * under Circuit) — no strip is drawn for any style, and
      * rectangularButtons (below) squares every capsule/round button and
-     * tile container under Pitlane; insetAlpha is 0 because Pitlane
-     * never had an inset shadow. The light
-     * variant keeps the same squared, thick-edged language on light
-     * surfaces (the style never forces carbon-black surfaces — colors
-     * come from the color scheme, so Pitlane-on-light reads squared and
-     * thick-edged over the light scheme's surfaces).
+     * tile container under Pit Lane; insetAlpha is 0 because Pit Lane
+     * never had an inset shadow. r26 (fidelity): the flat face gains
+     * material — carbon weave + brushed grain at low alpha under content
+     * (controls faint, panels stronger), the hard bevel now also draws
+     * on latched controls (it is the panel edge, not a selection cue),
+     * switches become bat toggles with recessed wells, latched controls
+     * gain a yellow LED dot beside their primary fill + bold, panel
+     * cards/sheets gain corner screws, and section headers go engraved.
+     * The light variant keeps the same squared, thick-edged language on
+     * light surfaces (the style never forces carbon-black surfaces —
+     * colors come from the color scheme, so Pit Lane-on-light reads
+     * squared and thick-edged over the light scheme's surfaces).
      */
     val Pitlane = GsTheme(
         id = "pitlane",
-        name = "Pitlane",
+        name = "Pit Lane",
         control = ControlLook(
             corner = 6.dp,
             topLight = 0f,
@@ -177,6 +223,13 @@ object GsThemes {
             containerAlpha = 1f,
             holdMarker = HoldMarkerStyle.DOT,
             rectangularButtons = true,
+            weaveAlpha = 0.05f,
+            grainAlpha = 0.03f,
+            rivets = true,
+            ledDot = true,
+            batToggle = true,
+            engravedHeader = true,
+            bevelOnLatched = true,
             light = ControlLook(
                 corner = 6.dp,
                 topLight = 0f,
@@ -188,6 +241,13 @@ object GsThemes {
                 containerAlpha = 1f,
                 holdMarker = HoldMarkerStyle.DOT,
                 rectangularButtons = true,
+                weaveAlpha = 0.04f,
+                grainAlpha = 0.025f,
+                rivets = true,
+                ledDot = true,
+                batToggle = true,
+                engravedHeader = true,
+                bevelOnLatched = true,
             ),
         ),
     )

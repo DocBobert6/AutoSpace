@@ -9,9 +9,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -48,6 +51,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.lerp
@@ -55,6 +59,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 
 /** What a control is for, which picks its colours from the Material scheme. */
@@ -110,6 +115,8 @@ fun Modifier.gsSurface(
     border: Color = Color.Unspecified,
     pressed: Boolean = false,
     latched: Boolean = false,
+    /** r26: a recessed well (switch track under Pit Lane) — inverted bevel + inner top shadow. */
+    well: Boolean = false,
 ): Modifier {
     val look = gsLook()
     val effContainer = if (look.containerAlpha < 1f) container.copy(alpha = container.alpha * look.containerAlpha) else container
@@ -161,6 +168,64 @@ fun Modifier.gsSurface(
         // style; ControlLook.checkerStrip is retired and reads false
         // everywhere. Selected controls read through their primary
         // fill and bold label alone.
+        // r26: Pit Lane material — carbon weave + brushed grain, built
+        // once per size (drawWithCache) and drawn UNDER content and
+        // borders, never over text. Twill suggestion: one diagonal per
+        // 8dp cell, direction alternating by (row + col) parity, even
+        // cells at full alpha, odd cells at 60% — the over-under read.
+        // Grain is horizontal 1px streaks every 3dp. Lines are white on
+        // dark faces, black on light ones. Faint on controls by design
+        // (weave 0.05 / grain 0.03 dark); panels draw it stronger via
+        // pitLanePanel. Suppressed wherever the container is transparent
+        // (this whole block is inside the alpha > 0 gate), and the LED,
+        // rivets, and borders all draw over it.
+        if (look.weaveAlpha > 0f || look.grainAlpha > 0f) {
+            val weave = look.weaveAlpha
+            val grain = look.grainAlpha
+            val thread = if (effContainer.luminance() > 0.5f) Color.Black else Color.White
+            m = m.drawWithCache {
+                val cell = 8.dp.toPx()
+                val even = Path()
+                val odd = Path()
+                var row = 0
+                var y = 0f
+                while (y < size.height + cell) {
+                    var col = 0
+                    var x = 0f
+                    while (x < size.width + cell) {
+                        if ((row + col) % 2 == 0) {
+                            even.moveTo(x, y + cell)
+                            even.lineTo(x + cell, y)
+                        } else {
+                            odd.moveTo(x, y)
+                            odd.lineTo(x + cell, y + cell)
+                        }
+                        col++
+                        x += cell
+                    }
+                    row++
+                    y += cell
+                }
+                val streaks = Path()
+                val step = 3.dp.toPx()
+                var sy = 0f
+                while (sy < size.height + step) {
+                    streaks.moveTo(0f, sy)
+                    streaks.lineTo(size.width, sy)
+                    sy += step
+                }
+                val weaveStroke = Stroke(width = 1.dp.toPx())
+                onDrawBehind {
+                    if (weave > 0f) {
+                        drawPath(even, thread.copy(alpha = weave), style = weaveStroke)
+                        drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
+                    }
+                    if (grain > 0f) {
+                        drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1f))
+                    }
+                }
+            }
+        }
         if (look.rimAlpha > 0f) {
             m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), shape)
         }
@@ -178,17 +243,56 @@ fun Modifier.gsSurface(
         if (LocalOledDark.current) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
         }
-        if (!latched && (look.bevelTop > 0f || look.bevelBottom > 0f)) {
-            m = m.border(
-                1.dp,
-                Brush.verticalGradient(
-                    0f to Color.White.copy(alpha = look.bevelTop),
-                    0.3f to Color.Transparent,
-                    0.7f to Color.Transparent,
-                    1f to Color.Black.copy(alpha = look.bevelBottom),
-                ),
-                shape,
-            )
+        // r26: the bevel is the panel edge. Raised (default): light top,
+        // dark bottom. A well (switch track under Pit Lane) inverts it —
+        // dark top, light bottom — so the track reads milled into the
+        // panel, plus a soft inner top shadow. Pit Lane draws its bevel
+        // on latched controls too (bevelOnLatched: the bevel is the panel
+        // edge, not a selection cue); other styles keep the old latched
+        // suppression, so their pressed-in read stays clean.
+        if ((!latched || look.bevelOnLatched || well) && (look.bevelTop > 0f || look.bevelBottom > 0f)) {
+            m = if (well) {
+                m.drawBehind {
+                    drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = 0.25f), 0.3f to Color.Transparent))
+                }.border(
+                    1.dp,
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = look.bevelBottom),
+                        0.3f to Color.Transparent,
+                        0.7f to Color.Transparent,
+                        1f to Color.White.copy(alpha = look.bevelTop),
+                    ),
+                    shape,
+                )
+            } else {
+                m.border(
+                    1.dp,
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = look.bevelTop),
+                        0.3f to Color.Transparent,
+                        0.7f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = look.bevelBottom),
+                    ),
+                    shape,
+                )
+            }
+        }
+        // r26: latched LED — a single lit yellow dot at the top-end
+        // corner, an ADDITION to the primary fill + bold label, never a
+        // replacement for it. One dot, no strip, no pattern: this is not
+        // a checker and nothing checker-like returns with it. Drawn over
+        // the texture and edge, clear of the centered content.
+        if (latched && look.ledDot) {
+            m = m.drawBehind {
+                val d = 6.dp.toPx()
+                val inset = 5.dp.toPx()
+                val cx = if (layoutDirection == LayoutDirection.Ltr) size.width - inset - d / 2 else inset + d / 2
+                val cy = inset + d / 2
+                val led = Color(0xFFFFD200)
+                drawCircle(led.copy(alpha = 0.30f), radius = d / 2 + 2.dp.toPx(), center = Offset(cx, cy))
+                drawCircle(led, radius = d / 2, center = Offset(cx, cy))
+                drawCircle(Color.Black.copy(alpha = 0.35f), radius = d / 2, center = Offset(cx, cy), style = Stroke(width = 1.dp.toPx()))
+            }
         }
     }
     if (border.isSpecified) m = m.border(BorderStroke(1.dp, border), shape)
@@ -349,6 +453,8 @@ fun GsIconBox(
     latched: Boolean = false,
     /** Also marks the control with the theme's hold marker, so the hold can be found. */
     onLongClick: (() -> Unit)? = null,
+    /** r26: recessed well (switch track under Pit Lane) — inverted bevel + inner top shadow. */
+    well: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface)
@@ -357,7 +463,7 @@ fun GsIconBox(
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed, latched),
+            .gsSurface(c.container, shape, c.border, pressed, latched, well),
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)
