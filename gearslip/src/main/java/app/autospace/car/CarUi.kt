@@ -184,6 +184,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.PITLANE -> pitlaneScheme()
         ColorScheme.CIRCUIT -> circuitScheme(dark)
         ColorScheme.HERITAGE -> heritageScheme(dark)
+        ColorScheme.VERVE -> verveScheme(dark)
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -1232,6 +1233,95 @@ private fun pitlaneScheme(): androidx.compose.material3.ColorScheme {
         inverseOnSurface = black,
         inversePrimary = androidx.compose.ui.graphics.Color(0xFFFF6B6B),
         scrim = black,
+    )
+}
+
+/**
+ * Verve (r48): the approved palette, mapped mechanically from
+ * [VervePalette] — dark ink #16121F with vivid violet / hot coral /
+ * sunny accents, light white with the deepened accents. One spec
+ * correction lives in the palette itself: dark primary #8B5CF6 with
+ * white text is 4.23:1, under the 4.5:1 selected-chip bar, so dark
+ * primary is #8347E8 (5.21:1) per the spec's darken-the-accent rule.
+ * Verve follows the mode control (light variant under Light/System-
+ * light) and is overridden to NIGHT by Auto night like every scheme;
+ * DarkModeType does not alter it (no Pitch variant — the kit's
+ * Pitch-gated hairline on controls still applies, as it does for
+ * every style under Pitch). Accents are for icons, selection and
+ * controls, never body text except via the paired on* colors.
+ */
+private fun verveScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+    val c = androidx.compose.ui.graphics.Color
+    return if (!dark) androidx.compose.material3.lightColorScheme(
+        primary = c(VervePalette.primaryLight),
+        onPrimary = c(VervePalette.onPrimaryLight),
+        primaryContainer = c(VervePalette.primaryContainerLight),
+        onPrimaryContainer = c(VervePalette.onPrimaryContainerLight),
+        secondary = c(VervePalette.secondaryLight),
+        onSecondary = c(VervePalette.onSecondaryLight),
+        secondaryContainer = c(VervePalette.secondaryContainerLight),
+        onSecondaryContainer = c(VervePalette.onSecondaryContainerLight),
+        tertiary = c(VervePalette.tertiaryLight),
+        onTertiary = c(VervePalette.onTertiaryLight),
+        tertiaryContainer = c(VervePalette.tertiaryContainerLight),
+        onTertiaryContainer = c(VervePalette.onTertiaryContainerLight),
+        error = c(0xFFBA1A1A),
+        onError = c(0xFFFFFFFF),
+        background = c(VervePalette.backgroundLight),
+        onBackground = c(VervePalette.onSurfaceLight),
+        surface = c(VervePalette.backgroundLight),
+        onSurface = c(VervePalette.onSurfaceLight),
+        surfaceVariant = c(VervePalette.surfaceVariantLight),
+        onSurfaceVariant = c(VervePalette.onSurfaceVariantLight),
+        outline = c(VervePalette.outlineLight),
+        outlineVariant = c(VervePalette.outlineVariantLight),
+        surfaceContainerLowest = c(VervePalette.backgroundLight),
+        surfaceContainerLow = c(0xFFF6F3FC),
+        surfaceContainer = c(0xFFEFEAF8),
+        surfaceContainerHigh = c(VervePalette.surfaceVariantLight),
+        surfaceContainerHighest = c(0xFFE2DCF0),
+        surfaceDim = c(0xFFD8D0E8),
+        surfaceBright = c(VervePalette.backgroundLight),
+        surfaceTint = c(VervePalette.primaryLight),
+        inverseSurface = c(VervePalette.onSurfaceLight),
+        inverseOnSurface = c(VervePalette.onSurfaceDark),
+        inversePrimary = c(VervePalette.primaryDark),
+        scrim = c(0xFF000000),
+    ) else androidx.compose.material3.darkColorScheme(
+        primary = c(VervePalette.primaryDark),
+        onPrimary = c(VervePalette.onPrimaryDark),
+        primaryContainer = c(VervePalette.primaryContainerDark),
+        onPrimaryContainer = c(VervePalette.onPrimaryContainerDark),
+        secondary = c(VervePalette.secondaryDark),
+        onSecondary = c(VervePalette.onSecondaryDark),
+        secondaryContainer = c(VervePalette.secondaryContainerDark),
+        onSecondaryContainer = c(VervePalette.onSecondaryContainerDark),
+        tertiary = c(VervePalette.tertiaryDark),
+        onTertiary = c(VervePalette.onTertiaryDark),
+        tertiaryContainer = c(VervePalette.tertiaryContainerDark),
+        onTertiaryContainer = c(VervePalette.onTertiaryContainerDark),
+        error = c(0xFFFF453A),
+        onError = c(0xFFFFFFFF),
+        background = c(VervePalette.backgroundDark),
+        onBackground = c(VervePalette.onSurfaceDark),
+        surface = c(VervePalette.backgroundDark),
+        onSurface = c(VervePalette.onSurfaceDark),
+        surfaceVariant = c(VervePalette.surfaceVariantDark),
+        onSurfaceVariant = c(VervePalette.onSurfaceVariantDark),
+        outline = c(VervePalette.outlineDark),
+        outlineVariant = c(VervePalette.outlineVariantDark),
+        surfaceContainerLowest = c(0xFF0D0A16),
+        surfaceContainerLow = c(VervePalette.backgroundDark),
+        surfaceContainer = c(0xFF1E1930),
+        surfaceContainerHigh = c(VervePalette.surfaceVariantDark),
+        surfaceContainerHighest = c(0xFF372E52),
+        surfaceDim = c(VervePalette.backgroundDark),
+        surfaceBright = c(0xFF2E2745),
+        surfaceTint = c(VervePalette.primaryDark),
+        inverseSurface = c(VervePalette.onSurfaceDark),
+        inverseOnSurface = c(VervePalette.onSurfaceLight),
+        inversePrimary = c(VervePalette.primaryLight),
+        scrim = c(0xFF000000),
     )
 }
 

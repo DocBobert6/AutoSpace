@@ -1,9 +1,14 @@
 package app.autospace.car.theme
 
 import android.os.SystemClock
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import app.autospace.notify.CarMotion
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -110,6 +115,28 @@ fun cardShapeForLook(rectangularButtons: Boolean, corner: Dp, fallback: Shape): 
     if (rectangularButtons) RoundedCornerShape(corner) else fallback
 
 /**
+ * r48: the look-fed shape rule behind the card surfaces ([GsGroupedCard],
+ * [GsPanelCard], [GsSheetSurface], the floating media card, widget cards,
+ * frosted map chrome): a rectangularButtons style (Pitlane) or a
+ * cardsUseStyleCorner style (Verve) takes its own corner; every other
+ * style keeps the fallback exactly. The 3-arg form above is unchanged
+ * (existing tests pin it); card call sites use this form.
+ */
+fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
+    if (look.rectangularButtons || look.cardsUseStyleCorner) RoundedCornerShape(look.corner) else fallback
+
+/**
+ * r48 (Verve motion): the state-change animation spec, pure so it is
+ * unit-testable. Parked: the approved spring (dampingRatio 0.7, medium
+ * stiffness) on press, toggle, morph and expand. Moving: an instant
+ * snap — no spring while driving. Never continuous or looping: this
+ * spec is only ever fed to state-change animations, and it is only
+ * used by looks with [ControlLook.springMotion] (Verve only).
+ */
+fun <T> stateChangeMotionSpec(moving: Boolean): AnimationSpec<T> =
+    if (moving) snap() else spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)
+
+/**
  * r32: texture reads once per surface. A control sitting on a Pitlane panel
  * (which already draws its own stronger weave + grain) skips its own
  * weave/grain — two independent 8dp grids at different phases compounded
@@ -163,10 +190,15 @@ fun Modifier.gsSurface(
     // The keycap's face sinks onto its base while pressed, and stays down while latched: the base
     // shrinks to nothing and the face moves down by the same amount, so the control's overall size
     // never changes.
-    val lipNow by animateDpAsState(if (down) 0.dp else look.lip, tween(if (pressed) 50 else 110), label = "keycap")
+    // r48: under a spring-motion style (Verve only) press animations
+    // use the state-change spec (spring parked, snap moving); every
+    // other style keeps its exact tween durations. The moving flag is
+    // read at the state change, which is when the decision matters.
+    val moving = CarMotion.moving
+    val lipNow by animateDpAsState(if (down) 0.dp else look.lip, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 110), label = "keycap")
     // Tactile: the drop shadow collapses and the face drops by [ControlLook.sink].
-    val lift by animateFloatAsState(if (down) 0f else 1f, tween(if (pressed) 50 else 140), label = "lift")
-    val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, tween(if (pressed) 50 else 140), label = "sink")
+    val lift by animateFloatAsState(if (down) 0f else 1f, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 140), label = "lift")
+    val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 140), label = "sink")
     var m = this
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
         m = m.drawBehind { drawSoftShadow(shape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }

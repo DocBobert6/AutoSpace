@@ -120,6 +120,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Tactile", style == "tactile") { PreviewSettings.setStyle(context, "tactile") }
                 RadioRow("Edge", style == "edge") { PreviewSettings.setStyle(context, "edge") }
                 RadioRow("Pitlane", style == "pitlane") { PreviewSettings.setStyle(context, "pitlane") }
+                RadioRow("Verve", style == "verve") { PreviewSettings.setStyle(context, "verve") }
             }
 
             SettingsSection("Preview colors") {
@@ -141,6 +142,9 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 }
                 RadioRow("Heritage", colours == ColorScheme.HERITAGE) {
                     PreviewSettings.setColours(context, ColorScheme.HERITAGE)
+                }
+                RadioRow("Verve", colours == ColorScheme.VERVE) {
+                    PreviewSettings.setColours(context, ColorScheme.VERVE)
                 }
             }
 

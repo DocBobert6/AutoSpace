@@ -141,14 +141,15 @@ val LocalOnPitlanePanel = compositionLocalOf { false }
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
- * under Pit Lane without any other style changing. */
+ * under Pit Lane without any other style changing. r48: Verve takes
+ * its own 24dp corner instead of the 20dp fallback. */
 @Composable
 fun GsGroupedCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val cardShape = gsButtonShape(GsKit.CardShape)
     val look = gsLook()
+    val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape),
@@ -168,14 +169,15 @@ fun GsGroupedCard(
  * A panel card in the kit's panel material: the tinted container colour at
  * the card radius, for cards sitting directly on the plain page background.
  * r29: same shape rule as [GsGroupedCard] (squared under Pit Lane only).
+ * r48: Verve takes its own 24dp corner, same as the grouped card.
  */
 @Composable
 fun GsPanelCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val cardShape = gsButtonShape(GsKit.CardShape)
     val look = gsLook()
+    val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape),
@@ -193,14 +195,14 @@ fun GsPanelCard(
 
 /** A bottom sheet in the kit's sheet material and shape. r29: the sheet
  * shape follows the same rule as the cards — squared under Pit Lane,
- * today's 28dp everywhere else. */
+ * today's 28dp everywhere else. r48: Verve takes its own 24dp corner. */
 @Composable
 fun GsSheetSurface(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val sheetShape = gsButtonShape(GsKit.SheetShape)
     val look = gsLook()
+    val sheetShape = cardShapeForLook(look, GsKit.SheetShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
         modifier = modifier.pitLanePanelBorder(sheetShape),

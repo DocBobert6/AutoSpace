@@ -114,6 +114,9 @@ fun BrightnessSheet() {
                     ThemeChoice("Circuit", scheme == ColorScheme.CIRCUIT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.CIRCUIT) }
                     ThemeChoice("Heritage", scheme == ColorScheme.HERITAGE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.HERITAGE) }
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChoice("Verve", scheme == ColorScheme.VERVE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.VERVE) }
+                }
                 Text("Appearance mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Light", appearanceMode == AppearanceMode.LIGHT, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.LIGHT) }

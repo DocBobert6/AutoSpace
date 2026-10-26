@@ -35,7 +35,8 @@ import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedPanelSurface
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconButton
-import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.gsShape
 import app.autospace.media.MediaArt
 import app.autospace.media.NowPlaying
@@ -221,7 +222,9 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scheme = MaterialTheme.colorScheme
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
-    val cardShape = gsButtonShape(GsKit.CardShape)
+    // r48: the card takes the style corner under Verve (24dp) via the
+    // look-fed card rule; every other style keeps its exact shape.
+    val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     // r46: the card reads the shared frosted panel surface — same shape,
     // elevation, fill, texture, border and Pitch hairline as before, now
     // shared with the frosted map chrome so the two cannot drift.

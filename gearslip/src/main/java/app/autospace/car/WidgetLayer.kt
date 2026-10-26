@@ -33,7 +33,8 @@ import app.autospace.car.theme.GsIconButton
 import kotlin.math.roundToInt
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.LocalOledDark
-import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelBorder
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.notify.CarNotification
@@ -308,7 +309,8 @@ internal fun WidgetColumn(
  */
 @Composable
 private fun WidgetCard(onClick: () -> Unit, content: @Composable () -> Unit) {
-    val cardShape = gsButtonShape(GsKit.CardShape)
+    // r48: Verve takes its own 24dp corner, same as the floating card.
+    val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     Card(
         modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape).clickable { onClick() },
         shape = cardShape,

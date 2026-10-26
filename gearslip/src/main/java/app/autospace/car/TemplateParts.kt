@@ -116,8 +116,12 @@ internal fun ChromeSurface(
     when (chromeSurfaceMode(frostedOn, frosted, LocalInsideFrostedChrome.current)) {
         ChromeSurfaceMode.PASSTHROUGH -> content()
         ChromeSurfaceMode.FROSTED -> CompositionLocalProvider(LocalInsideFrostedChrome provides true) {
+            // r48: the frosted branch routes through the look-fed card
+            // rule, so frosted map chrome takes the style corner under
+            // Verve (24dp) exactly as the floating card does; the
+            // opaque branch below keeps its call-site shape untouched.
             FrostedPanelSurface(
-                shape = gsButtonShape(shape),
+                shape = cardShapeForLook(gsLook(), shape),
                 elevation = shadowElevation,
                 modifier = modifier,
                 content = content,

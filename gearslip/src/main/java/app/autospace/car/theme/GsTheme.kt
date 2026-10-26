@@ -87,6 +87,23 @@ data class ControlLook(
      */
     val rectangularButtons: Boolean = false,
     /**
+     * r48 (Verve only): state-change animations (press sink/lift,
+     * toggle travel, morph) use [stateChangeMotionSpec] — the Verve
+     * spring when parked, an instant snap while moving — instead of
+     * the kit's fixed tweens. False everywhere else, so no other
+     * style's motion changes.
+     */
+    val springMotion: Boolean = false,
+    /**
+     * r48 (Verve only): card/sheet surfaces ([GsGroupedCard],
+     * [GsPanelCard], [GsSheetSurface], the floating media card, widget
+     * cards, frosted map chrome) take the style's corner instead of
+     * their fallback radius, via the look-fed [cardShapeForLook].
+     * False everywhere else; buttons, tiles, keys, pills and bars keep
+     * their fallback shapes under every style.
+     */
+    val cardsUseStyleCorner: Boolean = false,
+    /**
      * r26 (Pit Lane only): carbon-fiber weave line alpha on control faces,
      * drawn with Canvas at low alpha under content and borders. 0 for none.
      * Panel cards (GsGroupedCard/GsPanelCard/GsSheetSurface) draw the same
@@ -335,6 +352,52 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Verve (2026-10-26, r48; name decided 2026-10-26 ~06:07 over
+     * Bloom/Bounce): Material 3 Expressive influence as its OWN pair,
+     * never Google's naming in-app (no "Material", no "Expressive").
+     * The button style: a clearly rounder corner than Frost's 12dp —
+     * 24dp, not full pills — with a soft shadow and a light top edge,
+     * and the DOT hold marker (the face is not raised enough for the
+     * peel). r48 motion: springMotion (spring parked, snap moving)
+     * and cardsUseStyleCorner (cards/sheets take the 24dp corner).
+     * The color scheme lives in [app.autospace.car.ColorScheme.VERVE]
+     * (palette tokens in VervePalette); style and scheme are
+     * independently selectable, as with every other pair.
+     */
+    val Verve = GsTheme(
+        id = "verve",
+        name = "Verve",
+        control = ControlLook(
+            corner = 24.dp,
+            topLight = 0.05f,
+            rimAlpha = 0.20f,
+            hairlineAlpha = 0.30f,
+            shadow = 4.dp,
+            shadowAlpha = 0.28f,
+            pressedDim = 0.16f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            springMotion = true,
+            cardsUseStyleCorner = true,
+            light = ControlLook(
+                corner = 24.dp,
+                topLight = 0.04f,
+                rimAlpha = 0.20f,
+                hairlineAlpha = 0.30f,
+                shadow = 4.dp,
+                shadowAlpha = 0.22f,
+                pressedDim = 0.12f,
+                pressedScale = 0.98f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+                springMotion = true,
+                cardsUseStyleCorner = true,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -346,7 +409,9 @@ object GsThemes {
     // Classic = Flat / Tactile / Edge, kept unchanged for existing users.
     // r23: Pitlane appended last, so existing users' stored styles are
     // untouched and nobody moves to it automatically.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane)
+    // r48: Verve appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.unit.dp
+import app.autospace.notify.CarMotion
 
 /**
  * An on/off switch in the current theme's finish: the track is pressed in while on, the knob is
@@ -36,13 +38,33 @@ fun GsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
     val scheme = MaterialTheme.colorScheme
     val knob = 26.dp
     val travel = 64.dp - knob - 8.dp
-    val x by animateDpAsState(if (checked) travel else 0.dp, tween(140), label = "switch")
     val look = gsLook()
+    // r48: under a spring-motion style (Verve only) the knob travel
+    // uses the state-change spec (spring parked, snap moving); every
+    // other style keeps the exact 140ms tween.
+    val x by animateDpAsState(
+        if (checked) travel else 0.dp,
+        if (look.springMotion) stateChangeMotionSpec(CarMotion.moving) else tween(140),
+        label = "switch",
+    )
+    // r48: Verve morph — the track rounds from half-corner (off) to
+    // the full style corner (on) on the same motion spec, so shape, not
+    // just color, changes with state. Morph endpoints follow the style
+    // corner, so a square style would morph between square endpoints;
+    // every other style keeps the pill track exactly.
+    val trackShape = if (look.springMotion) {
+        val corner by animateDpAsState(
+            if (checked) look.corner else look.corner * 0.5f,
+            stateChangeMotionSpec(CarMotion.moving),
+            label = "verve-track-morph",
+        )
+        RoundedCornerShape(corner)
+    } else gsButtonShape(CircleShape)
     GsIconBox(
         onClick = { onCheckedChange(!checked) },
         modifier = modifier.size(width = 64.dp, height = 36.dp),
         colors = if (checked) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
-        shape = gsButtonShape(CircleShape),
+        shape = trackShape,
         latched = checked,
         well = look.batToggle,
     ) {
