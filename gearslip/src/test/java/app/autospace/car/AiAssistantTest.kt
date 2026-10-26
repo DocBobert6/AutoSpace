@@ -356,7 +356,9 @@ class AiAssistantTest {
         assertTrue(body.contains("Web search results:"))
         assertTrue(body.contains("Sunny, 72 degrees."))
         assertTrue(body.contains("User question: what is the weather in dry ridge"))
-        assertFalse(body.contains("browser_search"))
+        // The word browser_search legitimately appears: the system prompt's action
+        // schema names it. What must be absent is a tools FIELD on the request.
+        assertTrue(body.contains("browser_search"))
         assertFalse(body.contains("\"tools\""))
         assertTrue(body.contains("\"max_completion_tokens\":300"))
         val plain = GroqClient.buildAnswerRequestBody("tell me a joke", null)
