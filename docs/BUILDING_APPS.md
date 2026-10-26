@@ -1,3 +1,8 @@
+> **Fork note:** this document was written for Gearslip, the project AutoSpace forked
+> from. Its protocol content applies to AutoSpace (package `app.autospace`, which declares
+> `android.car.permission.TEMPLATE_RENDERER`). Where it says "Gearslip", read "AutoSpace",
+> except where it names upstream history.
+
 # Building apps for Gearslip
 
 Gearslip renders four kinds of app on a car screen. This page specifies all four.

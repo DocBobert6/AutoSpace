@@ -1,13 +1,23 @@
 # Cars
 
-Drivers who share usage notes tell us which cars Gearslip works in. This list comes from
-those notes, and from our own testing. A car shows up here once Gearslip has reached its
-screen at least once.
+## Tested with AutoSpace
+
+The fork is tested in a 2019 Nissan Altima, which works with AutoSpace.
+
+| Car | Year | Head unit |
+|---|---|---|
+| Nissan Altima | 2019 | — |
+
+## Reported for upstream Gearslip
+
+The table below is upstream-era data: cars reported working with
+Gearslip, the project AutoSpace forked from. It has NOT been
+re-verified car by car for AutoSpace, whose protocol code is inherited
+from Gearslip. Treat it as the best available compatibility signal,
+not as fork-verified fact.
 
 The year is the one the car reports. Some cars report the year of the head unit instead,
 and some don't say.
-
-## Works
 
 | Car | Year | Head unit |
 |---|---|---|
@@ -32,7 +42,7 @@ and some don't say.
 | Wuling | 2021 | Desay SV |
 | [LIVI](https://github.com/f-io/LIVI), the open-source head unit | | |
 
-## Not working yet
+## Not working yet (upstream reports)
 
 | Car | Year | What happens |
 |---|---|---|
@@ -40,10 +50,14 @@ and some don't say.
 | Honda | 2019 | The connection drops before Gearslip reaches the screen. |
 | Mitsubishi Attrage | 2020 | The connection drops before Gearslip reaches the screen. |
 
-Some cars reject Gearslip's certificate before they say what they are, so they can't appear
+Some cars reject the host's certificate before they say what they are, so they can't appear
 here by name. Most of these are from around 2020 or later.
 
 ## Add your car
 
-Turn on usage notes in Gearslip's setup or Settings, and drive once. If your car is missing
-or listed wrongly, open an issue.
+AutoSpace has no usage-notes pipeline — the feature that fed the old list
+was removed from the fork — so new entries come from issue reports, not
+from notes. Open an issue with your car's make, model, and year, whether
+the head unit is original, and the log from the drive (phone app:
+Settings, then Logs, then Share log). If your car is missing or listed
+wrongly, open an issue.
