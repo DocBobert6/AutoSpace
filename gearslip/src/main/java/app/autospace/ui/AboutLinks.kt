@@ -31,7 +31,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 
-/** Where AutoSpace lives outside the app: support, the chat room, and the code. */
+/** Where AutoSpace lives outside the app: the code, and the project it forked from. */
 internal object GearslipLinks {
     const val BUY_ME_A_COFFEE = "https://buymeacoffee.com/seb3thehacker"
     const val LIBERAPAY = "https://liberapay.com/Seb3thehacker"
@@ -41,7 +41,8 @@ internal object GearslipLinks {
     const val MONERO = "44gTVxQJY3cirBJ41J5i1bPUVnSkTMhn9esSp1kg9MHwJ3TUz8tkkigUTKwiok5zA5RZvNxyM4pqkAfPs79pPLfaNG21pCn"
     const val MATRIX = "https://matrix.to/#/!mf0_mgBd5KqKpc9FfX_wHp1jFCcwAtPrndIn_oGIyMk?via=matrix.org"
     const val SOURCE = "https://github.com/DocBobert6/AutoSpace"
-    const val CARS = "$SOURCE/blob/main/CARS.md"
+    /** Upstream Gearslip, credited in About; the CARS.md link lived here until 2026-10-25. */
+    const val UPSTREAM = "https://github.com/twinksoftware/Gearslip"
 
     fun open(context: Context, url: String) {
         runCatching {
@@ -92,6 +93,30 @@ internal fun AboutLinkRows() {
         subtitle = "Read or change AutoSpace's code under the AGPL",
         icon = Icons.Filled.Build,
         trailing = arrow,
+    )
+    SettingsDivider()
+    // Credits audit (2026-10-25): the fork credit was only in
+    // repo docs, never in the app itself. This row names the
+    // upstream project and its licence where a driver can see it.
+    SettingsRow(
+        "Based on Gearslip",
+        Modifier.clickable { GearslipLinks.open(context, GearslipLinks.UPSTREAM) },
+        subtitle = "AutoSpace is a fork of Gearslip by Twink Software LLC, licensed under the AGPL-3.0",
+        icon = Icons.Filled.Build,
+        trailing = arrow,
+    )
+    SettingsDivider()
+    // Grouped, as individual rows for every library would be noise:
+    // Media3 (player), AndroidX including Compose Material 3 and
+    // the car-app libraries, and Google's Material components —
+    // all Apache 2.0. The vendored sherpa-onnx bindings in
+    // com/k2fsa/sherpa/onnx are part of sherpa-onnx, credited in
+    // the Voice credits row below.
+    SettingsRow(
+        "Open-source libraries",
+        subtitle = "Media3, AndroidX (including Compose Material 3 and the car-app libraries) " +
+            "and Google Material components, all Apache 2.0",
+        icon = Icons.Filled.Build,
     )
     SettingsDivider()
     SettingsRow(

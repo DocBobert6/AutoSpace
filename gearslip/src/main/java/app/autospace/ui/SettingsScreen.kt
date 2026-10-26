@@ -54,8 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -69,9 +67,6 @@ import app.autospace.notify.TestMessage
 import app.autospace.car.CarSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,18 +81,8 @@ fun SettingsScreen(
     onOpenLogs: () -> Unit,
     onReplayTutorial: () -> Unit,
     onReplayIntro: () -> Unit,
-    atUsageNotes: Boolean = false,
 ) {
     val scroll = rememberScrollState()
-    // Opened from Home's "it worked" card: start at usage notes.
-    var usageNotesY by remember { mutableIntStateOf(-1) }
-    if (atUsageNotes) {
-        LaunchedEffect(Unit) {
-            val y = snapshotFlow { usageNotesY }.first { it >= 0 }
-            snapshotFlow { scroll.maxValue }.first { it > 0 && it < Int.MAX_VALUE }
-            scroll.scrollTo(y)
-        }
-    }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -133,11 +118,10 @@ fun SettingsScreen(
             // voice model, so it gets its own section rather than joining the above.
             CallSpeakerSection()
             if (SHOW_RECOMMENDED_APPS) AppsSection(onOpenRecommendedApps)
-            SettingsSection(
-                "Usage notes",
-                Modifier.onGloballyPositioned { usageNotesY = it.positionInParent().y.toInt() },
-                header = USAGE_STATS_INTRO,
-            ) { UsageStatsRows() }
+            // Usage notes were removed (2026-10-25): there is no
+            // stats server, the notes go nowhere, and the section
+            // had already shrunk to an informational note. The
+            // backend stays, so the removal is reversible.
             SettingsSection("Updates") { UpdateRow() }
             CertificateSection()
             AboutSection(onOpenWhatsNew, onReplayTutorial, onReplayIntro)
@@ -219,7 +203,7 @@ private fun HelpSection(
         SettingsRow(
             "Connection help",
             Modifier.clickable(onClick = onOpenHelp),
-            subtitle = "Which cars work, and what to set up first",
+            subtitle = "What to set up first",
             icon = Icons.Filled.Info,
             trailing = { Arrow() },
         )

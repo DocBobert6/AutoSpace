@@ -107,7 +107,7 @@ object Intro {
     private const val KEY_SEEN = "seen_release"
     private const val KEY_STEP = "step"
 
-    /** "0.3" from "0.3.00-alpha": the intro belongs to a release, not to each patch. */
+    /** "0.3" from "0.3.01-alpha": the intro belongs to a release, not to each patch. */
     val release: String = BuildConfig.VERSION_NAME.split('.').take(2).joinToString(".")
 
     /**
@@ -232,10 +232,11 @@ fun IntroScreen(onDone: () -> Unit) {
             // so. The Liberapay action is removed with it (B5/R1):
             // this fork has no donation recipient configured, and
             // must not solicit donations for the upstream author.
+            // "Which cars work" was removed (2026-10-25) with the
+            // rest of that section, so the thanks no longer promises
+            // a confirmed-cars list or links to one.
             IntroStep.THANKS -> BadgeStep(c, ::cq, ::cqSp, c.tertiaryC, "Thank you.",
-                "Thank you for trying AutoSpace. The list below shows which cars are " +
-                    "confirmed to work so far — if yours works, that's one more confirmed.", step,
-                action = "See which cars work" to { GearslipLinks.open(context, GearslipLinks.CARS) },
+                "Thank you for trying AutoSpace.", step,
                 outlined = true,
             ) { HeartIcon(c.onTertiaryC) }
             IntroStep.APPS -> BadgeStep(c, ::cq, ::cqSp, c.secondaryC, "Good company.",

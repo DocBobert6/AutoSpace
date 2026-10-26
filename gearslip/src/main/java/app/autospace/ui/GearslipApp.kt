@@ -37,9 +37,8 @@ import app.autospace.AppSettings
 import app.autospace.BuildConfig
 import app.autospace.CertProvider
 import app.autospace.car.TestMode
-import app.autospace.stats.UsageStats
 
-private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, USAGE_NOTES, HELP, WHATS_NEW, RECOMMENDED_APPS }
+private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, RECOMMENDED_APPS }
 
 /** Three screens and a back stack of depth one: no navigation library needed. */
 @Composable
@@ -50,12 +49,13 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
     }
     val needsSetupGuide = remember { !AppSettings.hasSeenPermissionsSetup(context) }
     // Where launch goes once the intro (if any) is done.
+    // (Usage notes were removed 2026-10-25, so the old
+    // "show the notes page once to pre-notes installs" branch is
+    // gone with them; launch goes straight home.)
     val afterIntro = remember {
         when {
             needsCertSetup -> Screen.CERT_SETUP
             needsSetupGuide -> Screen.SETUP_GUIDE
-            // Set up before usage notes existed: ask once, on the setup guide's own page.
-            !UsageStats.asked(context) -> Screen.USAGE_NOTES
             else -> Screen.HOME
         }
     }
@@ -65,8 +65,6 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
     val testMode by TestMode.active.collectAsState()
     // A replay from About goes back to Settings; the launch one carries on into setup.
     var introReturn by rememberSaveable { mutableStateOf(afterIntro) }
-    // Home's "it worked" card opens Settings at usage notes rather than at the top.
-    var settingsAtUsageNotes by rememberSaveable { mutableStateOf(false) }
     // What's new and Connection help open from Home and from Settings; back returns to whichever.
     var backTo by rememberSaveable { mutableStateOf(Screen.SETTINGS) }
     BackHandler(enabled = screen != Screen.HOME && screen != Screen.INTRO) {
@@ -118,25 +116,22 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
             when (screen) {
                 Screen.INTRO -> IntroScreen(onDone = { screen = introReturn })
                 Screen.HOME -> HomeScreen(
-                    onOpenSettings = { settingsAtUsageNotes = false; screen = Screen.SETTINGS },
+                    onOpenSettings = { screen = Screen.SETTINGS },
                     onOpenWhatsNew = { backTo = Screen.HOME; screen = Screen.WHATS_NEW },
-                    onOpenHelp = { backTo = Screen.HOME; screen = Screen.HELP },
-                    onOpenUsageNotes = { settingsAtUsageNotes = true; screen = Screen.SETTINGS },
                     onDisconnect = onDisconnect,
                 )
                 Screen.WHATS_NEW -> WhatsNewScreen(onBack = { screen = backTo })
                 Screen.LOGS -> LogsScreen(onBack = { screen = Screen.SETTINGS })
                 Screen.SETTINGS -> SettingsScreen(
                     onBack = { screen = Screen.HOME },
-                    onOpenRecommendedApps = { settingsAtUsageNotes = false; screen = Screen.RECOMMENDED_APPS },
-                    onOpenWhatsNew = { settingsAtUsageNotes = false; backTo = Screen.SETTINGS; screen = Screen.WHATS_NEW },
-                    onOpenHelp = { settingsAtUsageNotes = false; backTo = Screen.SETTINGS; screen = Screen.HELP },
-                    onOpenCarPreview = { settingsAtUsageNotes = false; screen = Screen.CAR_PREVIEW },
-                    onOpenCarPreviewSettings = { settingsAtUsageNotes = false; screen = Screen.CAR_PREVIEW_SETTINGS },
-                    onOpenLogs = { settingsAtUsageNotes = false; screen = Screen.LOGS },
+                    onOpenRecommendedApps = { screen = Screen.RECOMMENDED_APPS },
+                    onOpenWhatsNew = { backTo = Screen.SETTINGS; screen = Screen.WHATS_NEW },
+                    onOpenHelp = { backTo = Screen.SETTINGS; screen = Screen.HELP },
+                    onOpenCarPreview = { screen = Screen.CAR_PREVIEW },
+                    onOpenCarPreviewSettings = { screen = Screen.CAR_PREVIEW_SETTINGS },
+                    onOpenLogs = { screen = Screen.LOGS },
                     onReplayTutorial = { screen = Screen.SETUP_GUIDE },
                     onReplayIntro = { Intro.replay(context); introReturn = Screen.SETTINGS; screen = Screen.INTRO },
-                    atUsageNotes = settingsAtUsageNotes,
                 )
                 Screen.RECOMMENDED_APPS -> RecommendedAppsScreen(onBack = { screen = Screen.SETTINGS })
                 Screen.CAR_PREVIEW -> CarPreviewScreen(
@@ -159,11 +154,6 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
                 Screen.SETUP_GUIDE -> SetupGuideScreen(
                     onRequestCallScreening = onRequestCallScreening,
                     onDone = { screen = Screen.HOME },
-                )
-                Screen.USAGE_NOTES -> SetupGuideScreen(
-                    onRequestCallScreening = onRequestCallScreening,
-                    onDone = { screen = Screen.HOME },
-                    onlyUsageNotes = true,
                 )
             }
         }

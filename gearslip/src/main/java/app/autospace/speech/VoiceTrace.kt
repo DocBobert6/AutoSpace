@@ -77,7 +77,7 @@ object VoiceTrace {
      * push that forgets to bump it fails CI instead of shipping an
      * ambiguous trace. NEVER reuse a tag value across pushes.
      */
-    const val BUILD_TAG = "r10"
+    const val BUILD_TAG = "r11"
 
     private const val PREFS = "voice_trace"
     private const val KEY_ARMED = "armed"
@@ -85,7 +85,10 @@ object VoiceTrace {
     private const val MAX_LINES = 8000
     private const val RELATIVE_PATH = "Download/AutoSpace"
 
-    @Volatile private var capturing = false
+    // Single source of truth for "a window is recording": the flow
+    // itself (thread-safe, and what the phone/car buttons collect).
+    // A separate Boolean var with the same name used to sit here and
+    // failed CI with conflicting declarations — do not re-add it.
     private val capturingFlow = MutableStateFlow(false)
     val capturing: StateFlow<Boolean> = capturingFlow.asStateFlow()
     private var pendingExport: Runnable? = null
@@ -139,7 +142,7 @@ object VoiceTrace {
      */
     fun beginIfArmed(context: Context) {
         val appCtx = context.applicationContext
-        if (!isArmed(appCtx) || capturing) return
+        if (!isArmed(appCtx) || capturingFlow.value) return
         beginCapture(appCtx, windowMs(appCtx), fromLaunch = true)
     }
 
@@ -151,21 +154,20 @@ object VoiceTrace {
      */
     fun startNow(context: Context) {
         val appCtx = context.applicationContext
-        if (capturing) return
+        if (capturingFlow.value) return
         beginCapture(appCtx, windowMs(appCtx), fromLaunch = false)
     }
 
     /** Ends the window early and exports immediately; a no-op when not capturing. */
     fun stopAndExportNow() {
         val pending = pendingExport ?: return
-        if (!capturing) return
+        if (!capturingFlow.value) return
         main.removeCallbacks(pending)
         pendingExport = null
         export()
     }
 
     private fun beginCapture(appCtx: Context, window: Long, fromLaunch: Boolean) {
-        capturing = true
         capturingFlow.value = true
         app = appCtx
         synchronized(lines) { lines.clear() }
@@ -230,7 +232,6 @@ object VoiceTrace {
     private fun export() {
         val ctx = app ?: return
         runCatching { GearslipLog.removeSink(sink) }
-        capturing = false
         capturingFlow.value = false
         pendingExport = null
         disarm(ctx)

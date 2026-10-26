@@ -7,7 +7,9 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import app.autospace.GearslipLog
+import app.autospace.car.CarEnvironment
 import app.autospace.car.CarSettings
+import app.autospace.car.TestMode
 import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
@@ -224,8 +226,12 @@ object HotwordListener {
                 // loop is running under a simulated session only — no
                 // real session, no preview — say so once, so a log
                 // line can never be mistaken for a real car session.
-                if (app.autospace.car.TestMode.active.value &&
-                    !app.autospace.car.CarEnvironment.isRunning &&
+                // (Simple names, not app.autospace.car.…: this
+                // function's Context parameter is named `app`, and it
+                // shadows the package qualifier — the qualified form
+                // failed CI with "Unresolved reference 'autospace'".)
+                if (TestMode.active.value &&
+                    !CarEnvironment.isRunning &&
                     !testModeAnnounced
                 ) {
                     testModeAnnounced = true

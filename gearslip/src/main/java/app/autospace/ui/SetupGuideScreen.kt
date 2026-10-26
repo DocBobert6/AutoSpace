@@ -93,8 +93,6 @@ import app.autospace.call.CarCalls
 import app.autospace.car.Prefetch
 import app.autospace.host.AndroidAuto
 import app.autospace.notify.GearslipNotificationListener
-import app.autospace.stats.UsageStats
-import androidx.compose.runtime.DisposableEffect
 
 /**
  * One page of the guide. [permissions] drives a system permission dialog; [command] is an adb
@@ -150,22 +148,6 @@ private fun hasNotificationAccess(context: Context): Boolean {
     val component = ComponentName(context, GearslipNotificationListener::class.java)
     return runCatching { manager.isNotificationListenerAccessGranted(component) }.getOrDefault(false)
 }
-
-/**
- * The usage notes question: the setup guide's last page, and on its own the one screen people
- * who set up before the notes existed see once. Leaving it without turning them on is a no.
- */
-private fun usageNotesPage(context: Context) = GuidePage(
-    title = "Help other drivers.",
-    explanation = USAGE_STATS_INTRO,
-    icon = { HeartIcon(it) },
-    content = {
-        UsageStatsChoices()
-        DisposableEffect(Unit) {
-            onDispose { if (!UsageStats.asked(context)) UsageStats.set(context, false) }
-        }
-    },
-)
 
 private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<GuidePage> = buildList {
     // --- Safety: always first, and never skipped by an already-granted check ---------
@@ -471,9 +453,9 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         )
     }
 
-    // --- The very end, every time: usage notes. On a replay, the switch shows what was
-    // chosen before.
-    add(usageNotesPage(context))
+    // Usage notes were the last page here until 2026-10-25;
+    // removed with the rest of the notes surface (no stats server,
+    // notes go nowhere). The backend stays, so it is reversible.
 }
 
 /**
@@ -572,9 +554,9 @@ private fun AudioCard(title: String, tag: String?, body: String, selected: Boole
  * driver takes on trust, with "Skip" sitting right next to it.
  */
 @Composable
-fun SetupGuideScreen(onRequestCallScreening: () -> Unit, onDone: () -> Unit, onlyUsageNotes: Boolean = false) {
+fun SetupGuideScreen(onRequestCallScreening: () -> Unit, onDone: () -> Unit) {
     val context = LocalContext.current
-    val allPages = remember { if (onlyUsageNotes) listOf(usageNotesPage(context)) else pages(context, onRequestCallScreening) }
+    val allPages = remember { pages(context, onRequestCallScreening) }
     // The USB-only pages all come after the car audio page, so dropping them never moves the
     // page the driver is on.
     val usbAudio by CarSettings.pipeAudio.collectAsState()

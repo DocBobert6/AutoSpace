@@ -27,7 +27,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
@@ -54,7 +53,6 @@ import app.autospace.stats.WorkedPrompt
 fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenWhatsNew: () -> Unit,
-    onOpenHelp: () -> Unit,
     onOpenUsageNotes: () -> Unit,
     onDisconnect: () -> Unit,
 ) {
@@ -106,12 +104,11 @@ fun HomeScreen(
                     StatusCard(status)
                     if (live) BluetoothMissingCard()
                     VoiceDownloadCard()
-                    // The first drive that worked asks once to share it, right under the result.
-                    val car = workedCar
-                    if (car != null && !live) {
-                        Spacer(Modifier.height(16.dp))
-                        WorkedCard(car, onSeeWhatsSent = onOpenUsageNotes)
-                    }
+                    // The "it worked, share it" card was removed with
+                    // usage notes (2026-10-25): with no stats server
+                    // its Share button was already hidden, so the card
+                    // asked for nothing actionable. The WorkedPrompt
+                    // backend stays, so the removal is reversible.
                     Spacer(Modifier.height(16.dp))
                     UpdateCard()
                 }
@@ -123,14 +120,6 @@ fun HomeScreen(
                             "What's new in ${Intro.release}",
                             Modifier.clickable(onClick = onOpenWhatsNew),
                             icon = Icons.Filled.Star,
-                            trailing = { Arrow() },
-                        )
-                        SettingsDivider()
-                        SettingsRow(
-                            "Which cars work",
-                            Modifier.clickable(onClick = onOpenHelp),
-                            subtitle = "Most do. See which ones, and what to set up first",
-                            icon = Icons.Filled.Info,
                             trailing = { Arrow() },
                         )
                     }

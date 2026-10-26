@@ -28,7 +28,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -92,13 +91,12 @@ private val USB_AUDIO = listOf(
     ),
 )
 
-/** Which cars work, and the setup the one-time guide walks through, to reread at any time. */
+/** The setup the one-time guide walks through, to reread at any time. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelpScreen(onBack: () -> Unit, onRequestCallScreening: () -> Unit) {
     val car = remember(onRequestCallScreening) { inTheCar(onRequestCallScreening) }
     val usb by CarSettings.pipeAudio.collectAsState()
-    val context = LocalContext.current
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -122,18 +120,11 @@ fun HelpScreen(onBack: () -> Unit, onRequestCallScreening: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Spacer(Modifier.height(0.dp))
-            SettingsSection("Which cars work") {
-                Text(
-                    "Most cars work. Starting around 2020, some cars added newer security " +
-                        "standards that reject AutoSpace's certificate, and AutoSpace can't run in those cars.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
-                )
-                FilledTonalButton(
-                    onClick = { GearslipLinks.open(context, GearslipLinks.CARS) },
-                    modifier = Modifier.padding(16.dp),
-                ) { Text("See the full list") }
-            }
+            // "Which cars work" was removed (2026-10-25): the list it
+            // linked to is a repo document, not phone UI, and the
+            // section's one claim ("most cars work") is not something
+            // this app can verify per car. The setup steps below stay
+            // — they are the screen's other purpose.
             Steps("Before your first drive", FIRST_DRIVE)
             Steps("In the car", car)
             if (usb) Steps("USB audio", USB_AUDIO)
