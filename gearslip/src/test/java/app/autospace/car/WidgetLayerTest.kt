@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import androidx.car.app.model.Action
+import androidx.car.app.model.ActionStrip
 import androidx.car.app.model.Distance
 import androidx.car.app.model.ItemList
 import androidx.car.app.model.ListTemplate
@@ -170,6 +171,12 @@ class WidgetLayerTest {
         .setCurrentStep(testStep(), Distance.create(500.0, Distance.UNIT_METERS))
         .build()
 
+    // NavigationTemplate.Builder.build() throws unless an ActionStrip is
+    // set — the strip is incidental here (the predicate never reads it).
+    private fun testActionStrip() = ActionStrip.Builder()
+        .addAction(Action.Builder().setTitle("Stop").setOnClickListener {}.build())
+        .build()
+
     @Test
     fun navTemplateAllowsBareMapAndBareNavigation() {
         // No template at all: the map is bare, the column's corner is free.
@@ -177,12 +184,18 @@ class WidgetLayerTest {
         assertTrue(navTemplateAllowsWidgets(null, true))
         // A navigation template with no navigation info draws no turn card
         // (only top-end controls), so the column stays.
-        assertTrue(navTemplateAllowsWidgets(NavigationTemplate.Builder().build(), false))
+        assertTrue(
+            navTemplateAllowsWidgets(
+                NavigationTemplate.Builder().setActionStrip(testActionStrip()).build(),
+                false,
+            ),
+        )
     }
 
     @Test
     fun navTemplateHidesForTurnCardUnlessPanning() {
         val withStep = NavigationTemplate.Builder()
+            .setActionStrip(testActionStrip())
             .setNavigationInfo(testRoutingWithStep()).build()
         assertFalse(navTemplateAllowsWidgets(withStep, false))
         // Pan mode hides the turn card (and the panel container), so the
@@ -190,6 +203,7 @@ class WidgetLayerTest {
         assertTrue(navTemplateAllowsWidgets(withStep, true))
 
         val loading = NavigationTemplate.Builder()
+            .setActionStrip(testActionStrip())
             .setNavigationInfo(RoutingInfo.Builder().setLoading(true).build()).build()
         assertFalse(navTemplateAllowsWidgets(loading, false))
         assertTrue(navTemplateAllowsWidgets(loading, true))
@@ -221,9 +235,11 @@ class WidgetLayerTest {
             ),
         )
         // Place lists: browsable rows are exempt from the DistanceSpan
-        // requirement the builders otherwise enforce on place rows, so a
-        // plain-title row builds here.
-        val placeRow = Row.Builder().setTitle("Gas").setBrowsable(true).build()
+        // requirement the builders otherwise enforce on place rows — but a
+        // browsable row must still carry an OnClickListener, or its own
+        // build() throws.
+        val placeRow = Row.Builder().setTitle("Gas").setBrowsable(true)
+            .setOnClickListener {}.build()
         val placeList = ItemList.Builder().addItem(placeRow).build()
         assertFalse(
             navTemplateAllowsWidgets(
