@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsIconButton
+import kotlin.math.roundToInt
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.gsButtonShape
@@ -74,10 +75,14 @@ fun shouldShowWidgetColumn(
 /**
  * Column width: ~30% of the frame, capped at 280dp (proposal §3) and floored
  * at 200dp so content still fits, never wider than the frame minus its
- * 12dp side margins. Pure so it is unit-testable.
+ * 12dp side margins. Rounded to whole dp: a raw 0.30f product is not exact
+ * (800dp * 0.30f lands at 240.00002dp, which fails exact equality and sits
+ * on a subpixel boundary — the r30 whole-dp lesson, applied here first).
+ * Pure so it is unit-testable.
  */
 fun widgetColumnWidth(frameWidth: Dp): Dp =
-    (frameWidth * 0.30f).coerceIn(200.dp, 280.dp).coerceAtMost(frameWidth - 24.dp)
+    (frameWidth.value * 0.30f).roundToInt().dp.coerceIn(200.dp, 280.dp)
+        .coerceAtMost(frameWidth - 24.dp)
 
 /** Below this frame width the column is narrow-frame territory. */
 const val WIDGET_NARROW_WIDTH_DP = 320f
