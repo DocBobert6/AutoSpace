@@ -748,6 +748,22 @@ private fun LetterKey(
                                 if (outcome == KeyPressOutcome.TAP) onLetter()
                                 break
                             }
+                            // r52: claim this press's moves so no scrollable
+                            // ancestor (notably the launcher's LazyVerticalGrid)
+                            // can steal a glide as a scroll: the grid grabs any
+                            // unconsumed move past touch slop, scrolls the
+                            // keyboard item off-screen, and cancels the press
+                            // before lift ever classifies it. Consuming moves
+                            // changes nothing this loop reads (positions, not
+                            // consumption), so taps, flicks, long-press, and
+                            // glide bookkeeping behave exactly as before. The
+                            // down itself is never consumed, and the lift is
+                            // left unconsumed so its isConsumed check still
+                            // reports only other detectors. A scroll starting
+                            // on a key no longer scrolls the parent while the
+                            // keyboard is open; the grid above still scrolls
+                            // from touches starting on it.
+                            change.consume()
                             val dy = change.position.y - down.position.y
                             val dx = change.position.x - down.position.x
                             val elapsed = change.uptimeMillis - down.uptimeMillis

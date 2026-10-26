@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            20, "0.4.9-alpha",
+            listOf(
+                "Glide typing fixed in the app launcher: tracing a word no longer scrolls the keyboard away before you lift, so glides insert on lift when confident and offer strip candidates when weak, as they should. Tap typing, flick and long-press hints are unchanged.",
+            ),
+        ),
+        Release(
             19, "0.4.8-alpha",
             listOf(
                 "Music player redesigned toward the video player's layout: Previous, 10-second skip back and forward, play, and next in one centred cluster, with the mode row beneath and the seek bar last at the bottom. The seek bar is now waveform-styled bars, and the progress tint and play button pick up the album art's color when the cover has one, falling back to the scheme color when it does not. The play button also morphs shape when play and pause swap. No swipe between sources, and the floating card is unchanged.",
