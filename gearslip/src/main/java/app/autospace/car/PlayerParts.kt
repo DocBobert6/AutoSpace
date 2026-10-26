@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -94,24 +95,27 @@ internal fun formatDuration(ms: Long): String {
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
 }
 
-/** Previous, play/pause, next. [skip] sizes the outer two; play is a step bigger. */
+/** r42: TransportRow buttons are circles unless the caller passes a shape — the floating card passes gsShape() so its buttons match the nav-bar buttons. Kept as a named default so the default itself is unit-testable. */
+internal val DefaultTransportShape: Shape = CircleShape
+
+/** Previous, play/pause, next. [skip] sizes the outer two; play is a step bigger. [shape] defaults to circles. */
 @Composable
-internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: Modifier = Modifier) {
+internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: Modifier = Modifier, shape: Shape = DefaultTransportShape) {
     val play = skip * 1.25f
     Row(modifier, horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
         GsIconButton(
             MediaIcons.Previous, "Previous", media::previous,
-            enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = skip, iconSize = skip * 0.58f, shape = CircleShape,
+            enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = skip, iconSize = skip * 0.58f, shape = shape,
         )
         GsIconButton(
             if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
             if (now.playing) "Pause" else "Play",
             media::togglePlay,
-            tone = GsTone.Primary, size = play, iconSize = play * 0.58f, shape = CircleShape,
+            tone = GsTone.Primary, size = play, iconSize = play * 0.58f, shape = shape,
         )
         GsIconButton(
             MediaIcons.Next, "Next", media::next,
-            enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = skip, iconSize = skip * 0.58f, shape = CircleShape,
+            enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = skip, iconSize = skip * 0.58f, shape = shape,
         )
     }
 }

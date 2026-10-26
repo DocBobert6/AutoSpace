@@ -166,15 +166,16 @@ fun CarHome() {
             // HomeFrameOverlay), so it survives CarAppStage's deliberate
             // SurfaceView recreation as an independent node. Bottom-end
             // (passenger side) reserves the driver side for the later
-            // widget column; 12dp in from the frame edges, and above the
-            // nav bar, which sits below this Box in-flow — so the card
-            // clears the bar and can never cover the turn zone.
+            // widget column; r42 moves it to 24dp in from the frame edges
+            // (left and up), and above the nav bar, which sits below this
+            // Box in-flow — so the card clears the bar and can never
+            // cover the turn zone.
             Box(Modifier.fillMaxSize()) {
                 MapPane(navStatus, frame)
             }
             if (showFloatingCard) {
                 BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(12.dp),
+                    Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.BottomEnd,
                 ) {
                     FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))

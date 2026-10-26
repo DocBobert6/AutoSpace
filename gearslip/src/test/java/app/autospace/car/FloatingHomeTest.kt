@@ -1,12 +1,13 @@
 package app.autospace.car
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r34 floating Home: card visibility, pill step-aside, and card width rules; r36 restore fix. */
+/** r34 floating Home: card visibility, pill step-aside, and card width rules; r36 restore fix; r42 narrower card + smaller dismiss + style-shaped transport. */
 class FloatingHomeTest {
 
     @Test
@@ -95,15 +96,33 @@ class FloatingHomeTest {
     }
 
     @Test
-    fun cardWidthIs45PercentCappedAndFloored() {
-        // 800dp frame: 45% = 360dp, inside the band.
-        assertEquals(360.dp, floatingCardWidth(800.dp))
-        // Wide frame: capped at 420dp, not 45%.
-        assertEquals(420.dp, floatingCardWidth(1000.dp))
-        assertEquals(420.dp, floatingCardWidth(1920.dp))
+    fun cardWidthIs40PercentCappedAndFloored() {
+        // r42: 800dp frame: 40% = 320dp, inside the band.
+        assertEquals(320.dp, floatingCardWidth(800.dp))
+        // Wide frame: capped at 380dp, not 40%.
+        assertEquals(380.dp, floatingCardWidth(1000.dp))
+        assertEquals(380.dp, floatingCardWidth(1920.dp))
         // Narrow frame: floored at 240dp so transport still fits.
         assertEquals(240.dp, floatingCardWidth(400.dp))
-        // Tiny frame: never wider than the frame minus its 12dp margins.
+        // Tiny frame: never wider than the frame minus 24dp.
         assertEquals(176.dp, floatingCardWidth(200.dp))
+    }
+
+    @Test
+    fun dismissButtonShrinksVisuallyButKeeps44dpTouchTarget() {
+        // r42: the touch target never drops below the 44dp floor, the
+        // drawn box sits inside it, and the glyph sits inside the box.
+        assertEquals(44.dp, FloatingCardDismissTouchSize)
+        assertEquals(36.dp, FloatingCardDismissDrawnSize)
+        assertEquals(20.dp, FloatingCardDismissGlyphSize)
+        assertTrue(FloatingCardDismissDrawnSize < FloatingCardDismissTouchSize)
+        assertTrue(FloatingCardDismissGlyphSize < FloatingCardDismissDrawnSize)
+    }
+
+    @Test
+    fun transportRowDefaultsToCircles() {
+        // r42: callers that pass no shape (full player, CompactPlayer)
+        // keep circles; only the floating card passes gsShape().
+        assertEquals(CircleShape, DefaultTransportShape)
     }
 }

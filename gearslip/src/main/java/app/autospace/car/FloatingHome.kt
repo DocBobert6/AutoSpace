@@ -164,13 +164,23 @@ fun shouldResurfaceOnPlayTransition(wasPlaying: Boolean, isPlaying: Boolean): Bo
     !wasPlaying && isPlaying
 
 /**
- * Card width: a glanceable card, not a panel — 45% of the frame, capped at
- * 420dp, floored at 240dp so transport still fits on narrow frames, and
- * never wider than the frame minus its 12dp side margins. Pure so it is
+ * Card width: a glanceable card, not a panel — r42 narrows it to 40% of
+ * the frame, capped at 380dp, floored at 240dp so transport still fits on
+ * narrow frames, and never wider than the frame minus 24dp. Pure so it is
  * unit-testable.
  */
 fun floatingCardWidth(frameWidth: Dp): Dp =
-    (frameWidth * 0.45f).coerceIn(240.dp, 420.dp).coerceAtMost(frameWidth - 24.dp)
+    (frameWidth * 0.40f).coerceIn(240.dp, 380.dp).coerceAtMost(frameWidth - 24.dp)
+
+/**
+ * r42: dismiss button sizing — the glyph and drawn box shrink, the touch
+ * target does not. Pure values so the floor is unit-testable: the drawn
+ * box (36dp) stays centered in the 44dp touch target, and the glyph
+ * (20dp) stays centered in the drawn box.
+ */
+internal val FloatingCardDismissTouchSize: Dp = 44.dp
+internal val FloatingCardDismissDrawnSize: Dp = 36.dp
+internal val FloatingCardDismissGlyphSize: Dp = 20.dp
 
 /**
  * The floating media card. Ordinary Compose surface in the window layer
@@ -235,9 +245,13 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                         art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
                     }
                     Column(Modifier.weight(1f)) {
+                        // r42: the title wraps to two lines — the extra
+                        // height that makes the narrower card slightly
+                        // taller. Artist and source stay single-line.
+                        // Very long titles still truncate at two lines.
                         Text(
                             now.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             now.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
@@ -252,17 +266,31 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                         }
                     }
                 }
-                GsIconButton(
-                    Icons.Filled.Close, "Hide media card", FloatingHomeState::dismiss,
-                    size = 44.dp, iconSize = 24.dp,
-                )
+                // r42: visually smaller dismiss — a 36dp drawn button
+                // with a 20dp glyph, centered in the KEPT 44dp touch
+                // target. GsIconButton draws its touch target at its own
+                // size, so the outer Box carries the 44dp target; both
+                // call dismiss, which is an idempotent boolean set, so a
+                // tap lands exactly one dismissal either way.
+                Box(
+                    Modifier.size(FloatingCardDismissTouchSize).clickable { FloatingHomeState.dismiss() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    GsIconButton(
+                        Icons.Filled.Close, "Hide media card", FloatingHomeState::dismiss,
+                        size = FloatingCardDismissDrawnSize, iconSize = FloatingCardDismissGlyphSize,
+                    )
+                }
             }
             if (now.durationMs > 0) {
                 PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false)
             } else {
                 Spacer(Modifier.height(6.dp))
             }
-            TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth())
+            // r42: card transport follows the nav-bar button shape
+            // (gsShape()), not circles — the full player and CompactPlayer
+            // pass nothing and keep their circles.
+            TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth(), shape = gsShape())
         }
     }
 }
