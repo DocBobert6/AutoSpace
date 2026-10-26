@@ -45,18 +45,23 @@ class ExperimentalMasterTest {
         // Vehicle data is excluded from the master entirely: the Writes
         // class has no vehicle-data field, so neither action can touch it.
         // This test pins that shape — adding such a field must fail review.
+        // Order-independent: the JVM field order is not part of the
+        // contract, the exact SET is (an earlier version of this test
+        // compared a sorted actual list against an unsorted literal and
+        // failed on ordering alone — the production code was correct).
         val fields = ExperimentalMaster.Writes::class.java.declaredFields
             .map { it.name }
             .filter { it != "Companion" }
+            .toSet()
         assertEquals(
-            listOf(
+            setOf(
                 "experimentalFeatures",
                 "floatingMedia",
                 "homeWidgets",
                 "widgetsDismissed",
                 "frostedMapChrome",
             ),
-            fields.sorted(),
+            fields,
         )
     }
 
