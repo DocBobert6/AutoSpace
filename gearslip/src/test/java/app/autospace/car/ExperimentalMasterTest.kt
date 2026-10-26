@@ -41,27 +41,35 @@ class ExperimentalMasterTest {
     }
 
     @Test
-    fun writesCarryNoVehicleDataFieldByConstruction() {
-        // Vehicle data is excluded from the master entirely: the Writes
-        // class has no vehicle-data field, so neither action can touch it.
-        // This test pins that shape — adding such a field must fail review.
-        // Order-independent: the JVM field order is not part of the
-        // contract, the exact SET is (an earlier version of this test
-        // compared a sorted actual list against an unsorted literal and
-        // failed on ordering alone — the production code was correct).
-        val fields = ExperimentalMaster.Writes::class.java.declaredFields
-            .map { it.name }
-            .filter { it != "Companion" }
-            .toSet()
+    fun masterWritesAreExactlyTheSuiteFlags() {
+        // Vehicle data is excluded from the master entirely, pinned here
+        // by full data-class equality: Writes has exactly these five
+        // fields, so adding a vehicle-data field would break compilation
+        // of this test (constructor arity change) and force review.
+        // This replaces an earlier reflection-based shape test, which
+        // failed twice on opaque JVM field-set details (first a sorted
+        // vs unsorted list, then a set mismatch whose expected/actual
+        // CI logs never show) — data-class equality compares only the
+        // declared properties and cannot fail on synthetic fields.
         assertEquals(
-            setOf(
-                "experimentalFeatures",
-                "floatingMedia",
-                "homeWidgets",
-                "widgetsDismissed",
-                "frostedMapChrome",
+            ExperimentalMaster.Writes(
+                experimentalFeatures = true,
+                floatingMedia = true,
+                homeWidgets = true,
+                widgetsDismissed = false,
+                frostedMapChrome = true,
             ),
-            fields,
+            ExperimentalMaster.onWrites(),
+        )
+        assertEquals(
+            ExperimentalMaster.Writes(
+                experimentalFeatures = null,
+                floatingMedia = false,
+                homeWidgets = false,
+                widgetsDismissed = null,
+                frostedMapChrome = null,
+            ),
+            ExperimentalMaster.offWrites(),
         )
     }
 
