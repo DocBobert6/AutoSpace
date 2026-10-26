@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.pitLanePanelBorder
