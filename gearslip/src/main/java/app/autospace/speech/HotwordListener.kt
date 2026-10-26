@@ -78,8 +78,19 @@ object HotwordListener {
      * back and forth). A mic streaming loud garbage is NOT detected —
      * silence is the only broken-mic shape this can prove — and the
      * phone-mic hotword switch below is the workaround for that case.
+     *
+     * The constant is internal, not private, because [SilenceTracker]
+     * shares it: the hotword loop and the button listen must never
+     * drift apart on what "silent" means.
+     *
+     * r28: the fallback no longer dies with the hold. Firing it also
+     * marks the car mic dead for the session ([SpeechEngine.noteCarMicDead]),
+     * so later listens stop trusting it, and the trigger hands the mic
+     * the hotword was heard on to the assistant listen that follows
+     * ([SpeechEngine.inheritHotwordMic]) — before r28 that listen
+     * re-selected from scratch and went deaf on the dead car mic.
      */
-    private const val SILENCE_AMPLITUDE = 32
+    internal const val SILENCE_AMPLITUDE = 32
     private const val SILENCE_FALLBACK_MS = 8_000L
     /** How often the "waiting for Kroko" diagnostic may repeat while the loop retries. */
     private const val MODEL_WAIT_LOG_MS = 30_000L
@@ -125,7 +136,7 @@ object HotwordListener {
         worker.execute { loop(app, gen) }
     }
 
-    /** Stops the loop and closes the microphone; the loop thread exits on its own. */
+    /** Stops the loop; the loop closes its microphone as it exits (within one audio chunk of the flag flipping), not synchronously here. */
     fun stop() {
         if (!running) return
         running = false
@@ -281,8 +292,14 @@ object HotwordListener {
                 } catch (t: Throwable) {
                     GearslipLog.w("hotword: listening failed: ${t.message}")
                 } finally {
-                    holdingMic = false
+                    // r28: close FIRST, then drop the flag. The old order (flag,
+                    // then close) let SpeechEngine's waitForMicRelease pass while
+                    // the close was still in flight, so a phrase could open its
+                    // microphone against a close racing it on the car's single
+                    // channel. Close calls here never block (a send, or a
+                    // recorder stop), so no waiter can wedge on this.
                     runCatching { liveMic.close() }
+                    holdingMic = false
                 }
                 // The driver is mid-command after a trigger (or a gate just closed):
                 // do not reopen the microphone into the tail of that speech.
@@ -308,6 +325,8 @@ object HotwordListener {
         var liveSource = source
         var silentChunks = 0
         var fellBack = false
+        // Shared with the button listen: one definition of "silent".
+        val silence = SilenceTracker()
         var stream = recognizer.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)
@@ -323,14 +342,13 @@ object HotwordListener {
                 // digital silence on a car mic means the mic is not
                 // hearing the cabin at all. Switch to the phone mic
                 // for the rest of the hold (old mic closed first, so
-                // the single channel is never held twice).
+                // the single channel is never held twice). r28: firing
+                // also marks the car mic dead for the session, so later
+                // listens — hotword holds and button presses alike —
+                // stop trusting it until the session ends.
                 if (liveSource == SpeechEngine.MicSource.CAR && !fellBack) {
-                    var loud = false
-                    for (i in 0 until n) {
-                        val v = frame[i].toInt()
-                        if (v > SILENCE_AMPLITUDE || v < -SILENCE_AMPLITUDE) { loud = true; break }
-                    }
-                    silentChunks = if (loud) 0 else silentChunks + 1
+                    val chunkSilent = silence.add(frame, n)
+                    silentChunks = if (chunkSilent) silentChunks + 1 else 0
                     if (silentChunks * 100L >= SILENCE_FALLBACK_MS) {
                         runCatching { liveMic.close() }
                         liveMic = try {
@@ -342,6 +360,7 @@ object HotwordListener {
                         liveSource = SpeechEngine.MicSource.PHONE
                         fellBack = true
                         silentChunks = 0
+                        SpeechEngine.noteCarMicDead()
                         GearslipLog.i("hotword: car mic silent, using phone mic")
                     }
                 }
@@ -355,6 +374,12 @@ object HotwordListener {
                     // Only the matched phrase constant is logged, never the transcript.
                     findHotword(text)?.let { phrase ->
                         GearslipLog.i("hotword: heard \"$phrase\", opening the assistant")
+                        // r28: hand the mic this hold actually heard on to the
+                        // assistant listen that follows. Without this the
+                        // listen re-selected from scratch and, on a dead
+                        // car mic, went deaf right after a phone-mic
+                        // hotword — the handoff defect at the heart of r28.
+                        SpeechEngine.inheritHotwordMic(liveSource)
                         val action = onHotword
                         main.post { action?.invoke() }
                         return liveMic

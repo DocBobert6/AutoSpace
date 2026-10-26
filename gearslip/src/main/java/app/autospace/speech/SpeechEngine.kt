@@ -125,6 +125,13 @@ object SpeechEngine {
 
     /** Drops the loaded models: the driver picked another or deleted one, or the car went away. */
     fun unload() {
+        // r28: a session ending also forgets what it learned about the
+        // microphones — deadness is re-proven next session, never carried
+        // over. (Model swaps mid-session also call unload; re-proving
+        // then costs at most one more fallback hold, which is the safe
+        // direction: a stale "dead" must never outlive its evidence.)
+        carMicDead = false
+        hotwordMicOverride.clear()
         main.removeCallbacks(idleUnload)
         run++
         worker.execute {
@@ -221,9 +228,11 @@ object SpeechEngine {
         onPartial: (String) -> Unit,
         onStopped: () -> Unit,
     ): String {
-        // One selection point for every voice path (CarAssistant commands, VoiceReply
-        // replies, and the hotword listener): see [openSpeechMic].
-        val mic = openSpeechMic()
+        // One selection point for every bundled-engine voice path
+        // (CarAssistant commands, VoiceReply replies, the phone preview's
+        // one-shot listens): see [openListenMic]. The system-speech path
+        // bypasses this and keeps the phone recognizer's own routing.
+        val (mic, source) = openListenMic()
         val s = r.createStream()
         val frame = ShortArray(CHUNK)
         val samples = FloatArray(CHUNK)
@@ -234,11 +243,20 @@ object SpeechEngine {
         var spoke = false
         var audioMs = 0L
         var decodeMs = 0L
+        // r28: the button path's answer to the hotword's silence rescue.
+        // A dead-but-streaming car mic used to win every button listen
+        // forever (it sends frames, so the 1500 ms first-audio fallback
+        // never fires). If this whole listen was digital silence on the
+        // car mic and nothing was recognized, the mic is dead by the
+        // same proof the hotword already ships — mark it, so the next
+        // press uses the phone's mic instead of failing identically.
+        val silence = SilenceTracker()
         try {
             while (id == run) {
                 val n = mic.read(frame)
                 if (n < 0) break
                 if (n == 0) continue
+                if (source == MicSource.CAR) silence.add(frame, n)
                 for (i in 0 until n) samples[i] = frame[i] / 32768f
                 val keep = minOf(n, phrase.size - held)
                 System.arraycopy(samples, 0, phrase, held, keep)
@@ -265,6 +283,19 @@ object SpeechEngine {
         } finally {
             mic.close()
             s.release()
+        }
+        // The guards, in order: the car mic (a phone mic cannot prove
+        // anything about the car), the listen actually ran to an end
+        // (a cancelled press proves nothing), at least one chunk was
+        // seen (a zero-frame listen is vacuous), every frame was
+        // digitally silent, nothing was recognized even on the final
+        // read, and the listen lasted past a trivial tap (2 s of
+        // audio). A working mic fails the silence clause on its noise
+        // floor alone, so this cannot trip on a quiet cabin.
+        if (source == MicSource.CAR && id == run && silence.chunksSeen > 0 &&
+            silence.allSilent && last.isEmpty() && audioMs >= 2_000L
+        ) {
+            noteCarMicDead()
         }
         // Under 1.0 keeps up with the driver; over it, the words fall behind the voice.
         GearslipLog.i(
@@ -411,13 +442,72 @@ object SpeechEngine {
     internal enum class MicSource { PHONE, CAR }
 
     /**
-     * The microphone a phrase is heard from, chosen exactly as [stream] chooses it: the
-     * phone's when the phone-microphone setting is on, otherwise the car's when it has one
-     * and sends usable audio, else the phone's. Shared with [HotwordListener] so the
-     * hotword and a button-press command never pick different microphones.
+     * r28: whether the car mic has been proven dead this session — by the
+     * hotword's 8 s silence fallback, or by a button listen that heard
+     * nothing but digital silence. While set, every listen uses the
+     * phone's mic and skips the car's 1500 ms first-audio probe
+     * entirely, so a dead mic costs no delay either. Cleared by
+     * [unload] (session end, or a model swap). The failure direction
+     * is safe by construction: a false positive only ever picks the
+     * phone's mic, never deafness.
      */
-    internal fun openSpeechMic(): Mic = openSpeechMicSource().first
+    @Volatile private var carMicDead = false
 
+    /** The mic a hotword was heard on, waiting for the listen it triggers. */
+    private val hotwordMicOverride = HotwordMicOverride()
+
+    /** Marks the car mic dead for this session; logs once, on the transition. */
+    internal fun noteCarMicDead() {
+        if (!carMicDead) {
+            carMicDead = true
+            GearslipLog.i("speech: car microphone marked dead for this session, voice listens use the phone's")
+        }
+    }
+
+    /**
+     * Remembers the microphone a hotword was heard on, for the one listen
+     * that hotword triggers. Only the phone's mic is ever remembered: a
+     * hotword heard on the car's mic sets nothing and selection is
+     * unchanged. Called by [HotwordListener] before it posts the trigger.
+     */
+    internal fun inheritHotwordMic(source: MicSource) {
+        if (source == MicSource.PHONE) hotwordMicOverride.noteHeardOnPhone(SystemClock.uptimeMillis())
+    }
+
+    /**
+     * The microphone a phrase is heard from. The decision itself lives
+     * in [MicSelection.selectSource] (pure, unit-tested); this only
+     * opens what it names. The car mic is probed only when it can
+     * actually win — a setting, a proven-dead car mic, or an inherited
+     * phone mic all skip the probe, so a dead mic never costs the
+     * listen its 1500 ms first-audio wait.
+     */
+    internal fun openListenMic(): Pair<Mic, MicSource> {
+        val inherited = hotwordMicOverride.takePhone(SystemClock.uptimeMillis())
+        val setting = CarSettings.phoneMicForVoice.value
+        val car = if (!setting && !carMicDead && !inherited) carMic() else null
+        if (!setting) {
+            if (carMicDead) {
+                GearslipLog.i("speech: car microphone already known dead, using the phone's")
+            } else if (inherited) {
+                GearslipLog.i("speech: hotword was heard on the phone's microphone, keeping it for this listen")
+            }
+        }
+        return when (MicSelection.selectSource(setting, carMicDead, inherited, car != null)) {
+            MicSource.PHONE -> phoneMic() to MicSource.PHONE
+            MicSource.CAR -> car!! to MicSource.CAR
+        }
+    }
+
+    /**
+     * The microphone a phrase used to be heard from before r28: the
+     * phone's when the phone-microphone setting is on, otherwise the
+     * car's when it has one and sends usable audio, else the phone's.
+     * Kept for the hotword loop, which needs the same base choice
+     * before its own fallback logic runs; assistant listens go through
+     * [openListenMic] instead, so they can inherit a hotword's mic and
+     * remember a proven-dead car mic.
+     */
     internal fun openSpeechMicSource(): Pair<Mic, MicSource> =
         if (CarSettings.phoneMicForVoice.value) phoneMic() to MicSource.PHONE
         else carMic()?.let { it to MicSource.CAR } ?: (phoneMic() to MicSource.PHONE)
