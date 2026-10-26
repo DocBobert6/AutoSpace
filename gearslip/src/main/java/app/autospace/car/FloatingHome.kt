@@ -52,10 +52,23 @@ import androidx.compose.foundation.BorderStroke
  * Per-session card dismissal: in-memory only, so a fresh process (or cycling
  * the toggle off and back on, which resets it) brings the card back. It is
  * deliberately NOT persisted: a dismissed card must never be unrecoverable,
- * and the toggle itself is the re-enable path.
+ * and the toggle itself is the re-enable path. r36 adds two more restore
+ * paths, because toggle-cycling from Settings is unreachable while driving:
+ * the nav-bar pill's dock button restores the card while dismissed in
+ * floating mode, and a playback-start transition (paused/stopped -> playing)
+ * re-enables it — see [shouldResurfaceOnPlayTransition] and the CarHome
+ * effect that drives it.
  */
 object FloatingHomeState {
     val dismissed = mutableStateOf(false)
+
+    /**
+     * Last observed playing value, for the r36 playback-start edge. Lives
+     * here (not in a remember) so it survives recomposition; CarHome never
+     * leaves the composition, so transitions are observed across screens.
+     * Plain var, not state: only the CarHome effect reads/writes it.
+     */
+    var lastPlaying: Boolean = false
 
     fun dismiss() {
         dismissed.value = true
@@ -91,6 +104,64 @@ fun shouldStepAsidePillForFloatingCard(
     dismissed: Boolean,
     onHome: Boolean,
 ): Boolean = floatingEnabled && !dismissed && onHome
+
+/**
+ * Whether the pill steps aside for the docked player column. r36: this
+ * applies ONLY in classic mode. In floating mode the classic column NEVER
+ * renders (floating branch = MapPane + card only), so letting this gate fire
+ * there hid the pill whenever sidePanel was CONTROLS — docked before floating
+ * was enabled, or dock pressed from another screen, which sets CONTROLS +
+ * Home. Dismissed card + CONTROLS panel then meant no card AND no pill:
+ * total media UI loss. In floating mode the floating gate above is the only
+ * step-aside that may hide the pill.
+ */
+fun shouldStepAsidePillForDockedColumn(
+    floatingEnabled: Boolean,
+    sidePanel: SidePanel,
+    onHome: Boolean,
+): Boolean = !floatingEnabled && sidePanel == SidePanel.CONTROLS && onHome
+
+/**
+ * Whether the nav bar's now-playing pill shows, placement gates only (media
+ * readiness — phase READY and a session active — is a separate gate in
+ * NavNowPlaying). The pill hides exactly when it would repeat a player
+ * already on screen: the docked column (classic mode only), the floating
+ * card, or the full media screen itself.
+ */
+fun shouldShowNavPill(
+    floatingEnabled: Boolean,
+    dismissed: Boolean,
+    sidePanel: SidePanel,
+    onHome: Boolean,
+    onMediaScreen: Boolean,
+): Boolean = !shouldStepAsidePillForDockedColumn(floatingEnabled, sidePanel, onHome) &&
+    !shouldStepAsidePillForFloatingCard(floatingEnabled, dismissed, onHome) &&
+    !onMediaScreen
+
+/**
+ * Whether the pill's dock button restores the floating card instead of
+ * docking. r36: in floating mode, while on Home and dismissed, the pill is
+ * the only media UI on screen, so its dock button becomes the restore
+ * button (reset dismissed + panel NONE, label "Show media card"). Everywhere
+ * else the dock button keeps today's togglePlayerDock behavior and label.
+ */
+fun pillDockRestoresFloatingCard(
+    floatingEnabled: Boolean,
+    dismissed: Boolean,
+    onHome: Boolean,
+): Boolean = floatingEnabled && dismissed && onHome
+
+/**
+ * Whether a playback-start transition re-enables a dismissed card. r36:
+ * TRANSITION-gated, not level-gated. Dismiss-while-playing + track change
+ * (playing stays true, no edge) must NOT pop the card back; dismiss-while-
+ * paused + press play (false -> true edge) DOES bring it back. Dismiss-
+ * while-playing + pause + resume also brings it back (edge on resume) —
+ * accepted, documented. NEVER reset merely because playing is currently
+ * true, or dismiss-while-playing breaks instantly.
+ */
+fun shouldResurfaceOnPlayTransition(wasPlaying: Boolean, isPlaying: Boolean): Boolean =
+    !wasPlaying && isPlaying
 
 /**
  * Card width: a glanceable card, not a panel — 45% of the frame, capped at

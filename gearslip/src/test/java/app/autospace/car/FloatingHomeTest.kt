@@ -6,7 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r34 floating Home: card visibility, pill step-aside, and card width rules. */
+/** r34 floating Home: card visibility, pill step-aside, and card width rules; r36 restore fix. */
 class FloatingHomeTest {
 
     @Test
@@ -35,6 +35,63 @@ class FloatingHomeTest {
         assertFalse(shouldStepAsidePillForFloatingCard(true, true, true))
         assertFalse(shouldStepAsidePillForFloatingCard(false, false, true))
         assertFalse(shouldStepAsidePillForFloatingCard(true, false, false))
+    }
+
+    @Test
+    fun dockedColumnStepsAsideOnlyInClassicMode() {
+        // Classic mode, docked beside the map: pill steps aside for the column.
+        assertTrue(shouldStepAsidePillForDockedColumn(false, SidePanel.CONTROLS, true))
+        // r36: floating mode, docked panel, on Home — the classic column never
+        // renders here, so the docked gate must NOT hide the pill.
+        assertFalse(shouldStepAsidePillForDockedColumn(true, SidePanel.CONTROLS, true))
+        // Not docked, or not on Home: no step-aside either way.
+        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.NONE, true))
+        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.CONTROLS, false))
+        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.LYRICS, true))
+    }
+
+    @Test
+    fun pillShowsInFloatingModeWithControlsPanel() {
+        // r36, the reported loss: floating on, card dismissed, panel CONTROLS
+        // (docked before floating was enabled, or dock from another screen).
+        // No card AND no pill was the bug; the pill must show now.
+        assertTrue(shouldShowNavPill(true, true, SidePanel.CONTROLS, true, false))
+        // Card visible in floating mode: pill still steps aside for the card.
+        assertFalse(shouldShowNavPill(true, false, SidePanel.NONE, true, false))
+        // Classic docked column: pill steps aside.
+        assertFalse(shouldShowNavPill(false, false, SidePanel.CONTROLS, true, false))
+        // Classic, not docked: pill shows.
+        assertTrue(shouldShowNavPill(false, false, SidePanel.NONE, true, false))
+        // Full media screen: pill repeats the player, stays hidden.
+        assertFalse(shouldShowNavPill(false, false, SidePanel.NONE, true, true))
+        assertFalse(shouldShowNavPill(true, true, SidePanel.NONE, true, true))
+        // Not on Home, floating card not on screen: pill shows.
+        assertTrue(shouldShowNavPill(true, false, SidePanel.NONE, false, false))
+    }
+
+    @Test
+    fun pillDockButtonRestoresDismissedCardOnlyInFloatingModeOnHome() {
+        assertTrue(pillDockRestoresFloatingCard(true, true, true))
+        // Card not dismissed: pill is hidden by the floating gate anyway; the
+        // button is unreachable, and it must not claim restore semantics.
+        assertFalse(pillDockRestoresFloatingCard(true, false, true))
+        // Floating off: classic dock behavior, never restore.
+        assertFalse(pillDockRestoresFloatingCard(false, true, true))
+        // Not on Home: the card lives in CarHome only; dock keeps its behavior.
+        assertFalse(pillDockRestoresFloatingCard(true, true, false))
+    }
+
+    @Test
+    fun playbackStartTransitionResurfacesButLevelDoesNot() {
+        // Paused/stopped -> playing: the edge that brings the card back.
+        assertTrue(shouldResurfaceOnPlayTransition(false, true))
+        // Dismiss-while-playing + track change: playing stays true, no edge,
+        // card stays hidden.
+        assertFalse(shouldResurfaceOnPlayTransition(true, true))
+        // Pausing: no resurface.
+        assertFalse(shouldResurfaceOnPlayTransition(true, false))
+        // Staying paused: no resurface.
+        assertFalse(shouldResurfaceOnPlayTransition(false, false))
     }
 
     @Test

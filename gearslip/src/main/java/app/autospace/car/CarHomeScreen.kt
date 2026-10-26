@@ -73,6 +73,17 @@ fun CarHome() {
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
     // Cycling the toggle back on re-enables a card dismissed earlier in the session.
     LaunchedEffect(floatingOn) { if (floatingOn) FloatingHomeState.reset() }
+    // r36 restore: a playback-start transition (paused/stopped -> playing) re-enables a
+    // card dismissed earlier in the session, so pressing play after a stop brings the
+    // card back without reaching for Settings. Transition-gated, not level-gated:
+    // dismiss-while-playing + track change (playing stays true) does NOT pop it back.
+    // CarHome never leaves the composition (other screens cover it), so transitions
+    // are observed across screens, including the music app. The previous value lives
+    // in FloatingHomeState, not a remember, so it survives recomposition.
+    LaunchedEffect(now.playing) {
+        if (floatingOn && shouldResurfaceOnPlayTransition(FloatingHomeState.lastPlaying, now.playing)) FloatingHomeState.reset()
+        FloatingHomeState.lastPlaying = now.playing
+    }
 
     val navigator = LocalCarNavigator.current
     val panel = navigator.sidePanel

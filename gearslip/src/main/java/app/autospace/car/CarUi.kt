@@ -927,21 +927,23 @@ private fun nowPlayingLabel(title: String, artist: String): String =
  * play/pause and skip work right here. The dock button moves the player into the column beside
  * the map on Home (see [CarHome]), and the pill steps aside there while it's docked - unless the
  * column is showing lyrics instead, when the pill stays and its dock button swaps them back.
+ * In floating mode the dock button restores a dismissed card instead (see
+ * [pillDockRestoresFloatingCard]): while dismissed it resets the card and closes the side
+ * panel, so the pill cannot re-hide itself through the docked-column gate.
  */
 @Composable
 private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: Modifier = Modifier) {
     val media = CarServices.media
     val phase by media.phase.collectAsState()
     val now by media.now.collectAsState()
-    if (phase != CarMedia.Phase.READY || !now.isActive) return
-    // Docked beside the map, the player is already on screen - the pill steps aside for it.
-    if (navigator.sidePanel == SidePanel.CONTROLS && navigator.current == CarScreen.Home) return
-    // Floating card over the map shows the same controls - the pill steps aside for it too,
-    // and comes back the moment the card is dismissed.
     val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
-    if (shouldStepAsidePillForFloatingCard(floatingOn, FloatingHomeState.dismissed.value, navigator.current == CarScreen.Home)) return
-    // The media screen is the full player already; the pill would only repeat its controls.
-    if (navigator.current == CarScreen.Media) return
+    val dismissed = FloatingHomeState.dismissed.value
+    if (phase != CarMedia.Phase.READY || !now.isActive) return
+    // Placement gates only (readiness gated above): the pill hides exactly when it would
+    // repeat a player already on screen — the docked column in classic mode only, the
+    // floating card, or the full media screen itself. r36: the docked-column gate no
+    // longer fires in floating mode, where the column never renders.
+    if (!shouldShowNavPill(floatingOn, dismissed, navigator.sidePanel, navigator.current == CarScreen.Home, navigator.current == CarScreen.Media)) return
     val context = LocalContext.current
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
     val position by produceState(now.currentPosition(), now) {
@@ -1011,8 +1013,14 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
                     MediaIcons.Next, "Next", media::next,
                     enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = 44.dp, iconSize = 24.dp,
                 )
+                // r36: in floating mode, while on Home and dismissed, this button restores
+                // the card (reset + panel NONE, so the docked-column gate cannot re-hide
+                // the pill) instead of docking. Everywhere else it docks as today.
+                val restoreFloatingCard = pillDockRestoresFloatingCard(floatingOn, dismissed, navigator.current == CarScreen.Home)
                 GsIconButton(
-                    MediaIcons.DockRight, "Move the player beside the map", navigator::togglePlayerDock,
+                    MediaIcons.DockRight,
+                    if (restoreFloatingCard) "Show media card" else "Move the player beside the map",
+                    if (restoreFloatingCard) ({ FloatingHomeState.reset(); navigator.closeSidePanel() }) else navigator::togglePlayerDock,
                     size = 44.dp, iconSize = 24.dp,
                 )
             }
