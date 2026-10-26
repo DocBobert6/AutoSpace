@@ -51,13 +51,23 @@ object CarCalls {
     fun start(context: Context) {
         if (appContext == null) appContext = context.applicationContext
         if (watcher != null) return
-        if (context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) return
+        if (!phoneStateGate(context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED)) return
         val manager = context.getSystemService(TelephonyManager::class.java) ?: return
         val callback = object : TelephonyCallback(), TelephonyCallback.CallStateListener {
             override fun onCallStateChanged(state: Int) = onPhoneState(state)
         }
         runCatching { manager.registerTelephonyCallback(context.mainExecutor, callback) }
-            .onSuccess { telephony = manager; watcher = callback }
+            .onSuccess {
+                telephony = manager; watcher = callback
+                // r45: the call may already be active when watching starts (app
+                // launched or resumed mid-call); the callback only fires on CHANGES,
+                // so check the current state once instead of waiting for a transition
+                // that never comes. A later OFFHOOK event is a no-op for the route
+                // (previousSpeaker guard), so this cannot double-apply.
+                if (CallRouteProbe.shouldApplyOnRegistration(manager.callState)) {
+                    appContext?.let { CallSpeakerRoute.onCallActive(it) }
+                }
+            }
             .onFailure { GearslipLog.w("calls: could not watch call state: ${it.message}") }
     }
 
@@ -137,4 +147,20 @@ object CarCalls {
 /** Posts to the main thread after a delay - used to give up on a screening response Gearslip never sent. */
 internal fun mainThreadDelay(ms: Long, action: () -> Unit) {
     Handler(Looper.getMainLooper()).postDelayed(action, ms)
+}
+
+/**
+ * r45: the READ_PHONE_STATE gate, extracted so the failure is visible. The old
+ * code returned silently here, which made a missing permission indistinguishable
+ * from "no calls happened" in a trace. The permission check itself needs a
+ * Context and cannot run on the JVM, so the gate takes the check result and the
+ * test pins the branch plus this exact log text.
+ */
+internal const val MISSING_PHONE_STATE_LOG =
+    "calls: call watching needs READ_PHONE_STATE, which was never granted"
+
+internal fun phoneStateGate(granted: Boolean): Boolean {
+    if (granted) return true
+    GearslipLog.w(MISSING_PHONE_STATE_LOG)
+    return false
 }

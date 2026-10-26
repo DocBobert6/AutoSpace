@@ -16,6 +16,18 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            13, "0.4.2-alpha",
+            listOf(
+                "Calls on speaker hold better: the speaker setting is re-applied just after a call starts, and the call's audio route is now logged so speaker problems can be diagnosed from a trace.",
+            ),
+        ),
+        Release(
+            12, "0.4.1-alpha",
+            listOf(
+                "Fixed voice listening going silent until the app was restarted: a listen that gets stuck now times out and recovers on its own.",
+            ),
+        ),
+        Release(
             11, "0.4.0-alpha",
             listOf(
                 "First release build: updates now arrive through the app itself, and the first-run guide covers updates, AI answers, and the experimental features.",

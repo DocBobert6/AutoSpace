@@ -196,11 +196,10 @@ the NDK, CMake, and the speech library on the first build.
 ```
 
 CI (`.github/workflows/debug.yml`, on every push to `main` and every pull
-request) builds the same debug APK and publishes it as the
-`AutoSpace-debug-apk` artifact. Debug builds are signed with the committed
-`gearslip/debug.keystore`. Tagged `v*` pushes run
-`.github/workflows/release.yml`, which builds the signed release APK and
-publishes it as a prerelease.
+request) runs the unit tests only — since 0.4.1-alpha it no longer builds or
+publishes a debug APK, because every build ships as a prerelease. Tagged `v*`
+pushes run `.github/workflows/release.yml`, which builds the signed release
+APK and publishes it as a prerelease.
 
 A release build needs a signing key. Copy `keystore.properties.example`
 to `keystore.properties`, fill in your own values, and run

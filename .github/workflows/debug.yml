@@ -1,5 +1,10 @@
-name: Debug build
+name: Unit tests
 
+# r45 (2026-10-26, Robert: no more debug builds): this workflow used to build
+# and publish a debug APK. It no longer does — it runs the unit tests only.
+# release.yml runs no tests, so this is the only test gate on pushes to main;
+# keep the test step intact. Release builds come from tagged v* pushes via
+# release.yml, and every build ships as a prerelease from 0.4.1-alpha on.
 on:
   push:
     branches: [main]
@@ -37,12 +42,5 @@ jobs:
             cp -r /tmp/cb/android-37.1-beta2 "$ANDROID_HOME/platforms/android-37"
           fi
           ls "$ANDROID_HOME/platforms"
-      - name: Build debug APK
-        run: ./gradlew :gearslip:assembleDebug --stacktrace
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: AutoSpace-debug-apk
-          path: build/AutoSpace-debug.apk
       - name: Run unit tests
         run: ./gradlew :gearslip:testDebugUnitTest --stacktrace
