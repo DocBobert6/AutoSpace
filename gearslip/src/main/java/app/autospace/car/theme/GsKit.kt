@@ -55,17 +55,21 @@ object GsKit {
 
     /**
      * The floating-bar gradient: near-solid, lighter at the top.
-     * Phase 10 OLED: the surface IS black there, so a surface-colour
+     * Phase 10 OLED: the surface IS black there, so a surface-color
      * gradient would be invisible on a black background — OLED frost
-     * is instead a white-alpha gradient over black (0.10 -> 0.04),
+     * is instead a white-alpha gradient over black (0.16 -> 0.06 since
+     * the R2 true-black refinement, Robert 2026-10-25; was 0.10 -> 0.04),
      * lighter at the top, plus the 0.5dp hairline. Same frost language,
-     * visible on black; non-OLED is unchanged.
+     * visible on black; non-OLED is unchanged. The stronger branch is
+     * gated on LocalOledDark, so Regular dark and light never see it;
+     * Night provides LocalOledDark too (Night is black), so Night bars
+     * use the same stronger gradient.
      */
     @Composable
     fun brush(): Brush = if (LocalOledDark.current) Brush.verticalGradient(
         listOf(
-            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.10f),
-            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.04f)
+            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.16f),
+            androidx.compose.ui.graphics.Color.White.copy(alpha = 0.06f)
         )
     ) else Brush.verticalGradient(
         listOf(

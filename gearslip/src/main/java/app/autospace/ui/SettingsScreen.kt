@@ -45,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,8 +65,12 @@ import app.autospace.BuildConfig
 import app.autospace.CertProvider
 import app.autospace.SessionStatus
 import app.autospace.notify.TestMessage
+import app.autospace.car.AutoNightMode
 import app.autospace.car.CarSettings
+import app.autospace.car.NightAuto
+import app.autospace.car.SunResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -108,6 +113,7 @@ fun SettingsScreen(
             ConnectionSection()
             HelpSection(onOpenHelp, onOpenCarPreview, onOpenCarPreviewSettings, onOpenLogs)
             CarAudioSection()
+            NightSection()
             VoiceModelSection()
             // Spoken voice, alongside the listening models above — not instead of
             // them: those turn speech into text for voice commands, this one turns
@@ -271,6 +277,103 @@ private fun CarAudioSection() {
             trailing = { RadioButton(selected = usb, onClick = null) },
         )
     }
+}
+
+/** Night color scheme + Auto night scheduling (same state as car Settings). */
+@Composable
+private fun NightSection() {
+    val context = LocalContext.current
+    val mode by CarSettings.autoNightMode.collectAsState()
+    val start by CarSettings.autoNightStart.collectAsState()
+    val end by CarSettings.autoNightEnd.collectAsState()
+    val active by CarSettings.autoNightActive.collectAsState()
+    val sun by produceState<SunResult?>(null, mode) {
+        value = if (mode == AutoNightMode.SUNRISE_SUNSET) NightAuto.todaySunTimes(context) else null
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            CarSettings.refreshAutoNight()
+            delay(60_000)
+        }
+    }
+    SettingsSection(
+        "Night",
+        footer = "At night, Auto night switches the color scheme to Night. Your chosen scheme " +
+            "returns in the morning. If you pick Night yourself, it stays Night all the time. " +
+            "To stop the switching, turn Auto night off. While Night is active, the background " +
+            "is pure black no matter which dark type is picked.",
+    ) {
+        NightModeRow("Off", "No automatic switching", mode == AutoNightMode.OFF) {
+            CarSettings.setAutoNightMode(AutoNightMode.OFF)
+        }
+        SettingsDivider()
+        NightModeRow("Schedule", "Night runs between your start and end times", mode == AutoNightMode.SCHEDULE) {
+            CarSettings.setAutoNightMode(AutoNightMode.SCHEDULE)
+        }
+        if (mode == AutoNightMode.SCHEDULE) {
+            SettingsDivider()
+            NightTimeRow("Night starts", start) { CarSettings.setAutoNightStart(it) }
+            SettingsDivider()
+            NightTimeRow("Night ends", end) { CarSettings.setAutoNightEnd(it) }
+        }
+        SettingsDivider()
+        NightModeRow("Sunrise & sunset", "Computed on this phone from its location, no network", mode == AutoNightMode.SUNRISE_SUNSET) {
+            CarSettings.setAutoNightMode(AutoNightMode.SUNRISE_SUNSET)
+        }
+        if (mode == AutoNightMode.SUNRISE_SUNSET) {
+            SettingsDivider()
+            val sunText = when (val s = sun) {
+                null -> "Sunrise & sunset needs location. Give AutoSpace location access, or use a " +
+                    "schedule instead. Until location is available, Auto night stays off rather than guessing."
+                SunResult.AlwaysDay -> "The sun never sets where you are right now, so Auto night stays off."
+                SunResult.AlwaysNight -> "The sun never rises where you are right now, so Auto night stays on."
+                is SunResult.Times -> "Today: sunrise ${NightAuto.formatMinutes(s.sunriseMin)}, sunset " +
+                    "${NightAuto.formatMinutes(s.sunsetMin)}. Night runs from sunset to sunrise."
+            }
+            SettingsRow(sunText, Modifier, null)
+        }
+        if (active) {
+            SettingsDivider()
+            SettingsRow("Night is on now (Auto night)", Modifier, null)
+        }
+    }
+}
+
+@Composable
+private fun NightModeRow(title: String, subtitle: String, selected: Boolean, onSelect: () -> Unit) {
+    SettingsRow(
+        title,
+        Modifier.selectable(selected, role = Role.RadioButton) { onSelect() },
+        subtitle = subtitle,
+        trailing = { RadioButton(selected = selected, onClick = null) },
+    )
+}
+
+@Composable
+private fun NightTimeRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
+    val hour = minutes / 60
+    val minute = minutes % 60
+    SettingsRow(
+        label,
+        Modifier,
+        subtitle = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}",
+        trailing = {
+            androidx.compose.foundation.layout.Row {
+                IconButton(onClick = { onSet(((hour + 23) % 24) * 60 + minute) }) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Hour down")
+                }
+                IconButton(onClick = { onSet(((hour + 1) % 24) * 60 + minute) }) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Hour up")
+                }
+                IconButton(onClick = { onSet(hour * 60 + ((minute + 45) % 60)) }) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Minutes down")
+                }
+                IconButton(onClick = { onSet(hour * 60 + ((minute + 15) % 60)) }) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Minutes up")
+                }
+            }
+        },
+    )
 }
 
 @Composable

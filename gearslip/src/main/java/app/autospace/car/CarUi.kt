@@ -115,7 +115,7 @@ data class PreviewThemeOverride(
 fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     val scale by CarSettings.scale.collectAsState()
     val phoneDark by CarEnvironment.phoneDark.collectAsState()
-    val appTheme by CarSettings.appTheme.collectAsState()
+    val appTheme by CarSettings.effectiveAppTheme.collectAsState()
     val uiThemeId by CarSettings.uiTheme.collectAsState()
     val mediaApp by CarServices.mediaApp.collectAsState()
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
@@ -148,7 +148,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     val dark = when (effAppTheme) {
         AppTheme.FOLLOW_SYSTEM, AppTheme.MATERIAL_YOU -> phoneDark
         AppTheme.LIGHT, AppTheme.MATERIAL_YOU_LIGHT -> false
-        AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK -> true
+        AppTheme.DARK, AppTheme.MATERIAL_YOU_DARK, AppTheme.NIGHT -> true
     }
     // Theme set, Phase 7 (Robert 2026-10-24 23:58, correcting the 22:32 five):
     // Follow system = PLAIN scheme following the phone's light/dark; Plain
@@ -164,6 +164,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     // the video player chrome too (its black scrims over video are untouched).
     val colors = when (effAppTheme) {
         AppTheme.LIGHT, AppTheme.DARK, AppTheme.FOLLOW_SYSTEM -> neutralFrostScheme(dark, effDarkType == DarkModeType.OLED)
+        AppTheme.NIGHT -> nightColorScheme()
         AppTheme.MATERIAL_YOU_LIGHT -> dynamicLightColorScheme(appContext)
         AppTheme.MATERIAL_YOU_DARK -> if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         AppTheme.MATERIAL_YOU -> if (dark) {
@@ -182,6 +183,14 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     }
     // The knob counts as a touch: the map's buttons can't be found while they're faded out.
     LaunchedEffect(controlsWake) { CarKeys.focusMoves.collect { controlsWake.touch() } }
+    // Auto night re-evaluates once a minute (sunrise/sunset and schedule
+    // windows only change with the clock; no fresh location fix is taken).
+    LaunchedEffect(Unit) {
+        while (true) {
+            CarSettings.refreshAutoNight()
+            delay(60_000)
+        }
+    }
     remember(appContext) { Prefetch.warm(appContext, force = true); CarServices.init(appContext) }
     DisposableEffect(Unit) { onDispose { CarServices.shutdown() } }
     // Ask for the phone's sound as soon as the car connects, not only when a media app opens:
@@ -244,7 +253,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         // hairline outline when this is true, so a dark surface on the
         // pure-black OLED background still reads as a surface, and the
         // frost gradient still has an edge to shade.
-        LocalOledDark provides (dark && effDarkType == DarkModeType.OLED),
+        LocalOledDark provides ((dark && effDarkType == DarkModeType.OLED) || effAppTheme == AppTheme.NIGHT),
     ) {
         MaterialTheme(colorScheme = colors) {
           CompositionLocalProvider(LocalIndication provides FocusRingIndication(MaterialTheme.colorScheme.primary)) {
@@ -1033,6 +1042,57 @@ private fun oledDynamicDark(context: android.content.Context): androidx.compose.
         onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFC7C7CC),
         outline = androidx.compose.ui.graphics.Color(0xFF38383A),
         outlineVariant = androidx.compose.ui.graphics.Color(0xFF48484A),
+    )
+}
+
+/**
+ * Night: the dedicated night-driving color scheme (Robert, 2026-10-25).
+ * Pure-black background no matter which dark type is picked (Night implies
+ * the true-black background); warm near-black surfaces, amber primary
+ * (#FF9F0A, ~10:1 on black), warm-gray text (#D8D0C8 family); blue and
+ * white accents suppressed, so nothing on screen throws blue glare at
+ * night. LocalOledDark is provided for Night too, so kit hairlines and
+ * the white-alpha frost gradient still separate panels on the black.
+ */
+private fun nightColorScheme(): androidx.compose.material3.ColorScheme {
+    val black = androidx.compose.ui.graphics.Color.Black
+    val amber = androidx.compose.ui.graphics.Color(0xFFFF9F0A)
+    val amberLight = androidx.compose.ui.graphics.Color(0xFFFFB340)
+    val warmText = androidx.compose.ui.graphics.Color(0xFFF2EBE0)
+    val warmDim = androidx.compose.ui.graphics.Color(0xFFD8D0C8)
+    return androidx.compose.material3.darkColorScheme(
+        primary = amber,
+        onPrimary = black,
+        primaryContainer = androidx.compose.ui.graphics.Color(0xFF5C3A00),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFFFDCA8),
+        secondary = amberLight,
+        onSecondary = black,
+        secondaryContainer = androidx.compose.ui.graphics.Color(0xFF4A3200),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(0xFFFFDCA8),
+        tertiary = warmDim,
+        onTertiary = black,
+        error = androidx.compose.ui.graphics.Color(0xFFFF8A7A),
+        onError = black,
+        background = black,
+        onBackground = warmText,
+        surface = black,
+        onSurface = warmText,
+        surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1E1812),
+        onSurfaceVariant = warmDim,
+        outline = androidx.compose.ui.graphics.Color(0xFF5C5348),
+        outlineVariant = androidx.compose.ui.graphics.Color(0xFF3A332B),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(0xFF0A0806),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF14100C),
+        surfaceContainer = androidx.compose.ui.graphics.Color(0xFF1E1812),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF2A211A),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF33291F),
+        surfaceDim = black,
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF2A211A),
+        surfaceTint = amber,
+        inverseSurface = androidx.compose.ui.graphics.Color(0xFFE8E0D2),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(0xFF1A140E),
+        inversePrimary = androidx.compose.ui.graphics.Color(0xFF8A5200),
+        scrim = black,
     )
 }
 

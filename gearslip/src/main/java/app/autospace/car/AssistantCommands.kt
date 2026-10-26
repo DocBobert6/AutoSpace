@@ -78,7 +78,7 @@ object AssistantCommands {
                 return "Calling emergency services."
             } else if (heard in EMERGENCY_NO) {
                 emergencyPendingUntil = 0L
-                return "Cancelled. I won't call."
+                return "Canceled. I won't call."
             } else {
                 emergencyPendingUntil = 0L
             }
@@ -632,7 +632,7 @@ object AssistantCommands {
             timerRunnable?.let { handler.removeCallbacks(it) }
             timerHandler = null
             timerRunnable = null
-            return "Timer cancelled."
+            return "Timer canceled."
         }
         val minutes = Regex("^(?:remind me in|set a timer for|timer for) (\\d+) minutes?$").find(heard)
             ?.groupValues?.get(1)?.toIntOrNull()

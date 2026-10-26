@@ -5,8 +5,14 @@ import app.autospace.AppSettings
 import app.autospace.audio.CarAudio
 import app.autospace.car.theme.GsTheme
 import app.autospace.car.theme.GsThemes
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 
 enum class NightMode { AUTO, DAY, NIGHT }
 
@@ -22,18 +28,22 @@ enum class Units { AUTO, IMPERIAL, METRIC }
  * PHONE value was dynamic-following-the-phone, i.e. exactly MATERIAL_YOU, so stored PHONE
  * values migrate to MATERIAL_YOU on load (see init) rather than silently falling back to plain.
  */
-enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK }
+enum class AppTheme { FOLLOW_SYSTEM, LIGHT, DARK, MATERIAL_YOU, MATERIAL_YOU_LIGHT, MATERIAL_YOU_DARK, NIGHT }
 
 /**
- * What a dark theme's backgrounds are made of. REGULAR = dark-grey surfaces
+ * What a dark theme's backgrounds are made of. REGULAR = dark-gray surfaces
  * (#1C1C1E/#2C2C2E family, no pure-black background); OLED = pure-black #000000
- * backgrounds with #1C1C1E/#2C2C2E surfaces (the dark look AutoSpace shipped
+ * backgrounds AND surfaces since Phase 10 (the dark look AutoSpace shipped
  * before Phase 7, kept as the default so existing installs do not change look).
- * Applies to plain Dark, Material You Dark, and the dark variant of both Follow
- * options, across all styles. For dynamic dark + OLED, the dynamic accent and
- * content colours are kept and only backgrounds/surfaces are forced to black
- * (see CarUi's oledDynamicDark); dynamic dark + Regular is left untouched,
- * since the dynamic dark scheme's surfaces are already dark grey, not black.
+ * Display name is "True Black" (the stored value stays OLED, so existing
+ * installs keep their setting with no migration). Applies to plain Dark,
+ * Material You Dark, and the dark variant of both Follow options, across all
+ * styles. For dynamic dark + OLED, the dynamic accent and content colors are
+ * kept and only backgrounds/surfaces are forced to black (see CarUi's
+ * oledDynamicDark); dynamic dark + Regular is left untouched, since the
+ * dynamic dark scheme's surfaces are already dark gray, not black. NIGHT
+ * (the night color scheme) always uses a pure-black background no matter
+ * which dark type is picked.
  */
 enum class DarkModeType { REGULAR, OLED }
 
@@ -73,6 +83,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_HOTWORD_PHONE_MIC = "car_hotword_phone_mic"
     private const val KEY_CALL_SPEAKER = "car_call_speaker"
     private const val KEY_DARK_TYPE = "car_dark_type"
+    private const val KEY_AUTO_NIGHT_MODE = "car_auto_night_mode"
+    private const val KEY_AUTO_NIGHT_START = "car_auto_night_start"
+    private const val KEY_AUTO_NIGHT_END = "car_auto_night_end"
     private const val KEY_TILE_SIZE = "car_tile_size"
     private const val KEY_PLAYER_SPEED = "car_player_speed"
     private const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
@@ -113,6 +126,24 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     // together now, so the old Skip-buttons-vs-Song-title choice is dead.)
     private val themeFlow = MutableStateFlow(AppTheme.FOLLOW_SYSTEM)
     val appTheme: StateFlow<AppTheme> = themeFlow
+    private val autoNightModeFlow = MutableStateFlow(AutoNightMode.OFF)
+    val autoNightMode: StateFlow<AutoNightMode> = autoNightModeFlow
+    private val autoNightStartFlow = MutableStateFlow(21 * 60)
+    val autoNightStart: StateFlow<Int> = autoNightStartFlow
+    private val autoNightEndFlow = MutableStateFlow(7 * 60)
+    val autoNightEnd: StateFlow<Int> = autoNightEndFlow
+    private val autoNightActiveFlow = MutableStateFlow(false)
+    val autoNightActive: StateFlow<Boolean> = autoNightActiveFlow
+    private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /**
+     * The scheme the car UI actually renders: the user's chosen scheme,
+     * except that an active Auto night switches it to NIGHT (see NightAuto
+     * for the precedence rule). The stored scheme never changes.
+     */
+    val effectiveAppTheme: StateFlow<AppTheme> =
+        combine(themeFlow, autoNightActiveFlow) { theme, active ->
+            if (active && theme != AppTheme.NIGHT) AppTheme.NIGHT else theme
+        }.stateIn(settingsScope, SharingStarted.Eagerly, AppTheme.FOLLOW_SYSTEM)
     /** Dark-mode surface type; see [DarkModeType]. Default OLED preserves the pre-Phase-7 dark look. */
     val darkModeType: StateFlow<DarkModeType> = darkTypeFlow
     private val brightnessFlow = MutableStateFlow(1f)
@@ -318,6 +349,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         darkTypeFlow.value = runCatching {
             DarkModeType.valueOf(AppSettings.getString(app, KEY_DARK_TYPE, DarkModeType.OLED.name))
         }.getOrDefault(DarkModeType.OLED)
+        autoNightModeFlow.value = runCatching {
+            AutoNightMode.valueOf(AppSettings.getString(app, KEY_AUTO_NIGHT_MODE, AutoNightMode.OFF.name))
+        }.getOrDefault(AutoNightMode.OFF)
+        autoNightStartFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_START, "${21 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 21 * 60
+        autoNightEndFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_END, "${7 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 7 * 60
         tileSizeFlow.value = AppSettings.getString(app, KEY_TILE_SIZE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
         uiThemeFlow.value = AppSettings.getString(app, KEY_UI_THEME, GsThemes.default.id)
         brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
@@ -363,6 +399,43 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         }.getOrDefault(Units.AUTO)
         whatsNewFlow.value = AppSettings.getString(app, KEY_WHATS_NEW, "true") == "true"
         whatsNewSeenFlow.value = AppSettings.getString(app, KEY_WHATS_NEW_SEEN, "0").toIntOrNull() ?: 0
+        refreshAutoNight()
+    }
+
+    /**
+     * Recomputes whether Auto night is active right now. Cheap (last-known
+     * location only, no fresh fix): call it on a timer from the car UI and
+     * the phone Settings screen, plus on every setter below. Sunrise &
+     * sunset with no location stays inactive, never silently wrong.
+     */
+    fun refreshAutoNight() {
+        if (!::app.isInitialized) {
+            autoNightActiveFlow.value = false
+            return
+        }
+        autoNightActiveFlow.value = NightAuto.isAutoNightNow(
+            app, autoNightModeFlow.value, autoNightStartFlow.value, autoNightEndFlow.value,
+        )
+    }
+
+    fun setAutoNightMode(mode: AutoNightMode) {
+        autoNightModeFlow.value = mode
+        AppSettings.putString(app, KEY_AUTO_NIGHT_MODE, mode.name)
+        refreshAutoNight()
+    }
+
+    fun setAutoNightStart(minutes: Int) {
+        val v = minutes.coerceIn(0, 1439)
+        autoNightStartFlow.value = v
+        AppSettings.putString(app, KEY_AUTO_NIGHT_START, v.toString())
+        refreshAutoNight()
+    }
+
+    fun setAutoNightEnd(minutes: Int) {
+        val v = minutes.coerceIn(0, 1439)
+        autoNightEndFlow.value = v
+        AppSettings.putString(app, KEY_AUTO_NIGHT_END, v.toString())
+        refreshAutoNight()
     }
 
     fun setScale(value: Float) {

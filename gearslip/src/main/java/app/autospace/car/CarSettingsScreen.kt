@@ -205,7 +205,7 @@ fun CarSettingsScreen() {
         }
 
         ChoiceRow(
-            "App theme",
+            "Color scheme",
             listOf(
                 AppTheme.FOLLOW_SYSTEM to "Follow system",
                 AppTheme.LIGHT to "Light",
@@ -213,35 +213,43 @@ fun CarSettingsScreen() {
                 AppTheme.MATERIAL_YOU to "Material You",
                 AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
                 AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
+                AppTheme.NIGHT to "Night",
             ),
             theme,
         ) { CarSettings.setAppTheme(it) }
         Text(
             "Follow system is the plain neutral theme following the phone's " +
                 "light/dark. Light and Dark are plain neutral themes, no " +
-                "wallpaper colours. Material You follows the phone's wallpaper " +
-                "colours and light/dark; Material You Light / Dark use the " +
-                "phone's wallpaper colours, forced to that variant.",
+                "wallpaper colors. Material You follows the phone's wallpaper " +
+                "colors and light/dark; Material You Light / Dark use the " +
+                "phone's wallpaper colors, forced to that variant. Night is " +
+                "the dedicated night-driving scheme: pure black, warm gray " +
+                "text, amber accents.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         ChoiceRow(
             "Dark mode",
-            listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "OLED"),
+            listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "True Black"),
             darkType,
         ) { CarSettings.setDarkModeType(it) }
         Text(
-            "Regular dark uses dark-grey surfaces, no pure black. OLED dark " +
-                "uses pure-black backgrounds with dark-grey surfaces. Applies " +
-                "to plain Dark, Material You Dark, and the dark variant of " +
-                "both Follow options, in every style.",
+            "Regular dark uses dark-gray surfaces, no pure black. True Black " +
+                "uses pure-black backgrounds and surfaces; panels are " +
+                "separated by their edges, not by gray fills. Applies to " +
+                "plain Dark, Material You Dark, and the dark variant of " +
+                "both Follow options, in every style. While Night is " +
+                "active, the background is pure black no matter which " +
+                "dark type is picked.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
+        NightSettingsSection()
+
         ChoiceRow(
-            "Theme",
+            "Button style",
             GsThemes.builtIn.map { it.id to it.name },
             uiTheme,
         ) { CarSettings.setUiTheme(it) }
@@ -479,7 +487,7 @@ private fun SubtitleSettings() {
             ChoiceRow("Size", listOf("80" to "80%", "100" to "100%", "125" to "125%", "150" to "150%"), size) {
                 size = it; CarSettings.setSubtitleSize(it)
             }
-            ChoiceRow("Colour", listOf("" to "System default", "yellow" to "Yellow", "cyan" to "Cyan", "green" to "Green", "magenta" to "Magenta", "red" to "Red", "blue" to "Blue", "black" to "Black"), color) {
+            ChoiceRow("Color", listOf("" to "System default", "yellow" to "Yellow", "cyan" to "Cyan", "green" to "Green", "magenta" to "Magenta", "red" to "Red", "blue" to "Blue", "black" to "Black"), color) {
                 color = it; CarSettings.setSubtitleColor(it)
             }
             ChoiceRow("Background", listOf("" to "Transparent", "black50" to "Black 50%", "black75" to "Black 75%", "black" to "Black", "white75" to "White 75%"), bg) {
@@ -888,6 +896,134 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
                 }
             }
         }
+    }
+}
+
+/**
+ * Night: the dedicated night-driving color scheme and its Auto night
+ * schedule (Robert, 2026-10-25). Auto night overrides the chosen scheme
+ * at night and the chosen scheme returns in the morning; picking Night
+ * yourself means Night all the time; turning Auto night off stops the
+ * switching. While Night is active, the background is pure black no
+ * matter which dark type is picked.
+ */
+@Composable
+private fun NightSettingsSection() {
+    val context = LocalContext.current
+    val mode by CarSettings.autoNightMode.collectAsState()
+    val start by CarSettings.autoNightStart.collectAsState()
+    val end by CarSettings.autoNightEnd.collectAsState()
+    val active by CarSettings.autoNightActive.collectAsState()
+    val sun by produceState<SunResult?>(null, mode) {
+        value = if (mode == AutoNightMode.SUNRISE_SUNSET) NightAuto.todaySunTimes(context) else null
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            CarSettings.refreshAutoNight()
+            kotlinx.coroutines.delay(60_000)
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ChoiceRow(
+            "Auto night",
+            listOf(
+                AutoNightMode.OFF to "Off",
+                AutoNightMode.SCHEDULE to "Schedule",
+                AutoNightMode.SUNRISE_SUNSET to "Sunrise & sunset",
+            ),
+            mode,
+        ) { CarSettings.setAutoNightMode(it) }
+        if (mode == AutoNightMode.SCHEDULE) {
+            TimeStepperRow("Night starts", start) { CarSettings.setAutoNightStart(it) }
+            TimeStepperRow("Night ends", end) { CarSettings.setAutoNightEnd(it) }
+            Text(
+                "Night runs from the start time to the end time, past midnight if needed.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (mode == AutoNightMode.SUNRISE_SUNSET) {
+            when (val s = sun) {
+                null -> Text(
+                    "Sunrise & sunset needs location. Give AutoSpace location " +
+                        "access, or use a schedule instead. Until location is " +
+                        "available, Auto night stays off rather than guessing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SunResult.AlwaysDay -> Text(
+                    "The sun never sets where you are right now, so Auto night stays off.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SunResult.AlwaysNight -> Text(
+                    "The sun never rises where you are right now, so Auto night stays on.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                is SunResult.Times -> Text(
+                    "Today: sunrise ${NightAuto.formatMinutes(s.sunriseMin)}, sunset " +
+                        "${NightAuto.formatMinutes(s.sunsetMin)}. Night runs from sunset to sunrise, " +
+                        "computed on this phone from its location — no network, no server.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (active) {
+            Text(
+                "Night is on now (Auto night).",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            "At night, Auto night switches the color scheme to Night. Your " +
+                "chosen scheme returns in the morning. If you pick Night " +
+                "yourself, it stays Night all the time. To stop the switching, " +
+                "turn Auto night off.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Hour (0–23, wraps) + minute (15-minute steps, wraps) steppers for one schedule time. */
+@Composable
+private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
+    val hour = minutes / 60
+    val minute = minutes % 60
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            GsIconBox(
+                onClick = { onSet(((hour + 23) % 24) * 60 + minute) },
+                modifier = Modifier.height(56.dp).weight(1f),
+            ) { Text("−", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            Text(
+                "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            GsIconBox(
+                onClick = { onSet(((hour + 1) % 24) * 60 + minute) },
+                modifier = Modifier.height(56.dp).weight(1f),
+            ) { Text("+", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            GsIconBox(
+                onClick = { onSet(hour * 60 + ((minute + 45) % 60)) },
+                modifier = Modifier.height(56.dp).weight(1f),
+            ) { Text("−15", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            GsIconBox(
+                onClick = { onSet(hour * 60 + ((minute + 15) % 60)) },
+                modifier = Modifier.height(56.dp).weight(1f),
+            ) { Text("+15", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        }
+        Text(
+            "Left pair steps the hour, right pair steps the minutes by 15.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

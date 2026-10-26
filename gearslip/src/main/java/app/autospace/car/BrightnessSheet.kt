@@ -66,7 +66,7 @@ object BrightnessSheetVisibility {
 @Composable
 fun BrightnessSheet() {
     val brightness by CarSettings.brightness.collectAsState()
-    val theme by CarSettings.appTheme.collectAsState()
+    val theme by CarSettings.effectiveAppTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Box(
@@ -102,7 +102,7 @@ fun BrightnessSheet() {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text("Theme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Color scheme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Follow system", theme == AppTheme.FOLLOW_SYSTEM, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.FOLLOW_SYSTEM) }
                     ThemeChoice("Light", theme == AppTheme.LIGHT, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.LIGHT) }
@@ -112,6 +112,9 @@ fun BrightnessSheet() {
                     ThemeChoice("Material You", theme == AppTheme.MATERIAL_YOU, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.MATERIAL_YOU) }
                     ThemeChoice("Material You Light", theme == AppTheme.MATERIAL_YOU_LIGHT, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.MATERIAL_YOU_LIGHT) }
                     ThemeChoice("Material You Dark", theme == AppTheme.MATERIAL_YOU_DARK, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.MATERIAL_YOU_DARK) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ThemeChoice("Night", theme == AppTheme.NIGHT, Modifier.weight(1f)) { CarSettings.setAppTheme(AppTheme.NIGHT) }
                 }
                 Text("Night mode (maps)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

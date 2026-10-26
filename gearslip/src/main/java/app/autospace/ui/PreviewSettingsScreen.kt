@@ -119,7 +119,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Keycap", style == "keycap") { PreviewSettings.setStyle(context, "keycap") }
             }
 
-            SettingsSection("Preview colours") {
+            SettingsSection("Preview colors") {
                 RadioRow("Use car setting", colours == null) { PreviewSettings.setColours(context, null) }
                 RadioRow("Follow system", colours == AppTheme.FOLLOW_SYSTEM) {
                     PreviewSettings.setColours(context, AppTheme.FOLLOW_SYSTEM)
@@ -139,6 +139,9 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Material You Dark", colours == AppTheme.MATERIAL_YOU_DARK) {
                     PreviewSettings.setColours(context, AppTheme.MATERIAL_YOU_DARK)
                 }
+                RadioRow("Night", colours == AppTheme.NIGHT) {
+                    PreviewSettings.setColours(context, AppTheme.NIGHT)
+                }
             }
 
             SettingsSection("Preview dark type") {
@@ -146,7 +149,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Regular", darkType == DarkModeType.REGULAR) {
                     PreviewSettings.setDarkType(context, DarkModeType.REGULAR)
                 }
-                RadioRow("OLED", darkType == DarkModeType.OLED) {
+                RadioRow("True Black", darkType == DarkModeType.OLED) {
                     PreviewSettings.setDarkType(context, DarkModeType.OLED)
                 }
             }
