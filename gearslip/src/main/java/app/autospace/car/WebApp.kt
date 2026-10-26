@@ -289,6 +289,11 @@ fun WebApp(content: String) {
         resetBarScrollHide()
         saveSessionNow()
     }
+    // Host helper, declared before the tab helpers that use it: Kotlin
+    // local functions cannot be called before their declaration in
+    // this file's scope (r21 CI proved it with hostOf).
+    fun hostOf(url: String): String =
+        runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
     /** A new tab already aimed at a URL (popups, long-press, recently closed). */
     fun newUrlTab(url: String, isPrivate: Boolean = false) {
         val tab = BrowserTab(nextTabId++, url)
@@ -410,6 +415,8 @@ fun WebApp(content: String) {
     // after it in the same scope).
     var recentlyClosed by remember { mutableStateOf(BrowserStore.recentlyClosed(context)) }
     var pins by remember { mutableStateOf(BrowserStore.pins(context)) }
+    var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
+    var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
     // Also (A2) applies the stored text zoom to the newly active
     // tab and re-runs an open find query on it, so zoom/find
@@ -425,8 +432,6 @@ fun WebApp(content: String) {
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
     }
-    var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
-    var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
@@ -444,8 +449,7 @@ fun WebApp(content: String) {
     var popupHost by remember { mutableStateOf<String?>(null) }
     var showPopupNotice by remember { mutableStateOf(false) }
     val capturedPopupViews = remember { mutableListOf<WebView>() }
-    fun hostOf(url: String): String =
-        runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+    // hostOf lives above the tab helpers now (r21 CI fix) — see there.
     fun clearPendingPopups() {
         pendingPopups.clear()
         showPopupNotice = false
