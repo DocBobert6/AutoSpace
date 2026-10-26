@@ -125,15 +125,19 @@ fun Modifier.frostBar(shape: Shape = GsKit.PillShape, elevation: Dp = 6.dp): Mod
  */
 val LocalOledDark = compositionLocalOf { false }
 
-/** A grouped card in the kit's card material and radius. */
+/** A grouped card in the kit's card material and radius. r29: the card
+ * shape follows the r24 button-shape rule — squared under Pit Lane,
+ * today's 20dp everywhere else — so dialog/sheet cards go rectangular
+ * under Pit Lane without any other style changing. */
 @Composable
 fun GsGroupedCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val cardShape = gsButtonShape(GsKit.CardShape)
     Card(
-        modifier = modifier.pitLanePanelBorder(GsKit.CardShape),
-        shape = GsKit.CardShape,
+        modifier = modifier.pitLanePanelBorder(cardShape),
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -144,15 +148,17 @@ fun GsGroupedCard(
 /**
  * A panel card in the kit's panel material: the tinted container colour at
  * the card radius, for cards sitting directly on the plain page background.
+ * r29: same shape rule as [GsGroupedCard] (squared under Pit Lane only).
  */
 @Composable
 fun GsPanelCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val cardShape = gsButtonShape(GsKit.CardShape)
     Card(
-        modifier = modifier.pitLanePanelBorder(GsKit.CardShape),
-        shape = GsKit.CardShape,
+        modifier = modifier.pitLanePanelBorder(cardShape),
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -160,16 +166,19 @@ fun GsPanelCard(
     )
 }
 
-/** A bottom sheet in the kit's sheet material and shape. */
+/** A bottom sheet in the kit's sheet material and shape. r29: the sheet
+ * shape follows the same rule as the cards — squared under Pit Lane,
+ * today's 28dp everywhere else. */
 @Composable
 fun GsSheetSurface(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    val sheetShape = gsButtonShape(GsKit.SheetShape)
     Surface(
-        modifier = modifier.pitLanePanelBorder(GsKit.SheetShape),
+        modifier = modifier.pitLanePanelBorder(sheetShape),
         color = GsKit.sheetColor(),
-        shape = GsKit.SheetShape,
+        shape = sheetShape,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = { Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() } }
     )

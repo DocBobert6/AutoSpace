@@ -429,7 +429,14 @@ private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
         onClick = tile.onClick,
         onLongClick = tile.onLongClick,
         modifier = Modifier.height((72f * tileFrac).coerceAtLeast(56f).dp),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.colorScheme.onSurface),
+        colors = GsColors(
+            MaterialTheme.colorScheme.surfaceContainerLow,
+            MaterialTheme.colorScheme.onSurface,
+            // r29: pinned tiles only — a 1dp scheme-primary ring marking the
+            // driver's own favourites. AppTile (the grid) is deliberately
+            // untouched: every-tile accents were rejected, and fills are out.
+            MaterialTheme.colorScheme.primary,
+        ),
         shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)),
     ) {
         Row(

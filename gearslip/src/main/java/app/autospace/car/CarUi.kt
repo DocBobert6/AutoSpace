@@ -77,6 +77,8 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.gsColors
 import app.autospace.car.theme.GsThemes
+import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.gsShape
 import app.autospace.car.theme.LocalGsTheme
 import app.autospace.media.CarMedia
 import app.autospace.media.MediaArt
@@ -572,6 +574,19 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
     }
 }
 
+/** r29 floating nav bar: the bar keeps its row in the Column, but insets
+ * inside it — side + bottom/top margins, the style's corner, slight
+ * elevation — so it reads as floating over the background instead of a
+ * full-width strip. Height and touch targets are unchanged (64dp); the
+ * hide logic (player/browser immersive, mirror, keyboard) is untouched;
+ * the corner follows the button style (rounded under Frost/Flat/Tactile/
+ * Edge via gsShape(), rectangular under Pit Lane). Pinned by unit test
+ * so the numbers cannot drift silently. */
+internal val NAV_BAR_HEIGHT = 64.dp
+internal val NAV_BAR_FLOAT_HORIZONTAL = 12.dp
+internal val NAV_BAR_FLOAT_VERTICAL = 8.dp
+internal val NAV_BAR_FLOAT_ELEVATION = 6.dp
+
 /**
  * Apps and open/pinned shortcuts on the left; now-playing pill against them; clock (tap for
  * calendar and weather), phone battery and the darkness signal on the right. Icon-only: a driver
@@ -593,8 +608,13 @@ private fun CarNavBar(navigator: CarNavigator) {
     val frame by CarEnvironment.frame.collectAsState()
     val running = rememberRunningApps()
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 10.dp)) {
+    Surface(
+        modifier = Modifier.padding(horizontal = NAV_BAR_FLOAT_HORIZONTAL, vertical = NAV_BAR_FLOAT_VERTICAL),
+        shape = gsShape(),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = NAV_BAR_FLOAT_ELEVATION,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT).padding(horizontal = 10.dp)) {
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                 // Home and Apps are two different places now, not a toggle on one button - the
                 // breadcrumb trail is how you retrace your steps, but reaching for either of
@@ -769,7 +789,7 @@ private fun NavAppIcon(
     GsIconBox(
         onClick,
         Modifier.size(52.dp),
-        colors = if (showing) GsColors(scheme.secondaryContainer, scheme.onSecondaryContainer)
+        colors = if (showing) GsColors(scheme.primary, scheme.onPrimary)
         else GsColors(scheme.surfaceVariant, scheme.onSurfaceVariant),
         latched = showing,
         onLongClick = onLongClick,
@@ -798,11 +818,11 @@ private fun NavChip(selected: Boolean, onClick: () -> Unit, content: @Composable
     }
 }
 
-/** Every nav bar item is raised, so it reads as pressable; the current screen's takes the accent colour. */
+/** Every nav bar item is raised, so it reads as pressable; the current screen's takes the accent colour. r29: the selected item takes the scheme primary itself (was secondaryContainer) — the active tab is the one thing on the bar that should carry the accent. */
 @Composable
 private fun navColors(selected: Boolean): GsColors {
     val s = MaterialTheme.colorScheme
-    return if (selected) GsColors(s.secondaryContainer, s.onSecondaryContainer)
+    return if (selected) GsColors(s.primary, s.onPrimary)
     else GsColors(s.surfaceContainerHighest, s.onSurface)
 }
 
@@ -943,7 +963,7 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
             .animateContentSize()
             .fillMaxWidth()
             .height(52.dp),
-        shape = RoundedCornerShape(14.dp),
+        shape = gsButtonShape(RoundedCornerShape(14.dp)),
         color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
         contentColor = onPill,
     ) {

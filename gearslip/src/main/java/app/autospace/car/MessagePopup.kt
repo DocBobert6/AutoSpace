@@ -40,6 +40,7 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsProgressBar
 import app.autospace.car.theme.GsTone
+import app.autospace.car.theme.gsButtonShape
 import app.autospace.notify.CarNotification
 import app.autospace.notify.CarNotifications
 import kotlinx.coroutines.delay
@@ -131,7 +132,7 @@ fun NotificationPopup(showNew: Boolean, modifier: Modifier = Modifier) {
 @Composable
 private fun PopupCard(until: Long, span: Long, modifier: Modifier, held: Float = 0f, content: @Composable () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = gsButtonShape(RoundedCornerShape(20.dp)),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         shadowElevation = 8.dp,

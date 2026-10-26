@@ -83,6 +83,7 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.frostBar
+import app.autospace.car.theme.gsButtonShape
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -832,7 +833,7 @@ fun WebApp(content: String) {
                 // Reload/Home ride in the same capsule so the whole bar
                 // is two frost groups + pill, as in Notscape.
                 Row(
-                    Modifier.frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp),
+                    Modifier.frostBar(gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)), 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     BarNavButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, activeTab.canGoBack)
@@ -848,7 +849,7 @@ fun WebApp(content: String) {
                 }
                 Box(
                     Modifier.weight(1f).height(44.dp)
-                        .frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp)
+                        .frostBar(gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)), 6.dp)
                         // Notscape's pill swipe: a horizontal drag over
                         // the pill switches tabs (90px threshold, as in
                         // Notscape); a tap without drag still edits, as
@@ -981,7 +982,7 @@ fun WebApp(content: String) {
                     Box(contentAlignment = Alignment.TopEnd) {
                         Box(
                             Modifier.size(44.dp)
-                                .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                                .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
                                 .clickable { sheetOpen = true },
                             contentAlignment = Alignment.Center,
                         ) {
@@ -1010,7 +1011,7 @@ fun WebApp(content: String) {
                 // the switcher sheet holds New tab + the list.
                 Box(
                     Modifier.size(44.dp)
-                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
                         .clickable { tabsOpen = true },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1032,7 +1033,7 @@ fun WebApp(content: String) {
                 }
                 Box(
                     Modifier.size(44.dp)
-                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
                         .clickable { refreshLists(); listsOpen = true },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1052,7 +1053,7 @@ fun WebApp(content: String) {
                 // toggle — a tap on the page is a link click).
                 Box(
                     Modifier.size(44.dp)
-                        .frostBar(androidx.compose.foundation.shape.CircleShape, 6.dp)
+                        .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
                         .clickable { BrowserImmersiveState.enter() },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1473,7 +1474,7 @@ fun WebApp(content: String) {
             ) {
                 Box(
                     Modifier.height(44.dp)
-                        .frostBar(RoundedCornerShape(50), 6.dp)
+                        .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
                         .clickable { BrowserImmersiveState.exit() }
                         .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center,
@@ -1511,7 +1512,7 @@ fun WebApp(content: String) {
             ) {
                 Box(
                     Modifier.height(44.dp)
-                        .frostBar(RoundedCornerShape(50), 6.dp)
+                        .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
                         .padding(horizontal = 4.dp),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1726,7 +1727,7 @@ fun WebApp(content: String) {
                 contentAlignment = if (barBottom) Alignment.TopCenter else Alignment.BottomCenter,
             ) {
                 Column(
-                    Modifier.fillMaxWidth().frostBar(RoundedCornerShape(28.dp), 6.dp).padding(20.dp),
+                    Modifier.fillMaxWidth().frostBar(gsButtonShape(RoundedCornerShape(28.dp)), 6.dp).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
@@ -1994,7 +1995,7 @@ private fun BrowserStartPage(
         )
         Box(
             Modifier.fillMaxWidth().height(44.dp)
-                .frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp)
+                .frostBar(gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)), 6.dp)
                 .clickable { searchEditing = true }
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.CenterStart,
@@ -2024,7 +2025,7 @@ private fun BrowserStartPage(
                     Modifier.fillMaxWidth()
                         .background(
                             MaterialTheme.colorScheme.surfaceContainerHigh,
-                            androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                         )
                         .clickable { onOpen(pin.url) }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2152,7 +2153,7 @@ private fun BrowserSettingsMenu(
                 .background(
                     if (checked) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                    gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                 )
                 .clickable { onClick() }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -2384,7 +2385,7 @@ private fun TabSwitcherSheet(
                             .background(
                                 if (isActive) MaterialTheme.colorScheme.primaryContainer
                                 else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                             )
                             .clickable { onSwitch(tab) }
                             .padding(horizontal = 16.dp, vertical = 12.dp),

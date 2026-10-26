@@ -1267,8 +1267,9 @@ private fun WebPageSetting() {
         Text("Web page", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Surface(
             onClick = { editing = !editing },
-            // Phase 7 kit: bright grouped-card colour, 20dp radius.
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+            // Phase 7 kit: bright grouped-card colour, 20dp radius (r29:
+            // squared under Pit Lane like the other sheet cards).
+            shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
             color = MaterialTheme.colorScheme.surfaceBright,
             modifier = Modifier.fillMaxWidth(),
         ) {

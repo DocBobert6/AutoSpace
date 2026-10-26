@@ -89,10 +89,25 @@ fun gsShape(): Shape = RoundedCornerShape(gsLook().corner)
  * fallback, so no button or tile renders as a pill under Pitlane. Every
  * other style gets the fallback itself — which IS today's shape at every
  * call site — so no other style's shapes change by construction.
+ * r29: the same rule now also squares dialog/sheet cards, browser shells,
+ * and the nav media pill under Pit Lane (see the r29 spec); the
+ * non-Pit Lane styles still keep their fallback exactly, which is what
+ * keeps their look unchanged in this round.
  */
 @Composable
-fun gsButtonShape(fallback: Shape): Shape =
-    if (gsLook().rectangularButtons) gsShape() else fallback
+fun gsButtonShape(fallback: Shape): Shape {
+    val look = gsLook()
+    return cardShapeForLook(look.rectangularButtons, look.corner, fallback)
+}
+
+/**
+ * r29: the pure shape rule behind [gsButtonShape], kept free of
+ * Composition so it is unit-testable: a rectangularButtons style (Pit
+ * Lane only) takes its own corner; every other style keeps the fallback
+ * exactly. [gsButtonShape] is this function fed by the current look.
+ */
+fun cardShapeForLook(rectangularButtons: Boolean, corner: Dp, fallback: Shape): Shape =
+    if (rectangularButtons) RoundedCornerShape(corner) else fallback
 
 /** The current theme's control look, swapped for its light-mode variant on a light UI. */
 @Composable
