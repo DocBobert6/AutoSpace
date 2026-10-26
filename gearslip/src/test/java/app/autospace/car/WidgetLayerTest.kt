@@ -234,23 +234,27 @@ class WidgetLayerTest {
                 false,
             ),
         )
-        // Place lists: browsable rows are exempt from the DistanceSpan
-        // requirement the builders otherwise enforce on place rows — but a
-        // browsable row must still carry an OnClickListener, or its own
-        // build() throws.
-        val placeRow = Row.Builder().setTitle("Gas").setBrowsable(true)
-            .setOnClickListener {}.build()
-        val placeList = ItemList.Builder().addItem(placeRow).build()
+        // Place lists: built in the loading state, not with an item list.
+        // setItemList's row validation (ROW_LIST_CONSTRAINTS_SIMPLE /
+        // ModelUtils distance checks) throws an NPE on the JVM unit-test
+        // classpath, where the android.text stub machinery underneath
+        // CarText span inspection returns nulls — the same rows build fine
+        // as plain ItemList/Pane content above. The predicate never
+        // inspects content, only the template class, so a loading-state
+        // instance proves exactly the branch under test; a browsable row
+        // must still carry an OnClickListener, or its own build() throws,
+        // which is why the plain list above keeps its rows non-browsable.
+        // (PlaceListMap additionally requires a title or header action.)
         assertFalse(
             navTemplateAllowsWidgets(
                 PlaceListMapTemplate.Builder()
-                    .setTitle("Places").setItemList(placeList).build(),
+                    .setTitle("Places").setLoading(true).build(),
                 false,
             ),
         )
         assertFalse(
             navTemplateAllowsWidgets(
-                PlaceListNavigationTemplate.Builder().setItemList(placeList).build(),
+                PlaceListNavigationTemplate.Builder().setLoading(true).build(),
                 false,
             ),
         )
