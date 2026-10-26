@@ -132,7 +132,7 @@ fun GsGroupedCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = modifier.then(pitLanePanelBorder(GsKit.CardShape)),
+        modifier = modifier.pitLanePanelBorder(GsKit.CardShape),
         shape = GsKit.CardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -151,7 +151,7 @@ fun GsPanelCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
-        modifier = modifier.then(pitLanePanelBorder(GsKit.CardShape)),
+        modifier = modifier.pitLanePanelBorder(GsKit.CardShape),
         shape = GsKit.CardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -167,7 +167,7 @@ fun GsSheetSurface(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
-        modifier = modifier.then(pitLanePanelBorder(GsKit.SheetShape)),
+        modifier = modifier.pitLanePanelBorder(GsKit.SheetShape),
         color = GsKit.sheetColor(),
         shape = GsKit.SheetShape,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
