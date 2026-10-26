@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            15, "0.4.4-alpha",
+            listOf(
+                "Car keyboard typing fixed: rolling taps on a key now type the letter instead of dropping it, slow downward rolls no longer insert a shortcut character, and the page search box follows the page's own edits instead of pushing stale text back over them. The passenger gate also waits for sustained motion and never pops up over an active typing session.",
+            ),
+        ),
+        Release(
             14, "0.4.3-alpha",
             listOf(
                 "Map chrome can now be frosted: an experimental switch gives the map pane, turn card, trip bar, and edge buttons the same frosted look as the floating media card, so the map shows through faintly.",

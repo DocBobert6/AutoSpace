@@ -64,8 +64,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,6 +98,7 @@ import org.json.JSONObject
  * a virtual display, and the platform's soft keyboard has nowhere sensible to appear there (see
  * [CarKeyboard]'s doc comment - every other text field in this app already draws its own for the
  * same reason). [FOCUS_TRACKING_JS] reports focus/blur on the page's editable elements, and
+ * (since r47) page-side value changes on the focused one, and
  * [CarKeyboard] edits the focused one back through injected JS instead of through the DOM's own
  * native input path, which this Presentation can't reach.
  *
@@ -581,15 +582,29 @@ fun WebApp(content: String) {
     // re-asks, as it must. Answering "Yes" is NOT an allowance — it
     // closes the browser outright — so the next entry still gates.
     // CarMotion is polled like the player does (1 s; GPS only
-    // updates every 2 s).
-    val moving by produceState(CarMotion.moving) {
-        while (true) { value = CarMotion.moving; delay(1_000) }
-    }
+    // updates every 2 s). r47: the gate no longer opens on the first
+    // moving poll — see [PassengerGateTrigger]. A single GPS drift
+    // spike reads as "moving" for ~2-3 polls in preview, which is how
+    // the gate popped mid-session over the keyboard; and a gate that
+    // completes its streak while typing is deferred until typing ends,
+    // never dropped. The safety rule is unchanged: the gate still
+    // appears before browsing while genuinely moving.
     var gateOpen by remember { mutableStateOf(false) }
     var passengerAllowed by remember { mutableStateOf(false) }
-    LaunchedEffect(moving) {
-        if (!moving) { gateOpen = false }
-        else if (!passengerAllowed) { gateOpen = true }
+    val gateTrigger = remember { PassengerGateTrigger() }
+    val latestTypingActive = rememberUpdatedState(
+        fieldText != null || addressEditing || findOpen || engineEditing
+    )
+    val latestPassengerAllowed = rememberUpdatedState(passengerAllowed)
+    LaunchedEffect(Unit) {
+        while (true) {
+            when (gateTrigger.onPoll(CarMotion.moving, latestTypingActive.value, latestPassengerAllowed.value)) {
+                GateSignal.OPEN -> gateOpen = true
+                GateSignal.CLOSE -> gateOpen = false
+                GateSignal.NONE -> Unit
+            }
+            delay(1_000)
+        }
     }
     // Immersive + keyboard: an address cannot be edited while the
     // bar is hidden, so opening the address keyboard (tapping the
@@ -2763,7 +2778,7 @@ private fun JsDialogOverlay(dialog: JsDialogState, onDismiss: () -> Unit) {
     }
 }
 
-/** Tells Kotlin when an editable element on the page gains or loses focus, so [CarKeyboard] can show. */
+/** Tells Kotlin when an editable element on the page gains or loses focus, so [CarKeyboard] can show — and, since r47, when a focused field's value changes page-side, so Compose follows the page instead of pushing stale text back over it. */
 private class FieldFocusBridge(private val onFocus: (String) -> Unit, private val onBlur: () -> Unit) {
     private val main = Handler(Looper.getMainLooper())
 
@@ -2827,8 +2842,19 @@ private fun focusRingJs(color: String) = """
     })();
 """
 
-/** Reports focus/blur on text inputs, textareas and contenteditable elements to [FieldFocusBridge]. */
-private const val FOCUS_TRACKING_JS = """
+/**
+ * Reports focus/blur on text inputs, textareas and contenteditable elements to [FieldFocusBridge],
+ * and — r47 — reports page-side value changes back the same way. Before r47 the tracking was
+ * focus-only, so when the page itself rewrote a focused field (a search box's clear button, an
+ * autocomplete suggestion, any page script), Compose kept the stale text and the next keystroke
+ * pushed the stale text back over the page's newer value. Now an 'input' event on the focused
+ * element reports its current value through the same focused() bridge call, so Compose follows
+ * the page; reporting our own pushed values back is a no-op (same string, no new push, so no
+ * loop — pushes only ever originate from keyboard input). The activeElement guard keeps a
+ * dismissed (blurred) field from popping the keyboard back up on a later page-side rewrite.
+ * Internal, not private, so the test pins the shipped script's listeners.
+ */
+internal const val FOCUS_TRACKING_JS = """
     (function() {
         function isEditable(el) {
             if (!el) return false;
@@ -2844,6 +2870,12 @@ private const val FOCUS_TRACKING_JS = """
         });
         document.addEventListener('focusout', function(e) {
             if (isEditable(e.target)) window.GearslipField.blurred();
+        });
+        document.addEventListener('input', function(e) {
+            if (!isEditable(e.target)) return;
+            if (document.activeElement !== e.target) return;
+            var v = (e.target.value !== undefined) ? e.target.value : (e.target.textContent || '');
+            window.GearslipField.focused(v);
         });
     })();
 """

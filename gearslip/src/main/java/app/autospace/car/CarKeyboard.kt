@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.onClick
@@ -53,6 +54,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.coerceIn
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -412,12 +414,16 @@ private fun Key(
  * stream so no press can ever insert twice: tap inserts the letter, long-press inserts the
  * hint, and a quick swipe DOWN inserts the hint too ("keyboard swipe-down shortcut").
  * [KeyGestureTracker] decides; this composable only feeds it pointer events and fires the
- * one outcome it returns. A swipe is recognised only while a hint exists and only before
- * the long-press timeout — a slow drag that crosses the timeout is a long-press, not a
- * swipe, so the two paths can never both fire on one press. After either shortcut fires,
+ * one outcome it returns. A swipe is recognised only while a hint exists, only before
+ * the long-press timeout, and only as a quick flick — a slow downward roll is a tap,
+ * not a swipe, and a slow drag that crosses the timeout is a long-press, not a
+ * swipe, so the paths can never both fire on one press. After either shortcut fires,
  * the rest of the press is drained (consumed) until lift, so no tap follows it. A press
- * that slides up or sideways past the threshold inserts nothing: it is a cancelled
- * gesture, not a tap. Pressed feedback reuses the theme's own keycap surface
+ * is cancelled only when the finger actually leaves the key (r47: the old
+ * past-threshold cancel dropped ordinary rolling taps on car screens); a lift whose
+ * event was consumed elsewhere is a cancellation too, never a tap. Symbol keys
+ * carry no hints, so their moves are not tracked and they always tap on lift,
+ * exactly as before. Pressed feedback reuses the theme's own keycap surface
  * ([gsSurface]); the Gs hold-marker ring is not drawn here because the hint itself
  * already signals that the key holds a shortcut. Accessibility fallback: the semantics
  * onClick inserts the letter, so knob/D-pad activation still types (touch never invokes
@@ -433,11 +439,16 @@ private fun LetterKey(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val gestureScope = rememberCoroutineScope()
+    // r47: the key's own measured size, so the tracker cancels only when the
+    // finger truly leaves the key — not on an in-key roll. Zero (unmeasured)
+    // reads as inside: layout always precedes input, so this is only a guard.
+    var keySize by remember { mutableStateOf(IntSize.Zero) }
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
     val shape = gsButtonShape(RoundedCornerShape(12.dp))
     Box(
         modifier
             .height(LocalKeyHeight.current)
+            .onSizeChanged { keySize = it }
             .gsSurface(colors.container, shape, colors.border, pressed)
             .semantics { role = Role.Button; onClick { onLetter(); true } }
             .pointerInput(hint, label) {
@@ -471,21 +482,31 @@ private fun LetterKey(
                             if (!change.pressed) {
                                 gestureDone = true
                                 timeoutJob?.cancel()
-                                // A lift ends the press as a tap (tracker
-                                // decides). A system cancel also arrives here
-                                // as !pressed and is treated the same: the
-                                // keyboard has no competing gesture consumer
-                                // (no scroll, no nested detectors), so a true
-                                // cancel only occurs as the view detaches,
-                                // where the insert lands in a dying field.
-                                outcome = tracker.onUp()
+                                // A clean lift ends the press as a tap
+                                // (tracker decides). A lift whose event was
+                                // already consumed elsewhere — another
+                                // detector or a torn-down stream — is a
+                                // cancellation, never a tap: the old code
+                                // inserted a phantom letter here (notably
+                                // when the passenger gate popped mid-press).
+                                outcome = if (change.isConsumed) {
+                                    tracker.onCancel()
+                                    KeyPressOutcome.NONE
+                                } else {
+                                    tracker.onUp()
+                                }
                                 if (outcome == KeyPressOutcome.TAP) onLetter()
                                 break
                             }
                             val dy = change.position.y - down.position.y
                             val dx = change.position.x - down.position.x
                             val elapsed = change.uptimeMillis - down.uptimeMillis
-                            val swipe = if (hint != null && onShortcut != null) tracker.onMove(dy, dx, elapsed) else null
+                            // r47: cancel only on actually leaving the key.
+                            val pos = change.position
+                            val insideKey = keySize == IntSize.Zero ||
+                                (pos.x >= 0f && pos.x <= keySize.width.toFloat() &&
+                                    pos.y >= 0f && pos.y <= keySize.height.toFloat())
+                            val swipe = if (hint != null && onShortcut != null) tracker.onMove(dy, dx, elapsed, insideKey) else null
                             if (swipe == KeyPressOutcome.SHORTCUT) {
                                 gestureDone = true
                                 timeoutJob?.cancel()
@@ -548,15 +569,25 @@ enum class KeyPressOutcome { TAP, SHORTCUT, NONE }
  * cancelled. No Compose, no time source of its own — the caller feeds displacements and
  * elapsed times, so every path is unit-testable.
  *
- * Rules: a swipe-down is dy past threshold with dy greater than |dx|, recognised only
- * before the long-press timeout; reaching the timeout while still down (and not cancelled)
- * is a long-press shortcut; lifting before either, without a cancelling move, is a tap;
- * a move past threshold upward or sideways cancels the press (nothing is inserted).
- * Once a shortcut has fired, later events return null — the caller must not insert again.
+ * Rules (r47 — the car-typing fix; the old cancel rule is what broke real typing):
+ * a swipe-down is dy past threshold with dy greater than |dx|, recognised only
+ * before the long-press timeout AND only as a quick flick ([flickWindowMs]) — a
+ * slow downward roll of the finger is a press, not a swipe, so it still taps;
+ * reaching the timeout while still down (and not cancelled) is a long-press
+ * shortcut; lifting before either, without leaving the key, is a tap. A press
+ * is cancelled ONLY when the finger actually leaves the key ([insideKey] false):
+ * the old rule cancelled on any move past threshold upward or sideways, and on
+ * a car screen — coarse touch, a moving car, scaled preview coordinates — an
+ * ordinary tap rolls that far inside the key, so letters silently vanished.
+ * Once a shortcut has fired, later events return null — the caller must not
+ * insert again. A cancelled press stays cancelled even if the finger comes
+ * back onto the key before lifting.
  */
 class KeyGestureTracker(
     private val swipeThresholdPx: Float,
     private val longPressTimeoutMs: Long,
+    /** A deliberate flick crosses the threshold fast; a press-roll does not. */
+    private val flickWindowMs: Long = 300L,
 ) {
     private var fired = false
     private var cancelled = false
@@ -566,16 +597,21 @@ class KeyGestureTracker(
         cancelled = false
     }
 
-    /** Returns SHORTCUT the instant a swipe-down is recognised, else null. */
-    fun onMove(dy: Float, dx: Float, elapsedMs: Long): KeyPressOutcome? {
+    /**
+     * Returns SHORTCUT the instant a swipe-down flick is recognised, else null.
+     * [insideKey] is the caller's read of whether the pointer is still over
+     * the key (its own measured bounds); leaving the key cancels the press.
+     */
+    fun onMove(dy: Float, dx: Float, elapsedMs: Long, insideKey: Boolean = true): KeyPressOutcome? {
         if (fired || cancelled) return null
+        if (!insideKey) {
+            cancelled = true
+            return null
+        }
         if (elapsedMs >= longPressTimeoutMs) return null // timeout path owns it past here
-        if (dy > swipeThresholdPx && dy > abs(dx)) {
+        if (elapsedMs < flickWindowMs && dy > swipeThresholdPx && dy > abs(dx)) {
             fired = true
             return KeyPressOutcome.SHORTCUT
-        }
-        if (dy < -swipeThresholdPx || abs(dx) > swipeThresholdPx) {
-            cancelled = true
         }
         return null
     }
@@ -585,6 +621,11 @@ class KeyGestureTracker(
         if (fired || cancelled) return null
         fired = true
         return KeyPressOutcome.SHORTCUT
+    }
+
+    /** Called when the press is cancelled (consumed lift, stream torn down). */
+    fun onCancel() {
+        cancelled = true
     }
 
     /** Called on lift. TAP only when nothing fired and nothing cancelled. */
