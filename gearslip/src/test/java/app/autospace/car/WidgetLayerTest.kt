@@ -167,7 +167,7 @@ class WidgetLayerTest {
         .build()
 
     private fun testRoutingWithStep() = RoutingInfo.Builder()
-        .setCurrentStep(testStep(), Distance.create(500, Distance.UNIT_METERS))
+        .setCurrentStep(testStep(), Distance.create(500.0, Distance.UNIT_METERS))
         .build()
 
     @Test
