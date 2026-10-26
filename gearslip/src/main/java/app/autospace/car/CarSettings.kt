@@ -102,6 +102,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_FLOATING_MEDIA = "car_floating_media"
     private const val KEY_HOME_WIDGETS = "car_home_widgets"
+    private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
@@ -185,6 +186,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val carSensorsFlow = MutableStateFlow(false)
     private val floatingMediaFlow = MutableStateFlow(false)
     private val homeWidgetsFlow = MutableStateFlow(false)
+    private val frostedMapChromeFlow = MutableStateFlow(false)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
@@ -346,6 +348,17 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val homeWidgetsEnabled: StateFlow<Boolean> = homeWidgetsFlow
 
     /**
+     * Frosted map chrome (r46): the map pane, turn card, trip bar and
+     * edge buttons draw the shared frosted treatment (the floating
+     * media card's own surface at the pinned 0.92 alpha) instead of the
+     * opaque chrome. Experimental and off by default; classic opaque
+     * chrome returns when off. It joins the floating-look master suite:
+     * the future master switch sets this alongside floating media and
+     * home widgets, and the individual toggle keeps working after.
+     */
+    val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
+
+    /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
      * Re-enabled only from the widget settings row, never by cycling the
@@ -460,6 +473,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
         floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
         homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
+        frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
@@ -700,6 +714,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setHomeWidgetsEnabled(on: Boolean) {
         homeWidgetsFlow.value = on
         AppSettings.putString(app, KEY_HOME_WIDGETS, on.toString())
+    }
+
+    fun setFrostedMapChromeEnabled(on: Boolean) {
+        frostedMapChromeFlow.value = on
+        AppSettings.putString(app, KEY_FROSTED_MAP_CHROME, on.toString())
     }
 
     fun setWidgetsDismissed(dismissed: Boolean) {

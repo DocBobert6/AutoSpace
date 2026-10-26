@@ -120,14 +120,14 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
 @Composable
 private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
     if (info.isLoading) {
-        ChromeSurface(modifier) {
+        ChromeSurface(modifier, frosted = true) {
             Text("Finding a route…", Modifier.padding(16.dp), style = ChromeType.title)
         }
         return
     }
 
     val step = info.currentStep ?: return
-    ChromeSurface(modifier) {
+    ChromeSurface(modifier, frosted = true) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
@@ -265,7 +265,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
 
     // The same solid card the manoeuvre card above it uses - one surface for the whole map
     // chrome, rather than this one spot styled on its own as a bar over the map.
-    ChromeSurface(modifier, shadowElevation = 8.dp) {
+    ChromeSurface(modifier, shadowElevation = 8.dp, frosted = true) {
         val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()
         Row(
             Modifier.padding(start = 8.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
@@ -332,6 +332,7 @@ private fun MapPaneLayout(
                     .let { if (fullHeight) it.height(maxHeight - 24.dp) else it.heightIn(max = maxHeight - 24.dp) },
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
                 shadowElevation = 8.dp,
+                frosted = true,
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalMapEdgeActions provides edgeActions) { pane() }
             }
@@ -366,7 +367,7 @@ private fun MapChrome(template: MapTemplate, modifier: Modifier) {
         template.actionStrip,
         template.mapController?.mapActionStrip,
     ) {
-        ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)) {
+        ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
             Column {
                 HeaderBar(
                     headerTitle(template.header, ""),
@@ -410,7 +411,7 @@ private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifie
 @Composable
 private fun RoutePreviewChrome(template: RoutePreviewNavigationTemplate, modifier: Modifier) {
     MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip) {
-        ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)) {
+        ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
             Column {
                 HeaderBar(
                     headerTitle(template.header, template.title.text()),
@@ -440,7 +441,7 @@ private fun ListPane(
     itemList: androidx.car.app.model.ItemList?,
     modifier: Modifier,
 ) {
-    ChromeSurface(modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp)) {
+    ChromeSurface(modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
         Column {
             HeaderBar(title, startAction)
             if (loading) Text("Loading…", Modifier.padding(14.dp), style = ChromeType.title)

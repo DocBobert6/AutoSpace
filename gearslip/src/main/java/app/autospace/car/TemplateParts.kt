@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.alpha
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -94,24 +95,43 @@ import app.autospace.host.text
  * where to put its own markers, not where to stop painting. So anything the host lays over the
  * map is opaque, always, in the same one colour: a card that lets the map show through in places
  * reads as broken glass, not as a deliberate choice, and a driver has no way to tell which was
- * meant. There is no alpha knob here on purpose - every card, bar and strip in the template
- * chrome shares this surface, so nothing drawn over a map is ever see-through.
+ * meant. That stays the default — and r46 adds one experimental exception for map chrome:
+ * with the frosted-map-chrome toggle on, a surface marked [frosted] draws the shared
+ * frosted treatment ([FrostedPanelSurface], the floating media card's own surface at the
+ * pinned 0.92 alpha) instead of the opaque fill, with its shape routed through gsButtonShape
+ * and its elevation kept. Surfaces inside a frosted pane pass through ([ChromeSurfaceMode])
+ * so the fill is drawn exactly once per pane, and full-screen content surfaces (which never
+ * pass [frosted]) stay opaque whatever the toggle says.
  */
 @Composable
 internal fun ChromeSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(16.dp),
     shadowElevation: androidx.compose.ui.unit.Dp = 0.dp,
+    /** r46: this surface is map chrome eligible for the frosted treatment (TemplateChrome sites only). */
+    frosted: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    Surface(
-        shadowElevation = shadowElevation,
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = shape,
-        modifier = modifier,
-        content = content,
-    )
+    val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
+    when (chromeSurfaceMode(frostedOn, frosted, LocalInsideFrostedChrome.current)) {
+        ChromeSurfaceMode.PASSTHROUGH -> content()
+        ChromeSurfaceMode.FROSTED -> CompositionLocalProvider(LocalInsideFrostedChrome provides true) {
+            FrostedPanelSurface(
+                shape = gsButtonShape(shape),
+                elevation = shadowElevation,
+                modifier = modifier,
+                content = content,
+            )
+        }
+        ChromeSurfaceMode.OPAQUE -> Surface(
+            shadowElevation = shadowElevation,
+            color = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shape = shape,
+            modifier = modifier,
+            content = content,
+        )
+    }
 }
 
 /**
@@ -270,10 +290,10 @@ internal fun RightEdgeControls(
     ) {
         if (actions.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                actions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp) }
+                actions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp, frosted = true) }
             }
         }
-        mapActions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp) }
+        mapActions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp, frosted = true) }
     }
 }
 
@@ -295,6 +315,13 @@ private fun CarRow.isBlank(): Boolean =
 /**
  * One look everywhere: solid, in the theme's own colors, whether the button sits on a card or over
  * the map. An app that names a color for its button (a green Start) keeps it.
+ *
+ * r46: the map's edge controls pass [frosted], and with the frosted-map-chrome toggle on
+ * their fill becomes the shared frosted fill — the scheme's surfaceContainerLow (primary
+ * while active, the app's own color when it names one) at the pinned 0.92 alpha, with the
+ * style's depth language from GsIconBox and the alpha kept exactly (Frost's 0.97 container
+ * scaling must not dilute it — see [scaledContainerAlpha]). Shapes, sizes and behavior
+ * are untouched; every other caller keeps today's opaque button.
  */
 @Composable
 internal fun ActionButton(
@@ -305,6 +332,8 @@ internal fun ActionButton(
     buttonSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_SIZE,
     /** Icon-only glyph size; the map's edge controls pass 34dp. Everywhere else keeps 30dp. */
     glyphSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_GLYPH,
+    /** r46: this button is map-edge chrome eligible for the frosted treatment (RightEdgeControls only). */
+    frosted: Boolean = false,
 ) {
     if (action.type == Action.TYPE_APP_ICON) {
         AppIconBadge()
@@ -317,7 +346,16 @@ internal fun ActionButton(
     val scheme = MaterialTheme.colorScheme
     val custom = action.backgroundColor?.type?.let { it != androidx.car.app.model.CarColor.TYPE_DEFAULT } == true
     val fallback = scheme.surfaceContainerHighest
-    val background = if (active) scheme.primary else action.backgroundColor.color(dark, fallback)
+    val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
+    val frostedButton = frosted && frostedOn
+    val background = if (frostedButton) {
+        val frostedBase = when {
+            active -> scheme.primary
+            custom -> action.backgroundColor.color(dark, fallback)
+            else -> scheme.surfaceContainerLow
+        }
+        frostedBase.copy(alpha = FrostedChromeAlpha)
+    } else if (active) scheme.primary else action.backgroundColor.color(dark, fallback)
     val content = when {
         active -> scheme.onPrimary
         custom -> Color.White
@@ -336,6 +374,7 @@ internal fun ActionButton(
         enabled = action.isEnabled,
         shape = if (title.isEmpty()) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(if (large) 28.dp else 24.dp),
         latched = active,
+        keepAlpha = frostedButton,
     ) {
         if (large && title.isNotEmpty()) {
             // The label sits dead centre on the button; the icon hangs off the left edge, so the

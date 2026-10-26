@@ -2,6 +2,7 @@ package app.autospace.car.theme
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -212,6 +213,80 @@ fun GsSheetSurface(
             }
         }
     )
+}
+
+/**
+ * r46: the frosted map-chrome treatment, shared by the floating media
+ * card and the map chrome so the two cannot drift. Frosted
+ * approximation, NOT live blur: live blur over a SurfaceView is
+ * impossible (a SurfaceFlinger layer cannot be sampled by an overlay),
+ * so the fill is translucent and the map reads through faintly — at
+ * exactly the card's level, whatever the style or scheme.
+ *
+ * The see-through level is PINNED: [FrostedChromeAlpha] (0.92) is the
+ * base fill alpha on every style and every scheme. Corners, depth and
+ * texture still follow the style (panel corners through [gsButtonShape],
+ * Pitlane weave/bevel/rivets only under Pitlane, each surface keeping
+ * its elevation role); colors still follow the scheme (the fill is the
+ * scheme's surfaceContainerLow, so dark schemes frost dark and light
+ * schemes frost light). The Pitch hairline stays Pitch-gated, as on
+ * the card.
+ *
+ * The fill is drawn exactly once per pane: a frosted surface provides
+ * [LocalInsideFrostedChrome] to its content, and any ChromeSurface
+ * inside it renders as a pass-through ([ChromeSurfaceMode.PASSTHROUGH])
+ * instead of stacking a second translucent fill on top (two 0.92 fills
+ * would read ~0.994 opaque, not 0.92). [chromeSurfaceMode] is that
+ * rule, pure so it is unit-testable.
+ */
+const val FrostedChromeAlpha = 0.92f
+
+/** Which surface a ChromeSurface draws: opaque as today, frosted, or nothing but its content. */
+enum class ChromeSurfaceMode { OPAQUE, FROSTED, PASSTHROUGH }
+
+/**
+ * r46: the pure surface-selection rule behind ChromeSurface, kept
+ * free of Composition so it is unit-testable. Inside a frosted pane the
+ * fill already exists, so any further surface passes through; a map
+ * surface with the toggle on frosts; everything else stays opaque.
+ */
+fun chromeSurfaceMode(toggleOn: Boolean, frosted: Boolean, insideFrosted: Boolean): ChromeSurfaceMode =
+    if (insideFrosted) ChromeSurfaceMode.PASSTHROUGH
+    else if (toggleOn && frosted) ChromeSurfaceMode.FROSTED
+    else ChromeSurfaceMode.OPAQUE
+
+/** True while composing inside a frosted panel surface (see above). */
+val LocalInsideFrostedChrome = compositionLocalOf { false }
+
+/** r46: the frosted fill — the scheme's surfaceContainerLow at the pinned alpha. */
+@Composable
+fun frostedChromeColor(): Color =
+    MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
+
+/**
+ * r46: the one frosted panel surface. The floating media card and the
+ * frosted map chrome both read this, with their own shape and elevation
+ * — the card keeps its gsButtonShape radius and 6dp elevation, map
+ * panels keep their call-site shape (routed through gsButtonShape) and
+ * elevation. Pitlane border + texture are no-ops under every other
+ * style, and the hairline stays Pitch-gated, exactly as the card has it.
+ */
+@Composable
+fun FrostedPanelSurface(
+    shape: Shape,
+    elevation: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Surface(
+        modifier = modifier.pitLanePanelBorder(shape),
+        shape = shape,
+        color = frostedChromeColor(),
+        shadowElevation = elevation,
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+    ) {
+        Box(Modifier.pitLanePanelTexture()) { content() }
+    }
 }
 
 /**

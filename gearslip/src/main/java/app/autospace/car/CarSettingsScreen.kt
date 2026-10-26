@@ -608,6 +608,7 @@ private fun AboutAndExperimentalPage() {
     val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
+    val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
@@ -618,7 +619,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, homeWidgets, widgetsDismissed)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1228,7 +1229,7 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  */
 @Composable
 private fun ExperimentalFeaturesList(
-    carSensors: Boolean, floatingMedia: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
+    carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1250,6 +1251,15 @@ private fun ExperimentalFeaturesList(
                 "returns when this is off.",
             checked = floatingMedia,
         ) { CarSettings.setFloatingMediaEnabled(it) }
+        ExperimentalFeatureRow(
+            title = "Frosted map chrome (experimental)",
+            description = "The map pane, turn card, trip bar, and edge buttons get the same " +
+                "frosted treatment as the floating media card — the map shows through " +
+                "faintly at the same level, in the active style and scheme. This is a " +
+                "frosted approximation, not live blur. Classic opaque chrome returns " +
+                "when this is off.",
+            checked = frostedMapChrome,
+        ) { CarSettings.setFrostedMapChromeEnabled(it) }
         ExperimentalFeatureRow(
             title = "Home widgets (experimental)",
             description = "Shows weather, notification digest, and next event as a column " +

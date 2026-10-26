@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,16 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.FrostedPanelSurface
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconButton
-import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.gsShape
-import app.autospace.car.theme.pitLanePanelBorder
-import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.media.MediaArt
 import app.autospace.media.NowPlaying
-import androidx.compose.foundation.BorderStroke
 
 /**
  * Floating Home (r34): the map full-bleed with media as a floating card over
@@ -227,14 +222,15 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
     val cardShape = gsButtonShape(GsKit.CardShape)
-    Card(
-        modifier = modifier.pitLanePanelBorder(cardShape),
+    // r46: the card reads the shared frosted panel surface — same shape,
+    // elevation, fill, texture, border and Pitch hairline as before, now
+    // shared with the frosted map chrome so the two cannot drift.
+    FrostedPanelSurface(
         shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerLow.copy(alpha = 0.92f)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        elevation = 6.dp,
+        modifier = modifier,
     ) {
-        Column(Modifier.fillMaxWidth().pitLanePanelTexture().padding(12.dp)) {
+        Column(Modifier.fillMaxWidth().padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Info area only: tap-through to the full player. Transport,
                 // progress, and dismiss are controls, so they sit outside

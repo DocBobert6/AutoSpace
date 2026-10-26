@@ -129,6 +129,17 @@ fun gsLook(): ControlLook {
 }
 
 /**
+ * r46: the pure container-alpha rule behind [gsSurface], kept free of
+ * Composition so it is unit-testable. Frosted fills pin their alpha
+ * (see [FrostedChromeAlpha]) — the style's containerAlpha must not
+ * dilute them, so Frost (0.97) would otherwise read 0.92 × 0.97 =
+ * 0.8924. [keepAlpha] skips the scaling; everything else keeps
+ * today's multiplication exactly.
+ */
+fun scaledContainerAlpha(inputAlpha: Float, lookAlpha: Float, keepAlpha: Boolean): Float =
+    if (keepAlpha) inputAlpha else inputAlpha * lookAlpha
+
+/**
  * Paints a control's container in the current theme's finish. Transparent containers stay
  * transparent in every theme. Use directly for custom-shaped tappables; [GsButton] and
  * [GsIconButton] already apply it. [latched] holds a control down - a selected option, the current
@@ -143,9 +154,11 @@ fun Modifier.gsSurface(
     latched: Boolean = false,
     /** r26: a recessed well (switch track under Pit Lane) — inverted bevel + inner top shadow. */
     well: Boolean = false,
+    /** r46: keep the container's alpha exactly (frosted fills pin theirs — see [scaledContainerAlpha]). */
+    keepAlpha: Boolean = false,
 ): Modifier {
     val look = gsLook()
-    val effContainer = if (look.containerAlpha < 1f) container.copy(alpha = container.alpha * look.containerAlpha) else container
+    val effContainer = container.copy(alpha = scaledContainerAlpha(container.alpha, look.containerAlpha, keepAlpha))
     val down = pressed || latched
     // The keycap's face sinks onto its base while pressed, and stays down while latched: the base
     // shrinks to nothing and the face moves down by the same amount, so the control's overall size
@@ -488,6 +501,8 @@ fun GsIconBox(
     onLongClick: (() -> Unit)? = null,
     /** r26: recessed well (switch track under Pit Lane) — inverted bevel + inner top shadow. */
     well: Boolean = false,
+    /** r46: keep the container's alpha exactly (frosted fills pin theirs — see [scaledContainerAlpha]). */
+    keepAlpha: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface)
@@ -496,7 +511,7 @@ fun GsIconBox(
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed, latched, well),
+            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha),
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)
