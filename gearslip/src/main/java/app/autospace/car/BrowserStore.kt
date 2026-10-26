@@ -150,6 +150,90 @@ object BrowserStore {
         AppSettings.putString(context, KEY_BAR_POSITION, if (bottom) "bottom" else "top")
     }
 
+    // ---- Browser batch (r21) ----
+    /** Ad/tracker blocking toggle (bundled host list, BrowserFilter); ON by default. */
+    private const val KEY_AD_BLOCK = "browser_ad_block"
+    /** Per-site desktop choice, JSON object host -> true (desktop remembered). */
+    private const val KEY_DESKTOP_SITES = "browser_desktop_sites"
+    /** Saved session (non-private tabs only): "active:<idx>" + one page per line. */
+    private const val KEY_SESSION = "browser_session"
+    /** Recently closed tabs, most recent first, capped. */
+    private const val KEY_RECENTLY_CLOSED = "browser_recently_closed"
+    private const val MAX_RECENTLY_CLOSED = 20
+    /** Start-page pins the user sets himself; no invented defaults. */
+    private const val KEY_PINS = "browser_start_pins"
+
+    fun adBlockEnabled(context: Context): Boolean =
+        AppSettings.getString(context, KEY_AD_BLOCK, "true") != "false"
+
+    fun setAdBlockEnabled(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_AD_BLOCK, on.toString())
+    }
+
+    fun desktopForHost(context: Context, host: String): Boolean {
+        if (host.isBlank()) return false
+        val raw = AppSettings.getString(context, KEY_DESKTOP_SITES, "")
+        if (raw.isBlank()) return false
+        return runCatching { JSONObject(raw).optBoolean(host, false) }.getOrDefault(false)
+    }
+
+    fun setDesktopForHost(context: Context, host: String, desktop: Boolean) {
+        if (host.isBlank()) return
+        val obj = runCatching { JSONObject(AppSettings.getString(context, KEY_DESKTOP_SITES, "")) }
+            .getOrDefault(JSONObject())
+        if (desktop) obj.put(host, true) else obj.remove(host)
+        AppSettings.putString(context, KEY_DESKTOP_SITES, obj.toString())
+    }
+
+    /** Saves the session: non-private tabs only, URLs + titles, never playback state. */
+    fun saveSession(context: Context, pages: List<SavedPage>, activeIndex: Int) {
+        AppSettings.putString(context, KEY_SESSION, encodeSession(pages, activeIndex))
+    }
+
+    fun loadSession(context: Context): Pair<List<SavedPage>, Int> =
+        decodeSession(AppSettings.getString(context, KEY_SESSION, ""))
+
+    fun clearSession(context: Context) {
+        AppSettings.putString(context, KEY_SESSION, "")
+    }
+
+    fun recentlyClosed(context: Context): List<SavedPage> =
+        decodePages(AppSettings.getString(context, KEY_RECENTLY_CLOSED, ""))
+
+    fun addRecentlyClosed(context: Context, page: SavedPage) {
+        if (page.url.isBlank() || !page.url.startsWith("http")) return
+        val list = (listOf(page) + recentlyClosed(context))
+            .distinctBy { it.url }.take(MAX_RECENTLY_CLOSED)
+        AppSettings.putString(context, KEY_RECENTLY_CLOSED, encodePages(list))
+    }
+
+    fun removeRecentlyClosed(context: Context, url: String) {
+        val list = recentlyClosed(context).filter { it.url != url }
+        AppSettings.putString(context, KEY_RECENTLY_CLOSED, encodePages(list))
+    }
+
+    fun clearRecentlyClosed(context: Context) {
+        AppSettings.putString(context, KEY_RECENTLY_CLOSED, "")
+    }
+
+    fun pins(context: Context): List<SavedPage> =
+        decodePages(AppSettings.getString(context, KEY_PINS, ""))
+
+    fun addPin(context: Context, page: SavedPage): Boolean {
+        if (page.url.isBlank() || !page.url.startsWith("http")) return false
+        val list = pins(context)
+        if (list.any { it.url == page.url }) return false
+        AppSettings.putString(context, KEY_PINS, encodePages(list + page))
+        return true
+    }
+
+    fun removePin(context: Context, url: String) {
+        AppSettings.putString(
+            context, KEY_PINS,
+            encodePages(pins(context).filter { it.url != url }),
+        )
+    }
+
     // ---- Text zoom (audit fix, 2026-10-25, A2) ----
     // WebView textZoom percent, persisted like the bar position
     // so a chosen size survives tab switches and sessions.

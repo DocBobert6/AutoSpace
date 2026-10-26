@@ -158,6 +158,11 @@ class GearslipActivity : ComponentActivity(), Projection {
             runOnUiThread { startWireless(socket) }
         }
         CarSettings.init(this)
+        // Private browsing (r21): a process that died with private tabs
+        // open leaves its profile on disk — deleting it at startup is
+        // the second half of "deleted when the last private tab closes".
+        // A no-op where the WebView lacks multi-profile support.
+        app.autospace.car.PrivateProfile.wipe()
         AppSettings.applyGearslipEnabled(this)
         // A capture that died without tidying up would leave notifications exposed to every
         // later screen share. Nothing is capturing if the service is not running, so undo it.

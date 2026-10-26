@@ -60,6 +60,8 @@ fun BrowserListsSheet(
     onPopupStrictChange: (Boolean) -> Unit,
     onPopupSettingChange: (BrowserStore.PopupSetting) -> Unit,
     isBookmarked: Boolean,
+    isPinned: Boolean,
+    onPinToggle: () -> Unit,
     onLoad: (String) -> Unit,
     onBookmarkToggle: () -> Unit,
     onRemoveBookmark: (String) -> Unit,
@@ -91,6 +93,11 @@ fun BrowserListsSheet(
                 )
                 GsButton(onClick = onBookmarkToggle, modifier = Modifier.fillMaxWidth()) {
                     Text(if (isBookmarked) "Remove this page from bookmarks" else "Bookmark this page")
+                }
+                // Start-page pins (r21): the user pins a page here, and it
+                // shows on every new tab's start page until removed.
+                GsButton(onClick = onPinToggle, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (isPinned) "Remove this page from start page pins" else "Pin this page to the start page")
                 }
                 // Phase 8 per-site popup settings (Notscape's model): strict
                 // blocking is ON by default; a site set to Allow loads its

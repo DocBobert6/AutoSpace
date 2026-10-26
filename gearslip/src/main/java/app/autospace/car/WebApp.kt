@@ -124,6 +124,12 @@ import org.json.JSONObject
 private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? = null) {
     var title by mutableStateOf<String?>(null)
     var currentUrl by mutableStateOf(initialUrl)
+    /** Private tabs (r21): own WebView profile, never in history, session, or recently closed. */
+    var isPrivate by mutableStateOf(false)
+    /** Per-tab desktop user agent (r21); remembered per host in BrowserStore. */
+    var desktopMode by mutableStateOf(false)
+    /** A new-tab start page (r21): no WebView yet — the start page composable shows instead. */
+    var isStartPage by mutableStateOf(false)
     var canGoBack by mutableStateOf(false)
     var canGoForward by mutableStateOf(false)
     var progress by mutableStateOf(0)
@@ -195,19 +201,54 @@ fun WebApp(content: String) {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     // Phase 10 tabs: the tab list + active id live in composition (see
     // BrowserTab). The first tab is the launch payload; every later tab
-    // starts at no-AI DuckDuckGo. Tabs are never zero: closing the last
+    // starts at the start page (r21). Tabs are never zero: closing the last
     // tab resets it to a fresh start page in place (see closeTab).
+    // Session restore (r21): when there is no explicit launch payload
+    // (no voice URL, no http content), a saved session reopens its tabs
+    // as URLs only — never playback state — with private tabs excluded
+    // (they were never saved). A fresh install has no session and opens
+    // no-AI DuckDuckGo, as before; an explicit http content payload
+    // still wins over a session, as it did over the default.
+    val restoredSession = remember {
+        if (voiceUrl == null && !content.startsWith("http")) BrowserStore.loadSession(context)
+        else emptyList<SavedPage>() to 0
+    }
     val tabs = remember {
-        mutableStateListOf(
-            BrowserTab(
-                0,
-                startUrl,
-                rawHtml = if (voiceUrl == null && !content.startsWith("http")) content else null,
+        val list = mutableStateListOf<BrowserTab>()
+        if (restoredSession.first.isNotEmpty()) {
+            restoredSession.first.forEachIndexed { index, page ->
+                val tab = BrowserTab(index, page.url)
+                tab.title = page.title.takeIf { it.isNotBlank() }
+                list.add(tab)
+            }
+        } else {
+            list.add(
+                BrowserTab(
+                    0,
+                    startUrl,
+                    rawHtml = if (voiceUrl == null && !content.startsWith("http")) content else null,
+                )
             )
+        }
+        list
+    }
+    var nextTabId by remember { mutableStateOf(tabs.size) }
+    var activeTabId by remember {
+        mutableStateOf(
+            if (restoredSession.first.isNotEmpty()) restoredSession.second.coerceIn(0, tabs.size - 1) else 0,
         )
     }
-    var nextTabId by remember { mutableStateOf(1) }
-    var activeTabId by remember { mutableStateOf(0) }
+    /** Persists the session from the current tabs (non-private only). */
+    fun saveSessionNow() {
+        val pages = tabs.filter { !it.isPrivate && !it.isStartPage && it.currentUrl.startsWith("http") }
+            .map { SavedPage(it.currentUrl, it.title ?: "") }
+        if (pages.isEmpty()) BrowserStore.clearSession(context)
+        else {
+            val active = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
+            val activeNonPrivate = tabs.take(active + 1).count { !it.isPrivate && !it.isStartPage } - 1
+            BrowserStore.saveSession(context, pages, activeNonPrivate.coerceAtLeast(0))
+        }
+    }
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
     var tabsOpen by remember { mutableStateOf(false) }
     fun addMedia(tab: BrowserTab, url: String, title: String?) {
@@ -235,14 +276,42 @@ fun WebApp(content: String) {
     var findOpen by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findMatches by remember { mutableStateOf("") }
-    fun newTab() {
-        val tab = BrowserTab(nextTabId++, ProjectedContent.DEFAULT_URL)
+    /** A new tab (r21) is a start page, private or not — never a bare search page. */
+    fun newTab(isPrivate: Boolean = false) {
+        val tab = BrowserTab(nextTabId++, "")
+        tab.isPrivate = isPrivate
+        tab.isStartPage = true
         tabs.add(tab)
         activeTabId = tab.id
         addressEditing = false
         addressSelected = false
         tabsOpen = false
         resetBarScrollHide()
+        saveSessionNow()
+    }
+    /** A new tab already aimed at a URL (popups, long-press, recently closed). */
+    fun newUrlTab(url: String, isPrivate: Boolean = false) {
+        val tab = BrowserTab(nextTabId++, url)
+        tab.isPrivate = isPrivate
+        tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
+        tabs.add(tab)
+        activeTabId = tab.id
+        addressEditing = false
+        addressSelected = false
+        tabsOpen = false
+        resetBarScrollHide()
+        saveSessionNow()
+    }
+    /** Loads [url] into [tab], waking a start-page tab (which has no WebView yet). */
+    fun openUrlInTab(tab: BrowserTab, url: String) {
+        tab.isStartPage = false
+        tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
+        if (tab.view != null) {
+            tab.view?.loadUrl(url)
+        } else {
+            tab.currentUrl = url
+        }
+        saveSessionNow()
     }
     fun switchTab(tab: BrowserTab) {
         activeTabId = tab.id
@@ -250,18 +319,36 @@ fun WebApp(content: String) {
         addressSelected = false
         tabsOpen = false
         resetBarScrollHide()
+        saveSessionNow()
     }
     fun closeTab(tab: BrowserTab) {
+        val wasPrivate = tab.isPrivate
         if (tabs.size == 1) {
             // Never zero tabs: reset the last tab to a fresh start page
-            // in its existing WebView instead of removing it.
-            tab.view?.loadUrl(ProjectedContent.DEFAULT_URL)
+            // in place instead of removing it.
+            if (tab.isStartPage) {
+                tabsOpen = false
+                resetBarScrollHide()
+                return
+            }
+            tab.isStartPage = true
+            tab.currentUrl = ""
+            tab.title = null
             tab.foundMedia.clear()
             tab.loadError = null
-            tab.title = null
+            val v = tab.view
+            tab.view = null
+            mainHandler.post {
+                runCatching { v?.destroy() }
+                if (wasPrivate) PrivateProfile.wipe()
+            }
             tabsOpen = false
             resetBarScrollHide()
+            saveSessionNow()
             return
+        }
+        if (!wasPrivate && !tab.isStartPage && tab.currentUrl.startsWith("http")) {
+            BrowserStore.addRecentlyClosed(context, SavedPage(tab.currentUrl, tab.title ?: ""))
         }
         val idx = tabs.indexOf(tab)
         tabs.remove(tab)
@@ -273,19 +360,73 @@ fun WebApp(content: String) {
         // this tab's AndroidView may still be composed this frame).
         val v = tab.view
         tab.view = null
-        mainHandler.post { runCatching { v?.destroy() } }
+        mainHandler.post {
+            runCatching { v?.destroy() }
+            // The private profile dies with the last private tab.
+            if (wasPrivate && tabs.none { it.isPrivate }) PrivateProfile.wipe()
+        }
+        saveSessionNow()
     }
+    /** Downloads [url] through the phone Downloads folder — the same path the
+     *  download listener uses, shared with the long-press menu (r21). */
+    fun downloadUrl(url: String) {
+        runCatching {
+            val filename = URLUtil.guessFileName(url, null, null)
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle(filename)
+                .setDescription("Downloaded from the car browser")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
+            context.getSystemService(DownloadManager::class.java)?.enqueue(request)
+            GearslipLog.i("car browser download started: $filename")
+        }.onFailure { e ->
+            GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+        }
+    }
+    /** Shares [url] cleaned of tracking parameters (r21 CleanLink). */
+    fun shareUrl(url: String) {
+        val cleaned = CleanLink.strip(url)
+        if (cleaned.isBlank()) return
+        runCatching {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, cleaned)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(send, "Share link"))
+        }
+    }
+    /** Copies [url] cleaned of tracking parameters (r21 CleanLink) to the clipboard. */
+    fun copyUrl(url: String) {
+        val cleaned = CleanLink.strip(url)
+        runCatching {
+            val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+            clipboard?.setPrimaryClip(android.content.ClipData.newPlainText("Link", cleaned))
+            GearslipLog.i("car browser link copied (cleaned)")
+        }
+    }
+    // r21 lists, declared before the tab-switch effect so that effect
+    // can refresh them (a lambda cannot capture a variable declared
+    // after it in the same scope).
+    var recentlyClosed by remember { mutableStateOf(BrowserStore.recentlyClosed(context)) }
+    var pins by remember { mutableStateOf(BrowserStore.pins(context)) }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
     // Also (A2) applies the stored text zoom to the newly active
     // tab and re-runs an open find query on it, so zoom/find
     // follow tab switches instead of silently resetting.
+    // r21: tab switches also refresh the start page's lists, so a
+    // pin added in one tab shows on a new tab's start page.
     LaunchedEffect(activeTabId) {
         web = activeTab.view
         web?.settings?.textZoom = textZoom
         if (findOpen && findQuery.isNotEmpty()) web?.findAllAsync(findQuery)
+        bookmarks = BrowserStore.bookmarks(context)
+        historyList = BrowserStore.history(context)
+        recentlyClosed = BrowserStore.recentlyClosed(context)
+        pins = BrowserStore.pins(context)
     }
-    var bookmarks by remember { mutableStateOf<List<String>>(emptyList()) }
-    var historyList by remember { mutableStateOf<List<String>>(emptyList()) }
+    var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
+    var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
@@ -333,6 +474,95 @@ fun WebApp(content: String) {
     LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
     LaunchedEffect(barBottom) { resetBarScrollHide() }
     var settingsMenuOpen by remember { mutableStateOf(false) }
+    // Browser batch (r21) state: reader article + read-aloud progress live only
+    // while the reader is open (no background service); the long-press target
+    // is a URL plus whether it is an image; the search-engine editor text is
+    // typed on the car keyboard like an address. Ad blocking and desktop mode
+    // are persisted in BrowserStore and read fresh where they apply.
+    var readerArticle by remember { mutableStateOf<Article?>(null) }
+    var readerOpen by remember { mutableStateOf(false) }
+    var readerNotice by remember { mutableStateOf<String?>(null) }
+    var readingChunks by remember { mutableStateOf<List<String>>(emptyList()) }
+    var readingIndex by remember { mutableStateOf(-1) }
+    var readingToken by remember { mutableStateOf(0) }
+    fun stopReading() {
+        readingToken++
+        readingIndex = -1
+        app.autospace.speech.VoiceEngine.stop()
+    }
+    fun startReading() {
+        val article = readerArticle ?: return
+        val chunks = ArticleExtractor.sentenceChunks(ArticleExtractor.plainText(article))
+        if (chunks.isEmpty()) {
+            readerNotice = "Nothing to read aloud on this page."
+            return
+        }
+        readingChunks = chunks
+        val token = readingToken + 1
+        readingToken = token
+        fun playChunk(index: Int) {
+            if (index >= chunks.size || token != readingToken) return
+            readingIndex = index
+            val started = app.autospace.speech.VoiceEngine.play(context, chunks[index], onDone = {
+                if (token == readingToken) {
+                    if (index + 1 < chunks.size) playChunk(index + 1)
+                    else readingIndex = -1
+                }
+            }, onSilent = {
+                if (token == readingToken) readingIndex = -1
+            })
+            if (!started) {
+                readerNotice = "No spoken voice is downloaded yet. Download one in Settings first."
+                readingIndex = -1
+            }
+        }
+        playChunk(0)
+    }
+    data class LongPressTarget(val url: String, val isImage: Boolean)
+    var longPressTarget by remember { mutableStateOf<LongPressTarget?>(null) }
+    var engineEditing by remember { mutableStateOf(false) }
+    var engineEditText by remember { mutableStateOf("") }
+    var engineEditError by remember { mutableStateOf<String?>(null) }
+    var adBlockOn by remember { mutableStateOf(BrowserStore.adBlockEnabled(context)) }
+    /** Bumped to recreate the active tab's WebView (desktop toggle, r21). */
+    var webViewEpoch by remember { mutableStateOf(0) }
+    /** Reader mode (r21): runs vendored Readability against a clone of the
+     *  live document, gated by isProbablyReaderable; a page that is not
+     *  article-like yields a plain notice, never a broken reader. */
+    fun enterReaderMode() {
+        settingsMenuOpen = false
+        val view = activeTab.view
+        if (view == null || activeTab.isStartPage) {
+            readerNotice = "Reader mode needs a loaded page."
+            return
+        }
+        val url = activeTab.currentUrl
+        view.evaluateJavascript(ArticleExtractor.loadLibrary(context) + ArticleExtractor.GLUE_JS) { result ->
+            val article = ArticleExtractor.parseResult(result, url)
+            if (article == null) {
+                readerNotice = "This page doesn't look like an article."
+            } else {
+                stopReading()
+                readerArticle = article
+                readerOpen = true
+            }
+        }
+    }
+    /** Flips this tab's desktop mode, remembers it per host, and recreates
+     *  the tab's WebView so the new user agent actually applies (a user
+     *  agent change on a live WebView would not take effect until reload,
+     *  and the tab's URL reloads from the fresh view). */
+    fun toggleDesktop() {
+        val tab = activeTab
+        if (tab.isStartPage) return
+        tab.desktopMode = !tab.desktopMode
+        BrowserStore.setDesktopForHost(context, hostOf(tab.currentUrl), tab.desktopMode)
+        val v = tab.view
+        tab.view = null
+        web = null
+        mainHandler.post { runCatching { v?.destroy() } }
+        webViewEpoch++
+    }
     // Passenger gate (Robert 2026-10-25 05:40; rule corrected
     // 2026-10-25 after the every-stop re-ask report): the allowance
     // lasts the whole browser session — from entering the browser
@@ -389,7 +619,11 @@ fun WebApp(content: String) {
         val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
         origin.view?.loadUrl(urls.first())
         if (origin.id != activeTabId) activeTabId = origin.id
-        urls.drop(1).forEach { url -> tabs.add(BrowserTab(nextTabId++, url)) }
+        urls.drop(1).forEach { url ->
+            val tab = BrowserTab(nextTabId++, url)
+            tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
+            tabs.add(tab)
+        }
         clearPendingPopups()
     }
     // Audit/browser build, Notscape's popunder guard (see PopunderHosts
@@ -434,6 +668,9 @@ fun WebApp(content: String) {
         historyList = BrowserStore.history(context)
         popupStrict = BrowserStore.popupStrict(context)
         popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
+        recentlyClosed = BrowserStore.recentlyClosed(context)
+        pins = BrowserStore.pins(context)
+        adBlockOn = BrowserStore.adBlockEnabled(context)
     }
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
@@ -494,14 +731,21 @@ fun WebApp(content: String) {
             capturedPopupViews.forEach { runCatching { it.destroy() } }
             // Leaving the browser destroys every tab's WebView (pre-tab
             // behaviour for the single WebView); switching tabs does not.
+            val hadPrivate = tabs.any { it.isPrivate }
             tabs.forEach { runCatching { it.view?.destroy() } }
+            // Session restore (r21): leaving saves the session, and a
+            // private profile dies with its last private tab — leaving
+            // with private tabs open destroys those views too.
+            saveSessionNow()
+            if (hadPrivate) PrivateProfile.wipe()
+            stopReading()
             // Leaving clears immersive session state, so a later
             // entry never starts immersive (never persisted).
             BrowserImmersiveState.exit()
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -511,6 +755,11 @@ fun WebApp(content: String) {
                 gateOpen -> { gateOpen = false; navigator.forceBack(); true }
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
+                // Reader (r21) closes before page history: BACK leaves
+                // the article and returns to the page underneath.
+                readerOpen -> { stopReading(); readerOpen = false; true }
+                longPressTarget != null -> { longPressTarget = null; true }
+                engineEditing -> { engineEditing = false; true }
                 showPopupNotice -> { clearPendingPopups(); true }
                 // Head-unit BACK closes the settings menu first, then the
                 // other overlays, then steps back a page, then — only
@@ -585,7 +834,13 @@ fun WebApp(content: String) {
                     BarNavButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", { web?.goBack() }, activeTab.canGoBack)
                     BarNavButton(Icons.AutoMirrored.Filled.ArrowForward, "Forward", { web?.goForward() }, activeTab.canGoForward)
                     BarNavButton(Icons.Filled.Refresh, "Reload", { web?.reload() }, true)
-                    BarNavButton(Icons.Filled.Home, "Home", { web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL) }, true)
+                    BarNavButton(Icons.Filled.Home, "Home", {
+                        if (activeTab.isStartPage) {
+                            openUrlInTab(activeTab, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
+                        } else {
+                            web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
+                        }
+                    }, true)
                 }
                 Box(
                     Modifier.weight(1f).height(44.dp)
@@ -694,7 +949,11 @@ fun WebApp(content: String) {
                                     }
                                 }
                             } else {
-                                Text(activeTab.currentUrl, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Text(
+                                    if (activeTab.isStartPage) "New tab" else activeTab.currentUrl,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
                             }
                         }
                         // One-tap clear while editing: clears the whole
@@ -846,7 +1105,23 @@ fun WebApp(content: String) {
                 // onRelease deliberately does NOT destroy: destroying here
                 // would kill every tab on every switch. Tab WebViews die
                 // only on tab close (posted) or on leaving the browser.
-                androidx.compose.runtime.key(activeTab.id) {
+                // Start page (r21): a start-page tab has no WebView at all — the
+                // ported start page composable fills the page area instead, and
+                // opening anything from it wakes the tab (see openUrlInTab).
+                if (activeTab.isStartPage) {
+                    BrowserStartPage(
+                        pins = pins,
+                        bookmarks = bookmarks,
+                        onSearch = { input ->
+                            openUrlInTab(activeTab, BrowserSearch.navigateUrl(context, input))
+                        },
+                        onOpen = { url -> openUrlInTab(activeTab, url) },
+                        onRemovePin = { url ->
+                            BrowserStore.removePin(context, url)
+                            pins = BrowserStore.pins(context)
+                        },
+                    )
+                } else androidx.compose.runtime.key(activeTab.id, webViewEpoch) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
@@ -864,7 +1139,48 @@ fun WebApp(content: String) {
                                 settings.domStorageEnabled = true
                                 settings.loadWithOverviewMode = true
                                 settings.useWideViewPort = true
+                                // Hardening baseline (r21): applied to every
+                                // tab WebView at creation (see BrowserExtras
+                                // for the geolocation / JS-interface notes).
+                                applyWebHardening(settings)
                                 val tab = activeTab
+                                // Desktop site (r21): a desktop tab wears
+                                // the desktop user agent; a mobile tab
+                                // keeps the WebView default. Per-site
+                                // memory is applied at tab creation and
+                                // on toggle (see toggleDesktop).
+                                if (tab.desktopMode) {
+                                    settings.userAgentString =
+                                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+                                }
+                                // Private tabs (r21): the private profile
+                                // must be assigned BEFORE anything loads.
+                                if (tab.isPrivate) PrivateProfile.applyTo(this)
+                                // Long-press link/image menu (r21): the
+                                // hit test tells link from image; anything
+                                // else keeps the default behaviour.
+                                setOnLongClickListener {
+                                    val hr = hitTestResult
+                                    val extra = hr?.extra
+                                    if (extra == null) {
+                                        false
+                                    } else when (hr.type) {
+                                        WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                                        WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                                            mainHandler.post {
+                                                longPressTarget = LongPressTarget(extra, false)
+                                            }
+                                            true
+                                        }
+                                        WebView.HitTestResult.IMAGE_TYPE -> {
+                                            mainHandler.post {
+                                                longPressTarget = LongPressTarget(extra, true)
+                                            }
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
                                 // Scroll-hide (Robert 2026-10-25 06:20):
                                 // the tab's own scroll drives only the
                                 // bar row (see onWebScroll). The listener
@@ -895,7 +1211,14 @@ fun WebApp(content: String) {
                                             tab.currentUrl = url
                                             tab.canGoBack = back
                                             tab.canGoForward = forward
-                                            BrowserStore.recordHistory(context, url)
+                                            // Private tabs (r21) never
+                                            // write history — and the
+                                            // session saves with them
+                                            // filtered out too.
+                                            if (!tab.isPrivate) {
+                                                BrowserStore.recordHistory(context, url)
+                                            }
+                                            saveSessionNow()
                                         }
                                     },
                                     onMainFrameError = { message ->
@@ -978,7 +1301,7 @@ fun WebApp(content: String) {
                     ) { browserBar() }
                 }
             }
-            if (!addressEditing) {
+            if (!addressEditing && !engineEditing) {
                 fieldText?.let { text ->
                     CarKeyboard(
                         text = text,
@@ -1013,7 +1336,7 @@ fun WebApp(content: String) {
             // match; dismiss closes the bar and clears highlights.
             // It never touches the address edit above, and the
             // passenger gate still appears first while moving.
-            if (findOpen && !addressEditing) {
+            if (findOpen && !addressEditing && !engineEditing) {
                 CarKeyboard(
                     text = findQuery,
                     onTextChange = { updated ->
@@ -1043,12 +1366,84 @@ fun WebApp(content: String) {
                     onSubmit = {
                         addressEditing = false
                         addressSelected = false
-                        web?.loadUrl(ProjectedContent.navigateUrl(addressText))
+                        // Search uses the engine setting (r21); a
+                        // start-page tab wakes into a real tab here.
+                        val url = BrowserSearch.navigateUrl(context, addressText)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
                     },
                     onDismiss = {
                         addressEditing = false
                         addressSelected = false
                     },
+                )
+            }
+            // Custom search engine editor (r21): a panel above the car
+            // keyboard (not a scrim sheet — the keyboard must stay
+            // reachable while typing the template). Save validates
+            // with SearchTemplate's plain errors; Reset returns to
+            // No-AI DuckDuckGo.
+            if (engineEditing) {
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Custom search engine",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    Text(
+                        if (engineEditText.isEmpty()) "https://example.com/search?q=%s" else engineEditText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (engineEditText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        "Must start with https:// and contain %s where the search terms go.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    engineEditError?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = {
+                            val problem = SearchTemplate.validate(engineEditText)
+                            if (problem != null) {
+                                engineEditError = problem
+                            } else {
+                                BrowserSearch.setCustomTemplate(context, engineEditText)
+                                engineEditing = false
+                            }
+                        }, modifier = Modifier.weight(1f)) { Text("Save") }
+                        GsButton(onClick = {
+                            BrowserSearch.clearCustomTemplate(context)
+                            engineEditing = false
+                        }, modifier = Modifier.weight(1f)) { Text("Reset to default") }
+                        GsButton(onClick = { engineEditing = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    }
+                }
+                CarKeyboard(
+                    text = engineEditText,
+                    onTextChange = { updated ->
+                        engineEditText = updated
+                        engineEditError = null
+                    },
+                    onSubmit = {
+                        val problem = SearchTemplate.validate(engineEditText)
+                        if (problem != null) {
+                            engineEditError = problem
+                        } else {
+                            BrowserSearch.setCustomTemplate(context, engineEditText)
+                            engineEditing = false
+                        }
+                    },
+                    onDismiss = { engineEditing = false },
                 )
             }
         }
@@ -1215,19 +1610,31 @@ fun WebApp(content: String) {
                 // the passenger gate is unaffected because this
                 // only fires from the settings menu, which the gate
                 // already stands in front of while moving.
+                // r21: the shared URL is cleaned (CleanLink) first.
                 onOpenOnPhone = {
                     settingsMenuOpen = false
-                    val url = activeTab.currentUrl
-                    if (url.isNotBlank()) {
-                        runCatching {
-                            val send = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, url)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(Intent.createChooser(send, "Open on phone"))
-                        }
-                    }
+                    shareUrl(activeTab.currentUrl)
+                },
+                adBlockOn = adBlockOn,
+                onAdBlock = { on ->
+                    BrowserStore.setAdBlockEnabled(context, on)
+                    adBlockOn = on
+                },
+                desktopMode = activeTab.desktopMode,
+                canToggleDesktop = !activeTab.isStartPage,
+                onToggleDesktop = { settingsMenuOpen = false; toggleDesktop() },
+                onReaderMode = { enterReaderMode() },
+                searchEngineLabel = BrowserSearch.customTemplate(context)
+                    .takeIf { it.isNotBlank() } ?: BrowserSearch.DEFAULT_NAME,
+                isCustomEngine = BrowserSearch.customTemplate(context).isNotBlank(),
+                onResetSearchEngine = {
+                    BrowserSearch.clearCustomTemplate(context)
+                },
+                onEditSearchEngine = {
+                    settingsMenuOpen = false
+                    engineEditText = BrowserSearch.customTemplate(context)
+                    engineEditError = null
+                    engineEditing = true
                 },
             )
         }
@@ -1248,9 +1655,19 @@ fun WebApp(content: String) {
                     popupSettingForHost = setting
                 },
                 isBookmarked = BrowserStore.isBookmarked(context, activeTab.currentUrl),
+                isPinned = pins.any { it.url == activeTab.currentUrl },
+                onPinToggle = {
+                    val url = activeTab.currentUrl
+                    if (pins.any { it.url == url }) {
+                        BrowserStore.removePin(context, url)
+                    } else {
+                        BrowserStore.addPin(context, SavedPage(url, activeTab.title ?: ""))
+                    }
+                    refreshLists()
+                },
                 onLoad = { url ->
                     listsOpen = false
-                    web?.loadUrl(url)
+                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
                 },
                 onBookmarkToggle = {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
@@ -1365,8 +1782,166 @@ fun WebApp(content: String) {
                 onSwitch = { switchTab(it) },
                 onCloseTab = { closeTab(it) },
                 onNewTab = { newTab() },
+                onNewPrivateTab = { newTab(isPrivate = true) },
+                recentlyClosed = recentlyClosed,
+                onReopenClosed = { page ->
+                    BrowserStore.removeRecentlyClosed(context, page.url)
+                    recentlyClosed = BrowserStore.recentlyClosed(context)
+                    newUrlTab(page.url)
+                },
+                onClearClosed = {
+                    BrowserStore.clearRecentlyClosed(context)
+                    recentlyClosed = emptyList()
+                },
                 onClose = { tabsOpen = false },
             )
+        }
+        // Reader mode (r21): the extracted article in its own shell,
+        // JavaScript disabled, over the page it came from. BACK closes
+        // it first (see the back interceptor); closing it stops any
+        // read-aloud in flight, and read-aloud progress lives only
+        // while this overlay is open — there is no background service.
+        if (readerOpen) {
+            val article = readerArticle
+            if (article != null) {
+                val bgHex = String.format("#%06X", MaterialTheme.colorScheme.surface.toArgb() and 0xFFFFFF)
+                val fgHex = String.format("#%06X", MaterialTheme.colorScheme.onSurface.toArgb() and 0xFFFFFF)
+                val linkHex = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            "Reader",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (readingIndex >= 0) {
+                            Text(
+                                "Reading ${readingIndex + 1} of ${readingChunks.size}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            GsButton(onClick = { stopReading() }) { Text("Stop") }
+                        } else {
+                            GsButton(onClick = { startReading() }) { Text("Read aloud") }
+                        }
+                        GsIconButton(Icons.Filled.Close, "Close reader", {
+                            stopReading()
+                            readerOpen = false
+                        }, size = 56.dp, iconSize = 28.dp)
+                    }
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                settings.javaScriptEnabled = false
+                                applyWebHardening(settings)
+                                loadDataWithBaseURL(
+                                    article.url,
+                                    buildReaderShell(article, bgHex, fgHex, linkHex),
+                                    "text/html", "utf-8", null,
+                                )
+                            }
+                        },
+                        onRelease = { view -> runCatching { view.destroy() } },
+                    )
+                }
+            }
+        }
+        // Reader notice (r21): a plain reason when extraction refuses
+        // (not an article) or no spoken voice is downloaded yet.
+        if (readerNotice != null) {
+            Box(
+                Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                GsPanelCard(Modifier.fillMaxWidth().padding(32.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            readerNotice ?: "",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        GsButton(onClick = { readerNotice = null }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+                    }
+                }
+            }
+        }
+        // Long-press link/image menu (r21): a frost sheet, never a
+        // dropdown popup window (those crash on this virtual display).
+        // Every row is a full-width button, 44dp or larger.
+        val longPress = longPressTarget
+        if (longPress != null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                Box(
+                    Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)).clickable(
+                        indication = null,
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        onClick = { longPressTarget = null },
+                    ),
+                )
+                app.autospace.car.theme.GsSheetSurface(
+                    modifier = Modifier.fillMaxWidth().padding(
+                        start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
+                    ),
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                if (longPress.isImage) "Image" else "Link",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            )
+                            GsIconButton(Icons.Filled.Close, "Close menu", { longPressTarget = null }, size = 56.dp, iconSize = 28.dp)
+                        }
+                        Text(
+                            longPress.url,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (!longPress.isImage) {
+                            GsButton(onClick = {
+                                longPressTarget = null
+                                newUrlTab(longPress.url)
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in new tab") }
+                        } else {
+                            GsButton(onClick = {
+                                longPressTarget = null
+                                newUrlTab(longPress.url)
+                            }, modifier = Modifier.fillMaxWidth()) { Text("View image") }
+                            GsButton(onClick = {
+                                longPressTarget = null
+                                downloadUrl(longPress.url)
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Download") }
+                        }
+                        GsButton(onClick = {
+                            copyUrl(longPress.url)
+                            longPressTarget = null
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Copy link") }
+                        GsButton(onClick = {
+                            val url = longPress.url
+                            longPressTarget = null
+                            shareUrl(url)
+                        }, modifier = Modifier.fillMaxWidth()) { Text("Share") }
+                    }
+                }
+            }
         }
         // Passenger gate, last so it draws above every sheet, dialog
         // and the keyboard: the scrim swallows touches, so nothing
@@ -1375,6 +1950,126 @@ fun WebApp(content: String) {
             PassengerGateDialog(
                 onDriving = { gateOpen = false; navigator.forceBack() },
                 onPassenger = { passengerAllowed = true; gateOpen = false },
+            )
+        }
+    }
+}
+
+/**
+ * The new-tab start page (r21), ported from Notscape's StartPage minus
+ * the banner — see the delivery note for exactly what was left out.
+ * What survives the port: a search entry (which searches with the
+ * engine setting, (12)), pins the user sets himself (added from Saved
+ * & history, removed here — no invented defaults), and the browser's
+ * own bookmarks. What does not survive: the banner card, the update
+ * note under it, the emulator sections (Shortcuts for sections /
+ * consoles / games), Continue watching/listening (playback positions
+ * belong to the player, not the browser), Continue reading (no books
+ * here), and Frequently visited (history already has its own sheet).
+ * Pages themselves are never themed — this page is AutoSpace chrome
+ * shown instead of a WebView, not a restyled web page.
+ */
+@Composable
+private fun BrowserStartPage(
+    pins: List<SavedPage>,
+    bookmarks: List<String>,
+    onSearch: (String) -> Unit,
+    onOpen: (String) -> Unit,
+    onRemovePin: (String) -> Unit,
+) {
+    var searchText by remember { mutableStateOf("") }
+    var searchEditing by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        Text(
+            "New tab",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
+        Box(
+            Modifier.fillMaxWidth().height(44.dp)
+                .frostBar(androidx.compose.foundation.shape.RoundedCornerShape(50), 6.dp)
+                .clickable { searchEditing = true }
+                .padding(horizontal = 16.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                if (searchText.isEmpty()) "Search or type an address…" else searchText,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = if (searchText.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Text(
+            "Search uses your search engine setting (No-AI DuckDuckGo unless you set a custom one).",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("Pins", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        if (pins.isEmpty()) {
+            Text(
+                "No pins yet. Pin a page from Saved & history (the star button) and it shows here.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            pins.forEach { pin ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(
+                            MaterialTheme.colorScheme.surfaceContainerHigh,
+                            androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                        )
+                        .clickable { onOpen(pin.url) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            pin.title.takeIf { it.isNotBlank() }
+                                ?: runCatching { Uri.parse(pin.url).host ?: pin.url }.getOrDefault(pin.url),
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            pin.url,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                }
+            }
+        }
+        Text("Bookmarks", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+        if (bookmarks.isEmpty()) {
+            Text(
+                "No bookmarks yet.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            bookmarks.forEach { url ->
+                GsButton(onClick = { onOpen(url) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                    Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (searchEditing) {
+            CarKeyboard(
+                text = searchText,
+                onTextChange = { searchText = it },
+                onSubmit = {
+                    val input = searchText
+                    searchEditing = false
+                    if (input.isNotBlank()) onSearch(input)
+                },
+                onDismiss = { searchEditing = false },
             )
         }
     }
@@ -1434,6 +2129,17 @@ private fun BrowserSettingsMenu(
     onTextZoom: (Int) -> Unit,
     onFindInPage: () -> Unit,
     onOpenOnPhone: () -> Unit,
+    // Browser batch (r21).
+    adBlockOn: Boolean,
+    onAdBlock: (Boolean) -> Unit,
+    desktopMode: Boolean,
+    canToggleDesktop: Boolean,
+    onToggleDesktop: () -> Unit,
+    onReaderMode: () -> Unit,
+    searchEngineLabel: String,
+    isCustomEngine: Boolean,
+    onResetSearchEngine: () -> Unit,
+    onEditSearchEngine: () -> Unit,
 ) {
     @Composable
     fun MenuRow(label: String, checked: Boolean, onClick: () -> Unit) {
@@ -1552,9 +2258,48 @@ private fun BrowserSettingsMenu(
                 )
                 MenuSection("Page")
                 MenuRow("Find in page", false) { onFindInPage() }
+                MenuRow("Reader mode", false) { onReaderMode() }
+                Text(
+                    "Reader mode shows the article text large, with JavaScript off. " +
+                        "It works only on pages that look like articles.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (canToggleDesktop) {
+                    MenuRow("Desktop site", desktopMode) { onToggleDesktop() }
+                    Text(
+                        "Desktop site flips this tab to the desktop user agent and back. " +
+                            "The choice is remembered for this site. New tabs start mobile.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 MenuRow("Open on phone", false) { onOpenOnPhone() }
                 Text(
-                    "Open on phone shares this page's address to the phone's browser; the car tab stays open.",
+                    "Open on phone shares this page's address to the phone's browser, " +
+                        "with tracking parameters removed; the car tab stays open.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuSection("Ads & trackers")
+                MenuRow("Block ads & trackers", adBlockOn) { onAdBlock(!adBlockOn) }
+                Text(
+                    "Blocks requests to a bundled list of ad and tracker hosts. " +
+                        "The list ships with the app and never blocks the page itself. " +
+                        "Turning it off loads everything again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuSection("Search engine")
+                MenuRow("No-AI DuckDuckGo", !isCustomEngine) { onResetSearchEngine() }
+                MenuRow(
+                    if (isCustomEngine) searchEngineLabel else "Custom search engine…",
+                    isCustomEngine,
+                ) { onEditSearchEngine() }
+                Text(
+                    "A custom engine must be an https URL with %s where the search " +
+                        "terms go. It drives the address bar and the start page search. " +
+                        "Voice search always uses No-AI DuckDuckGo.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1581,6 +2326,10 @@ private fun TabSwitcherSheet(
     onSwitch: (BrowserTab) -> Unit,
     onCloseTab: (BrowserTab) -> Unit,
     onNewTab: () -> Unit,
+    onNewPrivateTab: () -> Unit,
+    recentlyClosed: List<SavedPage>,
+    onReopenClosed: (SavedPage) -> Unit,
+    onClearClosed: () -> Unit,
     onClose: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -1614,6 +2363,16 @@ private fun TabSwitcherSheet(
                     androidx.compose.material3.Icon(Icons.Filled.Add, null, Modifier.size(22.dp))
                     Text("New tab")
                 }
+                GsButton(onClick = onNewPrivateTab, modifier = Modifier.fillMaxWidth()) {
+                    Text("New private tab")
+                }
+                Text(
+                    "Private tabs run in their own profile, leave no history, and " +
+                        "are never restored. The profile is deleted when the last " +
+                        "private tab closes.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 tabs.forEach { tab ->
                     val isActive = tab.id == activeTabId
                     Row(
@@ -1629,7 +2388,8 @@ private fun TabSwitcherSheet(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                tab.title ?: runCatching { Uri.parse(tab.currentUrl).host ?: "" }.getOrDefault("").ifBlank { "New tab" },
+                                (if (tab.isPrivate) "Private · " else "") +
+                                    (tab.title ?: runCatching { Uri.parse(tab.currentUrl).host ?: "" }.getOrDefault("").ifBlank { "New tab" }),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
                                 color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
@@ -1637,7 +2397,7 @@ private fun TabSwitcherSheet(
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                tab.currentUrl,
+                                if (tab.isStartPage) "Start page" else tab.currentUrl,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -1645,6 +2405,32 @@ private fun TabSwitcherSheet(
                             )
                         }
                         GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Recently closed",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    GsButton(onClick = onClearClosed, tone = app.autospace.car.theme.GsTone.Neutral) { Text("Clear list") }
+                }
+                if (recentlyClosed.isEmpty()) {
+                    Text(
+                        "No recently closed tabs.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    recentlyClosed.forEach { page ->
+                        GsButton(onClick = { onReopenClosed(page) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                page.title.takeIf { it.isNotBlank() } ?: page.url,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
@@ -1673,6 +2459,16 @@ private class BrowserClient(
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         request?.url?.toString()?.let { url ->
             if (VideoUrl.isPlayableUrl(url)) onMedia(url, null)
+            // Ad/tracker blocking (r21, bundled host list): subresources
+            // only — a main-frame load is NEVER blocked, so blocking
+            // cannot break a page load itself. Runs off the UI thread,
+            // so the toggle is read straight from BrowserStore.
+            if (request.isForMainFrame == false && view != null) {
+                val ctx = view.context
+                if (BrowserStore.adBlockEnabled(ctx) && BrowserFilter.isBlockedUrl(url)) {
+                    return BrowserFilter.emptyResponse()
+                }
+            }
         }
         return null
     }
@@ -1807,6 +2603,9 @@ private class BrowserChrome(
         val allowed = !BrowserStore.popupStrict(context) || setting == BrowserStore.PopupSetting.ALLOW
         val transport = WebView(view?.context ?: context).apply {
             settings.javaScriptEnabled = true
+            // Hardening baseline (r21) applies to captured popup
+            // transports too, even though they are never shown.
+            applyWebHardening(settings)
             webViewClient = PopupCaptureClient { url -> onPopupUrl(pageHost, url, this, allowed) }
         }
         (resultMsg.obj as? WebView.WebViewTransport)?.webView = transport
