@@ -57,35 +57,24 @@ import kotlinx.coroutines.withContext
  */
 @Composable
 fun CarSettingsScreen() {
-    val scale by CarSettings.scale.collectAsState()
-    val iconSize by CarSettings.iconSize.collectAsState()
-    val tileSize by CarSettings.tileSize.collectAsState()
-    val darkType by CarSettings.darkModeType.collectAsState()
-    val open by CarSettings.openOnConnect.collectAsState()
-    val night by CarSettings.nightMode.collectAsState()
-    val units by CarSettings.units.collectAsState()
-    val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
-    val pipeAudio by CarSettings.pipeAudio.collectAsState()
-    val speakDirections by CarSettings.speakDirections.collectAsState()
-    val bluetoothWarning by CarSettings.bluetoothWarning.collectAsState()
-    val locationWarning by CarSettings.locationWarning.collectAsState()
-    val autoplay by CarSettings.autoplay.collectAsState()
-    val theme by CarSettings.appTheme.collectAsState()
-    val uiTheme by CarSettings.uiTheme.collectAsState()
-    val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val carSensors by CarSettings.carSensorsEnabled.collectAsState()
-    val systemSpeech by CarSettings.systemSpeech.collectAsState()
-    val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
-    val hotword by CarSettings.hotword.collectAsState()
-    val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
-    val callSpeaker by CarSettings.callSpeaker.collectAsState()
-    val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
-    val display by CarEnvironment.display.collectAsState()
-    val vehicle by CarEnvironment.vehicle.collectAsState()
-    val mirrorFit by CarSettings.mirrorFit.collectAsState()
-    val context = LocalContext.current
-    val cert by produceState<CertSummary?>(null) {
-        value = withContext(Dispatchers.Default) { CertSummary.read(context) }
+    // Category pages (2026-10-25, r18): the old single long scrolling list
+    // is now a top-level category menu; each row opens that category's own
+    // page. Nothing moved value, key, default or behavior — every row below
+    // is the same composable the long list used, only grouped. Back: the
+    // breadcrumb arrow and the head-unit BACK key both go through
+    // [CarNavigator.back], which an open page claims first via
+    // [CarNavigator.backInterceptor] (same pattern as WebApp), so BACK goes
+    // page -> menu -> exit, never trapping the user on a page. One extra
+    // tap per setting (menu -> page) is the intended cost of shorter pages.
+    var page by remember { mutableStateOf<SettingsCategory?>(null) }
+    val navigator = LocalCarNavigator.current
+    DisposableEffect(page) {
+        navigator.backInterceptor = if (page != null) {
+            { page = null; true }
+        } else {
+            null
+        }
+        onDispose { navigator.backInterceptor = null }
     }
 
     // Phase 7 grouped-kit page: bright cards (surfaceBright) on the soft tinted
@@ -101,7 +90,7 @@ fun CarSettingsScreen() {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        ScreenHeader("Settings", Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
+        ScreenHeader(page?.title ?: "Settings", Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
         Column(
             Modifier
                 .weight(1f)
@@ -109,345 +98,473 @@ fun CarSettingsScreen() {
                 .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-
-        ChoiceRow(
-            "Open on connect",
-            listOf(CarSettings.HOME to "Home") + CarApps.all.filter { it.id != "settings" }.map { it.id to it.label },
-            open,
-        ) { CarSettings.setOpenOnConnect(it) }
-
-        // UI size (Phase 10, correcting Phase 9's display): the slider
-        // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
-        // minimum size, not zero size. Mapping, unchanged underneath:
-        // slider p 0–100 -> scale 0.5 + (p/100)*1.0, so p=0 -> scale
-        // 0.5, p=50 -> scale 1.0 (ship default, the old Normal), p=100
-        // -> scale 1.5 (the old Extra large). The pill shows p%, and
-        // the persisted key is still car_scale (0.5–1.5), so an old
-        // stored scale migrates by p=(scale-0.5)*100, clamped 0–100.
-        // Phase 9 showed the scale as 50%–150%, which read as a second,
-        // different scale next to the 0–100 icon slider.
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                androidx.compose.foundation.layout.Box(
-                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                ) { Text("${((scale - 0.5f) * 100f).roundToInt().coerceIn(0, 100)}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            }
-            GsGroupedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GsSeekBar(
-                        fraction = ((scale - 0.5f) / 1.0f).coerceIn(0f, 1f),
-                        onSeek = { CarSettings.setScale(0.5f + it * 1.0f) },
-                    )
-                    Text(
-                        "Scales the whole car UI, 0–100; 50 is the ship default. 0 is the smallest size, not zero size — nothing vanishes at 0.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            if (page == null) {
+                SettingsCategory.entries.forEach { category ->
+                    GsGroupedCard(
+                        Modifier.fillMaxWidth().clickable { page = category },
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(category.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    category.description,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            } else {
+                when (page) {
+                    SettingsCategory.APPEARANCE -> AppearancePage()
+                    SettingsCategory.AUDIO_AND_CALLS -> AudioAndCallsPage()
+                    SettingsCategory.VOICE -> VoicePage()
+                    SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage()
+                    SettingsCategory.SCREEN_AND_SHARING -> ScreenAndSharingPage()
+                    SettingsCategory.CONNECTION -> ConnectionPage()
+                    SettingsCategory.ABOUT_AND_EXPERIMENTAL -> AboutAndExperimentalPage()
+                    null -> Unit
                 }
             }
-        }
-
-        // Icon size (Phase 6, corrected 2026-10-24 22:10: 0%-100%, superseding
-        // the first 20%-100% ask). Finer than the Size presets above, which
-        // stay exactly as they are. 0% hides the icon; the tile, its label
-        // and its tap area stay, so a tile is never lost by shrinking it.
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Icon size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                androidx.compose.foundation.layout.Box(
-                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                ) { Text("${(iconSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            }
-            GsGroupedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GsSeekBar(
-                        fraction = (iconSize),
-                        onSeek = { CarSettings.setIconSize(it) },
-                    )
-                    Text(
-                        "Icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        // Tile size (Phase 7): 50%-150%, default 100% = the Phase 6 large tile
-        // size. The tile graphic shrinks with it, but the tap area never drops
-        // below a car target — launcher tiles floor at 88dp high, pinned tiles
-        // at 72dp — and the grid reflows with size. Applies to launcher tiles
-        // and to screen-sharing (PhoneApps) tiles.
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Tile size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                androidx.compose.foundation.layout.Box(
-                    Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                ) { Text("${(tileSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-            }
-            GsGroupedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GsSeekBar(
-                        fraction = (tileSize - 0.5f),
-                        onSeek = { CarSettings.setTileSize(0.5f + it) },
-                    )
-                    Text(
-                        "Tiles and their grid, 50%–150%; icons keep their own size above.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        ChoiceRow(
-            "Color scheme",
-            listOf(
-                AppTheme.FOLLOW_SYSTEM to "Follow system",
-                AppTheme.LIGHT to "Light",
-                AppTheme.DARK to "Dark",
-                AppTheme.MATERIAL_YOU to "Material You",
-                AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
-                AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
-                AppTheme.NIGHT to "Night",
-            ),
-            theme,
-        ) { CarSettings.setAppTheme(it) }
-        Text(
-            "Follow system is the plain neutral theme following the phone's " +
-                "light/dark. Light and Dark are plain neutral themes, no " +
-                "wallpaper colors. Material You follows the phone's wallpaper " +
-                "colors and light/dark; Material You Light / Dark use the " +
-                "phone's wallpaper colors, forced to that variant. Night is " +
-                "the dedicated night-driving scheme: pure black, warm gray " +
-                "text, amber accents.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        ChoiceRow(
-            "Dark mode",
-            listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "True Black"),
-            darkType,
-        ) { CarSettings.setDarkModeType(it) }
-        Text(
-            "Regular dark uses dark-gray surfaces, no pure black. True Black " +
-                "uses pure-black backgrounds and surfaces; panels are " +
-                "separated by their edges, not by gray fills. Applies to " +
-                "plain Dark, Material You Dark, and the dark variant of " +
-                "both Follow options, in every style. While Night is " +
-                "active, the background is pure black no matter which " +
-                "dark type is picked.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        NightSettingsSection()
-
-        ChoiceRow(
-            "Button style",
-            GsThemes.builtIn.map { it.id to it.name },
-            uiTheme,
-        ) { CarSettings.setUiTheme(it) }
-
-        ChoiceRow(
-            "Map day/night",
-            listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
-            night,
-        ) { CarSettings.setNightMode(it) }
-
-        ChoiceRow(
-            "Units",
-            listOf(Units.AUTO to "Auto", Units.IMPERIAL to "Imperial (mi, ft, °F)", Units.METRIC to "Metric (km, m, °C)"),
-            units,
-        ) { CarSettings.setUnits(it) }
-
-        ChoiceRow(
-            "Autoplay on connect",
-            listOf(false to "Off", true to "On"),
-            autoplay,
-        ) { CarSettings.setAutoplay(it) }
-
-        ChoiceRow(
-            "Car audio",
-            listOf(false to "Bluetooth", true to "USB"),
-            pipeAudio,
-        ) { CarSettings.setPipeAudio(it) }
-        Text(
-            "USB sends the phone's sound through AutoSpace. Android asks to share your screen each " +
-                "drive, and a few apps block it. Bluetooth plays as the phone normally would, and " +
-                "Android never asks.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!pipeAudio) {
-            ChoiceRow(
-                "Warn when Bluetooth isn't connected",
-                listOf(false to "Off", true to "On"),
-                bluetoothWarning,
-            ) { CarSettings.setBluetoothWarning(it) }
-        }
-        ChoiceRow(
-            "Warn when location is off",
-            listOf(false to "Off", true to "On"),
-            locationWarning,
-        ) { CarSettings.setLocationWarning(it) }
-
-        ChoiceRow(
-            "Spoken directions",
-            listOf(false to "Off", true to "On"),
-            speakDirections,
-        ) { CarSettings.setSpeakDirections(it) }
-        Text(
-            "AutoSpace reads each turn aloud through the car's speakers, and the music dips while it " +
-                "speaks. Turn it off if your map app's own voice already plays in the car. It needs " +
-                "a downloaded voice below.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        VoiceSettings()
-
-        VoiceTraceSettings()
-
-        SubtitleSettings()
-
-        ExperimentalFeatureRow(
-            title = "Use the phone's speech recognition",
-            description = "Listens through the phone's own speech service instead of AutoSpace's. On " +
-                "most phones that's Google's, which may send your voice to Google. GrapheneOS has " +
-                "none, so AutoSpace keeps using its own.",
-            checked = systemSpeech,
-        ) { CarSettings.setSystemSpeech(it) }
-
-        // Phone microphone for voice commands (approved 2026-10-24 22:19):
-        // for a car whose built-in mic is broken. Voice commands and voice
-        // replies only — this does NOT affect phone calls, which keep the
-        // car's audio route exactly as before.
-        ExperimentalFeatureRow(
-            title = "Use phone microphone for voice commands",
-            description = "Voice commands and voice replies listen through the phone's " +
-                "microphone instead of the car's, even when the car has one. " +
-                "Turn this on if the car's microphone doesn't work. This does " +
-                "NOT affect phone calls.",
-            checked = phoneMicForVoice,
-        ) { CarSettings.setPhoneMicForVoice(it) }
-
-        // Hotword (2026-10-25): hands-free wake phrase, off by default. The
-        // listener itself enforces the rest — car session only, suspended while
-        // the assistant is busy or on a call — so this row is only the switch.
-        // Hotword-only phone mic (2026-10-25): the same switch as
-        // phone Settings, same state. When on, hotword listening uses
-        // the phone mic even when the car has one — the workaround for
-        // a broken car mic. Button-press commands, calls, and the
-        // voice-microphone setting above are untouched by this switch.
-        ExperimentalFeatureRow(
-            title = "Listen for “Hey AutoSpace” on the phone microphone",
-            description = "Hotword listening only: uses the phone's microphone even when " +
-                "the car has one. Turn this on if the car's microphone doesn't work " +
-                "and “Hey AutoSpace” never answers. Button-press voice commands, " +
-                "calls, and everything else are unaffected.",
-            checked = hotwordPhoneMic,
-        ) { CarSettings.setHotwordPhoneMic(it) }
-
-        ExperimentalFeatureRow(
-            title = "Listen for “Hey AutoSpace”",
-            description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
-                "(or “Hey Gearslip”) and opens the assistant without a button press. " +
-                "It needs the Kroko listening model downloaded, it stops while the " +
-                "assistant is speaking, on a call, or when the car disconnects, and " +
-                "nothing you say leaves the phone.",
-            checked = hotword,
-        ) { CarSettings.setHotword(it) }
-
-        // Call speaker (2026-10-25): calls only, off by default, next to the
-        // phone-mic row it pairs with. When a call starts, audio moves to the
-        // phone's speaker — so the caller hears the phone's microphone, not a
-        // broken car microphone — and the previous speaker state is restored
-        // when the call ends. Voice commands, assistant speech, and media are
-        // untouched. The car's Bluetooth may reassert its route, which this
-        // cannot override; that is a car-test result, not a setting failure.
-        ExperimentalFeatureRow(
-            title = "Answer calls on the phone speaker",
-            description = "When a call starts, its audio goes to the phone's speaker instead " +
-                "of the car's Bluetooth route, so the caller hears you through the " +
-                "phone's microphone. This affects phone calls only — not voice " +
-                "commands, the assistant, or music — applies from the next call, " +
-                "and the speaker is restored when the call ends. If the car's " +
-                "Bluetooth takes the call back, this setting cannot override it.",
-            checked = callSpeaker,
-        ) { CarSettings.setCallSpeaker(it) }
-
-        WebPageSetting()
-
-        ScreenFit(vehicle)
-
-        ResolutionSetting(vehicle, display)
-
-        ChoiceRow(
-            "Screen sharing",
-            listOf(MirrorFit.FIT to "Fit (letterbox)", MirrorFit.FILL to "Fill (crop)"),
-            mirrorFit,
-        ) { CarSettings.setMirrorFit(it) }
-        Text(
-            "Fill crops the phone's edges to fill the frame; tap the ✕ in the top-right corner " +
-                "to exit. Fit shows the whole phone with bars; tap a bar to exit. A portrait " +
-                "phone on a landscape car crops heavily in Fill — Fit looks better there. " +
-                "Applies the next time screen sharing starts.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        ChoiceRow(
-            "Video skip seconds",
-            listOf(5 to "5s", 10 to "10s", 15 to "15s", 30 to "30s", 60 to "60s"),
-            playerSkipSec,
-        ) { CarSettings.setPlayerSkipSec(it) }
-        Text(
-            "How far the video player's skip buttons jump. The player shows " +
-                "the matching glyph at 5/10/30 seconds and a curved arrow " +
-                "with the seconds everywhere else.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        ChoiceRow(
-            "Experimental features",
-            listOf(false to "Hide", true to "Show"),
-            experimentalFeatures,
-        ) { CarSettings.setExperimentalFeaturesEnabled(it) }
-        if (experimentalFeatures) {
-            ExperimentalFeaturesList(carSensors)
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Info("Phone", "${Build.MANUFACTURER} ${Build.MODEL}")
-            Info("Vehicle", vehicle.ifEmpty { "-" })
-            Info("Video", display.ifEmpty { "-" })
-            Info("Certificate", cert?.headline ?: "Checking…")
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("About", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Info("Version", app.autospace.BuildConfig.VERSION_NAME)
-            Info("Build", app.autospace.BuildConfig.VERSION_CODE.toString())
-            ExperimentalFeatureRow(
-                "What's new after updates",
-                "Show the list of changes once, the first time the car connects after an update.",
-                whatsNew,
-            ) { CarSettings.setWhatsNewAfterUpdates(it) }
-            GsButton(onClick = CarSettings::openWhatsNew, tone = GsTone.Tonal, modifier = Modifier.height(56.dp)) {
-                Text("What's new", style = MaterialTheme.typography.titleMedium)
-            }
-        }
         }
     }
 }
+
+/** One row of the top-level Settings menu: plain name + one-line description. */
+private enum class SettingsCategory(val title: String, val description: String) {
+    APPEARANCE(
+        "Appearance",
+        "Sizes, color scheme, dark mode, Auto night, button style, map day/night, units",
+    ),
+    AUDIO_AND_CALLS(
+        "Audio & calls",
+        "Car audio, autoplay, Bluetooth warning, calls on the phone speaker",
+    ),
+    VOICE(
+        "Voice",
+        "Spoken directions, spoken voices, hotword, phone microphone, voice trace",
+    ),
+    BROWSER_AND_VIDEO(
+        "Browser & video",
+        "Browser start page, video skip seconds, subtitles",
+    ),
+    SCREEN_AND_SHARING(
+        "Screen & sharing",
+        "Screen fit, resolution, screen sharing",
+    ),
+    CONNECTION(
+        "Connection",
+        "What opens on connect, location warning, phone, vehicle and certificate",
+    ),
+    ABOUT_AND_EXPERIMENTAL(
+        "About & experimental",
+        "Version, what's new, experimental features",
+    ),
+}
+
+@Composable
+private fun AppearancePage() {
+    val scale by CarSettings.scale.collectAsState()
+    val iconSize by CarSettings.iconSize.collectAsState()
+    val tileSize by CarSettings.tileSize.collectAsState()
+    val theme by CarSettings.appTheme.collectAsState()
+    val darkType by CarSettings.darkModeType.collectAsState()
+    val uiTheme by CarSettings.uiTheme.collectAsState()
+    val night by CarSettings.nightMode.collectAsState()
+    val units by CarSettings.units.collectAsState()
+
+    // UI size (Phase 10, correcting Phase 9's display): the slider
+    // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
+    // minimum size, not zero size. Mapping, unchanged underneath:
+    // slider p 0–100 -> scale 0.5 + (p/100)*1.0, so p=0 -> scale
+    // 0.5, p=50 -> scale 1.0 (ship default, the old Normal), p=100
+    // -> scale 1.5 (the old Extra large). The pill shows p%, and
+    // the persisted key is still car_scale (0.5–1.5), so an old
+    // stored scale migrates by p=(scale-0.5)*100, clamped 0–100.
+    // Phase 9 showed the scale as 50%–150%, which read as a second,
+    // different scale next to the 0–100 icon slider.
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("UI size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            androidx.compose.foundation.layout.Box(
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) { Text("${((scale - 0.5f) * 100f).roundToInt().coerceIn(0, 100)}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        }
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GsSeekBar(
+                    fraction = ((scale - 0.5f) / 1.0f).coerceIn(0f, 1f),
+                    onSeek = { CarSettings.setScale(0.5f + it * 1.0f) },
+                )
+                Text(
+                    "Scales the whole car UI, 0–100; 50 is the ship default. 0 is the smallest size, not zero size — nothing vanishes at 0.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    // Icon size (Phase 6, corrected 2026-10-24 22:10: 0%-100%, superseding
+    // the first 20%-100% ask). Finer than the Size presets above, which
+    // stay exactly as they are. 0% hides the icon; the tile, its label
+    // and its tap area stay, so a tile is never lost by shrinking it.
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Icon size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            androidx.compose.foundation.layout.Box(
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) { Text("${(iconSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        }
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GsSeekBar(
+                    fraction = (iconSize),
+                    onSeek = { CarSettings.setIconSize(it) },
+                )
+                Text(
+                    "Icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    // Tile size (Phase 7): 50%-150%, default 100% = the Phase 6 large tile
+    // size. The tile graphic shrinks with it, but the tap area never drops
+    // below a car target — launcher tiles floor at 88dp high, pinned tiles
+    // at 72dp — and the grid reflows with size. Applies to launcher tiles
+    // and to screen-sharing (PhoneApps) tiles.
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Tile size", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            androidx.compose.foundation.layout.Box(
+                Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, androidx.compose.foundation.shape.RoundedCornerShape(50))
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            ) { Text("${(tileSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+        }
+        GsGroupedCard(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GsSeekBar(
+                    fraction = (tileSize - 0.5f),
+                    onSeek = { CarSettings.setTileSize(0.5f + it) },
+                )
+                Text(
+                    "Tiles and their grid, 50%–150%; icons keep their own size above.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    ChoiceRow(
+        "Color scheme",
+        listOf(
+            AppTheme.FOLLOW_SYSTEM to "Follow system",
+            AppTheme.LIGHT to "Light",
+            AppTheme.DARK to "Dark",
+            AppTheme.MATERIAL_YOU to "Material You",
+            AppTheme.MATERIAL_YOU_LIGHT to "Material You Light",
+            AppTheme.MATERIAL_YOU_DARK to "Material You Dark",
+            AppTheme.NIGHT to "Night",
+        ),
+        theme,
+    ) { CarSettings.setAppTheme(it) }
+    Text(
+        "Follow system is the plain neutral theme following the phone's " +
+            "light/dark. Light and Dark are plain neutral themes, no " +
+            "wallpaper colors. Material You follows the phone's wallpaper " +
+            "colors and light/dark; Material You Light / Dark use the " +
+            "phone's wallpaper colors, forced to that variant. Night is " +
+            "the dedicated night-driving scheme: pure black, warm gray " +
+            "text, amber accents.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    ChoiceRow(
+        "Dark mode",
+        listOf(DarkModeType.REGULAR to "Regular", DarkModeType.OLED to "True Black"),
+        darkType,
+    ) { CarSettings.setDarkModeType(it) }
+    Text(
+        "Regular dark uses dark-gray surfaces, no pure black. True Black " +
+            "uses pure-black backgrounds and surfaces; panels are " +
+            "separated by their edges, not by gray fills. Applies to " +
+            "plain Dark, Material You Dark, and the dark variant of " +
+            "both Follow options, in every style. While Night is " +
+            "active, the background is pure black no matter which " +
+            "dark type is picked.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    NightSettingsSection()
+
+    ChoiceRow(
+        "Button style",
+        GsThemes.builtIn.map { it.id to it.name },
+        uiTheme,
+    ) { CarSettings.setUiTheme(it) }
+
+    ChoiceRow(
+        "Map day/night",
+        listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
+        night,
+    ) { CarSettings.setNightMode(it) }
+
+    ChoiceRow(
+        "Units",
+        listOf(Units.AUTO to "Auto", Units.IMPERIAL to "Imperial (mi, ft, °F)", Units.METRIC to "Metric (km, m, °C)"),
+        units,
+    ) { CarSettings.setUnits(it) }
+}
+
+@Composable
+private fun AudioAndCallsPage() {
+    val autoplay by CarSettings.autoplay.collectAsState()
+    val pipeAudio by CarSettings.pipeAudio.collectAsState()
+    val bluetoothWarning by CarSettings.bluetoothWarning.collectAsState()
+    val callSpeaker by CarSettings.callSpeaker.collectAsState()
+
+    ChoiceRow(
+        "Autoplay on connect",
+        listOf(false to "Off", true to "On"),
+        autoplay,
+    ) { CarSettings.setAutoplay(it) }
+
+    ChoiceRow(
+        "Car audio",
+        listOf(false to "Bluetooth", true to "USB"),
+        pipeAudio,
+    ) { CarSettings.setPipeAudio(it) }
+    Text(
+        "USB sends the phone's sound through AutoSpace. Android asks to share your screen each " +
+            "drive, and a few apps block it. Bluetooth plays as the phone normally would, and " +
+            "Android never asks.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    if (!pipeAudio) {
+        ChoiceRow(
+            "Warn when Bluetooth isn't connected",
+            listOf(false to "Off", true to "On"),
+            bluetoothWarning,
+        ) { CarSettings.setBluetoothWarning(it) }
+    }
+
+    // Call speaker (2026-10-25): calls only, off by default, next to the
+    // phone-mic row it pairs with. When a call starts, audio moves to the
+    // phone's speaker — so the caller hears the phone's microphone, not a
+    // broken car microphone — and the previous speaker state is restored
+    // when the call ends. Voice commands, assistant speech, and media are
+    // untouched. The car's Bluetooth may reassert its route, which this
+    // cannot override; that is a car-test result, not a setting failure.
+    ExperimentalFeatureRow(
+        title = "Answer calls on the phone speaker",
+        description = "When a call starts, its audio goes to the phone's speaker instead " +
+            "of the car's Bluetooth route, so the caller hears you through the " +
+            "phone's microphone. This affects phone calls only — not voice " +
+            "commands, the assistant, or music — applies from the next call, " +
+            "and the speaker is restored when the call ends. If the car's " +
+            "Bluetooth takes the call back, this setting cannot override it.",
+        checked = callSpeaker,
+    ) { CarSettings.setCallSpeaker(it) }
+}
+
+@Composable
+private fun VoicePage() {
+    val speakDirections by CarSettings.speakDirections.collectAsState()
+    val systemSpeech by CarSettings.systemSpeech.collectAsState()
+    val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
+    val hotword by CarSettings.hotword.collectAsState()
+    val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
+
+    ChoiceRow(
+        "Spoken directions",
+        listOf(false to "Off", true to "On"),
+        speakDirections,
+    ) { CarSettings.setSpeakDirections(it) }
+    Text(
+        "AutoSpace reads each turn aloud through the car's speakers, and the music dips while it " +
+            "speaks. Turn it off if your map app's own voice already plays in the car. It needs " +
+            "a downloaded voice below.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    VoiceSettings()
+
+    VoiceTraceSettings()
+
+    ExperimentalFeatureRow(
+        title = "Use the phone's speech recognition",
+        description = "Listens through the phone's own speech service instead of AutoSpace's. On " +
+            "most phones that's Google's, which may send your voice to Google. GrapheneOS has " +
+            "none, so AutoSpace keeps using its own.",
+        checked = systemSpeech,
+    ) { CarSettings.setSystemSpeech(it) }
+
+    // Phone microphone for voice commands (approved 2026-10-24 22:19):
+    // for a car whose built-in mic is broken. Voice commands and voice
+    // replies only — this does NOT affect phone calls, which keep the
+    // car's audio route exactly as before.
+    ExperimentalFeatureRow(
+        title = "Use phone microphone for voice commands",
+        description = "Voice commands and voice replies listen through the phone's " +
+            "microphone instead of the car's, even when the car has one. " +
+            "Turn this on if the car's microphone doesn't work. This does " +
+            "NOT affect phone calls.",
+        checked = phoneMicForVoice,
+    ) { CarSettings.setPhoneMicForVoice(it) }
+
+    // Hotword (2026-10-25): hands-free wake phrase, off by default. The
+    // listener itself enforces the rest — car session only, suspended while
+    // the assistant is busy or on a call — so this row is only the switch.
+    // Hotword-only phone mic (2026-10-25): the same switch as
+    // phone Settings, same state. When on, hotword listening uses
+    // the phone mic even when the car has one — the workaround for
+    // a broken car mic. Button-press commands, calls, and the
+    // voice-microphone setting above are untouched by this switch.
+    ExperimentalFeatureRow(
+        title = "Listen for “Hey AutoSpace” on the phone microphone",
+        description = "Hotword listening only: uses the phone's microphone even when " +
+            "the car has one. Turn this on if the car's microphone doesn't work " +
+            "and “Hey AutoSpace” never answers. Button-press voice commands, " +
+            "calls, and everything else are unaffected.",
+        checked = hotwordPhoneMic,
+    ) { CarSettings.setHotwordPhoneMic(it) }
+
+    ExperimentalFeatureRow(
+        title = "Listen for “Hey AutoSpace”",
+        description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
+            "(or “Hey Gearslip”) and opens the assistant without a button press. " +
+            "It needs the Kroko listening model downloaded, it stops while the " +
+            "assistant is speaking, on a call, or when the car disconnects, and " +
+            "nothing you say leaves the phone.",
+        checked = hotword,
+    ) { CarSettings.setHotword(it) }
+}
+
+@Composable
+private fun BrowserAndVideoPage() {
+    val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
+
+    WebPageSetting()
+
+    ChoiceRow(
+        "Video skip seconds",
+        listOf(5 to "5s", 10 to "10s", 15 to "15s", 30 to "30s", 60 to "60s"),
+        playerSkipSec,
+    ) { CarSettings.setPlayerSkipSec(it) }
+    Text(
+        "How far the video player's skip buttons jump. The player shows " +
+            "the matching glyph at 5/10/30 seconds and a curved arrow " +
+            "with the seconds everywhere else.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    SubtitleSettings()
+}
+
+@Composable
+private fun ScreenAndSharingPage() {
+    val display by CarEnvironment.display.collectAsState()
+    val vehicle by CarEnvironment.vehicle.collectAsState()
+    val mirrorFit by CarSettings.mirrorFit.collectAsState()
+
+    ScreenFit(vehicle)
+
+    ResolutionSetting(vehicle, display)
+
+    ChoiceRow(
+        "Screen sharing",
+        listOf(MirrorFit.FIT to "Fit (letterbox)", MirrorFit.FILL to "Fill (crop)"),
+        mirrorFit,
+    ) { CarSettings.setMirrorFit(it) }
+    Text(
+        "Fill crops the phone's edges to fill the frame; tap the ✕ in the top-right corner " +
+            "to exit. Fit shows the whole phone with bars; tap a bar to exit. A portrait " +
+            "phone on a landscape car crops heavily in Fill — Fit looks better there. " +
+            "Applies the next time screen sharing starts.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun ConnectionPage() {
+    val context = LocalContext.current
+    val open by CarSettings.openOnConnect.collectAsState()
+    val locationWarning by CarSettings.locationWarning.collectAsState()
+    val vehicle by CarEnvironment.vehicle.collectAsState()
+    val display by CarEnvironment.display.collectAsState()
+    val cert by produceState<CertSummary?>(null) {
+        value = withContext(Dispatchers.Default) { CertSummary.read(context) }
+    }
+
+    ChoiceRow(
+        "Open on connect",
+        listOf(CarSettings.HOME to "Home") + CarApps.all.filter { it.id != "settings" }.map { it.id to it.label },
+        open,
+    ) { CarSettings.setOpenOnConnect(it) }
+
+    ChoiceRow(
+        "Warn when location is off",
+        listOf(false to "Off", true to "On"),
+        locationWarning,
+    ) { CarSettings.setLocationWarning(it) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Connection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Info("Phone", "${Build.MANUFACTURER} ${Build.MODEL}")
+        Info("Vehicle", vehicle.ifEmpty { "-" })
+        Info("Video", display.ifEmpty { "-" })
+        Info("Certificate", cert?.headline ?: "Checking…")
+    }
+}
+
+@Composable
+private fun AboutAndExperimentalPage() {
+    val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val carSensors by CarSettings.carSensorsEnabled.collectAsState()
+    val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
+
+    ChoiceRow(
+        "Experimental features",
+        listOf(false to "Hide", true to "Show"),
+        experimentalFeatures,
+    ) { CarSettings.setExperimentalFeaturesEnabled(it) }
+    if (experimentalFeatures) {
+        ExperimentalFeaturesList(carSensors)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("About", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Info("Version", app.autospace.BuildConfig.VERSION_NAME)
+        Info("Build", app.autospace.BuildConfig.VERSION_CODE.toString())
+        ExperimentalFeatureRow(
+            "What's new after updates",
+            "Show the list of changes once, the first time the car connects after an update.",
+            whatsNew,
+        ) { CarSettings.setWhatsNewAfterUpdates(it) }
+        GsButton(onClick = CarSettings::openWhatsNew, tone = GsTone.Tonal, modifier = Modifier.height(56.dp)) {
+            Text("What's new", style = MaterialTheme.typography.titleMedium)
+        }
+    }
+}
+
 
 /**
  * The spoken voice: downloads for Kokoro and Piper, and the Kokoro voice
