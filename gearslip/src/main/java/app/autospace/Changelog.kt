@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            45, "0.4.34-alpha",
+            listOf(
+                "On short screens, the floating media card can step aside so the map's edge buttons stay tappable, as an experimental option.",
+            ),
+        ),
+        Release(
             44, "0.4.33-alpha",
             listOf(
                 "While the assistant is talking with you, the floating media card can swap for a conversation widget, as an experimental option.",

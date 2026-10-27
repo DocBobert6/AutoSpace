@@ -290,11 +290,14 @@ internal fun RightEdgeControls(
 ) {
     val actions = actionStrip?.actions.orEmpty().filter { it.isDrawable() }
     val mapActions = mapActionStrip?.actions.orEmpty().filter { it.isDrawable() }
-    if (actions.isEmpty() && mapActions.isEmpty()) return
-    // A template that stops offering Pan must not leave the screen stuck in pan mode.
-    val hasPan = (actions + mapActions).any { it.type == Action.TYPE_PAN }
-    androidx.compose.runtime.LaunchedEffect(hasPan) { if (!hasPan) CarServices.nav.setPanMode(false) }
-
+    // r77: report this column's geometry for the card-clearance fix
+    // (see CardClearance.kt). The keys are exactly the geometry's
+    // inputs — counts and visibility — so the effect re-runs only
+    // when something the card could collide with actually changed,
+    // never on an unrelated recomposition. Moved above the empty
+    // return so an empty column clears stale geometry instead of
+    // leaving the previous template's behind; the hook order stays a
+    // consistent prefix in both paths.
     // Faded out when the screen has been left alone; then they are only a memory of buttons, so
     // the first touch on one wakes them rather than pressing it.
     val awake = LocalMapControlsWake.current.awake
@@ -302,6 +305,21 @@ internal fun RightEdgeControls(
     // Kept up while the knob is on one of them, or the ring would fade out along with the button.
     var holdsFocus by remember { mutableStateOf(false) }
     val visible = awake || pan || holdsFocus
+    androidx.compose.runtime.DisposableEffect(actions.size, mapActions.size, visible) {
+        if (actions.isEmpty() && mapActions.isEmpty()) CardClearanceState.clearControls()
+        else CardClearanceState.reportControls(
+            EdgeControlsGeometry(
+                extentDp = controlsExtentDp((if (actions.isNotEmpty()) 1 else 0) + mapActions.size),
+                widthDp = controlsWidthDp(actions.size),
+                visible = visible,
+            ),
+        )
+        onDispose { CardClearanceState.clearControls() }
+    }
+    if (actions.isEmpty() && mapActions.isEmpty()) return
+    // A template that stops offering Pan must not leave the screen stuck in pan mode.
+    val hasPan = (actions + mapActions).any { it.type == Action.TYPE_PAN }
+    androidx.compose.runtime.LaunchedEffect(hasPan) { if (!hasPan) CarServices.nav.setPanMode(false) }
     val alpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = androidx.compose.animation.core.tween(if (visible) 150 else 500),

@@ -616,6 +616,7 @@ private fun AboutAndExperimentalPage() {
     val sideBar by CarSettings.sideBarEnabled.collectAsState()
     val browserPip by CarSettings.browserPipEnabled.collectAsState()
     val liveSwap by CarSettings.liveSwapEnabled.collectAsState()
+    val cardClearance by CarSettings.cardClearanceEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -640,7 +641,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip, liveSwap)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip, liveSwap, cardClearance)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1271,7 +1272,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean, liveSwap: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean, liveSwap: Boolean, cardClearance: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1336,6 +1337,16 @@ private fun ExperimentalFeaturesList(
             description = "While the assistant is talking with you, the floating media card swaps for a conversation widget showing the current turn — and, when parked, the last turns of the conversation. It never claims full-duplex: it chains turns the way the follow-up window already does. Turn this off and the media card never swaps.",
             checked = liveSwap,
         ) { CarSettings.setLiveSwapEnabled(it) }
+        // r77: card-vs-controls clearance (audit break 1) — placed with the
+        // other Home-card rows at the top of the list. Still behind the general
+        // experimental opt-in: the card steps aside only when experiments are on
+        // AND this is on. Off returns exactly today's card, which can cover the
+        // map's edge buttons on short screens.
+        ExperimentalFeatureRow(
+            title = "Card clearance (experimental)",
+            description = "On short screens, the floating media card can cover the map's edge buttons and steal their taps. With this on, the card steps aside — to the opposite corner, or to the center — whenever it would cover edge buttons that are showing, and returns when they fade. Turn this off and the card never moves.",
+            checked = cardClearance,
+        ) { CarSettings.setCardClearanceEnabled(it) }
         ExperimentalFeatureRow(
             title = "Frosted map chrome (experimental)",
             description = "The map pane, turn card, trip bar, and edge buttons get the same " +

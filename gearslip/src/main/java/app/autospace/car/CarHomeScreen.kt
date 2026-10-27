@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.onSizeChanged
 import app.autospace.media.MediaArt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -51,6 +53,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.media.NowPlaying
@@ -84,6 +87,8 @@ fun CarHome() {
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
     val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
     val liveSwapToggle by CarSettings.liveSwapEnabled.collectAsStateWithLifecycle()
+    val cardClearanceToggle by CarSettings.cardClearanceEnabled.collectAsStateWithLifecycle()
+    val sideBarToggle by CarSettings.sideBarEnabled.collectAsStateWithLifecycle()
     val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
@@ -166,6 +171,18 @@ fun CarHome() {
     // chrome moves to fit a docked position.
     val etaBarVisible = !navPanMode && (navTemplate as? NavigationTemplate)?.destinationTravelEstimate != null
     val cardDock = effectiveMediaCardDock(experimentalOn, mediaCardDock, etaBarVisible)
+    // r77: card-clearance START veto. A Start card would land on the trip bar's Stop
+    // control during guidance (the r69 fallback exists for this) and under a
+    // driver-side rail (the rail occupies the left edge). The veto is
+    // conservative: it ignores the column yield, so it sometimes picks CENTER
+    // where START would also have cleared — safe, never a cover. The rail's
+    // turn-card yield needs no separate term: a turn card showing means
+    // guidance, and guidance already vetoes START through the trip bar.
+    val turnCardRouting = (navTemplate as? NavigationTemplate)?.navigationInfo as? RoutingInfo
+    val turnCardShowing = onHome && turnCardRouting != null &&
+        (turnCardRouting.isLoading || turnCardRouting.currentStep != null)
+    val clearanceStartAllowed = !etaBarVisible &&
+        !(sideBarNow(experimentalOn, sideBarToggle) && !turnCardShowing)
     // r37 widget layer: driver-side column over the full-bleed map base
     // only (floating ON). Classic split hides it and stays byte-for-byte.
     // r59 restack: the column no longer steps aside for nav templates —
@@ -228,25 +245,69 @@ fun CarHome() {
                 MapPane(navStatus, frame, NAV_BAR_STRIP_HEIGHT)
             }
             if (showFloatingCard) {
-                BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(
-                        start = 24.dp, top = 24.dp, end = 24.dp,
-                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
-                    ),
-                    contentAlignment = mediaCardDockAlignment(cardDock),
-                ) {
-                    FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
+                // r77: the slot reads its frame here (not on the padded
+                // BoxWithConstraints) so the clearance rule sees the
+                // full frame; the inner Box keeps exactly today's
+                // padding and alignment when the fix is off, so normal
+                // frames are byte-identical.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val clearanceAlignment = mediaCardDockAlignment(
+                        clearanceDock(
+                            cardDock,
+                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            CardClearanceState.controls,
+                            clearanceStartAllowed,
+                            maxWidth.value, maxHeight.value,
+                            floatingCardWidth(maxWidth).value,
+                            CardClearanceState.cardHeightDp ?: 0f,
+                            NAV_BAR_STRIP_HEIGHT.value,
+                        ),
+                    )
+                    Box(
+                        Modifier.fillMaxSize().padding(
+                            start = 24.dp, top = 24.dp, end = 24.dp,
+                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                        ),
+                        contentAlignment = clearanceAlignment,
+                    ) {
+                        FloatingMediaCard(
+                            now,
+                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            },
+                        )
+                    }
                 }
             }
             if (showLiveWidget) {
-                BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(
-                        start = 24.dp, top = 24.dp, end = 24.dp,
-                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
-                    ),
-                    contentAlignment = mediaCardDockAlignment(cardDock),
-                ) {
-                    LiveConversationWidget(assistantState, Modifier.width(floatingCardWidth(maxWidth)))
+                // r77: same clearance slot as the audio card (see above).
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val clearanceAlignment = mediaCardDockAlignment(
+                        clearanceDock(
+                            cardDock,
+                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            CardClearanceState.controls,
+                            clearanceStartAllowed,
+                            maxWidth.value, maxHeight.value,
+                            floatingCardWidth(maxWidth).value,
+                            CardClearanceState.cardHeightDp ?: 0f,
+                            NAV_BAR_STRIP_HEIGHT.value,
+                        ),
+                    )
+                    Box(
+                        Modifier.fillMaxSize().padding(
+                            start = 24.dp, top = 24.dp, end = 24.dp,
+                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                        ),
+                        contentAlignment = clearanceAlignment,
+                    ) {
+                        LiveConversationWidget(
+                            assistantState,
+                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            },
+                        )
+                    }
                 }
             }
             if (showWidgetColumn) {
@@ -343,14 +404,36 @@ fun CarHome() {
         if (showMiniVideo) {
             val miniItem = miniVideoItem
             if (miniItem != null) {
-                BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(
-                        start = 24.dp, top = 24.dp, end = 24.dp,
-                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
-                    ),
-                    contentAlignment = mediaCardDockAlignment(cardDock),
-                ) {
-                    MiniVideoCard(miniItem, Modifier.width(floatingCardWidth(maxWidth)))
+                // r77: same clearance slot as the audio card (see above). Moving the
+                // mini card never disposes it — alignment is a layout parameter, not
+                // a composition key — so playback continues across the step-aside.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val clearanceAlignment = mediaCardDockAlignment(
+                        clearanceDock(
+                            cardDock,
+                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            CardClearanceState.controls,
+                            clearanceStartAllowed,
+                            maxWidth.value, maxHeight.value,
+                            floatingCardWidth(maxWidth).value,
+                            CardClearanceState.cardHeightDp ?: 0f,
+                            NAV_BAR_STRIP_HEIGHT.value,
+                        ),
+                    )
+                    Box(
+                        Modifier.fillMaxSize().padding(
+                            start = 24.dp, top = 24.dp, end = 24.dp,
+                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                        ),
+                        contentAlignment = clearanceAlignment,
+                    ) {
+                        MiniVideoCard(
+                            miniItem,
+                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            },
+                        )
+                    }
                 }
             }
             if (miniVideoGateOpen) {
