@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            37, "0.4.26-alpha",
+            listOf(
+                "The floating media card can dock to the start, center, or end of the bottom edge, as an experimental option.",
+            ),
+        ),
+        Release(
             36, "0.4.25-alpha",
             listOf(
                 "Update status shows on the phone's main page, next to What's new.",

@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.car.app.navigation.model.NavigationTemplate
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.media.NowPlaying
@@ -77,6 +78,8 @@ fun CarHome() {
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsStateWithLifecycle()
     val navTemplate by CarServices.nav.template.collectAsStateWithLifecycle()
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsStateWithLifecycle()
+    val mediaCardDock by CarSettings.mediaCardDock.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -131,6 +134,13 @@ fun CarHome() {
         floatingOn, phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
     )
+    // r69: mini-player docking (A44/A45, experimental). The trip bar
+    // sits at the bottom-start corner during guidance (see
+    // NavigationChrome), so the effective dock steps a Start dock
+    // aside to today's placement while it is showing — no other
+    // chrome moves to fit a docked position.
+    val etaBarVisible = !navPanMode && (navTemplate as? NavigationTemplate)?.destinationTravelEstimate != null
+    val cardDock = effectiveMediaCardDock(experimentalOn, mediaCardDock, etaBarVisible)
     // r37 widget layer: driver-side column over the full-bleed map base
     // only (floating ON). Classic split hides it and stays byte-for-byte.
     // r59 restack: the column no longer steps aside for nav templates —
@@ -198,7 +208,7 @@ fun CarHome() {
                         start = 24.dp, top = 24.dp, end = 24.dp,
                         bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
                     ),
-                    contentAlignment = Alignment.BottomEnd,
+                    contentAlignment = mediaCardDockAlignment(cardDock),
                 ) {
                     FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
                 }

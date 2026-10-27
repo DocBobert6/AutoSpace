@@ -611,6 +611,7 @@ private fun AboutAndExperimentalPage() {
     val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
     val meridianChrome by CarSettings.meridianChromeEnabled.collectAsState()
     val fullWidthGlow by CarSettings.fullWidthGlowEnabled.collectAsState()
+    val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -635,7 +636,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1265,7 +1266,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1279,6 +1280,25 @@ private fun ExperimentalFeaturesList(
                 "returns when this is off.",
             checked = floatingMedia,
         ) { CarSettings.setFloatingMediaEnabled(it) }
+        // r69: mini-player docking (A44/A45) — the floating media
+        // card's bottom dock, placed with the card's own feature row.
+        // End is today's placement; Center centers it; Start moves it
+        // to the opposite corner, which is the passenger side in a
+        // right-hand-drive car. Start/End follow layout direction,
+        // they are not absolute left/right. During guidance the trip
+        // bar sits at the bottom-start corner, so a Start dock steps
+        // aside to End while the trip bar is showing rather than
+        // covering it (see effectiveMediaCardDock).
+        ChoiceRow(
+            "Mini-player docking (experimental)",
+            listOf(MediaCardDock.START to "Start", MediaCardDock.CENTER to "Center", MediaCardDock.END to "End"),
+            mediaCardDock,
+        ) { CarSettings.setMediaCardDock(it) }
+        Text(
+            "Takes effect only while experimental features are on; with experiments off the card stays at today's placement and the stored choice is preserved.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         ExperimentalFeatureRow(
             title = "Frosted map chrome (experimental)",
             description = "The map pane, turn card, trip bar, and edge buttons get the same " +

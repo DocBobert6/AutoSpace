@@ -108,6 +108,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_MAP_CHROME = "car_map_chrome"
     private const val KEY_MERIDIAN_CHROME = "car_meridian_chrome"
     private const val KEY_FULL_WIDTH_GLOW = "car_full_width_glow"
+    private const val KEY_MEDIA_CARD_DOCK = "car_media_card_dock"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -197,6 +198,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val frostedMapChromeFlow = MutableStateFlow(false)
     private val meridianChromeFlow = MutableStateFlow(false)
     private val fullWidthGlowFlow = MutableStateFlow(false)
+    private val mediaCardDockFlow = MutableStateFlow(MediaCardDock.END)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -399,6 +401,19 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val fullWidthGlowEnabled: StateFlow<Boolean> = fullWidthGlowFlow
 
     /**
+     * r69: mini-player docking (A44/A45). The floating media card's
+     * bottom dock: END is today's placement, CENTER centers it,
+     * START moves it to the opposite corner — the passenger side in
+     * a right-hand-drive car. Off by default (END); it joins no master
+     * switch: the r53 master never touches it, and it never affects
+     * the master's derived state. It still sits behind the general
+     * experimental opt-in: the card docks only when
+     * [experimentalFeaturesEnabled] is on (see [effectiveMediaCardDock]),
+     * and the stored choice is preserved, never rewritten, while off.
+     */
+    val mediaCardDock: StateFlow<MediaCardDock> = mediaCardDockFlow
+
+    /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
      * Re-enabled only from the widget settings row, or by turning the
@@ -545,6 +560,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             meridianChromeFlow.value = AppSettings.getString(app, KEY_MERIDIAN_CHROME, "false") == "true"
         }
         fullWidthGlowFlow.value = AppSettings.getString(app, KEY_FULL_WIDTH_GLOW, "false") == "true"
+        mediaCardDockFlow.value = mediaCardDockFromStored(AppSettings.getString(app, KEY_MEDIA_CARD_DOCK, ""))
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -651,6 +667,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setFullWidthGlowEnabled(on: Boolean) {
         fullWidthGlowFlow.value = on
         AppSettings.putString(app, KEY_FULL_WIDTH_GLOW, on.toString())
+    }
+
+    fun setMediaCardDock(dock: MediaCardDock) {
+        mediaCardDockFlow.value = dock
+        AppSettings.putString(app, KEY_MEDIA_CARD_DOCK, dock.name)
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {
