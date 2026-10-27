@@ -16,6 +16,14 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            33, "0.4.22-alpha",
+            listOf(
+                "Meridian map chrome is now a single switch in About & experimental.",
+                "That one switch turns on the whole Meridian look: turn card, trip pill, map panes, and edge controls.",
+                "Meridian panes are dark with white text, and the Go button is green.",
+            ),
+        ),
+        Release(
             32, "0.4.21-alpha",
             listOf(
                 "Album art on the full Now Playing screen is bigger.",

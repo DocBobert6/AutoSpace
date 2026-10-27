@@ -106,6 +106,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_HOME_WIDGETS = "car_home_widgets"
     private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
     private const val KEY_MAP_CHROME = "car_map_chrome"
+    private const val KEY_MERIDIAN_CHROME = "car_meridian_chrome"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -193,7 +194,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val floatingMediaFlow = MutableStateFlow(false)
     private val homeWidgetsFlow = MutableStateFlow(false)
     private val frostedMapChromeFlow = MutableStateFlow(false)
-    private val mapChromeFlow = MutableStateFlow(MapChrome.THEMED)
+    private val meridianChromeFlow = MutableStateFlow(false)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -374,8 +375,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      */
     val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
 
-    /** r63: the guidance chrome's look; THEMED is the default, and Meridian renders only when experimental features are on (see effectiveMapChrome). */
-    val mapChrome: StateFlow<MapChrome> = mapChromeFlow
+    /**
+     * r65: the single Meridian toggle. One control for the whole
+     * Meridian look — turn card, trip pill, panes, edge controls —
+     * replacing the retired r63 Themed/Meridian choice row. Off by
+     * default; a stored Meridian choice migrates it on once (see the
+     * load migration below). It joins no master switch: the r53
+     * master never touches it, and it never affects the master's
+     * derived state.
+     */
+    val meridianChromeEnabled: StateFlow<Boolean> = meridianChromeFlow
 
     /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
@@ -507,7 +516,22 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
         homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
         frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
-        mapChromeFlow.value = mapChromeFromStored(AppSettings.getString(app, KEY_MAP_CHROME, ""))
+        // r65 one-time migration, same pattern as the r35 theme split:
+        // the retired car_map_chrome choice becomes the single Meridian
+        // toggle, and the old key is cleared so the migration can never
+        // re-run and overwrite a later choice. A stored Meridian choice
+        // (including a legacy "GOOGLE" value, which parses to Meridian)
+        // carries the toggle on; Themed, blank, or unrecognized leaves
+        // it off. A fresh install (no keys at all) lands off, which is
+        // exactly the old Themed default.
+        val legacyChrome = AppSettings.getString(app, KEY_MAP_CHROME, "")
+        if (legacyChrome.isNotEmpty()) {
+            meridianChromeFlow.value = migrateMeridianToggle(legacyChrome)
+            AppSettings.putString(app, KEY_MERIDIAN_CHROME, meridianChromeFlow.value.toString())
+            AppSettings.putString(app, KEY_MAP_CHROME, "")
+        } else {
+            meridianChromeFlow.value = AppSettings.getString(app, KEY_MERIDIAN_CHROME, "false") == "true"
+        }
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -606,9 +630,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_SCHEME, scheme.name)
     }
 
-    fun setMapChrome(mode: MapChrome) {
-        mapChromeFlow.value = mode
-        AppSettings.putString(app, KEY_MAP_CHROME, mode.name)
+    fun setMeridianChromeEnabled(on: Boolean) {
+        meridianChromeFlow.value = on
+        AppSettings.putString(app, KEY_MERIDIAN_CHROME, on.toString())
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {

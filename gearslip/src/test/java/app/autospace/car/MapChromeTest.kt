@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r63 map chrome: stored-mode parsing + migration, Themed default, experimental gate, strip rules. */
+/** r65 map chrome: stored-mode parsing + one-time toggle migration, single-toggle experimental gate, pane/edge palette, strip rules. */
 class MapChromeTest {
 
     @Test
@@ -61,15 +61,30 @@ class MapChromeTest {
     }
 
     @Test
-    fun gateOffForcesThemed() {
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.MERIDIAN, experimentalOn = false))
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, experimentalOn = false))
+    fun gateNeedsToggleAndExperiments() {
+        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(meridianToggle = true, experimentalOn = true))
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = true, experimentalOn = false))
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = false, experimentalOn = true))
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = false, experimentalOn = false))
     }
 
     @Test
-    fun gateOnHonorsStoredChoice() {
-        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(MapChrome.MERIDIAN, experimentalOn = true))
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, experimentalOn = true))
+    fun migrationCarriesStoredMeridianOn() {
+        assertTrue(migrateMeridianToggle("MERIDIAN"))
+        assertTrue(migrateMeridianToggle("GOOGLE"))
+    }
+
+    @Test
+    fun migrationLeavesAnythingElseOff() {
+        assertFalse(migrateMeridianToggle("THEMED"))
+        assertFalse(migrateMeridianToggle(""))
+        assertFalse(migrateMeridianToggle("NEON"))
+    }
+
+    @Test
+    fun meridianPaneAndEdgeShareThePillDark() {
+        assertEquals(0xFF131429L, MapChromeColors.MERIDIAN_PANE)
+        assertEquals(0xFF131429L, MapChromeColors.MERIDIAN_EDGE)
     }
 
     @Test

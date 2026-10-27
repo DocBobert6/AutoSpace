@@ -179,8 +179,6 @@ private fun AppearancePage() {
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
-    val mapChrome by CarSettings.mapChrome.collectAsState()
-    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
 
     // UI size (Phase 10, correcting Phase 9's display): the slider
     // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
@@ -337,22 +335,6 @@ private fun AppearancePage() {
         listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
         night,
     ) { CarSettings.setNightMode(it) }
-
-    ChoiceRow(
-        "Map chrome",
-        listOf(MapChrome.MERIDIAN to "Meridian", MapChrome.THEMED to "Themed"),
-        mapChrome,
-        enabled = experimentalOn,
-    ) { CarSettings.setMapChrome(it) }
-    Text(
-        "Meridian is a fixed-color guidance look: a solid green turn card " +
-            "and a dark trip pill, the same in every theme. Themed keeps the turn card " +
-            "and trip pill in the current theme's colors and frosted treatment. " +
-            "This choice covers the guidance cards only; panes and controls stay themed either way." +
-            if (!experimentalOn) " Turn on experimental features to use Meridian." else "",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
     ChoiceRow(
         "Units",
@@ -627,6 +609,7 @@ private fun AboutAndExperimentalPage() {
     val carSensors by CarSettings.carSensorsEnabled.collectAsState()
     val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
     val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
+    val meridianChrome by CarSettings.meridianChromeEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -651,7 +634,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1266,6 +1249,7 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * its own switch. The master row itself lives in AboutAndExperimentalPage
  * above the Hide/Show row, always visible; this list only renders when the
  * rows are shown.
+ * r65: Meridian map chrome sits after frosted map chrome; vehicle data stays last.
  */
 
 /** r53: applies one master-switch action's writes through the existing setters, field by field. */
@@ -1279,7 +1263,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1302,6 +1286,20 @@ private fun ExperimentalFeaturesList(
                 "when this is off.",
             checked = frostedMapChrome,
         ) { CarSettings.setFrostedMapChromeEnabled(it) }
+        // r65: the ONE Meridian toggle. It gates the whole Meridian
+        // look at once — turn card, trip pill, panes, and edge
+        // controls — and absorbs the retired Appearance choice row, so
+        // there is no second control that can disagree with it. It
+        // still sits behind the general experimental opt-in: Meridian
+        // renders only when experiments are on AND this is on.
+        ExperimentalFeatureRow(
+            title = "Meridian map chrome (experimental)",
+            description = "The whole map look wears Meridian at once: a solid green turn card, " +
+                "a dark trip pill, dark solid panes with white text, and dark edge " +
+                "controls. Meridian's colors are fixed and do not follow the theme. " +
+                "Turn this off and everything returns to the themed look.",
+            checked = meridianChrome,
+        ) { CarSettings.setMeridianChromeEnabled(it) }
         ExperimentalFeatureRow(
             title = "Home widgets (experimental)",
             description = "Shows weather, notification digest, and next event as a column " +

@@ -103,18 +103,35 @@ fun visibleAreaFor(template: Template?, width: Int, height: Int): Rect = when (t
 
 // --- navigation ------------------------------------------------------------------------------
 
+/**
+ * r65: the single Meridian gate computation. Every Meridian site in
+ * this file — the turn card, the trip pill, the panes, the edge
+ * controls — calls this one helper, so they can never disagree about
+ * which look they wear. Meridian renders only when experimental
+ * features are on AND the Meridian toggle is on.
+ */
+@Composable
+private fun meridianChromeNow(): Boolean {
+    val meridianToggle by CarSettings.meridianChromeEnabled.collectAsState()
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    return effectiveMapChrome(meridianToggle, experimentalOn) == MapChrome.MERIDIAN
+}
+
 @Composable
 private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
     val pan by CarServices.nav.panMode.collectAsState()
+    val meridian = meridianChromeNow()
     Box(modifier.fillMaxWidth()) {
         if (!pan) (template.navigationInfo as? RoutingInfo)?.let {
             RoutingCard(it, Modifier.align(Alignment.TopStart).padding(12.dp).width(320.dp))
         }
-        RightEdgeControls(
-            if (pan) null else template.actionStrip,
-            template.mapActionStrip,
-            Modifier.align(Alignment.TopEnd).padding(12.dp),
-        )
+        androidx.compose.runtime.CompositionLocalProvider(LocalMeridianChrome provides meridian) {
+            RightEdgeControls(
+                if (pan) null else template.actionStrip,
+                template.mapActionStrip,
+                Modifier.align(Alignment.TopEnd).padding(12.dp),
+            )
+        }
         if (!pan) template.destinationTravelEstimate?.let {
             TravelEstimateBar(it, Modifier.align(Alignment.BottomStart).padding(12.dp))
         }
@@ -159,9 +176,7 @@ private fun GuidanceSurface(
 /** The maneuver card: what to do next, how far away it is, and onto what road. */
 @Composable
 private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
-    val mapChrome by CarSettings.mapChrome.collectAsState()
-    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val meridian = effectiveMapChrome(mapChrome, experimentalOn) == MapChrome.MERIDIAN
+    val meridian = meridianChromeNow()
     if (info.isLoading) {
         // r54 (D2): outer pane shape through the style rule, so the frosted
         // toggle cannot change corners; inner 0dp fills below stay untouched.
@@ -371,9 +386,7 @@ private fun LaneDirection?.turnDegrees(): Float = when (this?.shape) {
  */
 @Composable
 private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Modifier) {
-    val mapChrome by CarSettings.mapChrome.collectAsState()
-    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val meridian = effectiveMapChrome(mapChrome, experimentalOn) == MapChrome.MERIDIAN
+    val meridian = meridianChromeNow()
     val time = remainingTime(estimate.remainingTimeSeconds)
     val distance = estimate.remainingDistance.display()
     val arrival = estimate.arrivalTimeAtDestination.clockTime()
@@ -452,6 +465,7 @@ private fun MapPaneLayout(
 ) {
     // Pan mode hands the whole screen to the map, leaving only its own controls.
     val pan by CarServices.nav.panMode.collectAsState()
+    val meridian = meridianChromeNow()
     val edgeActions = (actionStrip?.actions.orEmpty() + mapActionStrip?.actions.orEmpty()).map { it.identity() }.toSet()
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
         if (!pan) {
@@ -468,15 +482,18 @@ private fun MapPaneLayout(
                 shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                 shadowElevation = 8.dp,
                 frosted = true,
+                meridian = meridian,
             ) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalMapEdgeActions provides edgeActions) { pane() }
             }
         }
-        RightEdgeControls(
-            if (pan) null else actionStrip,
-            mapActionStrip,
-            Modifier.align(Alignment.TopEnd).padding(12.dp),
-        )
+        androidx.compose.runtime.CompositionLocalProvider(LocalMeridianChrome provides meridian) {
+            RightEdgeControls(
+                if (pan) null else actionStrip,
+                mapActionStrip,
+                Modifier.align(Alignment.TopEnd).padding(12.dp),
+            )
+        }
     }
 }
 

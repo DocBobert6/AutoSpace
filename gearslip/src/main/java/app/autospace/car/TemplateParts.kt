@@ -110,9 +110,31 @@ internal fun ChromeSurface(
     shadowElevation: androidx.compose.ui.unit.Dp = 0.dp,
     /** r46: this surface is map chrome eligible for the frosted treatment (TemplateChrome sites only). */
     frosted: Boolean = false,
+    /** r65: solid Meridian pane surface (fixed dark, 16dp, white content) instead of the themed surface. */
+    meridian: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
+    // r65: inside a Meridian pane the outer pane already drew the one
+    // solid fill, so every inner surface passes through rather than
+    // painting a second fill over it — the same rule as the frosted
+    // passthrough, for the same reason.
+    if (LocalMeridianChrome.current) {
+        content()
+        return
+    }
+    if (meridian) {
+        Surface(
+            shadowElevation = shadowElevation,
+            color = Color(MapChromeColors.MERIDIAN_PANE),
+            contentColor = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            modifier = modifier,
+        ) {
+            CompositionLocalProvider(LocalMeridianChrome provides true) { content() }
+        }
+        return
+    }
     when (chromeSurfaceMode(frostedOn, frosted, LocalInsideFrostedChrome.current)) {
         ChromeSurfaceMode.PASSTHROUGH -> content()
         ChromeSurfaceMode.FROSTED -> CompositionLocalProvider(LocalInsideFrostedChrome provides true) {
@@ -204,8 +226,9 @@ internal fun HeaderBar(
         startAction?.takeIf { it.isDrawable() }?.let { ActionButton(it, mapHeader = onMap != null) }
         Text(
             title,
+            // r65: a pane header restyles with its pane — white on dark.
             style = ChromeType.title,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = if (LocalMeridianChrome.current) Color.White else MaterialTheme.colorScheme.onSurface,
             // Audit (second video): a map pane narrows to 232dp beside the
             // media panel, and a one-line header truncated the place name
             // ("Mayfield Brain & Spine...") where the full-width pane
@@ -225,6 +248,19 @@ internal fun HeaderBar(
  * Null anywhere else.
  */
 internal val LocalMapEdgeActions = androidx.compose.runtime.compositionLocalOf<Set<String>?> { null }
+
+/**
+ * r65: true while composing inside a Meridian pane or alongside
+ * Meridian edge controls. MapPaneLayout's outer surface and
+ * NavigationChrome's edge-control cluster provide it; every host-drawn
+ * pane and button surface reads it to pick the Meridian palette.
+ * Default false, so full-screen templates and standalone header
+ * buttons stay themed. A BoxWithConstraintsScope/BoxScope receiver is
+ * lost inside a CompositionLocalProvider content lambda, so providers
+ * wrap only the pane content and the edge-control calls — never a
+ * whole Box/BoxWithConstraints body.
+ */
+internal val LocalMeridianChrome = androidx.compose.runtime.compositionLocalOf { false }
 
 /** What makes two actions the same button: what they do and what they look like. */
 internal fun Action.identity(): String {
@@ -366,7 +402,22 @@ internal fun ActionButton(
     // neutral. The opaque branch below is unchanged.
     val headerFrosted = mapHeader && frostedOn
     val isSearch = title.trim().equals("Search", ignoreCase = true)
-    val background = if (headerFrosted) {
+    // r65: Meridian wins over the frosted treatment wherever both could
+    // apply — a fixed-color look cannot also be frosted. Roles, not app
+    // colors: the latched pan button goes green, edge controls go dark,
+    // pane headers and ordinary buttons go strip green, and an
+    // app-named color keeps its "this one is special" signal in green.
+    // Every glyph and label goes white on those fills.
+    val meridian = LocalMeridianChrome.current
+    val background = if (meridian) {
+        when {
+            active -> Color(MapChromeColors.MERIDIAN_CARD)
+            frosted -> Color(MapChromeColors.MERIDIAN_EDGE)
+            mapHeader -> Color(MapChromeColors.MERIDIAN_STRIP)
+            custom -> Color(MapChromeColors.MERIDIAN_CARD)
+            else -> Color(MapChromeColors.MERIDIAN_STRIP)
+        }
+    } else if (headerFrosted) {
         scheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
     } else if (frostedButton) {
         val frostedBase = when {
@@ -376,7 +427,7 @@ internal fun ActionButton(
         }
         frostedBase.copy(alpha = FrostedChromeAlpha)
     } else if (active) scheme.primary else action.backgroundColor.color(dark, fallback)
-    val content = when {
+    val content = if (meridian) Color.White else when {
         headerFrosted && isSearch -> scheme.primary
         headerFrosted -> scheme.onSurface
         active -> scheme.onPrimary
@@ -396,7 +447,7 @@ internal fun ActionButton(
         enabled = action.isEnabled,
         shape = if (title.isEmpty()) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(if (large) 28.dp else 24.dp),
         latched = active,
-        keepAlpha = frostedButton || headerFrosted,
+        keepAlpha = frostedButton || headerFrosted || meridian,
     ) {
         if (large && title.isNotEmpty()) {
             // The label sits dead centre on the button; the icon hangs off the left edge, so the
@@ -452,8 +503,14 @@ internal fun AutoStartButton(action: Action, modifier: Modifier = Modifier) {
 
     val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()
     val custom = action.backgroundColor?.type?.let { it != androidx.car.app.model.CarColor.TYPE_DEFAULT } == true
-    val background = action.backgroundColor.color(dark, MaterialTheme.colorScheme.primary)
-    val content = if (custom) Color.White else MaterialTheme.colorScheme.onPrimary
+    // r65: Meridian — solid green track, darker strip fill sweeping over
+    // it for the countdown. The fill is what the screenshot's blue
+    // segment is: the five-second countdown, colored by the app's named
+    // background color (or primary) in themed mode. Blue is not in the
+    // Meridian palette, so the sweep goes green-family here.
+    val meridian = LocalMeridianChrome.current
+    val background = if (meridian) Color(MapChromeColors.MERIDIAN_STRIP) else action.backgroundColor.color(dark, MaterialTheme.colorScheme.primary)
+    val content = if (meridian) Color.White else if (custom) Color.White else MaterialTheme.colorScheme.onPrimary
     val hasGlyph = action.icon != null
 
     GsIconBox(
@@ -461,7 +518,7 @@ internal fun AutoStartButton(action: Action, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         // An unfilled track, solid, not the button's own colour dimmed with alpha - so the map
         // behind never shows through however much of the five seconds is left.
-        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, content),
+        colors = if (meridian) GsColors(Color(MapChromeColors.MERIDIAN_CARD), content) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, content),
         enabled = action.isEnabled,
         shape = RoundedCornerShape(28.dp),
     ) {
@@ -656,7 +713,7 @@ internal fun GridTile(item: GridItem, modifier: Modifier = Modifier, iconSize: a
             Text(
                 subtitle,
                 style = ChromeType.label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -721,7 +778,7 @@ private fun PlaceHeading(row: CarRow) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp)) {
         Text(row.title.text(), style = ChromeType.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
         row.texts.orEmpty().take(2).forEach {
-            Text(it.text(), style = ChromeType.body, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(it.text(), style = ChromeType.body, color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
@@ -735,7 +792,12 @@ private fun RowButtons(rows: List<CarRow>, modifier: Modifier) {
             GsIconBox(
                 onClick = { row.onClickDelegate.click("row") },
                 modifier = Modifier.weight(1f),
-                colors = if (i == 0) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurface),
+                // r65: Meridian — the first button goes green, the rest
+                // go strip green, all with white labels.
+                colors = if (LocalMeridianChrome.current) {
+                    if (i == 0) GsColors(Color(MapChromeColors.MERIDIAN_CARD), Color.White)
+                    else GsColors(Color(MapChromeColors.MERIDIAN_STRIP), Color.White)
+                } else if (i == 0) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurface),
                 enabled = row.isEnabled,
                 shape = RoundedCornerShape(24.dp),
             ) {
@@ -779,7 +841,7 @@ private fun DetailRow(row: CarRow, placeName: String) {
         }
         Column(Modifier.weight(1f)) {
             label?.let {
-                Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(it, style = MaterialTheme.typography.labelLarge, color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
             values.take(3).forEach {
                 Text(it, style = ChromeType.body, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -789,7 +851,7 @@ private fun DetailRow(row: CarRow, placeName: String) {
             Spacer(Modifier.width(8.dp))
             GsIconBox(
                 onClick = { CallPrompt.ask(placeName.ifBlank { number!! }, number!!) },
-                colors = GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
+                colors = if (LocalMeridianChrome.current) GsColors(Color(MapChromeColors.MERIDIAN_CARD), Color.White) else GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
                 shape = RoundedCornerShape(24.dp),
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -857,7 +919,7 @@ internal fun RowItem(row: CarRow, selection: RowSelection? = null, large: Boolea
                 Text(
                     line.text(),
                     style = ChromeType.body,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = if (large) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                 )

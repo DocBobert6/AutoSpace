@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -186,7 +187,7 @@ private fun MessageContent(template: MessageTemplate, modifier: Modifier) {
                     detail,
                     style = ChromeType.body,
                     textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (actions.isNotEmpty()) {
@@ -298,9 +299,10 @@ internal fun SearchField(
     // callers pass their typing flag; sign-in leaves the default (always open).
     showCaret: Boolean = true,
 ) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val meridian = LocalMeridianChrome.current
+    val muted = if (meridian) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = if (meridian) Color(MapChromeColors.MERIDIAN_STRIP) else MaterialTheme.colorScheme.surfaceContainerHighest,
         shape = androidx.compose.foundation.shape.CircleShape,
         modifier = modifier.fillMaxWidth().height(ICON_BUTTON_SIZE),
     ) {
@@ -321,7 +323,7 @@ internal fun SearchField(
                 query,
                 hint.ifEmpty { "Search" },
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.copy(color = if (meridian) Color.White else Color.Unspecified),
                 showCaret = showCaret,
             )
             if (onClear != null && query.isNotEmpty()) {
@@ -383,7 +385,7 @@ private fun SignInContent(template: SignInTemplate, modifier: Modifier) {
             Text(
                 additional,
                 style = ChromeType.label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp),
             )
         }
@@ -458,7 +460,10 @@ private fun TabContent(template: TabTemplate, modifier: Modifier) {
                     val selected = tab.contentId == active
                     GsIconBox(
                         onClick = { template.tabCallbackDelegate.tabSelected(tab.contentId) },
-                        colors = if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                        colors = if (LocalMeridianChrome.current) {
+                            if (selected) GsColors(Color(MapChromeColors.MERIDIAN_CARD), Color.White)
+                            else GsColors(Color(MapChromeColors.MERIDIAN_STRIP), Color.White)
+                        } else if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
                         else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
                         shape = RoundedCornerShape(20.dp),
                         latched = selected,
@@ -624,7 +629,7 @@ private fun MediaPlaybackContent(template: MediaPlaybackTemplate, modifier: Modi
                 Text(
                     "Nothing playing yet.",
                     style = ChromeType.body,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (LocalMeridianChrome.current) Color.White.copy(alpha = MERIDIAN_DIM_ALPHA) else MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
