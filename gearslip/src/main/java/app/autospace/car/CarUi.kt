@@ -714,14 +714,15 @@ internal val NAV_BAR_FLOAT_ELEVATION = 4.dp
 internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NAV_BAR_FLOAT_VERTICAL
 
 /**
- * r87: the strip the steering-side rail reserves at the frame edge —
- * exactly the rail's own width, so the content inset and the rail
- * can never disagree. The scaffold pads the content Column by this
- * amount on the rail's side while the rail is visible; the rail
- * draws in the strip, outside the padded content. Pure Dp math so
- * it is unit-testable.
+ * r94: the strip the steering-side rail reserves at the frame edge —
+ * the rail's own width plus its floating margin on both sides, so
+ * the content inset and the rail can never disagree. The scaffold
+ * pads the content Column by this amount on the rail's side while
+ * the rail is visible; the rail draws in the strip, outside the
+ * padded content. Pure Dp math so it is unit-testable.
  */
-internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT
+internal val NAV_BAR_SIDE_FLOAT = 12.dp
+internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT
 
 /**
  * Apps and open/pinned shortcuts on the left; now-playing pill against them; clock (tap for
@@ -904,10 +905,11 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
  * only: the bar's temperature line does not fit the 64dp column.
  * The rail takes the overlay bar's floating treatment exactly
  * (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
- * texture, OLED hairline) — except its corners, which are square:
- * a flush full-height edge must not be rounded, and the shape
- * system hands back one style shape, not per-corner radii, so the
- * inner edge is square too, like Google's rail. The icon list
+ * texture, OLED hairline) — and, since r94, it floats: 12dp margins
+ * on every side, so it touches no screen edge, and its corners
+ * follow the button style through gsButtonShape (square under
+ * Pitlane, the card's rounded corner under every other style).
+ * The icon list
  * scrolls so a long pin/running list can never push the clock off
  * the frame; the clock stays pinned to the bottom. The clock is
  * stacked, not squeezed: the old 52dp cell cut "9:53 AM" down to
@@ -928,18 +930,18 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
     val running = rememberRunningApps()
     val unread by CarNotifications.unread.collectAsState()
 
-    // r87: the rail is an edge dock, not a floating pill — full frame
-    // height, flush to the edge, square corners (a flush edge must not
-    // be rounded; the shape system hands back one style shape, not
-    // per-corner radii, so the inner edge is square too, like
-    // Google's rail). The scaffold pads the content Column by the
-    // strip width, so this Surface is the only thing that draws in
-    // the strip. Treatment is otherwise the overlay bar's exactly
-    // (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
-    // texture, OLED hairline).
+    // r94: the rail floats again — full frame height minus 12dp
+    // margins on every side, so it touches no screen edge, and its
+    // corners follow the button style through gsButtonShape
+    // (square under Pitlane, the card's rounded corner under every
+    // other style). The scaffold pads the content Column by the
+    // strip width (rail + both margins), so this Surface is the only
+    // thing that draws in the strip. Treatment is otherwise the
+    // overlay bar's exactly (frosted surfaceContainerLow at 0.88,
+    // 4dp elevation, Pitlane texture, OLED hairline).
     Surface(
-        modifier = modifier.fillMaxHeight(),
-        shape = RoundedCornerShape(0.dp),
+        modifier = modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight(),
+        shape = gsButtonShape(GsKit.CardShape),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -2063,3 +2065,4 @@ private fun neutralFrostScheme(dark: Boolean, oled: Boolean = true): androidx.co
 private object NoHaptics : HapticFeedback {
     override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {}
 }
+

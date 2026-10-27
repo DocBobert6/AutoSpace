@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            61, "0.4.50-alpha",
+            listOf(
+                "The steering-side app bar floats again: it sits off the screen edges with margins all around, and its corners follow your button style — square under Pitlane, rounded under the rest.",
+            ),
+        ),
+        Release(
             60, "0.4.49-alpha",
             listOf(
                 "Games now actually play: the in-game screen runs games with sound, and a Bluetooth controller drives gameplay including the sticks.",
@@ -357,3 +363,4 @@ object Changelog {
     /** The release that matches this build, if it has notes. */
     val current: Release? get() = releases.firstOrNull { it.versionCode == BuildConfig.VERSION_CODE }
 }
+

@@ -3,16 +3,17 @@ package app.autospace.car
 import androidx.compose.ui.Alignment
 
 /**
- * r87: the steering-side app bar is an edge dock, not a floating
- * pill. The r74 rail floated over the frame — a content-height
- * column, 64dp wide with 12dp margins, vertically centered — so it
- * covered the map pane's left edge, the apps grid's first column,
- * and settings pages' left text. The r87 rail fills the frame
- * height, flush to the edge, and owns a reserved strip exactly its
- * own width (see NAV_BAR_SIDE_STRIP_WIDTH): the scaffold pads the
- * content Column by that amount on the rail's side, so every
- * content surface sits beside the rail instead of under it, and
- * the rail is the only thing that draws in the strip.
+ * r94: the steering-side app bar floats again. The r87 rail filled
+ * the frame height, flush to the edge with square corners, and
+ * Robert rejected that form on device: the rail must not touch the
+ * corners and edges, and its corners follow the button style. The
+ * r94 rail keeps r87's full height and reserved strip, but floats
+ * inside it — 12dp margins on every side (see NAV_BAR_SIDE_FLOAT),
+ * corners through gsButtonShape — so the strip is the rail's width
+ * plus both margins (see NAV_BAR_SIDE_STRIP_WIDTH): the scaffold
+ * pads the content Column by that amount on the rail's side, so
+ * every content surface sits beside the rail instead of under it,
+ * and the rail is the only thing that draws in the strip.
  *
  * The r74 passenger-side yields are gone with the overlay: a rail
  * that never overlaps the turn card, the widget column, or the
@@ -84,3 +85,4 @@ fun railClockParts(formatted: String): Pair<String, String?> {
     val marker = trimmed.substring(split + 1).trim()
     return trimmed.substring(0, split) to marker.ifEmpty { null }
 }
+

@@ -7,7 +7,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r87 steering-side app bar: experimental gate, strip mapping, alignment mapping, clock split. */
+/** r87 steering-side app bar, r94 float: experimental gate, strip mapping, alignment mapping, clock split. */
 class SideBarTest {
 
     @Test
@@ -31,8 +31,18 @@ class SideBarTest {
     }
 
     @Test
-    fun stripWidthIsRailWidth() {
-        assertEquals(64.dp, NAV_BAR_SIDE_STRIP_WIDTH)
+    fun stripWidthIsRailWidthPlusFloat() {
+        assertEquals(88.dp, NAV_BAR_SIDE_STRIP_WIDTH)
+    }
+
+    @Test
+    fun sideFloatIsTwelveDp() {
+        assertEquals(12.dp, NAV_BAR_SIDE_FLOAT)
+    }
+
+    @Test
+    fun stripWidthIsRailPlusBothFloats() {
+        assertEquals(NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT, NAV_BAR_SIDE_STRIP_WIDTH)
     }
 
     @Test
@@ -75,3 +85,4 @@ class SideBarTest {
         assertEquals("9:53" to "AM", railClockParts("9:53\u00A0AM"))
     }
 }
+
