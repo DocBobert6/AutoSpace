@@ -571,38 +571,9 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         )
     }
 
-    // --- Experimental (r41): the floating-look extras and vehicle data, as
-    // switches in guide style. Vehicle data is its OWN switch at the very
-    // bottom of this page, never bundled with the floating pair. NO master
-    // switch here — that is a later round. Ungated: these are choices, not
-    // permissions, so there is nothing to auto-skip on.
-    add(
-        GuidePage(
-            title = "Experimental.",
-            explanation = "Three extras change how Home looks: floating media puts the player " +
-                "over the full-screen map, home widgets add weather, messages, " +
-                "and next event beside it, and frosted map chrome lets the map show " +
-                "through its panes and buttons. Vehicle data is separate: a live, raw " +
-                "dump of the car's sensor channel, with field labels carried over " +
-                "from other projects and unverified — treat them as a guess, not a fact.",
-            icon = glyph(Icons.Filled.Build),
-            optional = true,
-            content = {
-                val floating by CarSettings.floatingMediaEnabled.collectAsState()
-                val widgets by CarSettings.homeWidgetsEnabled.collectAsState()
-                val frosted by CarSettings.frostedMapChromeEnabled.collectAsState()
-                val sensors by CarSettings.carSensorsEnabled.collectAsState()
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    GuideSwitch("Floating media over map", floating, CarSettings::setFloatingMediaEnabled)
-                    GuideSwitch("Home widgets", widgets, CarSettings::setHomeWidgetsEnabled)
-                    // r54 (D5): the third floating-look extra, between Home widgets
-                    // and Vehicle data; vehicle data stays last as its own switch.
-                    GuideSwitch("Frosted map chrome", frosted, CarSettings::setFrostedMapChromeEnabled)
-                    GuideSwitch("Vehicle data", sensors, CarSettings::setCarSensorsEnabled)
-                }
-            },
-        ),
-    )
+    // r97 graduation: the Experimental guide page is gone — floating media, home widgets,
+    // frosted map chrome, and vehicle data are regular behavior now, not opt-ins, so there
+    // is nothing left on this page to switch.
 
     // Usage notes were the last page here until 2026-10-25;
     // removed with the rest of the notes surface (no stats server,
