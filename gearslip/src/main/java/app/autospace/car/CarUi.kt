@@ -238,19 +238,29 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // and park the assistant in THINKING. The command
                 // fails spoken, aloud, and the effect lives for the
                 // next command.
+                // r72 barge-in: capture this turn's generation — a turn
+                // superseded mid-flight (a fresh listen or a cancel
+                // while its answer was still streaming) never speaks:
+                // its reply is discarded below, and its late stream
+                // callbacks already died on the generation guard.
+                val generation = CarAssistant.turnGeneration
                 val reply = try {
                     AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
                 } catch (t: Throwable) {
                     GearslipLog.e("assistant: command failed", t)
                     "Sorry, that command failed."
                 }
-                CarAssistant.reply(
-                    reply,
-                    fromAi = AssistantCommands.lastReplyWasAi,
-                    grounded = AssistantCommands.lastReplyGrounded,
-                    sourceCount = AssistantCommands.lastReplySourceCount,
-                    provider = AssistantCommands.lastReplyProvider,
-                )
+                if (CarAssistant.turnGeneration == generation) {
+                    CarAssistant.reply(
+                        reply,
+                        fromAi = AssistantCommands.lastReplyWasAi,
+                        grounded = AssistantCommands.lastReplyGrounded,
+                        sourceCount = AssistantCommands.lastReplySourceCount,
+                        provider = AssistantCommands.lastReplyProvider,
+                    )
+                } else {
+                    GearslipLog.i("assistant: superseded turn discarded")
+                }
             }
         }
     }

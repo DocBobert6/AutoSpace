@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            40, "0.4.29-alpha",
+            listOf(
+                "Say the hotword while the assistant is speaking to interrupt it and say something else.",
+            ),
+        ),
+        Release(
             39, "0.4.28-alpha",
             listOf(
                 "The floating media card swipes between active media sessions.",

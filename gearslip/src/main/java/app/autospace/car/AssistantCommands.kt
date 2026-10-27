@@ -319,6 +319,10 @@ object AssistantCommands {
         // invented just to merge them, and neither client's mapping is reinterpreted.
         val provider = AiKeyStore.activeProvider(context)
         val key = AiKeyStore.loadKey(context, provider) ?: return null
+        // r72 barge-in: the stream callbacks carry this turn's generation, so a
+        // superseded turn's late sentences die in streamText/streamSentence
+        // instead of re-speaking an interrupted reply's tail.
+        val streamGeneration = CarAssistant.turnGeneration
         val result: Any = withContext(Dispatchers.IO) {
             when (provider) {
                 // r55: Groq streams (display text + sentences as they
@@ -332,8 +336,8 @@ object AssistantCommands {
                 // from the full text below, exactly as before.
                 AiAssistant.Provider.GROQ -> GroqClient.generateStreaming(
                     key, heard, CarAssistant.lastListenEndMs,
-                    onText = { CarAssistant.streamText(it) },
-                    onSentence = { CarAssistant.streamSentence(it) },
+                    onText = { CarAssistant.streamText(streamGeneration, it) },
+                    onSentence = { CarAssistant.streamSentence(streamGeneration, it) },
                 )
                 AiAssistant.Provider.GEMINI -> GeminiClient.generate(key, heard)
             }

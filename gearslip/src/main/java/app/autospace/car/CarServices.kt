@@ -103,7 +103,15 @@ object CarServices {
     private fun configureHotword() {
         app.autospace.speech.HotwordListener.configure(
             sessionCheck = { CarEnvironment.isRunning || TestMode.active.value },
-            // Suspended only while the assistant is actively busy or a call is live.
+            // Suspended only while the assistant is actively listening or thinking,
+            // or a call is live. SPEAKING is deliberately NOT a suspension (r72
+            // barge-in): the hotword stays live while a reply plays, so saying it
+            // mid-sentence interrupts via start(), which already stops TTS and
+            // starts a fresh listen; LISTENING/THINKING still suspend, so a live
+            // listen is never fought over. The gate is a recognized phrase at the
+            // start of an utterance (HotwordListener.findHotword), not raw audio
+            // energy, so the reply's own echo through the car speakers can only
+            // false-trigger on a reply that itself speaks the wake phrase.
             // ERROR is deliberately not a suspension (2026-10-25): it is a settled
             // state, not activity — the old `phase != IDLE` check kept the hotword
             // dead for the rest of a session after any listen error ("Didn't catch
@@ -114,7 +122,6 @@ object CarServices {
                 val phase = CarAssistant.state.value.phase
                 phase == CarAssistant.Phase.LISTENING ||
                     phase == CarAssistant.Phase.THINKING ||
-                    phase == CarAssistant.Phase.SPEAKING ||
                     app.autospace.call.CarCalls.state.value is app.autospace.call.CallUiState.Active
             },
             onHotword = { CarAssistant.start() },

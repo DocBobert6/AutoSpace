@@ -134,6 +134,15 @@ object CarAssistant {
     // releaseRecognizer() now owns the decrement, exactly once.
     private var systemListening = false
 
+    // r72 barge-in: generation guard for superseded turns. A fresh listen (or a
+    // cancel) invalidates any older turn still running, so its late stream
+    // callbacks die in streamText/streamSentence instead of re-speaking an
+    // interrupted reply's tail, and the CarUi collector discards its reply.
+    private val turnGate = TurnGate()
+
+    /** The generation of the turn currently in flight, for stream callbacks to capture. */
+    val turnGeneration: Int get() = turnGate.current()
+
     fun init(context: Context) {
         appContext = context.applicationContext
         appContext?.let(VoiceModels::init)
@@ -183,6 +192,11 @@ object CarAssistant {
         releaseSpeechFocus()
         synchronized(streamLock) { streamSession = null }
         clearFollowUpExpiry()
+        // r72 barge-in: this fresh listen supersedes any turn still running — a
+        // reply playing (SPEAKING falls through to here) or an answer still
+        // streaming in. Its late callbacks die on the generation guard, and its
+        // reply is discarded by the CarUi collector.
+        turnGate.beginTurn()
         warmForListen(context)
         _state.value = State(Phase.LISTENING)
         busySinceMs = SystemClock.uptimeMillis()
@@ -225,6 +239,9 @@ object CarAssistant {
     /** Closes the overlay from wherever it's showing: mid-listen, mid-think, or after speaking. */
     fun cancel() {
         clearFollowUpExpiry()
+        // r72 barge-in: same supersede as a fresh listen — a dismissed turn's
+        // late stream callbacks must never re-speak after the overlay closes.
+        turnGate.beginTurn()
         releaseRecognizer()
         VoiceEngine.stop()
         releaseSpeechFocus()
@@ -471,9 +488,14 @@ object CarAssistant {
      * The phase is untouched here — THINKING until the first sentence
      * starts speech — and the overlay shows the growing reply during
      * THINKING once it is non-blank.
+     * r72 barge-in: [generation] is the turn that started the stream —
+     * a superseded turn's late text returns before touching the session.
      */
-    fun streamText(full: String) {
+    fun streamText(generation: Int, full: String) {
         val context = appContext ?: return
+        // r72 barge-in: a superseded turn's late text dies here, before it can
+        // touch (or recreate) the session the new listen already cleared.
+        if (!turnGate.isCurrent(generation)) return
         synchronized(streamLock) {
             val session = streamSession ?: StreamSession(context).also { streamSession = it }
             session.fullText.clear()
@@ -488,9 +510,15 @@ object CarAssistant {
      * later ones to it; sentences past the answer cap are dropped,
      * exactly as the capped reply drops them. Ignored with no app
      * context, or once the session failed.
+     * r72 barge-in: [generation] is the turn that started the stream —
+     * a superseded turn's late sentence returns before a session is
+     * created, so it can never recreate one the new listen cleared.
      */
-    fun streamSentence(sentence: String) {
+    fun streamSentence(generation: Int, sentence: String) {
         val context = appContext ?: return
+        // r72 barge-in: checked before a session is created, for the same reason
+        // as streamText — a superseded turn must never recreate a session.
+        if (!turnGate.isCurrent(generation)) return
         val handle = synchronized(streamLock) {
             val session = streamSession ?: StreamSession(context).also { streamSession = it }
             if (session.failed) return
@@ -715,6 +743,8 @@ object CarAssistant {
 
     fun shutdown() {
         releaseRecognizer()
+        // r72 barge-in: a torn-down session's late callbacks die with it.
+        turnGate.beginTurn()
         VoiceEngine.unload()
         // r44: shutdown used to leave the phase wherever it was, so a
         // parked LISTENING/THINKING greeted the next session.
