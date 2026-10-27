@@ -58,8 +58,11 @@ import kotlinx.coroutines.withContext
  * console, each console's page holding its games and its import, refined only
  * for the car screen — full-width rows, large type, Frost styling, and
  * controller navigation (D-pad moves focus, A confirms, B goes back, exactly
- * like the touchscreen rows they sit beside). Round 1 has no playback: a
- * game's row says plainly that play arrives in a later round.
+ * like the touchscreen rows they sit beside). Round 2 wires playback:
+ * a game's Play row downloads its core (verified by size and hash)
+ * and opens the playback screen, whose engine seam waits on the
+ * native runner — until then the screen says so plainly instead of
+ * pretending to play.
  *
  * Hard parked gate: the section is usable only while parked, on CarMotion's
  * motion signal, rechecked every second while the screen is open — driving
@@ -72,6 +75,7 @@ private sealed interface GamesPage {
     data object Home : GamesPage
     data class Console(val key: String) : GamesPage
     data object Controllers : GamesPage
+    data class Playback(val game: GameEntry) : GamesPage
 }
 
 @Composable
@@ -87,6 +91,18 @@ fun GamesScreen() {
     var gameActions by remember { mutableStateOf<GameEntry?>(null) }
     var removeTarget by remember { mutableStateOf<GameEntry?>(null) }
     var pickerNote by remember { mutableStateOf(false) }
+    // r92 core state: the fetched manifest (null until first fetch),
+    // the overlay game's core status, and the shared download progress.
+    var manifest by remember { mutableStateOf<List<GameCoreEntry>?>(null) }
+    var playCore by remember { mutableStateOf<GameCoreDownload.Status?>(null) }
+    var downloading by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf(0) }
+    var biosTarget by remember { mutableStateOf<String?>(null) }
+    var biosTick by remember { mutableStateOf(0) }
+    var coreTick by remember { mutableStateOf(0) }
+    var consoleCoreStatus by remember {
+        mutableStateOf<GameCoreDownload.Status?>(null)
+    }
 
     // Parked gate, live: a plain property, not a flow, so it is polled.
     LaunchedEffect(Unit) {
@@ -159,6 +175,97 @@ fun GamesScreen() {
             resultText = "Import needs the file picker on your phone, and it could not be opened. Try again."
         }
     }
+
+    // r92: the third picker, for BIOS files. It rides the same
+    // projector-root registry as the two import pickers, so it needs
+    // no new owner. The picked stream is saved AS the expected file
+    // name, regardless of the picked file's name.
+    val biosPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        val target = biosTarget
+        biosTarget = null
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val ok = target?.let { GameBios.importFile(context, it, uri) } ?: false
+            withContext(Dispatchers.Main) {
+                biosTick++
+                resultText = if (ok) {
+                    "$target installed."
+                } else {
+                    "Could not import that file."
+                }
+            }
+        }
+    }
+
+    fun launchBiosPicker(name: String) {
+        biosTarget = name
+        val ok = runCatching { biosPicker.launch(arrayOf("*/*")) }.isSuccess
+        if (!ok) {
+            biosTarget = null
+            resultText = "Import needs the file picker on your phone, and it could not be opened. Try again."
+        }
+    }
+
+    fun checkCore(system: String, onDone: (GameCoreDownload.Status) -> Unit) {
+        scope.launch(Dispatchers.IO) {
+            val status = GameCoreDownload.status(context, system)
+            withContext(Dispatchers.Main) { onDone(status) }
+        }
+    }
+
+    /** Fetch the manifest once, then download one core, verified. */
+    fun downloadCore(
+        system: String,
+        onDone: (Boolean, String?) -> Unit
+    ) {
+        downloading = true
+        downloadProgress = 0
+        scope.launch(Dispatchers.IO) {
+            val man = manifest
+                ?: GameCoreDownload.fetchManifest().getOrNull()?.also { manifest = it }
+            val entry = man?.let { GameCores.entryForSystem(it, system) }
+            if (entry == null) {
+                withContext(Dispatchers.Main) {
+                    downloading = false
+                    onDone(false, "Could not reach the core download. Check the connection and try again.")
+                }
+                return@launch
+            }
+            val result = GameCoreDownload.download(context, entry) { pct ->
+                downloadProgress = pct
+            }
+            withContext(Dispatchers.Main) {
+                downloading = false
+                onDone(
+                    result.isSuccess,
+                    result.exceptionOrNull()?.message ?: "Core download failed."
+                )
+            }
+        }
+    }
+
+    /** Play a game: a verified core opens playback at once; a
+     * missing or corrupt core downloads first, then opens playback. */
+    fun playGame(game: GameEntry) {
+        scope.launch(Dispatchers.IO) {
+            val status = GameCoreDownload.status(context, game.system)
+            withContext(Dispatchers.Main) { playCore = status }
+            if (status == GameCoreDownload.Status.DOWNLOADED) {
+                withContext(Dispatchers.Main) { page = GamesPage.Playback(game) }
+                return@launch
+            }
+            downloadCore(game.system) { ok, reason ->
+                if (ok) {
+                    playCore = GameCoreDownload.Status.DOWNLOADED
+                    page = GamesPage.Playback(game)
+                } else {
+                    resultText = reason
+                }
+            }
+        }
+    }
     Box(
         Modifier.fillMaxSize().onKeyEvent { event ->
             // Gamepad B goes back.
@@ -197,13 +304,38 @@ fun GamesScreen() {
                     onImportFolder = { launchFolderPicker() },
                     onControllers = { page = GamesPage.Controllers },
                 )
-                is GamesPage.Console -> ConsolePage(
-                    consoleKey = current.key,
-                    games = games.filter { it.system == current.key },
-                    importing = importing,
-                    onImportRom = { launchSinglePicker() },
-                    onImportFolder = { launchFolderPicker() },
-                    onGame = { gameActions = it },
+                is GamesPage.Console -> {
+                    LaunchedEffect(current.key, coreTick) {
+                        checkCore(current.key) { consoleCoreStatus = it }
+                    }
+                    ConsolePage(
+                        consoleKey = current.key,
+                        games = games.filter { it.system == current.key },
+                        importing = importing,
+                        coreStatus = consoleCoreStatus,
+                        downloading = downloading,
+                        downloadProgress = downloadProgress,
+                        biosTick = biosTick,
+                        onImportRom = { launchSinglePicker() },
+                        onImportFolder = { launchFolderPicker() },
+                        onGame = { gameActions = it },
+                        onDownloadCore = {
+                            downloadCore(current.key) { ok, reason ->
+                                coreTick++
+                                checkCore(current.key) { consoleCoreStatus = it }
+                                if (!ok) resultText = reason
+                            }
+                        },
+                        onImportBios = { launchBiosPicker(it) },
+                        onDeleteBios = {
+                            GameBios.delete(context, it)
+                            biosTick++
+                        },
+                    )
+                }
+                is GamesPage.Playback -> GamePlaybackScreen(
+                    game = current.game,
+                    onExit = { page = GamesPage.Home },
                 )
                 GamesPage.Controllers -> ControllersScreen()
             }
@@ -230,9 +362,26 @@ fun GamesScreen() {
             }
             gameActions?.let { game ->
                 GameOverlay(onDismiss = { gameActions = null }) {
+                    LaunchedEffect(game.id) {
+                        playCore = null
+                        checkCore(game.system) { playCore = it }
+                    }
                     Text(game.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2)
                     Text(game.fileName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(16.dp))
+                    val playCaption = when {
+                        downloading -> "Downloading core… $downloadProgress%"
+                        playCore == null -> "Checking core…"
+                        playCore == GameCoreDownload.Status.DOWNLOADED -> "Core ready"
+                        playCore == GameCoreDownload.Status.CORRUPT -> "Core failed verification — tap to download again"
+                        else -> "Downloads the core first, then plays"
+                    }
+                    GameMenuRow("Play", playCaption) {
+                        if (!downloading) {
+                            gameActions = null
+                            playGame(game)
+                        }
+                    }
                     GameMenuRow(if (game.favorite) "Unfavorite" else "Favorite", null) {
                         GameImport.setFavorite(context, game.id, !game.favorite)
                         refresh()
@@ -242,11 +391,6 @@ fun GamesScreen() {
                         gameActions = null
                         removeTarget = game
                     }
-                    Text(
-                        "Play arrives in a later round.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     GameMenuRow("Cancel", null) { gameActions = null }
                 }
             }
@@ -382,7 +526,7 @@ private fun GamesHome(
         item(key = "controllers") {
             GameMenuRow(
                 "Controllers",
-                "Pair a Bluetooth controller for menu navigation",
+                "Pair a Bluetooth controller for gameplay",
             ) { onControllers() }
         }
     }
@@ -393,10 +537,18 @@ private fun ConsolePage(
     consoleKey: String,
     games: List<GameEntry>,
     importing: Boolean,
+    coreStatus: GameCoreDownload.Status?,
+    downloading: Boolean,
+    downloadProgress: Int,
+    biosTick: Int,
     onImportRom: () -> Unit,
     onImportFolder: () -> Unit,
     onGame: (GameEntry) -> Unit,
+    onDownloadCore: () -> Unit,
+    onImportBios: (String) -> Unit,
+    onDeleteBios: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     val console = GameConsoles.byKey(consoleKey)
     ScreenHeader(console?.label ?: consoleKey)
     Text(
@@ -417,6 +569,77 @@ private fun ConsolePage(
                 "Import a folder of ROMs",
                 if (importing) "Importing…" else "Walks a folder, sorts by console, skips duplicates",
             ) { if (!importing) onImportFolder() }
+        }
+        item(key = "core") {
+            GameMenuRow(
+                "Core",
+                when {
+                    downloading -> "Downloading… $downloadProgress%"
+                    coreStatus == null -> "Checking…"
+                    coreStatus == GameCoreDownload.Status.DOWNLOADED ->
+                        "Downloaded and verified"
+                    coreStatus == GameCoreDownload.Status.CORRUPT ->
+                        "Failed verification — tap to download again"
+                    else -> "Not downloaded — tap to download"
+                },
+            ) { if (!downloading) onDownloadCore() }
+        }
+        item(key = "bios-header") {
+            Text(
+                "BIOS",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        item(key = "bios-ships-note") {
+            Text(
+                "The app ships no BIOS files — supply your own. Imported " +
+                    "files are copied into the app's system folder, where " +
+                    "the core looks for them.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        GameBios.noteFor(consoleKey)?.let { note ->
+            item(key = "bios-note") {
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        // The tick rides the row keys, so an import or delete remounts
+        // the rows and re-reads installed state.
+        val expected = GameBios.expectedFor(consoleKey)
+        if (expected.isEmpty()) {
+            item(key = "bios-none-$biosTick") {
+                Text(
+                    "This console doesn't need a BIOS — it boots without one.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            for (name in expected) {
+                val installed = GameBios.isInstalled(context, name)
+                item(key = "bios-$name-$biosTick") {
+                    GameMenuRow(
+                        name,
+                        if (installed) "Installed — tap to replace" else "Missing — tap to import",
+                        trailing = {
+                            if (installed) {
+                                Text(
+                                    "Delete",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clickable { onDeleteBios(name) },
+                                )
+                            }
+                        },
+                    ) { onImportBios(name) }
+                }
+            }
         }
         if (games.isEmpty()) {
             item(key = "empty") {
@@ -464,8 +687,10 @@ private fun ControllersScreen() {
     }
 
     Text(
-        "Controllers navigate the Games menus: D-pad moves, A confirms, B goes " +
-            "back. Pairing happens in the phone's own pairing dialog.",
+        "A Bluetooth controller is required for gameplay inside cores. The " +
+            "menus are touchscreen-navigable, and controllers navigate them " +
+            "too: D-pad moves, A confirms, B goes back. Pairing happens in " +
+            "the phone's own pairing dialog.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
