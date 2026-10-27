@@ -1070,7 +1070,7 @@ private fun VoiceEngineRow(
 }
 
 @Composable
-private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, enabled: Boolean = true) {
+private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, enabled: Boolean = true, onSelect: (T) -> Unit) {
     // Phase 7: every choice row is its own grouped card (surfaceBright on the
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
     // Phase 8 audit fix: the section header sits ABOVE the card in a
