@@ -66,12 +66,6 @@ that mirrors the phone.
   a player-style chrome row (glyph buttons, no labels) auto-hides.
   Exits never trap you: the car's Back button, the on-screen exit button,
   or the phone's Stop. Touch relay is single-finger while mirroring.
-- **Mirrored Maps (also present, not the default).** A "Maps (mirrored)"
-  tile mirrors stock Google Maps from the phone to the car, with touch.
-  It appears only when Maps is installed. This is mirroring, not a native
-  car app: Google Maps only accepts Google's own Android Auto as its car
-  host, so native Maps support is not proven. No patched or re-signed
-  copy of Maps is used.
 - **Resolutions.** Per-vehicle resolution (Auto / 720p / 1080p / 2K / 4K),
   resolved only against configurations the head unit actually offers —
   nearest offered size at or below, never an invented one. 2K/4K are
