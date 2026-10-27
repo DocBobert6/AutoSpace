@@ -71,7 +71,7 @@ class KeyboardSuggestionsTest {
             listOf(LearnedEntry("ok", 2)),
             KeyboardSuggestions.decodeLearnedEntries("=5\nbad=x\nzero=0\n\nok=2"),
         )
-        assertEquals(emptyList(), KeyboardSuggestions.decodeLearnedEntries(""))
+        assertEquals(emptyList<LearnedEntry>(), KeyboardSuggestions.decodeLearnedEntries(""))
         assertEquals("a=1\nb=12", KeyboardSuggestions.encodeLearnedEntries(listOf(LearnedEntry("a", 1), LearnedEntry("b", 12))))
     }
 
@@ -112,7 +112,7 @@ class KeyboardSuggestionsTest {
     fun candidatesTwoLetterInputStaysPrefixOnly() {
         // "hy" is distance 1 from "hey", but two-letter input never gets
         // near-misses — too ambiguous. Three-letter "hye" does.
-        assertEquals(emptyList(), KeyboardSuggestions.candidates("hy", emptyList(), listOf("hey")))
+        assertEquals(emptyList<String>(), KeyboardSuggestions.candidates("hy", emptyList(), listOf("hey")))
         assertEquals(listOf("hey"), KeyboardSuggestions.candidates("hye", emptyList(), listOf("hey")))
     }
 
