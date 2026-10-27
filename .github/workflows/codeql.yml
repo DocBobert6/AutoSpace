@@ -40,7 +40,7 @@ jobs:
           java-version: "21"
 
       - if: matrix.build-mode == 'manual'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - if: matrix.build-mode == 'manual'
         name: Install NDK and CMake
