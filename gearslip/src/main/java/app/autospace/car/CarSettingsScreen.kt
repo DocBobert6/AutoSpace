@@ -613,6 +613,7 @@ private fun AboutAndExperimentalPage() {
     val fullWidthGlow by CarSettings.fullWidthGlowEnabled.collectAsState()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
     val multiTurn by CarSettings.multiTurnEnabled.collectAsState()
+    val sideBar by CarSettings.sideBarEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -637,7 +638,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1268,7 +1269,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1301,6 +1302,17 @@ private fun ExperimentalFeaturesList(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        // r74: steering-side floating app bar (A1). The bottom bar's
+        // app row, stood on its side on the driver's side — placed with
+        // the other layout rows (floating media, card docking) at the
+        // top of the list. Still behind the general experimental
+        // opt-in: the rail renders only when experiments are on AND
+        // this is on. Off returns exactly today's bottom bar.
+        ExperimentalFeatureRow(
+            title = "Steering-side app bar (experimental)",
+            description = "Moves the app bar to a floating rail on the driver's side of the screen instead of along the bottom. The bottom bar returns when this is off. The rail steps to the passenger side when the turn card, the widget column, or the media card occupies the driver's side.",
+            checked = sideBar,
+        ) { CarSettings.setSideBarEnabled(it) }
         ExperimentalFeatureRow(
             title = "Frosted map chrome (experimental)",
             description = "The map pane, turn card, trip bar, and edge buttons get the same " +

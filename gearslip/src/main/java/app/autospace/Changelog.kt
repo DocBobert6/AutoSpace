@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            42, "0.4.31-alpha",
+            listOf(
+                "The app bar can float on the driver's side of the screen instead of along the bottom, as an experimental option.",
+            ),
+        ),
+        Release(
             41, "0.4.30-alpha",
             listOf(
                 "The assistant can follow a conversation across turns, as an experimental option: follow-up answers can refer to what you just asked.",
