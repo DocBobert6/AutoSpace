@@ -22,17 +22,22 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.car.app.model.CarIcon
 import androidx.car.app.model.Template
@@ -116,58 +121,136 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
     }
 }
 
-/** The manoeuvre card: what to do next, how far away it is, and onto what road. */
+/**
+ * r61: the guidance cards' surface. In Google-recreation mode the card is a
+ * solid, fixed-color surface with fixed rounded corners, whatever the style
+ * or scheme says; in Themed mode it is exactly today's frosted scheme
+ * surface, with the call site's shape untouched.
+ */
+@Composable
+private fun GuidanceSurface(
+    modifier: Modifier,
+    googleColor: Color,
+    google: Boolean,
+    themedShape: Shape,
+    shadowElevation: Dp = 0.dp,
+    content: @Composable () -> Unit,
+) {
+    if (google) {
+        Surface(
+            modifier = modifier,
+            shape = RoundedCornerShape(16.dp),
+            color = googleColor,
+            contentColor = Color.White,
+            shadowElevation = shadowElevation,
+            content = content,
+        )
+    } else {
+        ChromeSurface(
+            modifier,
+            shape = themedShape,
+            shadowElevation = shadowElevation,
+            frosted = true,
+            content = content,
+        )
+    }
+}
+
+/** The maneuver card: what to do next, how far away it is, and onto what road. */
 @Composable
 private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
+    val mapChrome by CarSettings.mapChrome.collectAsState()
+    val google = mapChrome == MapChrome.GOOGLE
     if (info.isLoading) {
         // r54 (D2): outer pane shape through the style rule, so the frosted
         // toggle cannot change corners; inner 0dp fills below stay untouched.
-        ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), frosted = true) {
+        GuidanceSurface(
+            modifier,
+            googleColor = Color(MapChromeColors.GOOGLE_CARD),
+            google = google,
+            themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+        ) {
             Text("Finding a route…", Modifier.padding(16.dp), style = ChromeType.title)
         }
         return
     }
 
     val step = info.currentStep ?: return
+    val next = info.nextStep
     // r54 (D2): outer pane shape through the style rule, as above.
-    ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), frosted = true) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    val distance = info.currentDistance.display()
-                    if (distance.isNotEmpty()) {
-                        Text(distance, style = ChromeType.headline)
+    GuidanceSurface(
+        modifier,
+        googleColor = Color(MapChromeColors.GOOGLE_CARD),
+        google = google,
+        themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+    ) {
+        Column {
+            // r61: Google's top strip replaces the "then" row below: the
+            // current maneuver glyph solid, the next one muted, and the
+            // next step's short cue in small text. Themed mode keeps the
+            // "then" row exactly as it was.
+            if (google && next != null) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .background(Color(MapChromeColors.GOOGLE_STRIP))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CarGlyph(step.maneuver?.icon, Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    CarGlyph(next.maneuver?.icon, Modifier.size(20.dp).alpha(0.6f))
+                    nextStripText(next.cue.text(), next.road.text())?.let { cue ->
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            cue,
+                            style = ChromeType.label,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(step.cue.text(), style = ChromeType.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
-            val road = step.road.text()
-            if (road.isNotEmpty()) {
-                Text(
-                    road,
-                    style = ChromeType.body,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            // Neither is sent by every app - most say only "turn left" and trust the driver to
-            // find the lane themselves - so both are drawn only when there is something to draw.
-            info.junctionImage?.let { junction ->
-                Spacer(Modifier.height(10.dp))
-                JunctionImage(junction)
-            }
-            LaneGuidance(step, Modifier.padding(top = 10.dp))
-            info.nextStep?.let { next ->
-                Spacer(Modifier.height(8.dp))
+            Column(Modifier.padding(14.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("then", style = ChromeType.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.width(8.dp))
-                    CarGlyph(next.maneuver?.icon, Modifier.size(20.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(next.cue.text(), style = ChromeType.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        val distance = info.currentDistance.display()
+                        if (distance.isNotEmpty()) {
+                            Text(distance, style = ChromeType.headline)
+                        }
+                        Text(step.cue.text(), style = ChromeType.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                val road = step.road.text()
+                if (road.isNotEmpty()) {
+                    Text(
+                        road,
+                        style = ChromeType.body,
+                        color = if (google) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                // Neither is sent by every app - most say only "turn left" and trust the driver to
+                // find the lane themselves - so both are drawn only when there is something to draw.
+                info.junctionImage?.let { junction ->
+                    Spacer(Modifier.height(10.dp))
+                    JunctionImage(junction)
+                }
+                LaneGuidance(step, Modifier.padding(top = 10.dp), google)
+                if (!google) {
+                    info.nextStep?.let { nextStep ->
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("then", style = ChromeType.label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(8.dp))
+                            CarGlyph(nextStep.maneuver?.icon, Modifier.size(20.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(nextStep.cue.text(), style = ChromeType.body, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
                 }
             }
         }
@@ -193,7 +276,7 @@ private fun JunctionImage(icon: CarIcon, modifier: Modifier = Modifier) {
  * everything else uses, never dimmed by transparency.
  */
 @Composable
-private fun LaneGuidance(step: Step, modifier: Modifier = Modifier) {
+private fun LaneGuidance(step: Step, modifier: Modifier = Modifier, google: Boolean = false) {
     step.lanesImage?.let {
         JunctionImage(it, modifier)
         return
@@ -201,12 +284,12 @@ private fun LaneGuidance(step: Step, modifier: Modifier = Modifier) {
     val lanes = step.lanes.orEmpty()
     if (lanes.isEmpty()) return
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        lanes.forEach { lane -> LaneTile(lane) }
+        lanes.forEach { lane -> LaneTile(lane, google) }
     }
 }
 
 @Composable
-private fun LaneTile(lane: Lane) {
+private fun LaneTile(lane: Lane, google: Boolean = false) {
     val directions = lane.directions.orEmpty()
     val shown = directions.firstOrNull { it.isRecommended } ?: directions.firstOrNull()
     val recommended = shown?.isRecommended == true
@@ -215,7 +298,11 @@ private fun LaneTile(lane: Lane) {
             .size(36.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(
-                if (recommended) MaterialTheme.colorScheme.primaryContainer
+                // r61: on the green card the recommended lane stands out in white and the
+                // rest sit on the darker strip green, so no scheme color fights the card.
+                if (google) {
+                    if (recommended) Color.White else Color(MapChromeColors.GOOGLE_STRIP)
+                } else if (recommended) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceContainerHighest,
             ),
         contentAlignment = Alignment.Center,
@@ -223,7 +310,9 @@ private fun LaneTile(lane: Lane) {
         Icon(
             Icons.Filled.KeyboardArrowUp,
             contentDescription = if (recommended) "Recommended lane" else "Lane",
-            tint = if (recommended) MaterialTheme.colorScheme.onPrimaryContainer
+            tint = if (google) {
+                if (recommended) Color(MapChromeColors.GOOGLE_CARD) else Color.White
+            } else if (recommended) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp).rotate(shown.turnDegrees()),
         )
@@ -254,6 +343,8 @@ private fun LaneDirection?.turnDegrees(): Float = when (this?.shape) {
  */
 @Composable
 private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Modifier) {
+    val mapChrome by CarSettings.mapChrome.collectAsState()
+    val google = mapChrome == MapChrome.GOOGLE
     val time = remainingTime(estimate.remainingTimeSeconds)
     val distance = estimate.remainingDistance.display()
     val arrival = estimate.arrivalTimeAtDestination.clockTime()
@@ -269,7 +360,14 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
     // The same solid card the manoeuvre card above it uses - one surface for the whole map
     // chrome, rather than this one spot styled on its own as a bar over the map.
     // r54 (D2): outer pane shape through the style rule, as above.
-    ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), shadowElevation = 8.dp, frosted = true) {
+    // r61: Google mode swaps the frosted scheme surface for the solid dark pill.
+    GuidanceSurface(
+        modifier,
+        googleColor = Color(MapChromeColors.GOOGLE_ETA),
+        google = google,
+        themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+        shadowElevation = 8.dp,
+    ) {
         val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()
         Row(
             Modifier.padding(start = 8.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
@@ -284,7 +382,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                 Icons.Filled.Close,
                 "Stop navigating",
                 { CarServices.nav.stopNavigating() },
-                colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
+                colors = if (google) GsColors(Color(MapChromeColors.GOOGLE_STOP_BACKGROUND), Color(MapChromeColors.GOOGLE_STOP_CONTENT)) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
                 size = 40.dp,
                 iconSize = 20.dp,
                 shape = CircleShape,
@@ -295,11 +393,11 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                     Text(
                         time,
                         style = ChromeType.headline,
-                        color = estimate.remainingTimeColor.color(dark, MaterialTheme.colorScheme.onSurface),
+                        color = if (google) Color(MapChromeColors.GOOGLE_MINUTES) else estimate.remainingTimeColor.color(dark, MaterialTheme.colorScheme.onSurface),
                     )
                 }
                 if (detail.isNotEmpty()) {
-                    Text(detail, style = ChromeType.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(detail, style = ChromeType.body, color = if (google) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

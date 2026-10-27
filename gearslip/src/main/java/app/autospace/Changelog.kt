@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            29, "0.4.18-alpha",
+            listOf(
+                "Map chrome in Appearance: Google recreation matches Google's navigation look with a solid green turn card and a dark trip pill, and it is the default.",
+                "Themed map chrome keeps the turn card and trip pill in the current theme's colors and frosted treatment.",
+            ),
+        ),
+        Release(
             28, "0.4.17-alpha",
             listOf(
                 "The media card now shows a soft, blurred version of the album art behind it.",

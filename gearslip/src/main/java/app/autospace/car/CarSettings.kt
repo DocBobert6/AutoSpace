@@ -103,6 +103,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_FLOATING_MEDIA = "car_floating_media"
     private const val KEY_HOME_WIDGETS = "car_home_widgets"
     private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
+    private const val KEY_MAP_CHROME = "car_map_chrome"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -188,6 +189,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val floatingMediaFlow = MutableStateFlow(false)
     private val homeWidgetsFlow = MutableStateFlow(false)
     private val frostedMapChromeFlow = MutableStateFlow(false)
+    private val mapChromeFlow = MutableStateFlow(MapChrome.GOOGLE)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -362,6 +364,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      */
     val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
 
+    /** r61: the guidance chrome's look; GOOGLE is the default (see init). */
+    val mapChrome: StateFlow<MapChrome> = mapChromeFlow
+
     /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
@@ -490,6 +495,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
         homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
         frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
+        mapChromeFlow.value = mapChromeFromStored(AppSettings.getString(app, KEY_MAP_CHROME, ""))
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -586,6 +592,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setColorScheme(scheme: ColorScheme) {
         schemeFlow.value = scheme
         AppSettings.putString(app, KEY_SCHEME, scheme.name)
+    }
+
+    fun setMapChrome(mode: MapChrome) {
+        mapChromeFlow.value = mode
+        AppSettings.putString(app, KEY_MAP_CHROME, mode.name)
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {

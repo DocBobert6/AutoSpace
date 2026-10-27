@@ -179,6 +179,7 @@ private fun AppearancePage() {
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
+    val mapChrome by CarSettings.mapChrome.collectAsState()
 
     // UI size (Phase 10, correcting Phase 9's display): the slider
     // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
@@ -335,6 +336,20 @@ private fun AppearancePage() {
         listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
         night,
     ) { CarSettings.setNightMode(it) }
+
+    ChoiceRow(
+        "Map chrome",
+        listOf(MapChrome.GOOGLE to "Google recreation", MapChrome.THEMED to "Themed"),
+        mapChrome,
+    ) { CarSettings.setMapChrome(it) }
+    Text(
+        "Google recreation matches Google's navigation look: a solid green turn card " +
+            "and a dark trip pill, the same in every theme. Themed keeps the turn card " +
+            "and trip pill in the current theme's colors and frosted treatment. " +
+            "This choice covers the guidance cards only; panes and controls stay themed either way.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     ChoiceRow(
         "Units",
