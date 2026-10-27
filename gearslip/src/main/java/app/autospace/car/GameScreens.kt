@@ -1,6 +1,5 @@
 package app.autospace.car
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -100,11 +99,6 @@ fun GamesScreen() {
         games = GameImport.load(context)
     }
 
-    // Back unwinds the console/controllers page first, like Mariner's home.
-    BackHandler {
-        if (page != GamesPage.Home) page = GamesPage.Home else navigator.back()
-    }
-
     fun goBack() {
         if (page != GamesPage.Home) page = GamesPage.Home else navigator.back()
     }
@@ -143,7 +137,7 @@ fun GamesScreen() {
 
     Box(
         Modifier.fillMaxSize().onKeyEvent { event ->
-            // Gamepad B goes back, same as the system back button above.
+            // Gamepad B goes back.
             if (event.type == KeyEventType.KeyDown && event.key == Key.ButtonB) {
                 goBack()
                 true

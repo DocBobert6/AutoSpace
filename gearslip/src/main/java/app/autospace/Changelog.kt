@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            57, "0.4.46-alpha",
+            listOf(
+                "Fixed a crash on opening the Games section: tapping the Games button no longer closes the app.",
+            ),
+        ),
+        Release(
             56, "0.4.45-alpha",
             listOf(
                 "Games section: a library and console pages for eight consoles — import a folder of ROMs or a single ROM, browse your library, and pair a Bluetooth controller for menu navigation. Games open only while parked, and playback arrives in a later round.",
