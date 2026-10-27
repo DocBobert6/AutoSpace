@@ -16,6 +16,14 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            31, "0.4.20-alpha",
+            listOf(
+                "Map chrome is now called Meridian, and it is experimental: turn on experimental features to use it.",
+                "Themed is the map chrome default again.",
+                "In Meridian mode, the turn card now shows the distance directly over the street name.",
+            ),
+        ),
+        Release(
             30, "0.4.19-alpha",
             listOf(
                 "Autoplay on connect now skips a media app you have not used in a while, instead of starting it anyway.",

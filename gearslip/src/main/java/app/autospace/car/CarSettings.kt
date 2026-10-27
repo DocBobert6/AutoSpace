@@ -193,7 +193,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val floatingMediaFlow = MutableStateFlow(false)
     private val homeWidgetsFlow = MutableStateFlow(false)
     private val frostedMapChromeFlow = MutableStateFlow(false)
-    private val mapChromeFlow = MutableStateFlow(MapChrome.GOOGLE)
+    private val mapChromeFlow = MutableStateFlow(MapChrome.THEMED)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -374,7 +374,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      */
     val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
 
-    /** r61: the guidance chrome's look; GOOGLE is the default (see init). */
+    /** r63: the guidance chrome's look; THEMED is the default, and Meridian renders only when experimental features are on (see effectiveMapChrome). */
     val mapChrome: StateFlow<MapChrome> = mapChromeFlow
 
     /**

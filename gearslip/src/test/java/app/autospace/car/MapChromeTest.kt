@@ -6,12 +6,17 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r61 map chrome: stored-mode parsing, fixed Google colors, next-step strip rules. */
+/** r63 map chrome: stored-mode parsing + migration, Themed default, experimental gate, strip rules. */
 class MapChromeTest {
 
     @Test
-    fun storedGoogleParses() {
-        assertEquals(MapChrome.GOOGLE, mapChromeFromStored("GOOGLE"))
+    fun storedMeridianParses() {
+        assertEquals(MapChrome.MERIDIAN, mapChromeFromStored("MERIDIAN"))
+    }
+
+    @Test
+    fun storedGoogleMigratesToMeridian() {
+        assertEquals(MapChrome.MERIDIAN, mapChromeFromStored("GOOGLE"))
     }
 
     @Test
@@ -20,47 +25,59 @@ class MapChromeTest {
     }
 
     @Test
-    fun blankStoredDefaultsToGoogle() {
-        assertEquals(MapChrome.GOOGLE, mapChromeFromStored(""))
+    fun blankStoredDefaultsToThemed() {
+        assertEquals(MapChrome.THEMED, mapChromeFromStored(""))
     }
 
     @Test
-    fun unknownStoredDefaultsToGoogle() {
-        assertEquals(MapChrome.GOOGLE, mapChromeFromStored("NEON"))
+    fun unknownStoredDefaultsToThemed() {
+        assertEquals(MapChrome.THEMED, mapChromeFromStored("NEON"))
     }
 
     @Test
-    fun googleCardColorIsSampledGreen() {
-        assertEquals(0xFF3E6F74L, MapChromeColors.GOOGLE_CARD)
+    fun meridianCardColorIsSampledGreen() {
+        assertEquals(0xFF3E6F74L, MapChromeColors.MERIDIAN_CARD)
     }
 
     @Test
-    fun googleStripColorIsDarkerSampledGreen() {
-        assertEquals(0xFF335C5EL, MapChromeColors.GOOGLE_STRIP)
+    fun meridianStripColorIsDarkerSampledGreen() {
+        assertEquals(0xFF335C5EL, MapChromeColors.MERIDIAN_STRIP)
     }
 
     @Test
-    fun googleMinutesColorIsSampledGreen() {
-        assertEquals(0xFF789A75L, MapChromeColors.GOOGLE_MINUTES)
+    fun meridianMinutesColorIsSampledGreen() {
+        assertEquals(0xFF789A75L, MapChromeColors.MERIDIAN_MINUTES)
     }
 
     @Test
-    fun googleEtaColorIsSampledDark() {
-        assertEquals(0xFF131429L, MapChromeColors.GOOGLE_ETA)
+    fun meridianEtaColorIsSampledDark() {
+        assertEquals(0xFF131429L, MapChromeColors.MERIDIAN_ETA)
     }
 
     @Test
-    fun googleStopButtonIsWhiteOnDark() {
-        assertEquals(0xFFFFFFFFL, MapChromeColors.GOOGLE_STOP_BACKGROUND)
-        assertEquals(0xFF131429L, MapChromeColors.GOOGLE_STOP_CONTENT)
+    fun meridianStopButtonIsWhiteOnDark() {
+        assertEquals(0xFFFFFFFFL, MapChromeColors.MERIDIAN_STOP_BACKGROUND)
+        assertEquals(0xFF131429L, MapChromeColors.MERIDIAN_STOP_CONTENT)
     }
 
     @Test
-    fun stripShowsOnlyInGoogleModeWithNext() {
-        assertTrue(showNextStrip(google = true, hasNext = true))
-        assertFalse(showNextStrip(google = true, hasNext = false))
-        assertFalse(showNextStrip(google = false, hasNext = true))
-        assertFalse(showNextStrip(google = false, hasNext = false))
+    fun gateOffForcesThemed() {
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.MERIDIAN, experimentalOn = false))
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, experimentalOn = false))
+    }
+
+    @Test
+    fun gateOnHonorsStoredChoice() {
+        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(MapChrome.MERIDIAN, experimentalOn = true))
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, experimentalOn = true))
+    }
+
+    @Test
+    fun stripShowsOnlyInMeridianModeWithNext() {
+        assertTrue(showNextStrip(meridian = true, hasNext = true))
+        assertFalse(showNextStrip(meridian = true, hasNext = false))
+        assertFalse(showNextStrip(meridian = false, hasNext = true))
+        assertFalse(showNextStrip(meridian = false, hasNext = false))
     }
 
     @Test

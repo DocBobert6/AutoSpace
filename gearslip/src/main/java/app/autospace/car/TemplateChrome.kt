@@ -122,7 +122,7 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
 }
 
 /**
- * r61: the guidance cards' surface. In Google-recreation mode the card is a
+ * r61: the guidance cards' surface. In Meridian mode the card is a
  * solid, fixed-color surface with fixed rounded corners, whatever the style
  * or scheme says; in Themed mode it is exactly today's frosted scheme
  * surface, with the call site's shape untouched.
@@ -130,17 +130,17 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
 @Composable
 private fun GuidanceSurface(
     modifier: Modifier,
-    googleColor: Color,
-    google: Boolean,
+    meridianColor: Color,
+    meridian: Boolean,
     themedShape: Shape,
     shadowElevation: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
-    if (google) {
+    if (meridian) {
         Surface(
             modifier = modifier,
             shape = RoundedCornerShape(16.dp),
-            color = googleColor,
+            color = meridianColor,
             contentColor = Color.White,
             shadowElevation = shadowElevation,
             content = content,
@@ -160,14 +160,15 @@ private fun GuidanceSurface(
 @Composable
 private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
     val mapChrome by CarSettings.mapChrome.collectAsState()
-    val google = mapChrome == MapChrome.GOOGLE
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val meridian = effectiveMapChrome(mapChrome, experimentalOn) == MapChrome.MERIDIAN
     if (info.isLoading) {
         // r54 (D2): outer pane shape through the style rule, so the frosted
         // toggle cannot change corners; inner 0dp fills below stay untouched.
         GuidanceSurface(
             modifier,
-            googleColor = Color(MapChromeColors.GOOGLE_CARD),
-            google = google,
+            meridianColor = Color(MapChromeColors.MERIDIAN_CARD),
+            meridian = meridian,
             themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
         ) {
             Text("Finding a route…", Modifier.padding(16.dp), style = ChromeType.title)
@@ -180,19 +181,19 @@ private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
     // r54 (D2): outer pane shape through the style rule, as above.
     GuidanceSurface(
         modifier,
-        googleColor = Color(MapChromeColors.GOOGLE_CARD),
-        google = google,
+        meridianColor = Color(MapChromeColors.MERIDIAN_CARD),
+        meridian = meridian,
         themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
     ) {
         Column {
-            // r61: Google's top strip replaces the "then" row below: the
+            // r61: Meridian's top strip replaces the "then" row below: the
             // current maneuver glyph solid, the next one muted, and the
             // next step's short cue in small text. Themed mode keeps the
             // "then" row exactly as it was.
-            if (google && next != null) {
+            if (meridian && next != null) {
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Color(MapChromeColors.GOOGLE_STRIP))
+                        .background(Color(MapChromeColors.MERIDIAN_STRIP))
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -212,26 +213,53 @@ private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
                 }
             }
             Column(Modifier.padding(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        val distance = info.currentDistance.display()
-                        if (distance.isNotEmpty()) {
-                            Text(distance, style = ChromeType.headline)
+                // r63: Meridian stacks Google-exact — distance directly over
+                // the street name beside the arrow, no maneuver-wording
+                // line. Themed keeps exactly today's rows (distance, cue,
+                // road) in the else branch below.
+                if (meridian) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            val distance = info.currentDistance.display()
+                            if (distance.isNotEmpty()) {
+                                Text(distance, style = ChromeType.headline)
+                            }
+                            val road = step.road.text()
+                            if (road.isNotEmpty()) {
+                                Text(
+                                    road,
+                                    style = ChromeType.title,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                        Text(step.cue.text(), style = ChromeType.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
-                }
-                val road = step.road.text()
-                if (road.isNotEmpty()) {
-                    Text(
-                        road,
-                        style = ChromeType.body,
-                        color = if (google) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            val distance = info.currentDistance.display()
+                            if (distance.isNotEmpty()) {
+                                Text(distance, style = ChromeType.headline)
+                            }
+                            Text(step.cue.text(), style = ChromeType.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                    val road = step.road.text()
+                    if (road.isNotEmpty()) {
+                        Text(
+                            road,
+                            style = ChromeType.body,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 // Neither is sent by every app - most say only "turn left" and trust the driver to
                 // find the lane themselves - so both are drawn only when there is something to draw.
@@ -239,8 +267,8 @@ private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
                     Spacer(Modifier.height(10.dp))
                     JunctionImage(junction)
                 }
-                LaneGuidance(step, Modifier.padding(top = 10.dp), google)
-                if (!google) {
+                LaneGuidance(step, Modifier.padding(top = 10.dp), meridian)
+                if (!meridian) {
                     info.nextStep?.let { nextStep ->
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -276,7 +304,7 @@ private fun JunctionImage(icon: CarIcon, modifier: Modifier = Modifier) {
  * everything else uses, never dimmed by transparency.
  */
 @Composable
-private fun LaneGuidance(step: Step, modifier: Modifier = Modifier, google: Boolean = false) {
+private fun LaneGuidance(step: Step, modifier: Modifier = Modifier, meridian: Boolean = false) {
     step.lanesImage?.let {
         JunctionImage(it, modifier)
         return
@@ -284,12 +312,12 @@ private fun LaneGuidance(step: Step, modifier: Modifier = Modifier, google: Bool
     val lanes = step.lanes.orEmpty()
     if (lanes.isEmpty()) return
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        lanes.forEach { lane -> LaneTile(lane, google) }
+        lanes.forEach { lane -> LaneTile(lane, meridian) }
     }
 }
 
 @Composable
-private fun LaneTile(lane: Lane, google: Boolean = false) {
+private fun LaneTile(lane: Lane, meridian: Boolean = false) {
     val directions = lane.directions.orEmpty()
     val shown = directions.firstOrNull { it.isRecommended } ?: directions.firstOrNull()
     val recommended = shown?.isRecommended == true
@@ -300,8 +328,8 @@ private fun LaneTile(lane: Lane, google: Boolean = false) {
             .background(
                 // r61: on the green card the recommended lane stands out in white and the
                 // rest sit on the darker strip green, so no scheme color fights the card.
-                if (google) {
-                    if (recommended) Color.White else Color(MapChromeColors.GOOGLE_STRIP)
+                if (meridian) {
+                    if (recommended) Color.White else Color(MapChromeColors.MERIDIAN_STRIP)
                 } else if (recommended) MaterialTheme.colorScheme.primaryContainer
                 else MaterialTheme.colorScheme.surfaceContainerHighest,
             ),
@@ -310,8 +338,8 @@ private fun LaneTile(lane: Lane, google: Boolean = false) {
         Icon(
             Icons.Filled.KeyboardArrowUp,
             contentDescription = if (recommended) "Recommended lane" else "Lane",
-            tint = if (google) {
-                if (recommended) Color(MapChromeColors.GOOGLE_CARD) else Color.White
+            tint = if (meridian) {
+                if (recommended) Color(MapChromeColors.MERIDIAN_CARD) else Color.White
             } else if (recommended) MaterialTheme.colorScheme.onPrimaryContainer
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp).rotate(shown.turnDegrees()),
@@ -344,7 +372,8 @@ private fun LaneDirection?.turnDegrees(): Float = when (this?.shape) {
 @Composable
 private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Modifier) {
     val mapChrome by CarSettings.mapChrome.collectAsState()
-    val google = mapChrome == MapChrome.GOOGLE
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val meridian = effectiveMapChrome(mapChrome, experimentalOn) == MapChrome.MERIDIAN
     val time = remainingTime(estimate.remainingTimeSeconds)
     val distance = estimate.remainingDistance.display()
     val arrival = estimate.arrivalTimeAtDestination.clockTime()
@@ -360,11 +389,11 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
     // The same solid card the manoeuvre card above it uses - one surface for the whole map
     // chrome, rather than this one spot styled on its own as a bar over the map.
     // r54 (D2): outer pane shape through the style rule, as above.
-    // r61: Google mode swaps the frosted scheme surface for the solid dark pill.
+    // r63: Meridian swaps the frosted scheme surface for the solid dark pill.
     GuidanceSurface(
         modifier,
-        googleColor = Color(MapChromeColors.GOOGLE_ETA),
-        google = google,
+        meridianColor = Color(MapChromeColors.MERIDIAN_ETA),
+        meridian = meridian,
         themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
         shadowElevation = 8.dp,
     ) {
@@ -382,7 +411,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                 Icons.Filled.Close,
                 "Stop navigating",
                 { CarServices.nav.stopNavigating() },
-                colors = if (google) GsColors(Color(MapChromeColors.GOOGLE_STOP_BACKGROUND), Color(MapChromeColors.GOOGLE_STOP_CONTENT)) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
+                colors = if (meridian) GsColors(Color(MapChromeColors.MERIDIAN_STOP_BACKGROUND), Color(MapChromeColors.MERIDIAN_STOP_CONTENT)) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
                 size = 40.dp,
                 iconSize = 20.dp,
                 shape = CircleShape,
@@ -393,11 +422,11 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                     Text(
                         time,
                         style = ChromeType.headline,
-                        color = if (google) Color(MapChromeColors.GOOGLE_MINUTES) else estimate.remainingTimeColor.color(dark, MaterialTheme.colorScheme.onSurface),
+                        color = if (meridian) Color(MapChromeColors.MERIDIAN_MINUTES) else estimate.remainingTimeColor.color(dark, MaterialTheme.colorScheme.onSurface),
                     )
                 }
                 if (detail.isNotEmpty()) {
-                    Text(detail, style = ChromeType.body, color = if (google) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(detail, style = ChromeType.body, color = if (meridian) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

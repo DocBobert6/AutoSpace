@@ -180,6 +180,7 @@ private fun AppearancePage() {
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
     val mapChrome by CarSettings.mapChrome.collectAsState()
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
 
     // UI size (Phase 10, correcting Phase 9's display): the slider
     // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
@@ -339,14 +340,16 @@ private fun AppearancePage() {
 
     ChoiceRow(
         "Map chrome",
-        listOf(MapChrome.GOOGLE to "Google recreation", MapChrome.THEMED to "Themed"),
+        listOf(MapChrome.MERIDIAN to "Meridian", MapChrome.THEMED to "Themed"),
         mapChrome,
+        enabled = experimentalOn,
     ) { CarSettings.setMapChrome(it) }
     Text(
-        "Google recreation matches Google's navigation look: a solid green turn card " +
+        "Meridian is a fixed-color guidance look: a solid green turn card " +
             "and a dark trip pill, the same in every theme. Themed keeps the turn card " +
             "and trip pill in the current theme's colors and frosted treatment. " +
-            "This choice covers the guidance cards only; panes and controls stay themed either way.",
+            "This choice covers the guidance cards only; panes and controls stay themed either way." +
+            if (!experimentalOn) " Turn on experimental features to use Meridian." else "",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -1067,7 +1070,7 @@ private fun VoiceEngineRow(
 }
 
 @Composable
-private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, enabled: Boolean = true) {
     // Phase 7: every choice row is its own grouped card (surfaceBright on the
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
     // Phase 8 audit fix: the section header sits ABOVE the card in a
@@ -1098,6 +1101,7 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
                             val scheme = MaterialTheme.colorScheme
                             GsIconBox(
                                 onClick = { onSelect(value) },
+                                enabled = enabled,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(64.dp),
