@@ -28,8 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.car.app.model.PlaceListMapTemplate
 import androidx.car.app.model.Template
+import androidx.car.app.navigation.model.MapTemplate
+import androidx.car.app.navigation.model.MapWithContentTemplate
 import androidx.car.app.navigation.model.NavigationTemplate
+import androidx.car.app.navigation.model.PlaceListNavigationTemplate
+import androidx.car.app.navigation.model.RoutePreviewNavigationTemplate
 import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.car.theme.GsIconButton
 import kotlin.math.roundToInt
@@ -66,17 +71,88 @@ import kotlinx.coroutines.withContext
  * nav-bar popup button (same dismissal flag as the X, never overrides
  * the r39 template gate), hide-while-driving with glance recall, and an
  * empty-state explainer when the gates pass but nothing renders.
+ *
+ * r59 restack (experimental): the r39 template gate is gone — the column
+ * stays up during navigation, moving to the passenger side when the
+ * template's own chrome occupies the driver side, and hiding only for
+ * full-screen content templates, where no corner coexists (see
+ * [widgetColumnPlacement]). The popup button's press now takes effect
+ * at once even during a template; the driving rule is unchanged.
  */
 enum class WidgetKind { WEATHER, DIGEST, EVENT }
+
+/**
+ * r59 restack: where the widget column sits while a nav template is up,
+ * and whether it shows at all. Pure so it is unit-testable.
+ *
+ * The r39 occupancy analysis was right; only its response was wrong.
+ * Hiding the column during guidance contradicted the stack-over-the-map
+ * model, so restack MOVES instead of hiding: the column takes the corner
+ * the template chrome does not occupy.
+ *
+ * Bare map: driver side, unchanged. A navigation template with no turn
+ * card showing (no RoutingInfo, or a RoutingInfo with neither loading nor
+ * a current step — the same card condition TemplateChrome draws by) leaves
+ * the driver side free, so the column stays. A turn card showing (loading
+ * or carrying a step) occupies the driver side, so the column moves to the
+ * passenger side, mirroring the stack-over-the-map layout: turn card
+ * driver side, widgets passenger side. Pan mode hides the turn card and
+ * the map pane, so the driver side is free again even mid-template — the
+ * TopEnd controls are what pan keeps, and the column avoids them by
+ * staying driver side.
+ *
+ * The other five map-backed templates (Map, MapWithContent, place lists,
+ * route preview) draw their pane on the driver side, so the column moves
+ * passenger side there too, and back to the driver side while panning.
+ * Full-screen content templates (search, lists, panes) ARE the screen — no
+ * corner coexists with them, so the column hides there. That is the one
+ * case restack still hides, and it is not a dismissal: no persisted flag
+ * is touched, so the column returns on its own when the template clears.
+ *
+ * Compromise, stated plainly: on the passenger side the column can
+ * overlap the template's right-edge controls at the top corner while they
+ * are awake (they fade out when idle). The turn card, the map pane, and
+ * the travel-estimate bar are never covered; the column's own dismiss
+ * button faces the map center, not the corner, so it stays hittable and
+ * never sits on a control.
+ */
+enum class WidgetColumnPlacement { DRIVER_SIDE, PASSENGER_SIDE, HIDDEN }
+
+fun widgetColumnPlacement(template: Template?, panMode: Boolean): WidgetColumnPlacement {
+    if (template == null) return WidgetColumnPlacement.DRIVER_SIDE
+    if (template is NavigationTemplate) {
+        if (panMode) return WidgetColumnPlacement.DRIVER_SIDE
+        val info = template.navigationInfo as? RoutingInfo
+        return if (info != null && (info.isLoading || info.currentStep != null)) {
+            WidgetColumnPlacement.PASSENGER_SIDE
+        } else {
+            WidgetColumnPlacement.DRIVER_SIDE
+        }
+    }
+    if (!isMapBackedTemplate(template)) return WidgetColumnPlacement.HIDDEN
+    return if (panMode) WidgetColumnPlacement.DRIVER_SIDE else WidgetColumnPlacement.PASSENGER_SIDE
+}
+
+/**
+ * The five non-navigation map-backed templates: their chrome is a pane on
+ * the driver side (see MapPaneLayout in TemplateChrome), so the column
+ * moves passenger side for them. NavigationTemplate is handled by
+ * [widgetColumnPlacement] directly because its driver-side card comes and
+ * goes with the routing state.
+ */
+fun isMapBackedTemplate(template: Template): Boolean = template is MapTemplate ||
+    template is MapWithContentTemplate || template is PlaceListNavigationTemplate ||
+    template is RoutePreviewNavigationTemplate || template is PlaceListMapTemplate
 
 /**
  * Whether the widget column shows. Pure so it is unit-testable. Every gate
  * matters: the master switch, the floating full-bleed base, the column not
  * dismissed (persisted, not per-session — see [CarSettings]), actually on
  * Home, never while the lyrics column owns the side (lyrics falls back
- * to the classic split, which has no background to overlay), and the nav
- * app's current template leaving the column's corner free (see
- * [navTemplateAllowsWidgets]).
+ * to the classic split, which has no background to overlay), and the
+ * placement rule leaving a corner for it (see [widgetColumnPlacement]).
+ * A HIDDEN placement hides the column without dismissing it: no persisted
+ * flag is touched, so it returns on its own when the template clears.
  */
 fun shouldShowWidgetColumn(
     widgetsEnabled: Boolean,
@@ -84,51 +160,9 @@ fun shouldShowWidgetColumn(
     dismissed: Boolean,
     onHome: Boolean,
     sidePanel: SidePanel,
-    navTemplateAllowsWidgets: Boolean,
+    placement: WidgetColumnPlacement,
 ): Boolean = widgetsEnabled && floatingOn && !dismissed && onHome &&
-    sidePanel != SidePanel.LYRICS && navTemplateAllowsWidgets
-
-/**
- * r39 widget/nav-panel gate: whether the nav app's current template leaves
- * the driver-side column's corner free. Pure so it is unit-testable.
- *
- * Why (r37 screenshot): Vela's search/categories panel is host-rendered
- * TemplateChrome, and MapPaneLayout always draws its left-side container
- * (TopStart, 12dp padding, 42% of the width) for any map-backed template
- * when not panning — the widget column (TopStart, same 12dp padding, 30%
- * width) sits inside that footprint. NavigationChrome's turn card is
- * TopStart too, so the same collision applies during guidance. This
- * predicate mirrors TemplateChrome's own card condition exactly: the card
- * shows iff not panning and the navigation info is a RoutingInfo that is
- * loading or carries a current step.
- *
- * Show only when: no template (bare map), or a NavigationTemplate with no
- * turn card showing — its navigation info is not a RoutingInfo, the
- * RoutingInfo is neither loading nor carrying a current step, or pan mode
- * is on (pan hides the card, and MapPaneLayout hides its container too).
- * A non-loading RoutingInfo without a step cannot be built via its Builder
- * (build requires a step and distance unless loading), so that arm is
- * defensive only — a real app cannot send it either. A
- * destinationTravelEstimate alone never hides the column: its bar is
- * BottomStart and does not collide, and this predicate never reads it.
- *
- * Hide for every other non-null template: any MapTemplate (the container
- * always renders, pane or list or neither), MapWithContent, place lists,
- * route preview, search, list, pane, and any other full-screen content
- * template.
- *
- * Hiding here is NOT a dismissal: it touches no persisted flag, so the
- * column returns on its own when the template clears.
- */
-fun navTemplateAllowsWidgets(template: Template?, panMode: Boolean): Boolean {
-    if (template == null) return true
-    if (template is NavigationTemplate) {
-        if (panMode) return true
-        val info = template.navigationInfo as? RoutingInfo ?: return true
-        return !info.isLoading && info.currentStep == null
-    }
-    return false
-}
+    sidePanel != SidePanel.LYRICS && placement != WidgetColumnPlacement.HIDDEN
 
 /**
  * Column width: ~30% of the frame, capped at 280dp (proposal §3) and floored
@@ -213,9 +247,10 @@ object WidgetDrivingGlance {
 enum class WidgetPopupPress { DISMISS, UNDISMISS, GLANCE, UNDISMISS_AND_GLANCE }
 
 /**
- * r58 popup-button decision. The button toggles the SAME persisted
- * dismissal flag as the column's "Hide widgets" X and never overrides
- * the r39 template gate (the gate is applied separately, after this):
+ * r58 popup-button decision, r59 restack update. The button toggles the
+ * SAME persisted dismissal flag as the column's "Hide widgets" X, and
+ * since restack removed the template gate the press takes effect at once
+ * even during a template — the column follows the flag immediately.
  * dismissed → undismiss (plus a glance when driving-hidden, so one tap
  * brings the column up even while moving); driving-hidden → glance
  * recall; otherwise → dismiss, exactly like the X.
@@ -306,6 +341,10 @@ internal fun WidgetColumn(
     moving: Boolean,
     modifier: Modifier = Modifier,
     hidden: Set<WidgetKind> = emptySet(),
+    // r59 restack: on the passenger side the dismiss button faces the map
+    // center (start edge) instead of the screen corner, so it never sits
+    // on the template's right-edge controls.
+    dismissAtStart: Boolean = false,
 ) {
     val navigator = LocalCarNavigator.current
     val context = LocalContext.current
@@ -330,7 +369,10 @@ internal fun WidgetColumn(
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Column-level dismiss, REMEMBERED across drives (persisted pref):
         // re-enable from the widget settings row, never by toggle-cycling.
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopEnd) {
+        Box(
+            Modifier.fillMaxWidth(),
+            contentAlignment = if (dismissAtStart) Alignment.TopStart else Alignment.TopEnd,
+        ) {
             GsIconButton(
                 Icons.Filled.Close, "Hide widgets", { CarSettings.setWidgetsDismissed(true) },
                 size = 44.dp, iconSize = 24.dp,

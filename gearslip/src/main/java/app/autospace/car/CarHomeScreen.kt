@@ -123,13 +123,15 @@ fun CarHome() {
     )
     // r37 widget layer: driver-side column over the full-bleed map base
     // only (floating ON). Classic split hides it and stays byte-for-byte.
-    // r39: the column also steps aside whenever the nav app's current
-    // template occupies its corner (search panel, turn card, any other
-    // template chrome) — hiding by template, never a dismissal, so the
-    // column returns on its own when the template clears.
+    // r59 restack: the column no longer steps aside for nav templates —
+    // it moves to the passenger side when the template's own chrome
+    // occupies the driver side, and hides only for full-screen content
+    // templates, where no corner coexists (see widgetColumnPlacement).
+    // The placement is computed once and feeds both visibility and side,
+    // so the two can never disagree.
+    val widgetPlacement = widgetColumnPlacement(navTemplate, navPanMode)
     val showWidgetColumn = shouldShowWidgetColumn(
-        widgetsOn, floatingOn, widgetsDismissed, onHome, panel,
-        navTemplateAllowsWidgets(navTemplate, navPanMode),
+        widgetsOn, floatingOn, widgetsDismissed, onHome, panel, widgetPlacement,
     )
 
     // Phase 8: 12dp outer padding (so rounded corners actually show against
@@ -205,15 +207,17 @@ fun CarHome() {
                 // rules resume from a stop, so the recall must not leak
                 // into the next drive.
                 LaunchedEffect(moving) { if (!moving) WidgetDrivingGlance.clear() }
-                // Driver side (start in LTR), top-anchored below the top
+                // r59 restack: the side follows the template — driver side
+                // (start in LTR) on the bare map and while panning, passenger
+                // side when guidance or a map pane occupies the driver side
+                // (see widgetColumnPlacement). Top-anchored below the top
                 // inset (proposal §3); the media card sits bottom-end, so
                 // the two never collide. r43: the nav bar now overlays
                 // this Box's bottom instead of sitting below it in-flow,
                 // but the column is top-anchored so it is unaffected —
                 // and on Home the bar carries no turn pill anyway. The
-                // nav app's own turn UI at the top of its surface is
-                // checked visually on device (test list) — no numeric
-                // turn zone is claimed in code.
+                // turn card stays clear because the column moved, not
+                // because it hid — checked visually on device (test list).
                 // r58 hide-while-driving: a driving-hidden column renders
                 // nothing at all, explainer included — a hidden column
                 // must not explain itself mid-drive. The floating media
@@ -221,9 +225,13 @@ fun CarHome() {
                 if (!shouldHideWhileDriving(moving, WidgetDrivingGlance.recalled)) {
                     BoxWithConstraints(
                         Modifier.fillMaxSize().padding(12.dp),
-                        contentAlignment = Alignment.TopStart,
+                        contentAlignment = if (widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE) Alignment.TopEnd else Alignment.TopStart,
                     ) {
-                        WidgetColumn(maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)), hidden = hiddenWidgets)
+                        WidgetColumn(
+                            maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)),
+                            hidden = hiddenWidgets,
+                            dismissAtStart = widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE,
+                        )
                     }
                 }
             }

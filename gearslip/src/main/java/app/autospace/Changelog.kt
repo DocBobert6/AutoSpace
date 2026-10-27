@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            27, "0.4.16-alpha",
+            listOf(
+                "Widgets stay up while navigating now, instead of hiding whenever the map's own guidance or panels appear: the column moves to the passenger side so the turn card stays clear.",
+                "The column still hides for full-screen screens like search, where there is no corner for it, and it still hides while driving until you glance at it with the nav-bar button.",
+            ),
+        ),
+        Release(
             26, "0.4.15-alpha",
             listOf(
                 "Widget controls, experimental: a nav-bar button brings the widget column up, the column hides while driving until you glance at it, and each widget can be hidden on its own.",

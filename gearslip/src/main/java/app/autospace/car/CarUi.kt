@@ -699,9 +699,10 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
                 // r58 widget popup button: on Home only, while the column
                 // could show (widgets + floating on). It toggles the SAME
                 // persisted dismissal flag as the column's "Hide widgets"
-                // X and never overrides the r39 template gate — the gate
-                // is applied in CarHome, after this press. While driving
-                // it recalls the column for a glance instead.
+                // X. r59 restack removed the template gate, so the press
+                // takes effect at once even during a template — the column
+                // follows the flag immediately. While driving it recalls
+                // the column for a glance instead.
                 val widgetsOnBar by CarSettings.homeWidgetsEnabled.collectAsState()
                 val floatingOnBar by CarSettings.floatingMediaEnabled.collectAsState()
                 if (navigator.current == CarScreen.Home && widgetsOnBar && floatingOnBar) {

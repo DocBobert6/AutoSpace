@@ -41,22 +41,22 @@ class WidgetLayerTest {
 
     @Test
     fun columnShowsOnlyWhenEveryGatePasses() {
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, true))
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.CONTROLS, true))
+        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.CONTROLS, WidgetColumnPlacement.PASSENGER_SIDE))
     }
 
     @Test
     fun columnHidesWhenAnyGateFails() {
         // Master switch off (the default): classic Home, no column.
-        assertFalse(shouldShowWidgetColumn(false, true, false, true, SidePanel.NONE, true))
+        assertFalse(shouldShowWidgetColumn(false, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Classic split base: no full-bleed background to overlay.
-        assertFalse(shouldShowWidgetColumn(true, false, false, true, SidePanel.NONE, true))
+        assertFalse(shouldShowWidgetColumn(true, false, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Dismissed (persisted): stays hidden across drives until re-enabled.
-        assertFalse(shouldShowWidgetColumn(true, true, true, true, SidePanel.NONE, true))
+        assertFalse(shouldShowWidgetColumn(true, true, true, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Not on Home: the column lives in CarHome only.
-        assertFalse(shouldShowWidgetColumn(true, true, false, false, SidePanel.NONE, true))
+        assertFalse(shouldShowWidgetColumn(true, true, false, false, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Lyrics owns the side: classic split instead, no background.
-        assertFalse(shouldShowWidgetColumn(true, true, false, true, SidePanel.LYRICS, true))
+        assertFalse(shouldShowWidgetColumn(true, true, false, true, SidePanel.LYRICS, WidgetColumnPlacement.DRIVER_SIDE))
     }
 
     @Test
@@ -154,7 +154,12 @@ class WidgetLayerTest {
         assertEquals("Messages", digestSender(notification()))
     }
 
-    // --- r39 widget/nav-panel gate ---------------------------------------
+    // --- r59 restack: the column moves for templates instead of hiding ---
+    // The r39 gate tests are deliberately REPLACED here, not silently
+    // deleted: navTemplateAllowsWidgets is gone, and its template matrix
+    // now pins widgetColumnPlacement instead. The r39 occupancy reasoning
+    // (turn card / map pane on the driver side) survives — only its
+    // response changed, from hide to move.
 
     private fun testRow() = Row.Builder().setTitle("Gas").build()
 
@@ -172,20 +177,21 @@ class WidgetLayerTest {
         .build()
 
     // NavigationTemplate.Builder.build() throws unless an ActionStrip is
-    // set — the strip is incidental here (the predicate never reads it).
+    // set — the strip is incidental here (the rule never reads it).
     private fun testActionStrip() = ActionStrip.Builder()
         .addAction(Action.Builder().setTitle("Stop").setOnClickListener {}.build())
         .build()
 
     @Test
-    fun navTemplateAllowsBareMapAndBareNavigation() {
-        // No template at all: the map is bare, the column's corner is free.
-        assertTrue(navTemplateAllowsWidgets(null, false))
-        assertTrue(navTemplateAllowsWidgets(null, true))
+    fun columnPlacementBareMapAndBareNavigation() {
+        // No template at all: the map is bare, the column stays driver side.
+        assertEquals(WidgetColumnPlacement.DRIVER_SIDE, widgetColumnPlacement(null, false))
+        assertEquals(WidgetColumnPlacement.DRIVER_SIDE, widgetColumnPlacement(null, true))
         // A navigation template with no navigation info draws no turn card
-        // (only top-end controls), so the column stays.
-        assertTrue(
-            navTemplateAllowsWidgets(
+        // (only top-end controls), so the column stays driver side.
+        assertEquals(
+            WidgetColumnPlacement.DRIVER_SIDE,
+            widgetColumnPlacement(
                 NavigationTemplate.Builder().setActionStrip(testActionStrip()).build(),
                 false,
             ),
@@ -193,41 +199,48 @@ class WidgetLayerTest {
     }
 
     @Test
-    fun navTemplateHidesForTurnCardUnlessPanning() {
+    fun columnPlacementMovesForTurnCardUnlessPanning() {
         val withStep = NavigationTemplate.Builder()
             .setActionStrip(testActionStrip())
             .setNavigationInfo(testRoutingWithStep()).build()
-        assertFalse(navTemplateAllowsWidgets(withStep, false))
+        // Guidance showing: the turn card owns the driver side, so the
+        // column moves to the passenger side instead of hiding.
+        assertEquals(WidgetColumnPlacement.PASSENGER_SIDE, widgetColumnPlacement(withStep, false))
         // Pan mode hides the turn card (and the panel container), so the
-        // column may show again.
-        assertTrue(navTemplateAllowsWidgets(withStep, true))
+        // column moves back to the driver side.
+        assertEquals(WidgetColumnPlacement.DRIVER_SIDE, widgetColumnPlacement(withStep, true))
 
         val loading = NavigationTemplate.Builder()
             .setActionStrip(testActionStrip())
             .setNavigationInfo(RoutingInfo.Builder().setLoading(true).build()).build()
-        assertFalse(navTemplateAllowsWidgets(loading, false))
-        assertTrue(navTemplateAllowsWidgets(loading, true))
+        assertEquals(WidgetColumnPlacement.PASSENGER_SIDE, widgetColumnPlacement(loading, false))
+        assertEquals(WidgetColumnPlacement.DRIVER_SIDE, widgetColumnPlacement(loading, true))
         // A non-loading RoutingInfo without a step cannot be built via its
         // Builder (build requires a step and distance unless loading), so
-        // that arm of the predicate is defensive only and has no
+        // that arm of the placement rule is defensive only and has no
         // constructible test case — a real app cannot send it either.
     }
 
     @Test
-    fun navTemplateHidesForEveryPanelAndContentTemplate() {
-        // MapTemplate: the panel container always renders, pane or list.
-        assertFalse(
-            navTemplateAllowsWidgets(
-                MapTemplate.Builder().setPane(testPane()).build(), false,
-            ),
+    fun columnPlacementMovesForMapPanes() {
+        // MapTemplate: the panel container always renders, pane or list —
+        // driver side occupied, column moves over.
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(MapTemplate.Builder().setPane(testPane()).build(), false),
         )
-        assertFalse(
-            navTemplateAllowsWidgets(
-                MapTemplate.Builder().setItemList(testItemList()).build(), false,
-            ),
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(MapTemplate.Builder().setItemList(testItemList()).build(), false),
         )
-        assertFalse(
-            navTemplateAllowsWidgets(
+        // Pan hides the pane, so the driver side frees up again.
+        assertEquals(
+            WidgetColumnPlacement.DRIVER_SIDE,
+            widgetColumnPlacement(MapTemplate.Builder().setPane(testPane()).build(), true),
+        )
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(
                 MapWithContentTemplate.Builder()
                     .setContentTemplate(PaneTemplate.Builder(testPane()).build())
                     .build(),
@@ -239,21 +252,24 @@ class WidgetLayerTest {
         // ModelUtils distance checks) throws an NPE on the JVM unit-test
         // classpath, where the android.text stub machinery underneath
         // CarText span inspection returns nulls — the same rows build fine
-        // as plain ItemList/Pane content above. The predicate never
-        // inspects content, only the template class, so a loading-state
-        // instance proves exactly the branch under test; a browsable row
-        // must still carry an OnClickListener, or its own build() throws,
-        // which is why the plain list above keeps its rows non-browsable.
-        // (PlaceListMap additionally requires a title or header action.)
-        assertFalse(
-            navTemplateAllowsWidgets(
+        // as plain ItemList/Pane content above. The rule never inspects
+        // content for these classes, only the template class, so a
+        // loading-state instance proves exactly the branch under test; a
+        // browsable row must still carry an OnClickListener, or its own
+        // build() throws, which is why the plain list above keeps its rows
+        // non-browsable. (PlaceListMap additionally requires a title or
+        // header action.)
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(
                 PlaceListMapTemplate.Builder()
                     .setTitle("Places").setLoading(true).build(),
                 false,
             ),
         )
-        assertFalse(
-            navTemplateAllowsWidgets(
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(
                 PlaceListNavigationTemplate.Builder().setLoading(true).build(),
                 false,
             ),
@@ -261,9 +277,10 @@ class WidgetLayerTest {
         // Route preview: its rows must carry a DistanceSpan or
         // DurationSpan, which cannot be attached on the JVM unit-test
         // classpath — so the loading state proves the class branch (the
-        // predicate never inspects content, only the template class).
-        assertFalse(
-            navTemplateAllowsWidgets(
+        // rule never inspects content for these classes, only the class).
+        assertEquals(
+            WidgetColumnPlacement.PASSENGER_SIDE,
+            widgetColumnPlacement(
                 RoutePreviewNavigationTemplate.Builder()
                     .setLoading(true)
                     .setNavigateAction(
@@ -274,9 +291,17 @@ class WidgetLayerTest {
                 false,
             ),
         )
-        // Full-screen content templates: the column would sit over them.
-        assertFalse(
-            navTemplateAllowsWidgets(
+    }
+
+    @Test
+    fun columnPlacementHidesForFullScreenTemplates() {
+        // Full-screen content templates ARE the screen — no corner
+        // coexists with them, so the column hides. Not a dismissal: no
+        // persisted flag is touched, and it returns when the template
+        // clears.
+        assertEquals(
+            WidgetColumnPlacement.HIDDEN,
+            widgetColumnPlacement(
                 SearchTemplate.Builder(
                     object : SearchTemplate.SearchCallback {
                         override fun onSearchTextChanged(searchText: String) {}
@@ -286,30 +311,27 @@ class WidgetLayerTest {
                 false,
             ),
         )
-        assertFalse(
-            navTemplateAllowsWidgets(
+        assertEquals(
+            WidgetColumnPlacement.HIDDEN,
+            widgetColumnPlacement(
                 ListTemplate.Builder().setSingleList(testItemList()).build(), false,
             ),
         )
-        assertFalse(
-            navTemplateAllowsWidgets(
-                PaneTemplate.Builder(testPane()).build(), false,
-            ),
+        assertEquals(
+            WidgetColumnPlacement.HIDDEN,
+            widgetColumnPlacement(PaneTemplate.Builder(testPane()).build(), false),
         )
     }
 
     @Test
-    fun templateHidingIsNotDismissalAndColumnReturns() {
-        // Every other gate passes; only the template hides the column.
-        assertFalse(
-            shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, false),
-        )
-        // The template gate touches no persisted flag, so when the template
-        // clears the column returns on its own — no settings visit, and
-        // the dismissed argument is unchanged throughout.
-        assertTrue(
-            shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, true),
-        )
+    fun columnShowsOnEitherSideButNotWhenHidden() {
+        // Both sides show when every other gate passes...
+        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.PASSENGER_SIDE))
+        // ...and HIDDEN hides without dismissing: the dismissed argument
+        // is unchanged throughout, so the column returns on its own when
+        // the template clears — no settings visit.
+        assertFalse(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.HIDDEN))
     }
 
     @Test

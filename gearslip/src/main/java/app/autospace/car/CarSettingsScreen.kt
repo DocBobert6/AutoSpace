@@ -1288,7 +1288,9 @@ private fun ExperimentalFeaturesList(
             description = "Shows weather, notification digest, and next event as a column " +
                 "over the full-screen map when floating media is on. Widgets appear " +
                 "only on that floating base — classic Home is unchanged when this " +
-                "is off. Dismissing the column hides it until you bring it back " +
+                "is off. The column stays up while navigating, moving to the " +
+                "passenger side when guidance or a map panel is showing. " +
+                "Dismissing the column hides it until you bring it back " +
                 "here, across drives.",
             checked = homeWidgets,
         ) { CarSettings.setHomeWidgetsEnabled(it) }
