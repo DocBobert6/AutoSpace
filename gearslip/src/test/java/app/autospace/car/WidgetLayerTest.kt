@@ -47,13 +47,11 @@ class WidgetLayerTest {
 
     @Test
     fun columnHidesWhenAnyGateFails() {
-        // Master switch off (the default): classic Home, no column.
-        // Classic split base: no full-bleed background to overlay.
         // Dismissed (persisted): stays hidden across drives until re-enabled.
         assertFalse(shouldShowWidgetColumn(true, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Not on Home: the column lives in CarHome only.
-        assertFalse(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
-        // Lyrics owns the side: classic split instead, no background.
+        assertFalse(shouldShowWidgetColumn(false, false, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        // Lyrics owns the side: no column while lyrics owns it.
         assertFalse(shouldShowWidgetColumn(false, true, SidePanel.LYRICS, WidgetColumnPlacement.DRIVER_SIDE))
     }
 
