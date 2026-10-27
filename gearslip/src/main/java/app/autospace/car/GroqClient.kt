@@ -1,5 +1,6 @@
 package app.autospace.car
 
+import android.os.SystemClock
 import app.autospace.GearslipLog
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -45,6 +46,24 @@ import java.nio.charset.StandardCharsets
  * Groq forbids structured outputs alongside browser_search. So the two-call grounded
  * flow is: call 1 searches (tools on, no structured output), call 2 answers with the
  * results injected (tools off, structured output allowed again but not forced).
+ *
+ * Streaming (r55): the ANSWER call — and only the answer call — can stream
+ * (`stream: true`, server-sent events). The search call stays a full-body read:
+ * its output is intermediate context, never spoken, and the answer call cannot
+ * start until it completes. A streamed answer is segmented by [SentenceSplitter]
+ * (the cap logic's own sentence rule) and its mode is decided by its first
+ * non-whitespace character: prose streams (display text + sentences), while a
+ * reply starting with `{` is an action JSON and never streams anything — it
+ * buffers silently exactly as the non-streamed path would, because
+ * [AiAssistant.parseModelReply] must see the whole object before acting.
+ * Connection reuse (r55): a fully-read 200 response is deliberately NOT
+ * disconnected, so the platform's keep-alive pool may reuse the socket for
+ * the next call — every prior call disconnected, which forbade reuse and
+ * paid a fresh TLS handshake per turn. Pooling itself is
+ * implementation-managed; this code now permits it rather than forbidding
+ * it. [warmConnection] primes the pool during the listen phase with a
+ * zero-token models-list GET (no prompt, no generation), ignored on any
+ * failure — a warm-up must never fail a turn.
  */
 object GroqClient {
 
@@ -193,7 +212,7 @@ object GroqClient {
      * tools on this call, and no forced `response_format` — the model must stay free
      * to answer in plain text or as one action JSON object (see the header comment).
      */
-    fun buildAnswerRequestBody(utterance: String, searchResults: String? = null, model: String = MODEL_ID): String {
+    fun buildAnswerRequestBody(utterance: String, searchResults: String? = null, model: String = MODEL_ID, stream: Boolean = false): String {
         val user = if (searchResults != null) {
             "Web search results:\n$searchResults\n\nUser question: $utterance"
         } else {
@@ -202,6 +221,7 @@ object GroqClient {
         return "{" +
             messagesJson(AiAssistant.SYSTEM_PROMPT, user) + "," +
             commonJson(model, ANSWER_MAX_TOKENS) +
+            (if (stream) ",\"stream\":true" else "") +
             "}"
     }
 
@@ -232,6 +252,45 @@ object GroqClient {
      */
     fun countCitations(content: String): Int = content.count { it == '〖' }
 
+    /**
+     * Extracts `choices[0].delta.content` from one streamed chunk object — the
+     * delta shape, not the full-body message shape [extractContent] reads.
+     * Null when the chunk carries no content (a role-only first chunk, a
+     * usage chunk, or anything malformed): the caller skips it, never fails
+     * on it. Pure, so unit tests can pin it without a network call.
+     */
+    fun extractDeltaContent(chunkJson: String): String? {
+        val root = try {
+            JsonMini.parse(chunkJson) as? JsonMini.Value.Obj
+        } catch (e: Exception) {
+            null
+        } ?: return null
+        val choices = (root.objField("choices") as? JsonMini.Value.Arr)?.list ?: return null
+        if (choices.isEmpty()) return null
+        val first = choices[0] as? JsonMini.Value.Obj ?: return null
+        val delta = first.objField("delta") as? JsonMini.Value.Obj ?: return null
+        return delta.objField("content")?.asString()
+    }
+
+    /** One server-sent-event line, classified so the stream loop stays trivial. */
+    sealed class SseEvent {
+        /** A data line carrying chunk content (null content = a content-less chunk to skip). */
+        data class Data(val content: String?) : SseEvent()
+        /** The `data: [DONE]` terminator. */
+        object Done : SseEvent()
+        /** Blank lines, comments, and anything that is not a data line. */
+        object Ignored : SseEvent()
+    }
+
+    /** Pure SSE line classifier, so unit tests can pin the wire shape. */
+    fun parseSseLine(line: String): SseEvent {
+        val trimmed = line.trim()
+        if (trimmed.isEmpty() || trimmed.startsWith(":")) return SseEvent.Ignored
+        if (trimmed == "data: [DONE]") return SseEvent.Done
+        if (!trimmed.startsWith("data:")) return SseEvent.Ignored
+        return SseEvent.Data(extractDeltaContent(trimmed.removePrefix("data:").trim()))
+    }
+
     private data class HttpResult(val code: Int, val body: String?)
 
     private fun post(key: String, body: String): HttpResult {
@@ -254,12 +313,109 @@ object GroqClient {
                 runCatching { conn.errorStream?.close() }
                 null
             }
-            conn.disconnect()
+            // r55 keep-alive: a fully-read 200 is NOT disconnected, so the
+            // platform pool may reuse the socket for the next call. Only
+            // error and exception paths disconnect — a partially-read
+            // error body cannot be pooled anyway.
+            if (code != 200) conn.disconnect()
             HttpResult(code, text)
         } catch (e: Exception) {
             runCatching { conn.disconnect() }
             GearslipLog.i("assistant: ai groq request failed class=${e.javaClass.simpleName}")
             HttpResult(-1, null)
+        }
+    }
+
+    /**
+     * Listen-phase warm-up (r55): a zero-token models-list GET that
+     * opens the provider connection — DNS, TLS, and a pooled socket —
+     * while the user is still talking, so the turn's first real call
+     * reuses it instead of paying the handshake. No prompt is ever
+     * sent here, and no generation runs. Every failure is swallowed
+     * silently: a warm-up must never fail a turn, and a failed warm-up
+     * simply means the turn pays the handshake it always paid. The
+     * body is fully read and the connection is NOT disconnected, for
+     * the same keep-alive reason as [post]'s 200 path.
+     */
+    fun warmConnection(key: String) {
+        if (key.isBlank()) return
+        try {
+            val conn = (URL(MODELS_URL).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                setRequestProperty("Authorization", "Bearer $key")
+                connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
+                readTimeout = AiAssistant.REQUEST_TIMEOUT_MS
+            }
+            val code = conn.responseCode
+            if (code == 200) {
+                conn.inputStream.use { stream ->
+                    BufferedReader(InputStreamReader(stream, StandardCharsets.UTF_8)).readText()
+                }
+            } else {
+                runCatching { conn.errorStream?.close() }
+                conn.disconnect()
+            }
+        } catch (e: Exception) {
+            GearslipLog.i("assistant: ai groq warm failed class=${e.javaClass.simpleName}")
+        }
+    }
+
+    private data class StreamResult(val code: Int, val text: String?)
+
+    /**
+     * The answer call as a server-sent-events stream (r55). Each
+     * `data:` line's delta content is appended to the full text and
+     * handed to [onDelta] in arrival order; `data: [DONE]` ends the
+     * stream, and an EOF without it is treated as a complete stream
+     * (tolerant: the accumulated text is what the caller checks).
+     * A non-200 code returns before any delta, so a 404 mid-turn is
+     * still a clean ModelUnavailable retry, never a partial answer.
+     * A mid-stream exception returns code -1: the caller aborts the
+     * turn rather than presenting a truncated answer as complete.
+     * The read timeout is per-read (a stalled stream times out like a
+     * stalled full read would), and a completed stream leaves its
+     * socket pooled like [post]'s 200 path.
+     */
+    private fun postStream(key: String, body: String, onDelta: (String) -> Unit): StreamResult {
+        val conn = (URL(CHAT_URL).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+            setRequestProperty("Authorization", "Bearer $key")
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "text/event-stream")
+            connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
+            readTimeout = AiAssistant.GROUNDED_REQUEST_TIMEOUT_MS
+        }
+        return try {
+            conn.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code != 200) {
+                runCatching { conn.errorStream?.close() }
+                conn.disconnect()
+                return StreamResult(code, null)
+            }
+            val full = StringBuilder()
+            BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8)).use { reader ->
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    when (val event = parseSseLine(line)) {
+                        is SseEvent.Done -> break
+                        is SseEvent.Data -> {
+                            val content = event.content
+                            if (content != null) {
+                                full.append(content)
+                                onDelta(content)
+                            }
+                        }
+                        is SseEvent.Ignored -> Unit
+                    }
+                }
+            }
+            StreamResult(code, full.toString())
+        } catch (e: Exception) {
+            runCatching { conn.disconnect() }
+            GearslipLog.i("assistant: ai groq stream failed class=${e.javaClass.simpleName}")
+            StreamResult(-1, null)
         }
     }
 
@@ -313,6 +469,136 @@ object GroqClient {
         val grounded = searchResults != null
         GearslipLog.i("assistant: ai groq generate ok grounded=$grounded sources=$citations")
         return Result.Ok(content, grounded, citations)
+    }
+
+    /**
+     * The answer call, streamed (r55): same outcome mapping as
+     * [answerCall], but the reply arrives as deltas. Mode is decided
+     * by the first non-whitespace character of the accumulated text
+     * and never revisited: prose streams ([onText] with the growing
+     * full text after every delta, [onSentence] for each complete
+     * sentence from [SentenceSplitter], trailing partial on stream
+     * end), while a `{`-leading reply — an action JSON — suppresses
+     * every callback and buffers silently, because
+     * [AiAssistant.parseModelReply] must see the whole object before
+     * acting. [listenEndMs] is an elapsed-realtime baseline (0 when
+     * unknown) for the first-token latency marker; the marker carries
+     * a millisecond value only, never any reply text.
+     */
+    private fun answerCallStreaming(
+        key: String,
+        utterance: String,
+        searchResults: String?,
+        model: String,
+        citations: Int = 0,
+        listenEndMs: Long = 0L,
+        onText: (String) -> Unit,
+        onSentence: (String) -> Unit,
+    ): Result {
+        val full = StringBuilder()
+        val splitter = SentenceSplitter()
+        var prose: Boolean? = null
+        var firstTokenLogged = false
+        val stream = postStream(key, buildAnswerRequestBody(utterance, searchResults, model, stream = true)) { delta ->
+            if (!firstTokenLogged && delta.isNotEmpty()) {
+                firstTokenLogged = true
+                if (listenEndMs > 0L) {
+                    GearslipLog.i(
+                        "assistant: latency first-token " +
+                            "ms=${SystemClock.elapsedRealtime() - listenEndMs}",
+                    )
+                } else {
+                    GearslipLog.i("assistant: latency first-token")
+                }
+            }
+            full.append(delta)
+            if (prose == null) {
+                val first = full.toString().trimStart().firstOrNull()
+                if (first != null) prose = (first != '{')
+            }
+            if (prose == true) {
+                onText(full.toString())
+                for (sentence in splitter.feed(delta)) onSentence(sentence)
+            }
+        }
+        if (stream.code != 200) {
+            GearslipLog.i("assistant: ai groq answer http=${stream.code}")
+            return resultForHttpCode(stream.code)
+        }
+        val content = stream.text
+        if (content.isNullOrBlank()) {
+            GearslipLog.i("assistant: ai groq generate empty reply")
+            return Result.Unavailable
+        }
+        if (prose == true) {
+            splitter.finish()?.let { onSentence(it) }
+        }
+        val grounded = searchResults != null
+        GearslipLog.i("assistant: ai groq generate ok grounded=$grounded sources=$citations")
+        return Result.Ok(content, grounded, citations)
+    }
+
+    /**
+     * One streaming turn on one model: the search call is identical to
+     * [generateWithModel] (full-body, tools on), and only the answer
+     * call streams. A search that succeeds without citation markers
+     * still returns its content directly with no answer call — there
+     * is nothing left to stream — and a failed search still degrades
+     * to a single ungrounded streaming answer call.
+     */
+    private fun generateStreamingWithModel(
+        key: String,
+        utterance: String,
+        model: String,
+        listenEndMs: Long,
+        onText: (String) -> Unit,
+        onSentence: (String) -> Unit,
+    ): Result {
+        val search = post(key, buildSearchRequestBody(utterance, model))
+        if (search.code != 200) {
+            GearslipLog.i("assistant: ai groq search http=${search.code}")
+            val mapped = resultForHttpCode(search.code)
+            if (mapped is Result.ModelUnavailable) return mapped
+            // Degrade: a failed search must not lose the turn — answer ungrounded.
+            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence)
+        }
+        val searchContent = search.body?.let { extractContent(it) }
+        if (searchContent.isNullOrBlank()) {
+            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence)
+        }
+        val citations = countCitations(searchContent)
+        if (citations == 0) {
+            GearslipLog.i("assistant: ai groq generate ok grounded=false sources=0")
+            return Result.Ok(searchContent, grounded = false, sourceCount = 0)
+        }
+        return answerCallStreaming(key, utterance, searchContent, model, citations, listenEndMs, onText, onSentence)
+    }
+
+    /**
+     * One streaming AI turn: tries the pinned model, then each fallback
+     * in order, stopping at the first non-ModelUnavailable outcome —
+     * the same retry rule as [generate]. A 404 on the answer call
+     * arrives before any delta, so the retry is clean; a mid-stream
+     * failure is Unavailable (no retry), and the caller aborts any
+     * partial speech rather than presenting a truncation as complete.
+     */
+    fun generateStreaming(
+        key: String,
+        utterance: String,
+        listenEndMs: Long = 0L,
+        onText: (String) -> Unit,
+        onSentence: (String) -> Unit,
+    ): Result {
+        if (key.isBlank()) return Result.InvalidKey
+        val models = listOf(MODEL_ID) + MODEL_FALLBACKS
+        for ((index, model) in models.withIndex()) {
+            val result = generateStreamingWithModel(key, utterance, model, listenEndMs, onText, onSentence)
+            if (result !is Result.ModelUnavailable) return result
+            if (index < models.lastIndex) {
+                GearslipLog.i("assistant: ai groq model fallback")
+            }
+        }
+        return Result.ModelUnavailable
     }
 
     /**

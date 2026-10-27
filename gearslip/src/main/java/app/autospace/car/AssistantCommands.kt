@@ -321,7 +321,20 @@ object AssistantCommands {
         val key = AiKeyStore.loadKey(context, provider) ?: return null
         val result: Any = withContext(Dispatchers.IO) {
             when (provider) {
-                AiAssistant.Provider.GROQ -> GroqClient.generate(key, heard)
+                // r55: Groq streams (display text + sentences as they
+                // arrive); Gemini keeps its full-body path untouched.
+                // The callbacks run on this IO thread; CarAssistant's
+                // stream functions are synchronized and the overlay
+                // state is a StateFlow, so no main-thread hop is
+                // needed here. A `{`-leading action JSON never fires
+                // a callback (GroqClient suppresses it), so streamed
+                // speech can only ever be prose — actions still parse
+                // from the full text below, exactly as before.
+                AiAssistant.Provider.GROQ -> GroqClient.generateStreaming(
+                    key, heard, CarAssistant.lastListenEndMs,
+                    onText = { CarAssistant.streamText(it) },
+                    onSentence = { CarAssistant.streamSentence(it) },
+                )
                 AiAssistant.Provider.GEMINI -> GeminiClient.generate(key, heard)
             }
         }
@@ -329,6 +342,13 @@ object AssistantCommands {
             is GeminiClient.Result.Ok -> result.text
             is GroqClient.Result.Ok -> result.text
             else -> {
+                // r55: a failed streamed turn aborts any partial
+                // speech first, so the failure message that follows
+                // speaks through the normal path instead of finishing
+                // a dead stream. Harmless for Gemini (no session ever
+                // exists there). The already-spoken prefix stands —
+                // a failed stream never re-speaks it.
+                if (CarAssistant.streamingActive()) CarAssistant.abortStream()
                 // r38: a retired model gets its own plain message and its own log
                 // line, so a future retirement never again masquerades as the
                 // generic "isn't available right now".

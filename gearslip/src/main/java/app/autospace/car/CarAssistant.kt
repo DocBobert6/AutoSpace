@@ -94,6 +94,30 @@ object CarAssistant {
 
     private var appContext: Context? = null
     private var recognizer: SpeechRecognizer? = null
+
+    // r55 streamed replies: a turn whose answer streams speaks its
+    // sentences as they arrive, through one VoiceEngine stream
+    // session owned here. The session exists only for prose AI
+    // answers (GroqClient never fires stream callbacks for a
+    // `{`-leading action JSON), and reply() finishes it instead of
+    // re-speaking whenever the final text matches the streamed
+    // content exactly.
+    /** Elapsed-realtime moment the last transcript went final; the latency baseline. */
+    @Volatile
+    var lastListenEndMs = 0L
+        private set
+
+    private class StreamSession(val context: Context) {
+        val fullText = StringBuilder()
+        val emitter = CappedSentenceEmitter(AiAssistant.ANSWER_WORD_CAP)
+        var stream: VoiceEngine.StreamedSpeech? = null
+        var speechStarted = false
+        var failed = false
+        var noEngine = false
+    }
+
+    private val streamLock = Any()
+    private var streamSession: StreamSession? = null
     // r44: when the current LISTENING/THINKING phase began, for the
     // stale-phase restart in startOnMainThread.
     private var busySinceMs = 0L
@@ -155,6 +179,8 @@ object CarAssistant {
         }
         VoiceEngine.stop()
         releaseSpeechFocus()
+        synchronized(streamLock) { streamSession = null }
+        warmForListen(context)
         _state.value = State(Phase.LISTENING)
         busySinceMs = SystemClock.uptimeMillis()
         listenOnce(
@@ -165,6 +191,8 @@ object CarAssistant {
                 busySinceMs = SystemClock.uptimeMillis()
             },
             onResult = { text ->
+                lastListenEndMs = SystemClock.elapsedRealtime()
+                GearslipLog.i("assistant: latency listen-end")
                 _state.value = _state.value.copy(phase = Phase.THINKING, heard = text)
                 busySinceMs = SystemClock.uptimeMillis()
                 _pendingCommand.value = text
@@ -173,11 +201,30 @@ object CarAssistant {
         )
     }
 
+    /**
+     * Listen-phase warm-up (r55): the voice engine loads while the
+     * user talks, and — only when an AI turn on Groq is possible —
+     * the provider connection opens with a zero-token models GET
+     * (never a prompt) on a throwaway thread, so the turn reuses a
+     * warm socket. Failures are swallowed inside the warm-up calls;
+     * warming must never fail a listen.
+     */
+    private fun warmForListen(context: Context) {
+        VoiceEngine.warm(context)
+        if (AiKeyStore.aiAvailable(context) &&
+            AiKeyStore.activeProvider(context) == AiAssistant.Provider.GROQ
+        ) {
+            val key = AiKeyStore.loadKey(context, AiAssistant.Provider.GROQ) ?: return
+            Thread({ runCatching { GroqClient.warmConnection(key) } }, "gearslip-warmup").start()
+        }
+    }
+
     /** Closes the overlay from wherever it's showing: mid-listen, mid-think, or after speaking. */
     fun cancel() {
         releaseRecognizer()
         VoiceEngine.stop()
         releaseSpeechFocus()
+        synchronized(streamLock) { streamSession = null }
         _pendingCommand.value = null
         AssistantCommands.clearPendingAiAction()
         _state.value = State(Phase.IDLE)
@@ -202,6 +249,36 @@ object CarAssistant {
             _state.value = _state.value.copy(phase = Phase.IDLE)
             return
         }
+        // r55 streamed finish: this turn already spoke its sentences
+        // as they arrived. When the final text is exactly the capped
+        // streamed content, finish the stream (speaking any cap
+        // suffix owed) instead of playing the whole text again — a
+        // re-play would speak every sentence twice. Any other shape
+        // (failed stream, or text that does not match) falls through
+        // to the normal play path, or to the error state for a failed
+        // stream, so a mismatch can never strand or double speech.
+        // Focus is already held from the stream start and is released
+        // by the stream's own onDone; nothing re-acquires it here.
+        when (val finish = takeStreamFinish(text)) {
+            is StreamFinish.Done -> {
+                _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
+                lastAssistantReply = text
+                return
+            }
+            is StreamFinish.Failed -> {
+                _state.value = State(
+                    Phase.ERROR,
+                    reply = if (finish.noEngine) {
+                        "No voice downloaded yet. Download Kokoro or Piper in Settings first."
+                    } else {
+                        speechFailureMessage()
+                    },
+                )
+                return
+            }
+            is StreamFinish.Mismatch -> Unit // Falls through to normal play below.
+            is StreamFinish.None -> Unit // No stream session: normal play below.
+        }
         _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
@@ -216,16 +293,9 @@ object CarAssistant {
             // pointer only for a load failure, where the files
             // genuinely are the suspect, and stay neutral when no
             // stage was recorded rather than blaming the files.
-            val reason = VoiceEngine.lastFailure
-            val message = when {
-                reason == null -> "Couldn't speak that reply — the voice render produced no audio."
-                reason.contains("load") || reason.contains("unavailable") ->
-                    "Couldn't speak that reply. Check the voice files in Settings — " +
-                        "delete and re-download Kokoro or Piper if they look incomplete."
-                else -> "Couldn't speak that reply — voice render failed ($reason). " +
-                    "The voice files passed validation, so re-downloading them won't help."
-            }
-            _state.value = State(Phase.ERROR, reply = message)
+            // (r55: the message itself lives in speechFailureMessage,
+            // shared with the streamed session's onSilent.)
+            _state.value = State(Phase.ERROR, reply = speechFailureMessage())
         })
         if (started) {
             // Audit fix (2026-10-25, A1): the last reply that
@@ -281,6 +351,146 @@ object CarAssistant {
     fun stopSpeaking() {
         VoiceEngine.stop()
         releaseSpeechFocus()
+        synchronized(streamLock) { streamSession = null }
+    }
+
+    /**
+     * The spoken-failure message for a render that produced no audio
+     * (r55: shared by reply()'s onSilent and the streamed session's
+     * onSilent, so both name the same stage). Only for a generate /
+     * playback failure — a load failure names the voice files, and a
+     * missing engine never reaches here (play() returns false first).
+     */
+    private fun speechFailureMessage(): String {
+        val reason = VoiceEngine.lastFailure
+        return when {
+            reason == null -> "Couldn't speak that reply — the voice render produced no audio."
+            reason.contains("load") || reason.contains("unavailable") ->
+                "Couldn't speak that reply. Check the voice files in Settings — " +
+                    "delete and re-download Kokoro or Piper if they look incomplete."
+            else -> "Couldn't speak that reply — voice render failed ($reason). " +
+                "The voice files passed validation, so re-downloading them won't help."
+        }
+    }
+
+    /**
+     * Progressive display text for a streaming prose answer. Creates
+     * the turn's session on first call; ignored with no app context.
+     * The phase is untouched here — THINKING until the first sentence
+     * starts speech — and the overlay shows the growing reply during
+     * THINKING once it is non-blank.
+     */
+    fun streamText(full: String) {
+        val context = appContext ?: return
+        synchronized(streamLock) {
+            val session = streamSession ?: StreamSession(context).also { streamSession = it }
+            session.fullText.clear()
+            session.fullText.append(full)
+        }
+        _state.value = _state.value.copy(reply = full)
+    }
+
+    /**
+     * One complete streamed sentence. Starts the speech stream on the
+     * first accepted sentence (phase SPEAKING, focus held) and offers
+     * later ones to it; sentences past the answer cap are dropped,
+     * exactly as the capped reply drops them. Ignored with no app
+     * context, or once the session failed.
+     */
+    fun streamSentence(sentence: String) {
+        val context = appContext ?: return
+        val handle = synchronized(streamLock) {
+            val session = streamSession ?: StreamSession(context).also { streamSession = it }
+            if (session.failed) return
+            if (!session.emitter.offer(sentence)) return
+            if (!session.speechStarted) {
+                val stream = VoiceEngine.playStreamed(
+                    context, lastListenEndMs,
+                    onDone = {
+                        releaseSpeechFocus()
+                        _state.value = _state.value.copy(phase = Phase.IDLE)
+                    },
+                    onSilent = {
+                        // The worker is dead after this — mark the
+                        // session failed so reply()'s finish check
+                        // takes the error path instead of finishing a
+                        // dead stream and stranding SPEAKING (its
+                        // onDone will never arrive). The captured
+                        // session is this turn's, never a later one:
+                        // a new listen clears the field first.
+                        synchronized(streamLock) { session.failed = true }
+                        _state.value = State(Phase.ERROR, reply = speechFailureMessage())
+                    },
+                )
+                if (stream == null) {
+                    session.failed = true
+                    session.noEngine = true
+                    return
+                }
+                session.stream = stream
+                session.speechStarted = true
+                acquireSpeechFocus(context)
+                _state.value = _state.value.copy(
+                    phase = Phase.SPEAKING,
+                    reply = session.fullText.toString(),
+                    fromAi = true,
+                )
+            }
+            session.stream
+        } ?: return
+        handle.offer(sentence)
+    }
+
+    /** True while a streamed turn owns a session (used to abort it on failure). */
+    fun streamingActive(): Boolean = synchronized(streamLock) { streamSession != null }
+
+    /**
+     * Aborts a streamed turn that failed mid-stream (r55): stops any
+     * partial speech, releases focus, and clears the session, so the
+     * failure message that follows speaks through the normal path
+     * instead of finishing a dead stream. The already-spoken prefix
+     * stands — a failed stream never re-speaks it.
+     */
+    fun abortStream() {
+        synchronized(streamLock) { streamSession = null }
+        VoiceEngine.stop()
+        releaseSpeechFocus()
+    }
+
+    private sealed class StreamFinish {
+        object Done : StreamFinish()
+        data class Failed(val noEngine: Boolean) : StreamFinish()
+        object Mismatch : StreamFinish()
+        object None : StreamFinish()
+    }
+
+    /**
+     * Consumes the streamed session for [text], if one exists. Done
+     * only when the final text is exactly the capped streamed
+     * content: the session's spoken prefix plus any remainder owed
+     * (the cap suffix) is offered as a final chunk and the stream is
+     * finished. Failed when the stream already failed (no engine, or
+     * a render/playback failure) — the error state stands and nothing
+     * re-speaks. Mismatch stops the stream and clears the session so
+     * the caller falls through to normal play. Never leaves a session
+     * behind: every path consumes it.
+     */
+    private fun takeStreamFinish(text: String): StreamFinish {
+        val session = synchronized(streamLock) {
+            val s = streamSession
+            streamSession = null
+            s
+        } ?: return StreamFinish.None
+        if (session.failed) return StreamFinish.Failed(session.noEngine)
+        if (AiAssistant.capAnswer(session.fullText.toString()) != text) {
+            VoiceEngine.stop()
+            return StreamFinish.Mismatch
+        }
+        val stream = session.stream ?: return StreamFinish.Mismatch
+        val remainder = session.emitter.finishRemainder(text)
+        if (remainder.isNotBlank()) stream.offer(remainder)
+        stream.finish()
+        return StreamFinish.Done
     }
 
     /**

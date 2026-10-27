@@ -178,7 +178,11 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 val (small, big) = when (state.phase) {
                     CarAssistant.Phase.LISTENING -> "" to state.heard.ifBlank { if (state.ready) "Listening…" else "One moment…" }
-                    CarAssistant.Phase.THINKING -> "" to state.heard.ifBlank { "…" }
+                    // r55: a streaming reply grows here during
+                    // THINKING, so its text streams ahead of speech;
+                    // with no stream in flight the reply is blank and
+                    // this reads exactly as before (heard, or "…").
+                    CarAssistant.Phase.THINKING -> "" to state.reply.ifBlank { state.heard.ifBlank { "…" } }
                     else -> state.heard to state.reply
                 }
                 if (small.isNotBlank()) {

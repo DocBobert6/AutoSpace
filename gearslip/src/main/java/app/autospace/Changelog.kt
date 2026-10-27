@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            23, "0.4.12-alpha",
+            listOf(
+                "The assistant answers faster: replies now speak sentence by sentence as they arrive instead of waiting for the whole answer, and the reply text appears on screen as it streams.",
+                "The assistant connection and voice warm up while you talk, so less of each answer is dead time.",
+            ),
+        ),
+        Release(
             22, "0.4.11-alpha",
             listOf(
                 "Map panes, dialogs, and content cards now follow the button style's corners everywhere, so Pitlane's square corners apply consistently instead of only in some places.",

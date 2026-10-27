@@ -6,6 +6,7 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import app.autospace.GearslipLog
 import com.k2fsa.sherpa.onnx.GeneratedAudio
 import com.k2fsa.sherpa.onnx.OfflineTts
@@ -156,15 +157,28 @@ object VoiceEngine {
      */
     fun synthesize(context: Context, text: String): Synthesized? {
         if (text.isBlank()) return null
-        val app = context.applicationContext
+        return awaitSynth(synthAsync(context.applicationContext, text))
+    }
+
+    /**
+     * Queues a render on the synth thread without waiting for it (r55,
+     * for the streamed player: the next sentence renders while the
+     * current one plays). The future completes exactly as
+     * [synthesize]'s would; only the wait moves to the caller.
+     */
+    private fun synthAsync(app: Context, text: String): Future<Synthesized?> {
         synthPending.incrementAndGet()
-        val future: Future<Synthesized?> = synthExecutor.submit<Synthesized?> {
+        return synthExecutor.submit<Synthesized?> {
             try {
                 runCatching { synthesizeNow(app, text) }.getOrNull()
             } finally {
                 synthPending.decrementAndGet()
             }
         }
+    }
+
+    /** Waits for a queued render with [synthesize]'s timeout and wedge handling. */
+    private fun awaitSynth(future: Future<Synthesized?>): Synthesized? {
         return try {
             future.get(SYNTH_TIMEOUT_S, TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
@@ -176,6 +190,29 @@ object VoiceEngine {
         } catch (e: Exception) {
             GearslipLog.w("voice: synthesis failed: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Listen-phase warm-up (r55): loads the selected voice's engine on
+     * the synth thread — the same thread every generate uses, so the
+     * ordering guarantees hold — while the user is still talking, so
+     * the first reply's render starts warm instead of paying the
+     * native load. A no-op when no engine is downloaded, and silently
+     * safe when called twice: the load functions return the cached
+     * instance. Never blocks the caller.
+     */
+    fun warm(context: Context) {
+        val app = context.applicationContext
+        synthExecutor.execute {
+            runCatching {
+                if (VoiceModels.isReady(app, VoiceModels.Engine.KOKORO)) {
+                    val voice = VoiceModels.selectedVoice.value
+                    if (validKokoroVoice(voice)) kokoro(app, voice)
+                } else if (VoiceModels.isReady(app, VoiceModels.Engine.PIPER)) {
+                    piper(app)
+                }
+            }
         }
     }
 
@@ -604,14 +641,178 @@ object VoiceEngine {
         }
     }
 
-    /** The shared AudioTrack playback loop for [play] and [playPreview]. */
+    /**
+     * A streamed reply's speech session (r55): sentences arrive over
+     * time and play in order while later ones still generate. One
+     * generation for the whole stream, so [stop] or a newer reply
+     * supersedes the entire stream at once, exactly like [play].
+     * [finish] marks the end of the stream: once the queue drains,
+     * the stream's onDone fires. A worker that never gets [finish]
+     * and never gets superseded exits on its own after
+     * [STREAM_IDLE_TIMEOUT_MS] of no offers, firing onDone then
+     * onSilent like any other render failure, so a leaked handle can
+     * never wedge the single play thread forever — every real path
+     * (finish, stop, newer reply) terminates it sooner.
+     */
+    class StreamedSpeech internal constructor(
+        internal val app: Context,
+        internal val listenEndMs: Long,
+        internal val myGeneration: Int,
+        internal val onDone: () -> Unit,
+        internal val onSilent: () -> Unit,
+    ) {
+        internal val queueLock = Any()
+        internal val queue = ArrayDeque<String>()
+        internal var closed = false
+        internal var lastOfferMs = SystemClock.elapsedRealtime()
+
+        /** Queues one complete sentence; ignored once [finish] ran or when blank. */
+        fun offer(sentence: String) {
+            if (sentence.isBlank()) return
+            synchronized(queueLock) {
+                if (closed) return
+                queue.addLast(sentence)
+                lastOfferMs = SystemClock.elapsedRealtime()
+            }
+        }
+
+        /** Marks the end of the stream; the worker finishes after the queue drains. */
+        fun finish() {
+            synchronized(queueLock) { closed = true }
+        }
+    }
+
+    /** Idle-abandon timeout for a streamed worker with no offers and no finish. */
+    private const val STREAM_IDLE_TIMEOUT_MS = 60_000L
+
+    /**
+     * Starts a streamed speech session (r55): returns null straight
+     * away when no engine can speak, like [play] returning false, so
+     * the caller can say that instead of leaving the driver waiting
+     * on silence. The returned handle's [StreamedSpeech.offer] feeds
+     * sentences and [StreamedSpeech.finish] ends the stream.
+     */
+    fun playStreamed(
+        context: Context,
+        listenEndMs: Long,
+        onDone: () -> Unit,
+        onSilent: () -> Unit = {},
+    ): StreamedSpeech? {
+        val app = context.applicationContext
+        if (!VoiceModels.isReady(app, VoiceModels.Engine.KOKORO) &&
+            !VoiceModels.isReady(app, VoiceModels.Engine.PIPER)
+        ) {
+            return null
+        }
+        val myGeneration = generation.incrementAndGet()
+        val handle = StreamedSpeech(app, listenEndMs, myGeneration, onDone, onSilent)
+        playExecutor.execute { runStreamWorker(handle, app) }
+        return handle
+    }
+
+    /**
+     * The streamed worker: one task on the play thread that drains
+     * the handle's queue in order. The next sentence renders on the
+     * synth thread while the current one plays ([synthAsync] +
+     * [awaitSynth]), so synthesis overlaps playback instead of
+     * serializing behind it. Supersede (a newer reply, [stop]) exits
+     * silently with no onDone, exactly like [play]'s interrupt path;
+     * a render or playback failure ends the stream through onDone +
+     * onSilent, like [play]'s failure path. Per-chunk playback uses
+     * no-op callbacks and the Boolean result, so onDone fires exactly
+     * once — never after the first chunk.
+     */
+    private fun runStreamWorker(handle: StreamedSpeech, app: Context) {
+        var prefetched: Future<Synthesized?>? = null
+        var prefetchedText: String? = null
+        var firstSoundLogged = false
+        while (true) {
+            if (handle.myGeneration != generation.get()) return
+            val next = synchronized(handle.queueLock) { handle.queue.removeFirstOrNull() }
+            if (next == null) {
+                if (handle.closed) {
+                    if (handle.myGeneration == generation.get()) main.post(handle.onDone)
+                    return
+                }
+                if (SystemClock.elapsedRealtime() - handle.lastOfferMs > STREAM_IDLE_TIMEOUT_MS) {
+                    // A leaked handle ends like any other render
+                    // failure (onDone, then onSilent): ending silently
+                    // would leave the caller finishing a dead stream
+                    // and stranding its SPEAKING state, since no
+                    // onDone would ever arrive.
+                    GearslipLog.w("voice: streamed speech abandoned after idle timeout")
+                    if (handle.myGeneration == generation.get()) {
+                        main.post(handle.onDone)
+                        main.post(handle.onSilent)
+                    }
+                    return
+                }
+                Thread.sleep(30)
+                continue
+            }
+            val audio = if (prefetched != null && prefetchedText == next) {
+                awaitSynth(prefetched!!)
+            } else {
+                synthesize(app, next)
+            }
+            prefetched = null
+            prefetchedText = null
+            if (handle.myGeneration != generation.get()) return
+            if (audio == null) {
+                if (handle.myGeneration == generation.get()) {
+                    main.post(handle.onDone)
+                    main.post(handle.onSilent)
+                }
+                return
+            }
+            val following = synchronized(handle.queueLock) { handle.queue.firstOrNull() }
+            if (following != null) {
+                prefetched = synthAsync(app, following)
+                prefetchedText = following
+            }
+            val played = playAudio(
+                audio, handle.myGeneration,
+                onDone = {}, notifyOnInterrupt = false, onSilent = {},
+                onPlaybackStart = {
+                    if (!firstSoundLogged) {
+                        firstSoundLogged = true
+                        if (handle.listenEndMs > 0L) {
+                            GearslipLog.i(
+                                "assistant: latency first-sound " +
+                                    "ms=${SystemClock.elapsedRealtime() - handle.listenEndMs}",
+                            )
+                        } else {
+                            GearslipLog.i("assistant: latency first-sound")
+                        }
+                    }
+                },
+            )
+            if (!played) {
+                if (handle.myGeneration != generation.get()) return
+                main.post(handle.onDone)
+                main.post(handle.onSilent)
+                return
+            }
+        }
+    }
+
+    /**
+     * The shared AudioTrack playback loop for [play] and [playPreview].
+     * Returns true only when the whole clip played uninterrupted;
+     * false covers failure, stall, and supersede alike — callers that
+     * need the distinction check the generation themselves, as the
+     * streamed worker does. [onPlaybackStart] fires once, right after
+     * the track starts, for first-sound timing (r55); it defaults to
+     * nothing, so [play] and [playPreview] are untouched by it.
+     */
     private fun playAudio(
         audio: Synthesized,
         myGeneration: Int,
         onDone: () -> Unit,
         notifyOnInterrupt: Boolean,
         onSilent: () -> Unit = {},
-    ) {
+        onPlaybackStart: () -> Unit = {},
+    ): Boolean {
         // The Builder used to sit outside the try: a generated rate the
         // hardware rejects (0, or absurd) threw IllegalArgumentException
         // on this thread, onDone never fired, and the overlay stuck on
@@ -624,7 +825,7 @@ object VoiceEngine {
                 main.post(onDone)
                 main.post(onSilent)
             }
-            return
+            return false
         }
         val shorts = floatsToShorts(audio.samples)
         var track: AudioTrack? = null
@@ -683,6 +884,7 @@ object VoiceEngine {
                         "peak=$peak rms=$rms peakShort=$peakShort",
                 )
                 track.play()
+                onPlaybackStart()
                 var offset = 0
                 while (offset < shorts.size && myGeneration == generation.get()) {
                     val written = track.write(shorts, offset, shorts.size - offset)
@@ -743,6 +945,11 @@ object VoiceEngine {
         }
         if (myGeneration == generation.get() || notifyOnInterrupt) main.post(onDone)
         if (failed && myGeneration == generation.get()) main.post(onSilent)
+        // True only for a fully played, uninterrupted clip: a stall or
+        // bad rate sets failed, and an interrupt breaks the generation
+        // match. A drain that runs past its deadline still counts as
+        // played — the old code fired onDone for it too, not onSilent.
+        return !failed && myGeneration == generation.get()
     }
 
     /** Float samples in [-1, 1] to 16-bit PCM, clamped, never silent by overflow. */
