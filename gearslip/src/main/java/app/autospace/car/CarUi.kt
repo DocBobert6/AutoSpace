@@ -32,9 +32,11 @@ import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.host.CarAppConnection
 import app.autospace.host.display
 import app.autospace.host.text
+import app.autospace.notify.CarMotion
 import app.autospace.GearslipLog
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -694,6 +696,39 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
                 NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
                 Spacer(Modifier.width(6.dp))
                 NavAssistantIcon()
+                // r58 widget popup button: on Home only, while the column
+                // could show (widgets + floating on). It toggles the SAME
+                // persisted dismissal flag as the column's "Hide widgets"
+                // X and never overrides the r39 template gate — the gate
+                // is applied in CarHome, after this press. While driving
+                // it recalls the column for a glance instead.
+                val widgetsOnBar by CarSettings.homeWidgetsEnabled.collectAsState()
+                val floatingOnBar by CarSettings.floatingMediaEnabled.collectAsState()
+                if (navigator.current == CarScreen.Home && widgetsOnBar && floatingOnBar) {
+                    // CarMotion.moving is a plain value, not a flow — poll
+                    // it like CarHome does (1 s). The poll runs only while
+                    // the button could show.
+                    val movingBar by produceState(CarMotion.moving) {
+                        while (true) { value = CarMotion.moving; delay(1_000) }
+                    }
+                    val dismissedBar by CarSettings.widgetsDismissed.collectAsState()
+                    Spacer(Modifier.width(6.dp))
+                    GsIconButton(
+                        Icons.Filled.Widgets, "Widgets",
+                        onClick = {
+                            val drivingHidden = shouldHideWhileDriving(movingBar, WidgetDrivingGlance.recalled)
+                            when (widgetPopupPress(dismissedBar, drivingHidden)) {
+                                WidgetPopupPress.DISMISS -> CarSettings.setWidgetsDismissed(true)
+                                WidgetPopupPress.UNDISMISS -> CarSettings.setWidgetsDismissed(false)
+                                WidgetPopupPress.GLANCE -> WidgetDrivingGlance.recall()
+                                WidgetPopupPress.UNDISMISS_AND_GLANCE -> {
+                                    CarSettings.setWidgetsDismissed(false)
+                                    WidgetDrivingGlance.recall()
+                                }
+                            }
+                        },
+                    )
+                }
 
                 // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
                 // open stays in its pinned spot, marked with a dot, instead of showing up twice.

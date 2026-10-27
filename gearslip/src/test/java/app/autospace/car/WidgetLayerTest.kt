@@ -311,4 +311,61 @@ class WidgetLayerTest {
             shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, true),
         )
     }
+
+    @Test
+    fun hiddenWidgetsNeverRender() {
+        assertEquals(
+            listOf(WidgetKind.WEATHER),
+            visibleWidgets(800f, true, true, true, true, setOf(WidgetKind.DIGEST, WidgetKind.EVENT)),
+        )
+        // Hidden beats available: a hidden digest stays hidden even when its source is full.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.EVENT),
+            visibleWidgets(800f, true, true, true, true, setOf(WidgetKind.DIGEST)),
+        )
+        assertEquals(
+            emptyList<WidgetKind>(),
+            visibleWidgets(800f, true, true, true, true, setOf(WidgetKind.WEATHER, WidgetKind.DIGEST, WidgetKind.EVENT)),
+        )
+    }
+
+    @Test
+    fun drivingHideNeedsMotionWithoutGlance() {
+        assertTrue(shouldHideWhileDriving(true, false))
+        assertFalse(shouldHideWhileDriving(true, true))
+        assertFalse(shouldHideWhileDriving(false, false))
+        assertFalse(shouldHideWhileDriving(false, true))
+    }
+
+    @Test
+    fun popupPressMatrix() {
+        assertEquals(WidgetPopupPress.DISMISS, widgetPopupPress(false, false))
+        assertEquals(WidgetPopupPress.UNDISMISS, widgetPopupPress(true, false))
+        assertEquals(WidgetPopupPress.GLANCE, widgetPopupPress(false, true))
+        assertEquals(WidgetPopupPress.UNDISMISS_AND_GLANCE, widgetPopupPress(true, true))
+    }
+
+    @Test
+    fun emptyReasonsNameEachCause() {
+        // All sources empty, none hidden.
+        assertEquals(
+            listOf("Weather not ready yet", "Notifications off", "No upcoming events"),
+            widgetEmptyReasons(false, false, 0, true, false, emptySet(), 800f),
+        )
+        // Hidden reads as hidden, never as empty.
+        assertEquals(
+            listOf("Weather hidden", "Digest hidden", "Next event hidden"),
+            widgetEmptyReasons(false, false, 0, true, false, setOf(WidgetKind.WEATHER, WidgetKind.DIGEST, WidgetKind.EVENT), 800f),
+        )
+        // Available but width-degraded.
+        assertEquals(
+            listOf("Digest needs a wider screen", "Next event needs a wider screen"),
+            widgetEmptyReasons(true, true, 3, false, true, emptySet(), 360f),
+        )
+        // Digest source states, in order.
+        assertEquals(
+            listOf("No unread notifications"),
+            widgetEmptyReasons(true, true, 0, false, true, emptySet(), 800f),
+        )
+    }
 }

@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            26, "0.4.15-alpha",
+            listOf(
+                "Widget controls, experimental: a nav-bar button brings the widget column up, the column hides while driving until you glance at it, and each widget can be hidden on its own.",
+                "When widgets are on but nothing shows, the column now says why instead of vanishing silently.",
+            ),
+        ),
+        Release(
             25, "0.4.14-alpha",
             listOf(
                 "The assistant keeps listening for a few seconds after it answers, so you can keep talking without waking it again.",

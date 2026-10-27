@@ -73,6 +73,7 @@ fun CarHome() {
     val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
     val widgetsOn by CarSettings.homeWidgetsEnabled.collectAsStateWithLifecycle()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
+    val hiddenWidgets by CarSettings.hiddenWidgets.collectAsStateWithLifecycle()
     val navTemplate by CarServices.nav.template.collectAsStateWithLifecycle()
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
 
@@ -103,6 +104,10 @@ fun CarHome() {
     LaunchedEffect(onHome) {
         if (onHome && seenHome[0]) CarServices.nav.replaceDeadSurface()
         if (onHome) seenHome[0] = true
+        // r58: leaving Home ends a glance recall — a glance is a peek,
+        // not a mode, so coming back while still moving re-hides the
+        // column until the button is pressed again.
+        if (!onHome) WidgetDrivingGlance.clear()
     }
     val splitScreen = phase == CarMedia.Phase.READY && now.isActive && panel != SidePanel.NONE
 
@@ -189,12 +194,17 @@ fun CarHome() {
             if (showWidgetColumn) {
                 // CarMotion.moving is a plain value, not a flow — poll it
                 // like VideoPlayerScreen/CarWhatsNew do (1 s; GPS only
-                // updates every 2 s). It gates only the narrow-frame
-                // parked exception; the poll runs only while the column
-                // could render, never on classic Home.
+                // updates every 2 s). It gates the narrow-frame parked
+                // exception AND the r58 hide-while-driving rule; the poll
+                // runs only while the column could render, never on
+                // classic Home.
                 val moving by produceState(CarMotion.moving) {
                     while (true) { value = CarMotion.moving; delay(1_000) }
                 }
+                // r58: a glance ends when motion stops — the normal
+                // rules resume from a stop, so the recall must not leak
+                // into the next drive.
+                LaunchedEffect(moving) { if (!moving) WidgetDrivingGlance.clear() }
                 // Driver side (start in LTR), top-anchored below the top
                 // inset (proposal §3); the media card sits bottom-end, so
                 // the two never collide. r43: the nav bar now overlays
@@ -204,11 +214,17 @@ fun CarHome() {
                 // nav app's own turn UI at the top of its surface is
                 // checked visually on device (test list) — no numeric
                 // turn zone is claimed in code.
-                BoxWithConstraints(
-                    Modifier.fillMaxSize().padding(12.dp),
-                    contentAlignment = Alignment.TopStart,
-                ) {
-                    WidgetColumn(maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)))
+                // r58 hide-while-driving: a driving-hidden column renders
+                // nothing at all, explainer included — a hidden column
+                // must not explain itself mid-drive. The floating media
+                // card is NOT covered by this rule and is untouched.
+                if (!shouldHideWhileDriving(moving, WidgetDrivingGlance.recalled)) {
+                    BoxWithConstraints(
+                        Modifier.fillMaxSize().padding(12.dp),
+                        contentAlignment = Alignment.TopStart,
+                    ) {
+                        WidgetColumn(maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)), hidden = hiddenWidgets)
+                    }
                 }
             }
         } else {

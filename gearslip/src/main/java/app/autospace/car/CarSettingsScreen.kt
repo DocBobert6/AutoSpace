@@ -611,6 +611,7 @@ private fun AboutAndExperimentalPage() {
     val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
+    val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
 
     // r53: the master switch — a control, not a feature row, so it stays
@@ -632,7 +633,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1259,6 +1260,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
+    hiddenWidgets: Set<WidgetKind>,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1297,6 +1299,27 @@ private fun ExperimentalFeaturesList(
             ) {
                 Text("Show widget column again", style = MaterialTheme.typography.titleMedium)
             }
+        }
+        // r58 B10: per-widget hide toggles — which of the three widgets
+        // the column shows. A hidden widget never renders, and the
+        // empty-state explainer names it as hidden rather than empty.
+        // The master switch never touches these (see ExperimentalMaster).
+        if (homeWidgets) {
+            ExperimentalFeatureRow(
+                title = "Weather widget",
+                description = "Shows the weather chip in the Home widget column.",
+                checked = WidgetKind.WEATHER !in hiddenWidgets,
+            ) { CarSettings.setWidgetHidden(WidgetKind.WEATHER, !it) }
+            ExperimentalFeatureRow(
+                title = "Notification digest widget",
+                description = "Shows the unread count and latest sender in the Home widget column. Never message text.",
+                checked = WidgetKind.DIGEST !in hiddenWidgets,
+            ) { CarSettings.setWidgetHidden(WidgetKind.DIGEST, !it) }
+            ExperimentalFeatureRow(
+                title = "Next event widget",
+                description = "Shows the next scheduled event in the Home widget column.",
+                checked = WidgetKind.EVENT !in hiddenWidgets,
+            ) { CarSettings.setWidgetHidden(WidgetKind.EVENT, !it) }
         }
         // r53: vehicle data LAST, as its own switch — never part of the
         // master switch (see ExperimentalMaster).

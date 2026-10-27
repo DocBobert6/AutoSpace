@@ -104,6 +104,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_HOME_WIDGETS = "car_home_widgets"
     private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
+    private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
     private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
@@ -188,6 +189,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val homeWidgetsFlow = MutableStateFlow(false)
     private val frostedMapChromeFlow = MutableStateFlow(false)
     private val widgetsDismissedFlow = MutableStateFlow(false)
+    private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
 
@@ -372,6 +374,15 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val widgetsDismissed: StateFlow<Boolean> = widgetsDismissedFlow
 
     /**
+     * r58 B10: per-widget hide toggles — the set of widget kinds the
+     * driver hid from the column. Empty by default (everything shows).
+     * Persisted as comma-joined kind names. The master switch never
+     * touches it (see ExperimentalMaster — deliberately not a member):
+     * hiding one widget is a column preference, not a suite flag.
+     */
+    val hiddenWidgets: StateFlow<Set<WidgetKind>> = hiddenWidgetsFlow
+
+    /**
      * Whether the car screen's own "drive safely" warning has already been shown and dismissed
      * once, from this same install. Separate from the phone side's own compat/safety dialogs -
      * a driver who only ever plugs in and never opens the phone app should still see this once,
@@ -480,6 +491,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
         frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
+        hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
+            .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
             Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
@@ -729,6 +742,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setWidgetsDismissed(dismissed: Boolean) {
         widgetsDismissedFlow.value = dismissed
         AppSettings.putString(app, KEY_WIDGETS_DISMISSED, dismissed.toString())
+    }
+
+    fun setWidgetHidden(kind: WidgetKind, hidden: Boolean) {
+        val updated = if (hidden) hiddenWidgetsFlow.value + kind else hiddenWidgetsFlow.value - kind
+        hiddenWidgetsFlow.value = updated
+        AppSettings.putString(app, KEY_WIDGETS_HIDDEN, updated.joinToString(",") { it.name })
     }
 
     fun setNightMode(mode: NightMode) {

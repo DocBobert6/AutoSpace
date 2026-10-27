@@ -18,7 +18,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -59,6 +61,11 @@ import kotlinx.coroutines.withContext
  *
  * While moving, widgets are glance only: taps open screens (Weather,
  * dashboard), never a communication or navigation action directly.
+ *
+ * r58 widget controls (experimental): per-widget hide toggles (B10),
+ * nav-bar popup button (same dismissal flag as the X, never overrides
+ * the r39 template gate), hide-while-driving with glance recall, and an
+ * empty-state explainer when the gates pass but nothing renders.
  */
 enum class WidgetKind { WEATHER, DIGEST, EVENT }
 
@@ -157,21 +164,114 @@ fun visibleWidgets(
     weatherReady: Boolean,
     digestAvailable: Boolean,
     eventAvailable: Boolean,
+    hidden: Set<WidgetKind> = emptySet(),
 ): List<WidgetKind> {
-    if (frameWidthDp < WIDGET_NARROW_WIDTH_DP && moving) return emptyList()
-    if (frameWidthDp < WIDGET_NARROW_WIDTH_DP) {
+    val all = if (frameWidthDp < WIDGET_NARROW_WIDTH_DP && moving) {
+        emptyList()
+    } else if (frameWidthDp < WIDGET_NARROW_WIDTH_DP) {
         // Parked narrow frame: the column shows, degrade thresholds skipped.
-        return listOfNotNull(
+        listOfNotNull(
             WidgetKind.WEATHER.takeIf { weatherReady },
             WidgetKind.DIGEST.takeIf { digestAvailable },
             WidgetKind.EVENT.takeIf { eventAvailable },
         )
+    } else {
+        listOfNotNull(
+            WidgetKind.WEATHER.takeIf { weatherReady },
+            WidgetKind.DIGEST.takeIf { digestAvailable && frameWidthDp >= WIDGET_DIGEST_MIN_WIDTH_DP },
+            WidgetKind.EVENT.takeIf { eventAvailable && frameWidthDp >= WIDGET_EVENT_MIN_WIDTH_DP },
+        )
     }
-    return listOfNotNull(
-        WidgetKind.WEATHER.takeIf { weatherReady },
-        WidgetKind.DIGEST.takeIf { digestAvailable && frameWidthDp >= WIDGET_DIGEST_MIN_WIDTH_DP },
-        WidgetKind.EVENT.takeIf { eventAvailable && frameWidthDp >= WIDGET_EVENT_MIN_WIDTH_DP },
-    )
+    // r58 B10: a widget the driver hid never renders, whatever its source says.
+    return all.filter { it !in hidden }
+}
+
+/**
+ * r58 hide-while-driving: the column hides while moving unless the driver
+ * recalled it for a glance with the nav-bar button. Pure so it is
+ * unit-testable. The floating media card is NOT covered by this rule — it
+ * stays as it is; only the widget column hides.
+ */
+fun shouldHideWhileDriving(moving: Boolean, glanceRecalled: Boolean): Boolean =
+    moving && !glanceRecalled
+
+/**
+ * r58 glance recall: in-memory only, never persisted — a glance lasts
+ * until motion stops, Home is left, or the column is dismissed, and never
+ * survives into the next drive. CarHome clears it; the nav-bar button
+ * sets it.
+ */
+object WidgetDrivingGlance {
+    var recalled by mutableStateOf(false)
+        private set
+
+    fun recall() { recalled = true }
+    fun clear() { recalled = false }
+}
+
+/** r58: what one press of the nav-bar widget popup button does. Pure so it is unit-testable. */
+enum class WidgetPopupPress { DISMISS, UNDISMISS, GLANCE, UNDISMISS_AND_GLANCE }
+
+/**
+ * r58 popup-button decision. The button toggles the SAME persisted
+ * dismissal flag as the column's "Hide widgets" X and never overrides
+ * the r39 template gate (the gate is applied separately, after this):
+ * dismissed → undismiss (plus a glance when driving-hidden, so one tap
+ * brings the column up even while moving); driving-hidden → glance
+ * recall; otherwise → dismiss, exactly like the X.
+ */
+fun widgetPopupPress(dismissed: Boolean, drivingHidden: Boolean): WidgetPopupPress =
+    when {
+        dismissed && drivingHidden -> WidgetPopupPress.UNDISMISS_AND_GLANCE
+        dismissed -> WidgetPopupPress.UNDISMISS
+        drivingHidden -> WidgetPopupPress.GLANCE
+        else -> WidgetPopupPress.DISMISS
+    }
+
+/**
+ * r58 empty-state legibility: why nothing renders, in plain words, one
+ * line per cause. Pure so it is unit-testable. Only called when the
+ * column's gates pass but no widget is visible, so every line here is a
+ * source or width cause — never a gate (a failed gate hides the column
+ * entirely, explainer included, by design).
+ */
+fun widgetEmptyReasons(
+    weatherReady: Boolean,
+    digestListening: Boolean,
+    digestUnread: Int,
+    digestHistoryEmpty: Boolean,
+    eventAvailable: Boolean,
+    hidden: Set<WidgetKind>,
+    frameWidthDp: Float,
+): List<String> {
+    val reasons = mutableListOf<String>()
+    if (WidgetKind.WEATHER in hidden) {
+        reasons += "Weather hidden"
+    } else if (!weatherReady) {
+        reasons += "Weather not ready yet"
+    }
+    if (WidgetKind.DIGEST in hidden) {
+        reasons += "Digest hidden"
+    } else if (!digestListening) {
+        reasons += "Notifications off"
+    } else if (digestUnread <= 0) {
+        reasons += "No unread notifications"
+    } else if (digestHistoryEmpty) {
+        reasons += "No notifications to show"
+    } else if (frameWidthDp < WIDGET_DIGEST_MIN_WIDTH_DP) {
+        reasons += "Digest needs a wider screen"
+    }
+    if (WidgetKind.EVENT in hidden) {
+        reasons += "Next event hidden"
+    } else if (!eventAvailable) {
+        reasons += "No upcoming events"
+    } else if (frameWidthDp < WIDGET_EVENT_MIN_WIDTH_DP) {
+        reasons += "Next event needs a wider screen"
+    }
+    // Defensive: visibleWidgets empty with no cause above means a width
+    // corner the reasons missed — never show a blank card.
+    if (reasons.isEmpty()) reasons += "Nothing to show right now"
+    return reasons
 }
 
 /**
@@ -196,14 +296,16 @@ fun digestSender(notification: CarNotification): String {
 
 /**
  * The widget column: dismiss row + the visible widgets, stacked with 10dp
- * gaps. Renders nothing at all when no widget is visible, so an empty
- * column (and its dismiss button) never sits over the map.
+ * gaps. r58: when the gates pass but no widget is visible, it renders a
+ * small explainer card saying why instead of vanishing silently — "on"
+ * with all sources empty used to look exactly like broken.
  */
 @Composable
 internal fun WidgetColumn(
     frameWidthDp: Float,
     moving: Boolean,
     modifier: Modifier = Modifier,
+    hidden: Set<WidgetKind> = emptySet(),
 ) {
     val navigator = LocalCarNavigator.current
     val context = LocalContext.current
@@ -221,9 +323,10 @@ internal fun WidgetColumn(
     val weatherReady = weatherState is WeatherState.Ready
     val digestOk = digestAvailable(listening, unread, history.isEmpty())
     val event = agenda?.firstOrNull()
-    val visible = visibleWidgets(frameWidthDp, moving, weatherReady, digestOk, event != null)
-    if (visible.isEmpty()) return
-
+    val visible = visibleWidgets(frameWidthDp, moving, weatherReady, digestOk, event != null, hidden)
+    // r58: the gates passed but nothing is visible — say why, instead of
+    // vanishing. The dismiss row stays, so the explainer hides exactly
+    // like the column (same persisted flag, same settings row back).
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // Column-level dismiss, REMEMBERED across drives (persisted pref):
         // re-enable from the widget settings row, never by toggle-cycling.
@@ -231,6 +334,14 @@ internal fun WidgetColumn(
             GsIconButton(
                 Icons.Filled.Close, "Hide widgets", { CarSettings.setWidgetsDismissed(true) },
                 size = 44.dp, iconSize = 24.dp,
+            )
+        }
+        if (visible.isEmpty()) {
+            WidgetEmptyCard(
+                widgetEmptyReasons(
+                    weatherReady, listening, unread, history.isEmpty(), event != null,
+                    hidden, frameWidthDp,
+                ),
             )
         }
         for (kind in visible) {
@@ -309,11 +420,12 @@ internal fun WidgetColumn(
  * as part of the same frosted layer. Tappable whole-card, 56dp floor.
  */
 @Composable
-private fun WidgetCard(onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun WidgetCard(onClick: (() -> Unit)?, content: @Composable () -> Unit) {
     // r48: Verve takes its own 24dp corner, same as the floating card.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     Card(
-        modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape).clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = cardShape,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
@@ -325,5 +437,31 @@ private fun WidgetCard(onClick: () -> Unit, content: @Composable () -> Unit) {
             Modifier.fillMaxWidth().heightIn(min = 56.dp).pitLanePanelTexture().padding(12.dp),
             contentAlignment = Alignment.CenterStart,
         ) { content() }
+    }
+}
+
+/**
+ * r58 empty-state card: plain words for why no widget renders, same
+ * frosted treatment as a widget card, deliberately not tappable — there
+ * is nowhere useful for a tap to go.
+ */
+@Composable
+private fun WidgetEmptyCard(reasons: List<String>) {
+    WidgetCard(onClick = null) {
+        Column {
+            Text(
+                "No widgets to show",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            for (reason in reasons) {
+                Text(
+                    reason, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
