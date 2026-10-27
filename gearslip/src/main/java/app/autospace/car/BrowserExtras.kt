@@ -129,12 +129,15 @@ object BrowserSearch {
 }
 
 /**
- * Ad/tracker blocking (r21): Notscape FilterEngine's BUILT-IN host set only.
- * The EasyList/EasyPrivacy downloads, path rules, cosmetic rules and
- * user-subscribed lists are NOT ported — the bundled list ships with the
- * app and changes only with an app update, and there is no subscription
- * UI. A host matches itself and every subdomain. Main-frame loads are
- * never blocked (the caller checks that); only subresources are.
+ * Ad/tracker blocking (r21, extended r85): the bundled host set below
+ * plus, since r85, the full FilterEngine (downloaded EasyList,
+ * EasyPrivacy, hosts-format, AdGuard and uBlock lists, path and
+ * scoped rules, cosmetic selectors, and the driver's own rules).
+ * The bundled set is kept as the offline fallback: FilterLists
+ * injects it into the engine at init, and the engine consults it
+ * whenever lists are absent or stale. A host matches itself and
+ * every subdomain. Main-frame loads are never blocked (the caller
+ * checks that); only subresources are.
  */
 object BrowserFilter {
 

@@ -180,6 +180,13 @@ fun WebApp(content: String) {
     // DisposableEffect below), this is the belt-and-braces half.
     val immersive by BrowserImmersiveState.immersive.collectAsState()
     LaunchedEffect(Unit) { BrowserImmersiveState.exit() }
+    // r85: filter lists load on a background thread (disk cache
+    // first, refresh when stale or missing) and the driver's own
+    // rules sync into the engine. Page loads never wait on either.
+    LaunchedEffect(Unit) {
+        FilterLists.initAsync(context)
+        FilterLists.syncUserRules(context)
+    }
     // Scroll-hide (Robert 2026-10-25 06:20 redirect): the address
     // bar row — and ONLY it — follows the active tab's WebView
     // scroll, in BOTH modes. Scroll down past the threshold hides
@@ -317,6 +324,58 @@ fun WebApp(content: String) {
     // this file's scope (r21 CI proved it with hostOf).
     fun hostOf(url: String): String =
         runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+    // r85: rule-editor validation + serialization. A host must be
+    // a bare host (no scheme, no path); an address must be a full
+    // http(s) URL, stored with query and fragment stripped so ad
+    // URLs with cache-busters still match on reload (Mariner's
+    // save-time strip). Returns the problem, or null when valid.
+    fun validateRuleEdit(type: RuleEditType, raw: String): String? {
+        val text = raw.trim()
+        if (text.isEmpty()) return "Enter a host or address first."
+        return when (type) {
+            RuleEditType.BLOCK_HOST, RuleEditType.ALLOW_HOST -> {
+                val host = text.lowercase()
+                    .removePrefix("http://").removePrefix("https://")
+                    .substringBefore("/")
+                if (!host.contains('.') ||
+                    !host.all { it.isLetterOrDigit() || it == '.' || it == '-' }
+                ) "That does not look like a host — try ads.example.com."
+                else null
+            }
+            RuleEditType.BLOCK_URL -> {
+                if (!text.startsWith("http://") && !text.startsWith("https://")) {
+                    "An address must start with http:// or https://."
+                } else if (!text.substringAfter("://").contains('.')) {
+                    "That does not look like an address."
+                } else {
+                    null
+                }
+            }
+        }
+    }
+    fun serializeRuleEdit(type: RuleEditType, raw: String): String {
+        val text = raw.trim()
+        return when (type) {
+            RuleEditType.BLOCK_HOST -> {
+                val host = text.lowercase()
+                    .removePrefix("http://").removePrefix("https://")
+                    .substringBefore("/")
+                "net\tHOST\t$host"
+            }
+            RuleEditType.ALLOW_HOST -> {
+                val host = text.lowercase()
+                    .removePrefix("http://").removePrefix("https://")
+                    .substringBefore("/")
+                "net\tALLOW\t$host"
+            }
+            RuleEditType.BLOCK_URL -> {
+                val q = text.indexOf('?')
+                val fr = text.indexOf('#')
+                val cut = listOf(q, fr).filter { it >= 0 }.minOrNull() ?: text.length
+                "net\tURL\t${text.substring(0, cut)}"
+            }
+        }
+    }
     /** A new tab already aimed at a URL (popups, long-press, recently closed). */
     fun newUrlTab(url: String, isPrivate: Boolean = false) {
         val tab = BrowserTab(nextTabId++, url)
@@ -550,6 +609,14 @@ fun WebApp(content: String) {
     var engineEditing by remember { mutableStateOf(false) }
     var engineEditText by remember { mutableStateOf("") }
     var engineEditError by remember { mutableStateOf<String?>(null) }
+    // r85: the driver's own blocking rules (FilterLists +
+    // UserBlockRules). rulesVersion re-reads the stored rules
+    // after an add or remove so the panel never shows stale rows.
+    var ruleEditing by remember { mutableStateOf(false) }
+    var ruleEditText by remember { mutableStateOf("") }
+    var ruleEditType by remember { mutableStateOf(RuleEditType.BLOCK_HOST) }
+    var ruleEditError by remember { mutableStateOf<String?>(null) }
+    var rulesVersion by remember { mutableStateOf(0) }
     var adBlockOn by remember { mutableStateOf(BrowserStore.adBlockEnabled(context)) }
     /** Bumped to recreate the active tab's WebView (desktop toggle, r21). */
     var webViewEpoch by remember { mutableStateOf(0) }
@@ -786,7 +853,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -801,6 +868,7 @@ fun WebApp(content: String) {
                 readerOpen -> { stopReading(); readerOpen = false; true }
                 longPressTarget != null -> { longPressTarget = null; true }
                 engineEditing -> { engineEditing = false; true }
+                ruleEditing -> { ruleEditing = false; true }
                 showPopupNotice -> { clearPendingPopups(); true }
                 // Head-unit BACK closes the settings menu first, then the
                 // other overlays, then steps back a page, then — only
@@ -1287,7 +1355,35 @@ fun WebApp(content: String) {
                                     onPopunder = { url, host ->
                                         mainHandler.post { capturePopunder(url, host) }
                                     },
+                                    // r85: the tab's current page host,
+                                    // read per request for scoped rules.
+                                    pageHost = { hostOf(tab.currentUrl) },
                                 )
+                                // Document-start cosmetics (r85): the
+                                // generic hiding sheet is registered
+                                // before the page's own scripts run,
+                                // so ad containers never paint — when
+                                // lists were already loaded at tab
+                                // creation. Lists landing later apply
+                                // via the page-finish injection in
+                                // onPageFinished instead. A WebView
+                                // created before lists load gets an
+                                // empty script and is never
+                                // re-registered; that tab still gets
+                                // the page-finish sheet on every load.
+                                if (BrowserStore.adBlockEnabled(context) &&
+                                    androidx.webkit.WebViewFeature.isFeatureSupported(
+                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                                    )
+                                ) {
+                                    val dsScript = FilterEngine.documentStartScript
+                                    if (dsScript.isNotEmpty()) {
+                                        runCatching {
+                                            androidx.webkit.WebViewCompat
+                                                .addDocumentStartJavaScript(this, dsScript, setOf("*"))
+                                        }
+                                    }
+                                }
                                 webChromeClient = BrowserChrome(
                                     context = context,
                                     onPopupUrl = { host, url, transport, allowed ->
@@ -1505,6 +1601,134 @@ fun WebApp(content: String) {
                     onDismiss = { engineEditing = false },
                 )
             }
+            // r85: the driver's own blocking rules. The list below
+            // reads stored rules fresh on every rulesVersion bump
+            // (add/remove), and every edit re-syncs the engine at
+            // once — no browser restart, no tab reload needed for
+            // the next subresource the page requests.
+            if (ruleEditing) {
+                val storedRules = remember(rulesVersion) {
+                    UserBlockRules.parseNet(BrowserStore.userNetRaw(context))
+                }
+                Column(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "My blocking rules",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    )
+                    Text(
+                        "Block host stops everything from a host. Block address stops one address. " +
+                            "Allow host unbreaks a site the lists break — it beats blocks and lists. " +
+                            "Rules apply to page pieces only, never the page itself.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (storedRules.isEmpty()) {
+                        Text(
+                            "No rules yet.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        storedRules.forEach { rule ->
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    when (rule) {
+                                        is UserBlockRules.NetRule.Host -> "Block host: ${rule.host}"
+                                        is UserBlockRules.NetRule.Url -> "Block address: ${rule.urlKey}"
+                                        is UserBlockRules.NetRule.Allow -> "Allow host: ${rule.host}"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                GsButton(onClick = {
+                                    BrowserStore.removeUserNetRule(
+                                        context,
+                                        UserBlockRules.serializeNet(listOf(rule)),
+                                    )
+                                    FilterLists.syncUserRules(context)
+                                    rulesVersion++
+                                }) { Text("Remove") }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(
+                            onClick = { ruleEditType = RuleEditType.BLOCK_HOST },
+                            tone = if (ruleEditType == RuleEditType.BLOCK_HOST) app.autospace.car.theme.GsTone.Primary else app.autospace.car.theme.GsTone.Tonal,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Block host") }
+                        GsButton(
+                            onClick = { ruleEditType = RuleEditType.BLOCK_URL },
+                            tone = if (ruleEditType == RuleEditType.BLOCK_URL) app.autospace.car.theme.GsTone.Primary else app.autospace.car.theme.GsTone.Tonal,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Block address") }
+                        GsButton(
+                            onClick = { ruleEditType = RuleEditType.ALLOW_HOST },
+                            tone = if (ruleEditType == RuleEditType.ALLOW_HOST) app.autospace.car.theme.GsTone.Primary else app.autospace.car.theme.GsTone.Tonal,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Allow host") }
+                    }
+                    KeyboardFieldText(
+                        ruleEditText,
+                        when (ruleEditType) {
+                            RuleEditType.BLOCK_HOST -> "ads.example.com"
+                            RuleEditType.BLOCK_URL -> "https://ads.example.com/banner"
+                            RuleEditType.ALLOW_HOST -> "news.example.org"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                    )
+                    ruleEditError?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = {
+                            val problem = validateRuleEdit(ruleEditType, ruleEditText)
+                            if (problem != null) {
+                                ruleEditError = problem
+                            } else {
+                                BrowserStore.addUserNetRule(context, serializeRuleEdit(ruleEditType, ruleEditText))
+                                FilterLists.syncUserRules(context)
+                                ruleEditText = ""
+                                ruleEditError = null
+                                rulesVersion++
+                            }
+                        }, modifier = Modifier.weight(1f)) { Text("Save") }
+                        GsButton(onClick = { ruleEditing = false }, modifier = Modifier.weight(1f)) { Text("Done") }
+                    }
+                }
+                CarKeyboard(
+                    text = ruleEditText,
+                    onTextChange = { updated ->
+                        ruleEditText = updated
+                        ruleEditError = null
+                    },
+                    onSubmit = {
+                        val problem = validateRuleEdit(ruleEditType, ruleEditText)
+                        if (problem != null) {
+                            ruleEditError = problem
+                        } else {
+                            BrowserStore.addUserNetRule(context, serializeRuleEdit(ruleEditType, ruleEditText))
+                            FilterLists.syncUserRules(context)
+                            ruleEditText = ""
+                            ruleEditError = null
+                            rulesVersion++
+                        }
+                    },
+                    onDismiss = { ruleEditing = false },
+                )
+            }
         }
         // Immersive fullscreen exit pill (Robert 2026-10-25): a
         // small floating pill over the page's top-end corner,
@@ -1694,6 +1918,12 @@ fun WebApp(content: String) {
                     engineEditText = BrowserSearch.customTemplate(context)
                     engineEditError = null
                     engineEditing = true
+                },
+                onEditBlockRules = {
+                    settingsMenuOpen = false
+                    ruleEditText = ""
+                    ruleEditError = null
+                    ruleEditing = true
                 },
             )
         }
@@ -2213,7 +2443,12 @@ private fun BrowserSettingsMenu(
     isCustomEngine: Boolean,
     onResetSearchEngine: () -> Unit,
     onEditSearchEngine: () -> Unit,
+    // r85: opens the driver's own blocking-rule editor.
+    onEditBlockRules: () -> Unit,
 ) {
+    // r85: captured once for the Update-now button below, which
+    // runs outside composition and cannot call LocalContext.
+    val menuContext = LocalContext.current
     @Composable
     fun MenuRow(label: String, checked: Boolean, onClick: () -> Unit) {
         Row(
@@ -2357,12 +2592,48 @@ private fun BrowserSettingsMenu(
                 MenuSection("Ads & trackers")
                 MenuRow("Block ads & trackers", adBlockOn) { onAdBlock(!adBlockOn) }
                 Text(
-                    "Blocks requests to a bundled list of ad and tracker hosts. " +
-                        "The list ships with the app and never blocks the page itself. " +
-                        "Turning it off loads everything again.",
+                    "Blocks ad and tracker requests — real filter lists (EasyList, EasyPrivacy, " +
+                        "AdGuard, uBlock) downloaded in the background, with the bundled host list " +
+                        "still covering the gap before the first download and offline. " +
+                        "The page itself is never blocked. Turning it off loads everything again.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // r85: filter-list status, read straight from
+                // FilterLists — the same live state the engine runs
+                // on, so the menu can never disagree with it.
+                val filterUpdating by FilterLists.updating.collectAsState()
+                val filterRuleCount by FilterLists.ruleCount.collectAsState()
+                val filterUpdatedAt by FilterLists.updatedAt.collectAsState()
+                val filterBlocked by FilterLists.blockedCount.collectAsState()
+                Text(
+                    when {
+                        filterUpdating -> "Updating filter lists…"
+                        filterRuleCount > 0 -> {
+                            val whenText = if (filterUpdatedAt > 0) {
+                                java.text.DateFormat.getDateInstance()
+                                    .format(java.util.Date(filterUpdatedAt))
+                            } else {
+                                "—"
+                            }
+                            "$filterRuleCount rules · updated $whenText"
+                        }
+                        else -> "Lists not downloaded yet (built-in rules active)"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Blocked this session: $filterBlocked",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                GsButton(
+                    onClick = { FilterLists.refreshAsync(menuContext) },
+                    enabled = !filterUpdating,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Update now") }
+                MenuRow("My rules…", false) { onEditBlockRules() }
                 MenuSection("Search engine")
                 MenuRow("No-AI DuckDuckGo", !isCustomEngine) { onResetSearchEngine() }
                 MenuRow(
@@ -2520,6 +2791,9 @@ private fun TabSwitcherSheet(
  * shouldInterceptRequest runs off the UI thread, so media reports are posted to the
  * main handler by the caller (see WebApp's onMedia).
  */
+/** Which kind of rule the r85 rule editor is adding. */
+private enum class RuleEditType { BLOCK_HOST, BLOCK_URL, ALLOW_HOST }
+
 private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
@@ -2527,19 +2801,44 @@ private class BrowserClient(
     private val onHistory: (String, Boolean, Boolean) -> Unit = { _, _, _ -> },
     private val onMainFrameError: (String) -> Unit = {},
     private val onPopunder: (String, String) -> Unit = { _, _ -> },
+    // r85: the page host the tab is showing, for $domain= and
+    // third-party scoped rules. Read per request, never cached: a
+    // tab's URL changes without the client being rebuilt.
+    private val pageHost: () -> String = { "" },
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         request?.url?.toString()?.let { url ->
             if (VideoUrl.isPlayableUrl(url)) onMedia(url, null)
-            // Ad/tracker blocking (r21, bundled host list): subresources
-            // only — a main-frame load is NEVER blocked, so blocking
-            // cannot break a page load itself. Runs off the UI thread,
-            // so the toggle is read straight from BrowserStore.
+            // Ad/tracker blocking (r21 bundled list, r85 full engine):
+            // subresources only — a main-frame load is NEVER blocked,
+            // so blocking cannot break a page load itself. Runs off
+            // the UI thread, so the toggle is read straight from
+            // BrowserStore. GET/HEAD only (Mariner's Phase G repair):
+            // answering a POST/PUT upload, form post or sign-in with
+            // an empty response kills the action silently, so those
+            // pass through untouched. The bundled host list still
+            // applies as the engine's offline fallback (FilterLists
+            // injects it at init); the downloaded lists add host,
+            // path and scoped rules on top of it.
             if (request.isForMainFrame == false && view != null) {
-                val ctx = view.context
-                if (BrowserStore.adBlockEnabled(ctx) && BrowserFilter.isBlockedUrl(url)) {
-                    return BrowserFilter.emptyResponse()
+                val method = request.method ?: "GET"
+                if (method == "GET" || method == "HEAD") {
+                    val uri = request.url
+                    val ctx = view.context
+                    if (FilterEngine.isBlocked(
+                            scheme = uri.scheme ?: "",
+                            host = uri.host ?: "",
+                            path = uri.path ?: "",
+                            urlString = url,
+                            isForMainFrame = false,
+                            enabled = BrowserStore.adBlockEnabled(ctx),
+                            pageHost = pageHost(),
+                        )
+                    ) {
+                        FilterLists.noteBlocked()
+                        return BrowserFilter.emptyResponse()
+                    }
                 }
             }
         }
@@ -2555,8 +2854,8 @@ private class BrowserClient(
     // aimed at a known popunder host, is captured like a blocked popup
     // instead of loaded. Typed addresses never reach here (loadUrl
     // skips this callback) and tapped links carry a gesture. The host
-    // test is PopunderHosts' built-in set — Notscape's set is derived
-    // from filter lists AutoSpace does not have (see PopunderHosts).
+    // test is PopunderHosts': the parsed $document/$popup set once
+    // filter lists have loaded (r85), the built-in set before that.
     // Returning false for everything else preserves the previous
     // behaviour exactly (WebView handles http(s) itself).
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
@@ -2599,6 +2898,28 @@ private class BrowserClient(
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
                     onMedia(obj.optString("url"), obj.optString("title").takeIf { it.isNotBlank() })
+                }
+            }
+        }
+        // Cosmetic filtering (r85): hide the ad containers the
+        // lists know about on this host. Network blocking alone
+        // leaves empty boxes; the page-finish sheet covers domain
+        // rules and lists that landed after the tab was created
+        // (the document-start generic sheet, registered at WebView
+        // creation below, covers pre-paint hiding when lists were
+        // already loaded).
+        if (view != null && url != null && BrowserStore.adBlockEnabled(view.context)) {
+            val finishedHost = runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+            if (finishedHost.isNotEmpty()) {
+                val css = FilterEngine.cosmeticCss(finishedHost)
+                if (css.isNotEmpty()) {
+                    val js = "(function(){try{" +
+                        "var s=document.getElementById('__as_cos');" +
+                        "if(!s){s=document.createElement('style');s.id='__as_cos';" +
+                        "(document.head||document.documentElement).appendChild(s);}" +
+                        "s.textContent=" + JSONObject.quote(css) + ";" +
+                        "}catch(e){}})()"
+                    view.evaluateJavascript(js, null)
                 }
             }
         }

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            52, "0.4.41-alpha",
+            listOf(
+                "Ad blocking is now the real thing: the browser downloads EasyList, EasyPrivacy, AdGuard and uBlock filter lists in the background, hides ad containers on the page, and shows how many requests it blocked in the browser menu — with the bundled host list still covering offline. The menu's My rules row lets you block a host or address, or allow a site the lists break.",
+            ),
+        ),
+        Release(
             51, "0.4.40-alpha",
             listOf(
                 "The nav bar now has its own Floating nav bar switch on the Appearance page — it no longer follows the floating-media toggle, so turning floating media on or off never moves the bar.",

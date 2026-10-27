@@ -15,18 +15,27 @@ package app.autospace.car
  * What could NOT be carried over verbatim is the host set itself:
  * Notscape's docHosts are derived at runtime from the user's downloaded
  * filter lists (WebTools.FilterEngine parses $document/$popup rules into
- * the set), and AutoSpace has no filter lists at all — there is no list
- * in Notscape's repo to copy. So the guard's logic is ported exactly
+ * the set), and AutoSpace had no filter lists at the time — there was
+ * no list in Notscape's repo to copy. So the guard's logic is ported exactly
  * (main frame + no gesture + cross-host, see BrowserClient), but the
  * host test is a small built-in set of well-known popunder networks
  * below, suffix-matched. A no-gesture hop to any other cross-host is
  * left alone, because without a list it cannot be told apart from a
  * legitimate script redirect (login, consent, shortener) — blocking
  * those would break real pages, and Notscape's list is what makes its
- * guard safe to run. If AutoSpace ever gains filter lists, this set
- * should be replaced by the parsed $document/$popup set.
+ * guard safe to run. r85: AutoSpace HAS filter lists now —
+ * FilterLists writes the parsed $document/$popup set into
+ * parsedDocHosts whenever lists load, and isDocumentHost reads that
+ * set first; the built-in set below remains the fallback.
  */
 object PopunderHosts {
+    /**
+     * The parsed $document/$popup set from the downloaded filter
+     * lists, written by FilterLists whenever lists load. Empty
+     * until the first download — the built-in set covers that gap.
+     */
+    @Volatile var parsedDocHosts: Set<String> = emptySet()
+
     private val HOSTS = setOf(
         "popads.net",
         "popcash.net",
@@ -38,10 +47,16 @@ object PopunderHosts {
         "clickadu.com",
     )
 
-    /** True when [host] is (or is a subdomain of) a known popunder host. */
+    /**
+     * True when [host] is (or is a subdomain of) a known popunder
+     * host: the parsed $document/$popup set when lists have loaded,
+     * the built-in set before that. The two sets are never merged —
+     * a stale parsed set must not linger beside the fallback.
+     */
     fun isDocumentHost(host: String): Boolean {
         val h = host.lowercase()
         if (h.isEmpty()) return false
-        return HOSTS.any { h == it || h.endsWith(".$it") }
+        val set = parsedDocHosts.ifEmpty { HOSTS }
+        return set.any { h == it || h.endsWith(".$it") }
     }
 }

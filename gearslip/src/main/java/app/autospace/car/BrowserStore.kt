@@ -170,6 +170,38 @@ object BrowserStore {
         AppSettings.putString(context, KEY_AD_BLOCK, on.toString())
     }
 
+    // ---- Filter lists (r85) ----
+    /** The driver's own network rules, one UserBlockRules line per line. */
+    private const val KEY_USER_NET = "browser_user_net"
+    /** The driver's own cosmetic rules, one UserBlockRules line per line.
+     *  Parsed by the engine when present; no add-UI in v1 (there is no
+     *  element picker on the car surface), so this key only ever fills
+     *  if a future round adds one. */
+    private const val KEY_USER_COSMETIC = "browser_user_cosmetic"
+
+    fun userNetRaw(context: Context): String =
+        AppSettings.getString(context, KEY_USER_NET, "")
+
+    fun userCosmeticRaw(context: Context): String =
+        AppSettings.getString(context, KEY_USER_COSMETIC, "")
+
+    /** Appends one network rule line unless it is already stored. */
+    fun addUserNetRule(context: Context, line: String) {
+        if (line.isBlank()) return
+        val lines = userNetRaw(context).lineSequence()
+            .filter { it.isNotBlank() }.toMutableList()
+        if (lines.contains(line)) return
+        lines.add(line)
+        AppSettings.putString(context, KEY_USER_NET, lines.joinToString("\n"))
+    }
+
+    /** Removes one network rule line (exact match). */
+    fun removeUserNetRule(context: Context, line: String) {
+        val lines = userNetRaw(context).lineSequence()
+            .filter { it.isNotBlank() && it != line }.toList()
+        AppSettings.putString(context, KEY_USER_NET, lines.joinToString("\n"))
+    }
+
     fun desktopForHost(context: Context, host: String): Boolean {
         if (host.isBlank()) return false
         val raw = AppSettings.getString(context, KEY_DESKTOP_SITES, "")
