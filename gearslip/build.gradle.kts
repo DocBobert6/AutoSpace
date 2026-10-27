@@ -47,9 +47,9 @@ android {
         applicationId = "app.autospace"
         minSdk = 31
         targetSdk = 37
-        versionCode = 60
+        versionCode = 61
         // -PgearslipVersionName=0.1.99-test makes a build that thinks it's older, to try the updater.
-        versionName = project.findProperty("gearslipVersionName")?.toString() ?: "0.4.49-alpha"
+        versionName = project.findProperty("gearslipVersionName")?.toString() ?: "0.4.50-alpha"
         manifestPlaceholders["appLabel"] = "AutoSpace"
         // Where opted-in phones send their daily usage note: the stats-worker/ Worker's address,
         // set as gearslipStatsUrl in gradle.properties. Left empty, nothing is ever sent.
@@ -201,4 +201,5 @@ tasks.withType<KotlinJvmCompile>().configureEach {
         jvmTarget.set(JvmTarget.JVM_21)
     }
 }
+
 
