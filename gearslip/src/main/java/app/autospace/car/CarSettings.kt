@@ -115,6 +115,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_LIVE_SWAP = "car_live_swap"
     private const val KEY_CARD_CLEARANCE = "car_card_clearance"
     private const val KEY_PANE_COLLAPSE = "car_pane_collapse"
+    private const val KEY_ICON_PACK = "car_icon_pack"
+    private const val KEY_ICON_OVERRIDES = "car_icon_overrides"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -189,6 +191,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     /** Id of the [GsTheme] controls are drawn in; an unknown id falls back to the default. */
     val uiTheme: StateFlow<String> = uiThemeFlow
     private val pinnedFlow = MutableStateFlow<Set<String>>(emptySet())
+    private val iconPackFlow = MutableStateFlow<String?>(null)
+    private val iconOverridesFlow = MutableStateFlow<Map<String, String>>(emptyMap())
     private val appOrderFlow = MutableStateFlow<List<String>>(emptyList())
     private val experimentalFeaturesFlow = MutableStateFlow(false)
     private val systemSpeechFlow = MutableStateFlow(false)
@@ -263,6 +267,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     /** Flattened component names of the apps long-pressed onto the nav bar as shortcuts. */
     val pinnedApps: StateFlow<Set<String>> = pinnedFlow
+
+    /** Package of the selected icon pack, or null for the apps' own icons. */
+    val iconPack: StateFlow<String?> = iconPackFlow
+
+    /** Per-app icon overrides: component id -> pack drawable name. */
+    val iconOverrides: StateFlow<Map<String, String>> = iconOverridesFlow
 
     /** The launcher's order once the driver has moved a tile; empty keeps the grouped default. */
     val appOrder: StateFlow<List<String>> = appOrderFlow
@@ -606,6 +616,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             .split(",").filter { it.isNotEmpty() }.toSet()
         appOrderFlow.value = AppSettings.getString(app, KEY_APP_ORDER, "")
             .split(",").filter { it.isNotEmpty() }
+        iconPackFlow.value = AppSettings.getString(app, KEY_ICON_PACK, "").ifEmpty { null }
+        iconOverridesFlow.value = decodeOverrides(AppSettings.getString(app, KEY_ICON_OVERRIDES, ""))
         experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
@@ -980,5 +992,19 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setAppOrder(ids: List<String>) {
         appOrderFlow.value = ids
         AppSettings.putString(app, KEY_APP_ORDER, ids.joinToString(","))
+    }
+
+    /** The icon pack's package, or null for the apps' own icons. */
+    fun setIconPack(pkg: String?) {
+        iconPackFlow.value = pkg
+        AppSettings.putString(app, KEY_ICON_PACK, pkg ?: "")
+    }
+
+    /** Sets (or, with null, clears) one app's per-pack icon override. */
+    fun setIconOverride(componentId: String, drawable: String?) {
+        val next = if (drawable == null) iconOverridesFlow.value - componentId
+            else iconOverridesFlow.value + (componentId to drawable)
+        iconOverridesFlow.value = next
+        AppSettings.putString(app, KEY_ICON_OVERRIDES, encodeOverrides(next))
     }
 }

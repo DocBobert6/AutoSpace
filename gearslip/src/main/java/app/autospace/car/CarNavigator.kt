@@ -118,6 +118,14 @@ class CarNavigator(startId: String) {
 
     fun dismissAppMenu() { appMenu = null }
 
+    /** Component id of the app whose per-app icon picker is open, or null. */
+    var iconPickerFor by mutableStateOf<String?>(null)
+        private set
+
+    fun showIconPicker(componentId: String) { iconPickerFor = componentId }
+
+    fun dismissIconPicker() { iconPickerFor = null }
+
     fun media() { push(CarScreen.Media, "Media") }
 
     fun videoPlayer(urls: List<String>, titles: List<String?>, index: Int) { push(CarScreen.VideoPlayer(urls, titles, index), "Video") }

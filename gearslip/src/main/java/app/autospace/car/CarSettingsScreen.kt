@@ -48,7 +48,9 @@ import app.autospace.car.theme.GsThemes
 import app.autospace.AppSettings
 import app.autospace.ui.CertSummary
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.runtime.rememberCoroutineScope
 
 /**
  * Settings that make sense while sitting in the car. The web page URL is edited here, with the
@@ -352,6 +354,10 @@ private fun AppearancePage() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
+    // r81 icon packs: after Pairs, before Map day/night — the other
+    // appearance choice that changes how apps look.
+    IconPackSection()
+
     ChoiceRow(
         "Map day/night",
         listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
@@ -363,6 +369,50 @@ private fun AppearancePage() {
         listOf(Units.AUTO to "Auto", Units.IMPERIAL to "Imperial (mi, ft, °F)", Units.METRIC to "Metric (km, m, °C)"),
         units,
     ) { CarSettings.setUnits(it) }
+}
+
+/**
+ * r81 icon packs: the Appearance picker. Lists every installed app
+ * carrying an appfilter.xml, plus System icons (no pack). Picking a
+ * pack re-skins the launcher grid, the pinned row, and the nav bar
+ * shortcuts at once — they all draw through LauncherCache entries —
+ * so the pick rescans the launcher on IO right away instead of
+ * waiting for the next car session's rescan.
+ *
+ * A stored pack that is no longer installed reads as System icons,
+ * which is what is actually showing (the scan falls back the same
+ * way), so the highlighted chip never lies. While the pack scan is
+ * still running the list is just System icons, and the highlight
+ * settles once it lands.
+ */
+@Composable
+private fun IconPackSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val storedPack by CarSettings.iconPack.collectAsState()
+    var packs by remember { mutableStateOf<List<IconPackInfo>>(emptyList()) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        packs = withContext(Dispatchers.IO) { installedIconPacks(context) }
+    }
+    val selected = storedPack?.takeIf { pkg -> packs.any { it.packageName == pkg } }
+    ChoiceRow(
+        "Icon pack",
+        listOf(null to "System icons") + packs.map { it.packageName to it.label },
+        selected,
+    ) { pack ->
+        CarSettings.setIconPack(pack)
+        scope.launch { withContext(Dispatchers.IO) { warmLauncherApps(context) } }
+    }
+    Text(
+        "App icons from an installed icon pack, when one is picked — " +
+            "pack icon first, the app's own icon when the pack has none " +
+            "for it. Built-in tiles keep their glyphs, and notifications " +
+            "keep the app's real icon. Long-press an app and choose " +
+            "Change icon to pick a different icon from the pack for " +
+            "just that app.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

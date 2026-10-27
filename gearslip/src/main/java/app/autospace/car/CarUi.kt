@@ -523,6 +523,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps())
+                IconPickerSheet(navigator)
                 if (safetyWarningSeen) CarWhatsNew()
                 // Brightness dim, over everything except the brightness sheet itself:
                 // a black overlay with no input handling, so touches pass straight

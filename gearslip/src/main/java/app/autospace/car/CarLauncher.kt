@@ -122,6 +122,22 @@ internal object LauncherCache {
         fun iconOf(pkg: String) = runCatching {
             context.packageManager.getApplicationIcon(pkg).toBitmap(128, 128).asImageBitmap()
         }.getOrNull()
+        // r81 icon packs: the selected pack's mapping, loaded once per
+        // scan. Null when no pack is selected or the pack is gone — the
+        // fallback below then draws system icons, never blanks.
+        val packPkg = CarSettings.iconPack.value
+        val packMapping = packPkg?.let { loadIconPackMapping(context, it) }
+        val overrides = CarSettings.iconOverrides.value
+        // Per-app override first, then the pack's auto-map, then the
+        // app's own icon; a pack drawable that fails to load falls
+        // through to the system icon the same way.
+        fun packedIcon(componentId: String?, pkg: String): ImageBitmap? {
+            val drawable = packMapping?.let { resolvePackDrawable(overrides, it, componentId, pkg) }
+            if (drawable != null && packPkg != null) {
+                packIconBitmap(context, packPkg, drawable)?.let { return it }
+            }
+            return iconOf(pkg)
+        }
 
         val navApps = CarAppCatalog.installed(context)
         val mediaApps = MediaCatalog.installed(context)
@@ -144,13 +160,13 @@ internal object LauncherCache {
             .filter { !(KnownApps.screenBroken(it.component.packageName) && KnownApps.playerWorks(it.component.packageName)) }
             .map {
                 val label = if (it.component.packageName in mediaPackages) "${it.label} · Browse" else it.label
-                Entry(label, iconOf(it.component.packageName), template = it)
+                Entry(label, packedIcon(it.component.flattenToString(), it.component.packageName), template = it)
             }
-        val media = mediaApps.map { Entry(it.label, iconOf(it.component.packageName), media = it) }
+        val media = mediaApps.map { Entry(it.label, packedIcon(it.component.flattenToString(), it.component.packageName), media = it) }
         // A messenger that is also a car media app keeps only its player tile.
         val messaging = messagingApps
             .filter { it.packageName !in mediaPackages }
-            .map { Entry(it.label, iconOf(it.packageName), messaging = it) }
+            .map { Entry(it.label, packedIcon(MESSAGING_PREFIX + it.packageName, it.packageName), messaging = it) }
         return (nav + media + messaging).sortedBy { it.label.lowercase() }.also { flow.value = it }
     }
 }

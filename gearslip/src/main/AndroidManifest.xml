@@ -122,6 +122,17 @@
     <intent>
         <action android:name="android.intent.action.TTS_SERVICE" />
     </intent>
+    <!-- r81 icon packs: without these, packs that declare only a theme
+         intent are invisible under package visibility rules, so the
+         Appearance picker could never list them. The two standard
+         theme declarations (ADW's action, Apex/Go/Nova's category). -->
+    <intent>
+        <action android:name="org.adw.launcher.THEMES" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.anddoes.launcher.THEME" />
+    </intent>
 </queries>
 
 <application

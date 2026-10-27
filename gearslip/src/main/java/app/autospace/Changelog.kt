@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            49, "0.4.38-alpha",
+            listOf(
+                "App icons can come from an installed icon pack, picked on the Appearance page — and long-pressing an app offers Change icon to pick a different pack icon for just that app.",
+            ),
+        ),
+        Release(
             48, "0.4.37-alpha",
             listOf(
                 "A new Pairs section on the Appearance page sets the button style and color scheme together in one tap — Pitlane, Verve, or Frost + Neutral — and the two pickers still work on their own.",
