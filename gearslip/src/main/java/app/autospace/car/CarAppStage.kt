@@ -80,6 +80,9 @@ fun CarAppStage(
                 top = if (embedded) 0.dp else CHROME_BAR,
                 bottom = chromeBottomClearance,
             ),
+            // r78: the connected app's package, for the collapsed
+            // pane's logo (its own launcher icon).
+            appPackage = connection.appPackage,
         )
         if (!embedded) ChromeBar(status, onDisconnect, Modifier.align(Alignment.TopCenter))
     }

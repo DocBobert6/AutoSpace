@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            46, "0.4.35-alpha",
+            listOf(
+                "The map pane can collapse down to the app's logo, as an experimental option — tapping the logo brings it back, and the pane still counts as open while collapsed.",
+            ),
+        ),
+        Release(
             45, "0.4.34-alpha",
             listOf(
                 "On short screens, the floating media card can step aside so the map's edge buttons stay tappable, as an experimental option.",

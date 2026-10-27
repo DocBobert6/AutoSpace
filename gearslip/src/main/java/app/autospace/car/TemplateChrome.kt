@@ -26,13 +26,22 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
+import androidx.core.graphics.drawable.toBitmap
+import app.autospace.R
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,7 +81,12 @@ import app.autospace.host.text
  * [ContentTemplate].
  */
 @Composable
-fun TemplateChrome(template: Template?, modifier: Modifier = Modifier) {
+fun TemplateChrome(
+    template: Template?,
+    modifier: Modifier = Modifier,
+    /** r78: the connected app's package, for the collapsed pane's logo; null draws the fallback glyph. */
+    appPackage: String? = null,
+) {
     when (template) {
         null -> Unit
         is NavigationTemplate -> NavigationChrome(template, modifier)
@@ -461,30 +475,93 @@ private fun MapPaneLayout(
     actionStrip: androidx.car.app.model.ActionStrip?,
     mapActionStrip: androidx.car.app.model.ActionStrip?,
     fullHeight: Boolean = false,
+    /** r78: the connected app's package, for the collapsed pane's logo. */
+    appPackage: String? = null,
     pane: @Composable () -> Unit,
 ) {
     // Pan mode hands the whole screen to the map, leaving only its own controls.
     val pan by CarServices.nav.panMode.collectAsState()
     val meridian = meridianChromeNow()
     val edgeActions = (actionStrip?.actions.orEmpty() + mapActionStrip?.actions.orEmpty()).map { it.identity() }.toSet()
+    // r78: pane-collapse gate + session state. The collapse lives in
+    // a remember keyed on the connected app's package: it survives
+    // pan excursions (this layout stays composed; pan only hides
+    // the pane content) and content refreshes of the same pane, and
+    // resets when the app changes, when the pane leaves composition
+    // (template change, app stop), or on restart — session-only,
+    // never persisted. The five call sites are five distinct
+    // composition locations, so the site needs no key of its own.
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val paneCollapseToggle by CarSettings.paneCollapseEnabled.collectAsState()
+    val collapseOn = paneCollapseNow(experimentalOn, paneCollapseToggle)
+    var collapsed by remember(appPackage) { mutableStateOf(false) }
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
         if (!pan) {
-            ChromeSurface(
-                Modifier
-                    .align(Alignment.TopStart)
-                    .padding(12.dp)
-                    .width(maxOf(maxWidth * CONTENT_PANE_FRACTION - 12.dp, 232.dp))
-                    .let { if (fullHeight) it.height(maxHeight - 24.dp) else it.heightIn(max = maxHeight - 24.dp) },
-                // r54 (D2): the outer pane shape routes through the style rule,
-                // so Pitlane squares it (6dp) in BOTH branches; the frosted branch
-                // re-routes idempotently, and the inner 0dp fills below stay 0dp
-                // flush in opaque mode and passthrough when frosted.
-                shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
-                shadowElevation = 6.dp,
-                frosted = true,
-                meridian = meridian,
-            ) {
-                androidx.compose.runtime.CompositionLocalProvider(LocalMapEdgeActions provides edgeActions) { pane() }
+            if (collapseOn && collapsed) {
+                // Collapsed: the pane is just its app's logo, tappable
+                // to re-expand. Same surface treatment as the pane
+                // (frosted/Meridian, 6dp) at the pane's own corner, so
+                // it reads as the pane folded, not a new control. The
+                // edge controls below are outside this branch and
+                // stay drawn — collapsing never hides template chrome.
+                ChromeSurface(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                        .clickable(onClickLabel = "Expand pane") { collapsed = false },
+                    shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                    shadowElevation = 6.dp,
+                    frosted = true,
+                    meridian = meridian,
+                ) {
+                    Box(Modifier.padding(10.dp), contentAlignment = Alignment.Center) {
+                        PaneCollapseLogo(appPackage)
+                    }
+                }
+            } else {
+                ChromeSurface(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(12.dp)
+                        .width(maxOf(maxWidth * CONTENT_PANE_FRACTION - 12.dp, 232.dp))
+                        .let { if (fullHeight) it.height(maxHeight - 24.dp) else it.heightIn(max = maxHeight - 24.dp) },
+                    // r54 (D2): the outer pane shape routes through the style rule,
+                    // so Pitlane squares it (6dp) in BOTH branches; the frosted branch
+                    // re-routes idempotently, and the inner 0dp fills below stay 0dp
+                    // flush in opaque mode and passthrough when frosted.
+                    shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                    shadowElevation = 6.dp,
+                    frosted = true,
+                    meridian = meridian,
+                ) {
+                    if (collapseOn) {
+                        // Collapse affordance: one row above the app's
+                        // content, right-aligned, so it never covers a
+                        // header action. Gate-on only — gate-off renders
+                        // exactly today's surface, byte-identical. In
+                        // Meridian the button wears the pane-header
+                        // treatment (strip-green disc, white glyph).
+                        Column {
+                            Row(
+                                Modifier.fillMaxWidth().padding(end = 4.dp, top = 4.dp),
+                                horizontalArrangement = Arrangement.End,
+                            ) {
+                                GsIconButton(
+                                    Icons.Filled.KeyboardArrowUp,
+                                    "Collapse pane",
+                                    { collapsed = true },
+                                    colors = if (meridian) GsColors(
+                                        Color(MapChromeColors.MERIDIAN_STRIP),
+                                        Color.White,
+                                    ) else gsColors(GsTone.Neutral),
+                                )
+                            }
+                            androidx.compose.runtime.CompositionLocalProvider(LocalMapEdgeActions provides edgeActions) { pane() }
+                        }
+                    } else {
+                        androidx.compose.runtime.CompositionLocalProvider(LocalMapEdgeActions provides edgeActions) { pane() }
+                    }
+                }
             }
         }
         androidx.compose.runtime.CompositionLocalProvider(LocalMeridianChrome provides meridian) {
@@ -497,6 +574,34 @@ private fun MapPaneLayout(
     }
 }
 
+/**
+ * r78: the collapsed pane's logo — the connected app's own launcher
+ * icon, the same source AppIconBadge uses (and the icon NavHomeButton
+ * wears while a map runs). A package with no loadable icon falls
+ * back to the navigation glyph, so the collapsed button is never
+ * blank.
+ */
+@Composable
+private fun PaneCollapseLogo(appPackage: String?) {
+    val context = LocalContext.current
+    val icon = remember(appPackage) {
+        appPackage?.let {
+            runCatching {
+                context.packageManager.getApplicationIcon(it).toBitmap(96, 96).asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    if (icon != null) {
+        Image(icon, null, Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)))
+    } else {
+        Icon(
+            ImageVector.vectorResource(R.drawable.navigation_24),
+            null,
+            Modifier.size(32.dp),
+        )
+    }
+}
+
 @Composable
 private fun MapWithContentChrome(template: MapWithContentTemplate, modifier: Modifier) {
     MapPaneLayout(
@@ -504,6 +609,7 @@ private fun MapWithContentChrome(template: MapWithContentTemplate, modifier: Mod
         template.actionStrip,
         template.mapController?.mapActionStrip,
         fullHeight = template.contentTemplate.needsFullHeight(),
+        appPackage = appPackage,
     ) {
         // A pane floating over the map is a place or a route the app is proposing, so its one
         // action - Start - counts itself down rather than waiting to be pressed; the same pane
@@ -518,6 +624,7 @@ private fun MapChrome(template: MapTemplate, modifier: Modifier) {
         modifier,
         template.actionStrip,
         template.mapController?.mapActionStrip,
+        appPackage = appPackage,
     ) {
         ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
             Column {
@@ -535,7 +642,7 @@ private fun MapChrome(template: MapTemplate, modifier: Modifier) {
 
 @Composable
 private fun PlaceListNavigationChrome(template: PlaceListNavigationTemplate, modifier: Modifier) {
-    MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip) {
+    MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip, appPackage = appPackage) {
         ListPane(
             headerTitle(template.header, template.title.text()),
             template.header?.startHeaderAction ?: template.headerAction,
@@ -548,7 +655,7 @@ private fun PlaceListNavigationChrome(template: PlaceListNavigationTemplate, mod
 
 @Composable
 private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifier) {
-    MapPaneLayout(modifier, template.actionStrip, null) {
+    MapPaneLayout(modifier, template.actionStrip, null, appPackage = appPackage) {
         ListPane(
             template.title.text(),
             template.headerAction,
@@ -562,7 +669,7 @@ private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifie
 /** Route choices down the side, with the app's "start" action pinned under them. */
 @Composable
 private fun RoutePreviewChrome(template: RoutePreviewNavigationTemplate, modifier: Modifier) {
-    MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip) {
+    MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip, appPackage = appPackage) {
         ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
             Column {
                 HeaderBar(

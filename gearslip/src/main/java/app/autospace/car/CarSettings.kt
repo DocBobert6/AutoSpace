@@ -114,6 +114,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_BROWSER_PIP = "car_browser_pip"
     private const val KEY_LIVE_SWAP = "car_live_swap"
     private const val KEY_CARD_CLEARANCE = "car_card_clearance"
+    private const val KEY_PANE_COLLAPSE = "car_pane_collapse"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -209,6 +210,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val browserPipFlow = MutableStateFlow(false)
     private val liveSwapFlow = MutableStateFlow(false)
     private val cardClearanceFlow = MutableStateFlow(false)
+    private val paneCollapseFlow = MutableStateFlow(false)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -477,6 +479,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val cardClearanceEnabled: StateFlow<Boolean> = cardClearanceFlow
 
     /**
+     * r78: map-pane collapse to logo. Off by default; it joins no
+     * master switch: the r53 master never touches it, and it never
+     * affects the master's derived state. It still sits behind the
+     * general experimental opt-in: the pane collapses only when
+     * [experimentalFeaturesEnabled] and this are both on (see
+     * [paneCollapseNow]). The toggle never rewrites other state.
+     */
+    val paneCollapseEnabled: StateFlow<Boolean> = paneCollapseFlow
+
+    /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
      * Re-enabled only from the widget settings row, or by turning the
@@ -629,6 +641,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         browserPipFlow.value = AppSettings.getString(app, KEY_BROWSER_PIP, "false") == "true"
         liveSwapFlow.value = AppSettings.getString(app, KEY_LIVE_SWAP, "false") == "true"
         cardClearanceFlow.value = AppSettings.getString(app, KEY_CARD_CLEARANCE, "false") == "true"
+        paneCollapseFlow.value = AppSettings.getString(app, KEY_PANE_COLLAPSE, "false") == "true"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -766,6 +779,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setCardClearanceEnabled(on: Boolean) {
         cardClearanceFlow.value = on
         AppSettings.putString(app, KEY_CARD_CLEARANCE, on.toString())
+    }
+
+    fun setPaneCollapseEnabled(on: Boolean) {
+        paneCollapseFlow.value = on
+        AppSettings.putString(app, KEY_PANE_COLLAPSE, on.toString())
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {
