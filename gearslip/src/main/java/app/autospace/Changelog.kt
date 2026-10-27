@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            28, "0.4.17-alpha",
+            listOf(
+                "The media card now shows a soft, blurred version of the album art behind it.",
+            ),
+        ),
+        Release(
             27, "0.4.16-alpha",
             listOf(
                 "Widgets stay up while navigating now, instead of hiding whenever the map's own guidance or panels appear: the column moves to the passenger side so the turn card stays clear.",

@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -38,6 +40,7 @@ import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.gsShape
+import app.autospace.media.ArtBlur
 import app.autospace.media.MediaArt
 import app.autospace.media.NowPlaying
 
@@ -201,6 +204,14 @@ internal val FloatingCardDismissGlyphSize: Dp = 20.dp
  * language, never claimed as blur. The fill is translucent so the map
  * reads through faintly; the content itself stays opaque for glanceability.
  *
+ * r60 (A27): when album art is available, a blurred copy of it sits
+ * behind the card as its background — under the frosted fill, never
+ * over it, so the 0.88 fill stays the only translucent layer and
+ * legibility is unchanged from today. This is NOT live map blur (still
+ * impossible over the SurfaceView): the art is our own image, blurred
+ * once per art change and cached by its URI. No art means no background
+ * image: the card keeps exactly today's background.
+ *
  * Turn-zone clearance is structural, not numeric: the card is bottom-
  * anchored in the Home Box while the nav bar (which carries the turn pill
  * on non-Home screens) sits below that Box in-flow, and on Home the nav
@@ -222,85 +233,109 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scheme = MaterialTheme.colorScheme
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
+    // r60 (A27): blurred background, computed once per art change —
+    // remember keys on the resolved art and its URI, and URI art is
+    // additionally cached in ArtBlur, so track changes do not jank and
+    // leaving and re-entering composition does not recompute. Null art
+    // (or a failed blur) means no background image: the card keeps
+    // exactly today's background.
+    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri) } }
     // r48: the card takes the style corner under Verve (24dp) via the
     // look-fed card rule; every other style keeps its exact shape.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     // r46: the card reads the shared frosted panel surface — same shape,
     // elevation, fill, texture, border and Pitch hairline as before, now
     // shared with the frosted map chrome so the two cannot drift.
-    FrostedPanelSurface(
-        shape = cardShape,
-        elevation = 6.dp,
-        modifier = modifier,
-    ) {
-        Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                // Info area only: tap-through to the full player. Transport,
-                // progress, and dismiss are controls, so they sit outside
-                // this clickable and never open the player by accident.
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { navigator.media() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Box(
+    Box(modifier) {
+        // r60 (A27): the blurred art sits behind the card, clipped to the
+        // card's shape, and the frosted surface draws its 0.88 fill over
+        // it — the fill is the scrim, so no second translucent layer is
+        // added and the art can never hurt legibility. The art is drawn
+        // at the card's size (matchParentSize) and cropped, then upscaled
+        // with bilinear filtering; the working copy is only 64px, so the
+        // upscale stays smooth. Null art (or a failed blur) draws nothing:
+        // the card keeps exactly today's background.
+        blurredArt?.let {
+            Image(
+                it, null,
+                Modifier.matchParentSize().clip(cardShape),
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Medium,
+            )
+        }
+        FrostedPanelSurface(
+            shape = cardShape,
+            elevation = 6.dp,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Info area only: tap-through to the full player. Transport,
+                    // progress, and dismiss are controls, so they sit outside
+                    // this clickable and never open the player by accident.
+                    Row(
                         Modifier
-                            .size(56.dp)
+                            .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(scheme.surface),
+                            .clickable { navigator.media() },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        // r42: the title wraps to two lines — the extra
-                        // height that makes the narrower card slightly
-                        // taller. Artist and source stay single-line.
-                        // Very long titles still truncate at two lines.
-                        Text(
-                            now.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            now.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                        val source = media.appLabel?.takeIf { it.isNotEmpty() } ?: now.album
-                        if (source.isNotEmpty()) {
+                        Box(
+                            Modifier
+                                .size(56.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(scheme.surface),
+                        ) {
+                            art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            // r42: the title wraps to two lines — the extra
+                            // height that makes the narrower card slightly
+                            // taller. Artist and source stay single-line.
+                            // Very long titles still truncate at two lines.
                             Text(
-                                source, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
+                                now.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                now.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
+                            val source = media.appLabel?.takeIf { it.isNotEmpty() } ?: now.album
+                            if (source.isNotEmpty()) {
+                                Text(
+                                    source, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
+                    // r42: visually smaller dismiss — a 36dp drawn button
+                    // with a 20dp glyph, centered in the KEPT 44dp touch
+                    // target. GsIconButton draws its touch target at its own
+                    // size, so the outer Box carries the 44dp target; both
+                    // call dismiss, which is an idempotent boolean set, so a
+                    // tap lands exactly one dismissal either way.
+                    Box(
+                        Modifier.size(FloatingCardDismissTouchSize).clickable { FloatingHomeState.dismiss() },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        GsIconButton(
+                            Icons.Filled.Close, "Hide media card", FloatingHomeState::dismiss,
+                            size = FloatingCardDismissDrawnSize, iconSize = FloatingCardDismissGlyphSize,
+                        )
+                    }
                 }
-                // r42: visually smaller dismiss — a 36dp drawn button
-                // with a 20dp glyph, centered in the KEPT 44dp touch
-                // target. GsIconButton draws its touch target at its own
-                // size, so the outer Box carries the 44dp target; both
-                // call dismiss, which is an idempotent boolean set, so a
-                // tap lands exactly one dismissal either way.
-                Box(
-                    Modifier.size(FloatingCardDismissTouchSize).clickable { FloatingHomeState.dismiss() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    GsIconButton(
-                        Icons.Filled.Close, "Hide media card", FloatingHomeState::dismiss,
-                        size = FloatingCardDismissDrawnSize, iconSize = FloatingCardDismissGlyphSize,
-                    )
+                if (now.durationMs > 0) {
+                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false)
+                } else {
+                    Spacer(Modifier.height(6.dp))
                 }
+                // r42: card transport follows the nav-bar button shape
+                // (gsShape()), not circles — the full player and CompactPlayer
+                // pass nothing and keep their circles.
+                TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth(), shape = gsShape())
             }
-            if (now.durationMs > 0) {
-                PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false)
-            } else {
-                Spacer(Modifier.height(6.dp))
-            }
-            // r42: card transport follows the nav-bar button shape
-            // (gsShape()), not circles — the full player and CompactPlayer
-            // pass nothing and keep their circles.
-            TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth(), shape = gsShape())
         }
     }
 }
