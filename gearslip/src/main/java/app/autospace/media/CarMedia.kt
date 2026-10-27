@@ -711,6 +711,36 @@ class CarMedia(private val context: Context) {
         compat?.transportControls?.setRepeatMode(next)
     }
 
+    /**
+     * r71 (A28): the car media apps that have an active session right now,
+     * in catalog (label) order, for the floating card's session swipe. An
+     * app counts only when its published session has named a track and is
+     * not none, stopped, or errored — the [NowPlaying.isActive] rule, read
+     * off the system session directly. Apps outside the catalog cannot be
+     * connected to, so they are never listed, and a session that was never
+     * playing is never invented into the list. Empty when notification
+     * access is not held: reading another app's session needs it, and a
+     * swipe with no list is a no-op, never a crash.
+     */
+    fun activeSwipeSessions(): List<MediaApp> {
+        val manager = context.getSystemService(MediaSessionManager::class.java) ?: return emptyList()
+        val listener = ComponentName(context, GearslipNotificationListener::class.java)
+        val active = try {
+            manager.getActiveSessions(listener)
+        } catch (e: SecurityException) {
+            GearslipLog.w("media: cannot list sessions without notification access")
+            return emptyList()
+        }
+        val installed = MediaCatalog.installed(context)
+        return installed.filter { app ->
+            val session = active.firstOrNull { it.packageName == app.component.packageName } ?: return@filter false
+            val title = session.metadata?.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE)
+                ?.takeIf { it.isNotEmpty() }
+                ?: session.metadata?.getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+            isSwipeSessionActive(title, session.playbackState?.state ?: PlaybackState.STATE_NONE)
+        }
+    }
+
     fun disconnect() {
         connecting = null
         runCatching { searchBrowser?.disconnect() }

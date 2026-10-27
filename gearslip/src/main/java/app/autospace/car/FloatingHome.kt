@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,10 +27,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -40,9 +43,13 @@ import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.gsShape
+import kotlin.math.abs
 import app.autospace.media.ArtBlur
 import app.autospace.media.MediaArt
 import app.autospace.media.NowPlaying
+import app.autospace.media.SwipeSession
+import app.autospace.media.nextSwipeSession
+import app.autospace.media.orderedSwipeSessions
 
 /**
  * Floating Home (r34): the map full-bleed with media as a floating card over
@@ -193,6 +200,14 @@ internal val FloatingCardDismissDrawnSize: Dp = 36.dp
 internal val FloatingCardDismissGlyphSize: Dp = 20.dp
 
 /**
+ * r71 (A28): minimum horizontal travel for an info-area drag to count as a
+ * session swipe rather than a tap wobble. 24dp sits well above touch slop
+ * and well below a deliberate swipe; below it the drag is ignored and the
+ * tap (open the full player) proceeds exactly as today.
+ */
+internal val FloatingCardSessionSwipeMinDp: Dp = 24.dp
+
+/**
  * The floating media card. Ordinary Compose surface in the window layer
  * above the map SurfaceView (same mechanism as HomeFrameOverlay) — no
  * map-pipeline, VirtualDisplay, or CarAppStage changes, so it survives
@@ -246,6 +261,8 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // r46: the card reads the shared frosted panel surface — same shape,
     // elevation, fill, texture, border and Pitch hairline as before, now
     // shared with the frosted map chrome so the two cannot drift.
+    // r71 (A28): the swipe threshold in pixels, resolved once per composition.
+    val swipeThresholdPx = with(LocalDensity.current) { FloatingCardSessionSwipeMinDp.toPx() }
     Box(modifier) {
         // r60 (A27): the blurred art sits behind the card, clipped to the
         // card's shape, and the frosted surface draws its 0.88 fill over
@@ -276,7 +293,44 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                         Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable { navigator.media() },
+                            .clickable { navigator.media() }
+                            .pointerInput(swipeThresholdPx) {
+                                // r71 (A28): the session swipe lives on the
+                                // info row ONLY. The seek bar below already
+                                // owns horizontal drags (tap + drag seek)
+                                // and the transport row owns taps, so a
+                                // card-wide swipe would fight the seek bar;
+                                // the info row today only taps (open the
+                                // full player), and a drag cancels that tap,
+                                // so the two never fire together. Dismissal
+                                // is a tap on the X button, never a swipe,
+                                // so a session swipe can never dismiss the
+                                // card and a dismiss can never switch
+                                // sessions. Swipe left = next session,
+                                // swipe right = previous, wrapping; below
+                                // the threshold nothing happens and the tap
+                                // proceeds. Without notification access the
+                                // list is empty and the swipe is a no-op.
+                                var totalDx = 0f
+                                detectHorizontalDragGestures(
+                                    onDragStart = { totalDx = 0f },
+                                    onDragEnd = {
+                                        if (abs(totalDx) >= swipeThresholdPx) {
+                                            val apps = media.activeSwipeSessions()
+                                            val ordered = orderedSwipeSessions(
+                                                apps.map { SwipeSession(it.component.packageName, it.label) },
+                                            )
+                                            val current = CarServices.mediaApp.value?.component?.packageName
+                                            val target = nextSwipeSession(current, ordered, forward = totalDx < 0f)
+                                            val app = target?.let { t ->
+                                                apps.firstOrNull { it.component.packageName == t.packageName }
+                                            }
+                                            if (app != null) CarServices.openMedia(app)
+                                        }
+                                    },
+                                    onDragCancel = { totalDx = 0f },
+                                ) { _, dragAmount -> totalDx += dragAmount }
+                            },
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
