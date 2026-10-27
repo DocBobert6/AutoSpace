@@ -105,9 +105,19 @@ fun UpdateCard() {
     Spacer(Modifier.height(16.dp))
 }
 
+/** The Idle line, on its own so it is unit-testable: unit tests run as a debug
+ * build, so [statusLine] always takes the debug branch there. Auto-checks off must not
+ * read as "checks once a day" on the Home row.
+ */
+internal fun idleStatusLine(autoCheck: Boolean, debug: Boolean): String = when {
+    debug -> "Debug builds check only when you tap Check now"
+    !autoCheck -> "Automatic checks are off"
+    else -> "AutoSpace checks once a day"
+}
+
 /** What the update check found, in a line. */
-private fun statusLine(state: State): String = when (state) {
-    State.Idle -> if (BuildConfig.DEBUG) "Debug builds check only when you tap Check now" else "AutoSpace checks once a day"
+internal fun statusLine(state: State, autoCheck: Boolean): String = when (state) {
+    State.Idle -> idleStatusLine(autoCheck, BuildConfig.DEBUG)
     State.Checking -> "Checking…"
     State.UpToDate -> "You have the latest version"
     is State.Available -> "Version ${state.release.version} is out"
@@ -138,7 +148,7 @@ internal fun UpdateRow() {
     SettingsRow(
         "Updates",
         Modifier.clickable { open = true },
-        subtitle = listOfNotNull(channelName, statusLine(state)).joinToString(" · "),
+        subtitle = listOfNotNull(channelName, statusLine(state, UpdateChecker.autoCheckEnabled(context))).joinToString(" · "),
         icon = Icons.Filled.CheckCircle,
         trailing = {
             Icon(
@@ -185,7 +195,7 @@ private fun UpdateDialog(
         text = {
             Column {
                 Text(
-                    "Version ${BuildConfig.VERSION_NAME}. ${statusLine(state)}.",
+                    "Version ${BuildConfig.VERSION_NAME}. ${statusLine(state, auto)}.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 12.dp),
                 )

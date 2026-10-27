@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            36, "0.4.25-alpha",
+            listOf(
+                "Update status shows on the phone's main page, next to What's new.",
+            ),
+        ),
+        Release(
             35, "0.4.24-alpha",
             listOf(
                 "The assistant's listening glow can span the full width of the screen, as an experimental option.",

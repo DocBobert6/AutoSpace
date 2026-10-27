@@ -121,6 +121,12 @@ fun HomeScreen(
                             icon = Icons.Filled.Star,
                             trailing = { Arrow() },
                         )
+                        // r68: update status alongside "What's new", in the same card
+                        // treatment. The row itself only navigates: tapping it opens the
+                        // existing Updates dialog, where Download/Install live behind the
+                        // car-connected guard. It never offers an install of its own, so
+                        // it cannot offer one while car-connected.
+                        UpdateRow()
                     }
                     if (live) {
                         Spacer(Modifier.height(16.dp))
