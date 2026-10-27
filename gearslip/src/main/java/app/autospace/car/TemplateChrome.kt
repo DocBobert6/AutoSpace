@@ -90,11 +90,11 @@ fun TemplateChrome(
     when (template) {
         null -> Unit
         is NavigationTemplate -> NavigationChrome(template, modifier)
-        is MapWithContentTemplate -> MapWithContentChrome(template, modifier)
-        is MapTemplate -> MapChrome(template, modifier)
-        is PlaceListNavigationTemplate -> PlaceListNavigationChrome(template, modifier)
-        is RoutePreviewNavigationTemplate -> RoutePreviewChrome(template, modifier)
-        is PlaceListMapTemplate -> PlaceListMapChrome(template, modifier)
+        is MapWithContentTemplate -> MapWithContentChrome(template, modifier, appPackage)
+        is MapTemplate -> MapChrome(template, modifier, appPackage)
+        is PlaceListNavigationTemplate -> PlaceListNavigationChrome(template, modifier, appPackage)
+        is RoutePreviewNavigationTemplate -> RoutePreviewChrome(template, modifier, appPackage)
+        is PlaceListMapTemplate -> PlaceListMapChrome(template, modifier, appPackage)
         else -> ContentTemplate(template, modifier)
     }
 }
@@ -603,7 +603,7 @@ private fun PaneCollapseLogo(appPackage: String?) {
 }
 
 @Composable
-private fun MapWithContentChrome(template: MapWithContentTemplate, modifier: Modifier) {
+private fun MapWithContentChrome(template: MapWithContentTemplate, modifier: Modifier, appPackage: String? = null) {
     MapPaneLayout(
         modifier,
         template.actionStrip,
@@ -619,7 +619,7 @@ private fun MapWithContentChrome(template: MapWithContentTemplate, modifier: Mod
 }
 
 @Composable
-private fun MapChrome(template: MapTemplate, modifier: Modifier) {
+private fun MapChrome(template: MapTemplate, modifier: Modifier, appPackage: String? = null) {
     MapPaneLayout(
         modifier,
         template.actionStrip,
@@ -641,7 +641,7 @@ private fun MapChrome(template: MapTemplate, modifier: Modifier) {
 }
 
 @Composable
-private fun PlaceListNavigationChrome(template: PlaceListNavigationTemplate, modifier: Modifier) {
+private fun PlaceListNavigationChrome(template: PlaceListNavigationTemplate, modifier: Modifier, appPackage: String? = null) {
     MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip, appPackage = appPackage) {
         ListPane(
             headerTitle(template.header, template.title.text()),
@@ -654,7 +654,7 @@ private fun PlaceListNavigationChrome(template: PlaceListNavigationTemplate, mod
 }
 
 @Composable
-private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifier) {
+private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifier, appPackage: String? = null) {
     MapPaneLayout(modifier, template.actionStrip, null, appPackage = appPackage) {
         ListPane(
             template.title.text(),
@@ -668,7 +668,7 @@ private fun PlaceListMapChrome(template: PlaceListMapTemplate, modifier: Modifie
 
 /** Route choices down the side, with the app's "start" action pinned under them. */
 @Composable
-private fun RoutePreviewChrome(template: RoutePreviewNavigationTemplate, modifier: Modifier) {
+private fun RoutePreviewChrome(template: RoutePreviewNavigationTemplate, modifier: Modifier, appPackage: String? = null) {
     MapPaneLayout(modifier, template.actionStrip, template.mapActionStrip, appPackage = appPackage) {
         ChromeSurface(Modifier, shape = androidx.compose.foundation.shape.RoundedCornerShape(0.dp), frosted = true) {
             Column {
