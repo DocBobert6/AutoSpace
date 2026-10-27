@@ -159,8 +159,8 @@ fun gsLook(): ControlLook {
  * r46: the pure container-alpha rule behind [gsSurface], kept free of
  * Composition so it is unit-testable. Frosted fills pin their alpha
  * (see [FrostedChromeAlpha]) — the style's containerAlpha must not
- * dilute them, so Frost (0.97) would otherwise read 0.92 × 0.97 =
- * 0.8924. [keepAlpha] skips the scaling; everything else keeps
+ * dilute them, so Frost (0.97) would otherwise read 0.88 × 0.97 =
+ * 0.8536. [keepAlpha] skips the scaling; everything else keeps
  * today's multiplication exactly.
  */
 fun scaledContainerAlpha(inputAlpha: Float, lookAlpha: Float, keepAlpha: Boolean): Float =

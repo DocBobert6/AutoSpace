@@ -225,7 +225,7 @@ fun GsSheetSurface(
  * so the fill is translucent and the map reads through faintly — at
  * exactly the card's level, whatever the style or scheme.
  *
- * The see-through level is PINNED: [FrostedChromeAlpha] (0.92) is the
+ * The see-through level is PINNED: [FrostedChromeAlpha] (0.88) is the
  * base fill alpha on every style and every scheme. Corners, depth and
  * texture still follow the style (panel corners through [gsButtonShape],
  * Pitlane weave/bevel/rivets only under Pitlane, each surface keeping
@@ -237,11 +237,21 @@ fun GsSheetSurface(
  * The fill is drawn exactly once per pane: a frosted surface provides
  * [LocalInsideFrostedChrome] to its content, and any ChromeSurface
  * inside it renders as a pass-through ([ChromeSurfaceMode.PASSTHROUGH])
- * instead of stacking a second translucent fill on top (two 0.92 fills
- * would read ~0.994 opaque, not 0.92). [chromeSurfaceMode] is that
+ * instead of stacking a second translucent fill on top (two 0.88 fills
+ * would read ~0.986 opaque, not 0.88). [chromeSurfaceMode] is that
  * rule, pure so it is unit-testable.
  */
-const val FrostedChromeAlpha = 0.92f
+const val FrostedChromeAlpha = 0.88f
+
+/**
+ * r56: nav-bar item fill alpha — the bar's frost level plus a small fixed offset, so
+ * buttons, tiles, and other items on the nav bar always read slightly less transparent
+ * than the bar beneath them. Derived from [FrostedChromeAlpha], never a second pinned
+ * value, so the relationship holds at any future float level; coerced at 1.0 so a
+ * future level near solid cannot push an item alpha past opaque. Only the fill goes
+ * translucent — glyph and text colors stay full-strength at every call site.
+ */
+val NavBarItemAlpha: Float = (FrostedChromeAlpha + 0.05f).coerceAtMost(1f)
 
 /** Which surface a ChromeSurface draws: opaque as today, frosted, or nothing but its content. */
 enum class ChromeSurfaceMode { OPAQUE, FROSTED, PASSTHROUGH }

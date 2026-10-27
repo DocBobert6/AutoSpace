@@ -7,7 +7,7 @@ import org.junit.Test
 
 /**
  * r46: pins for the frosted map chrome. The see-through level is
- * constant across styles and schemes (the card's 0.92), the surface
+ * constant across styles and schemes (the card's 0.88), the surface
  * rule draws the fill exactly once per pane, and panel corners follow
  * the style rule — so a style or scheme change can never silently
  * re-tint, re-alpha, or double-stack the chrome.
@@ -16,16 +16,16 @@ class FrostedChromeTest {
 
     @Test
     fun frostedAlphaIsCardParity() {
-        assertEquals(0.92f, FrostedChromeAlpha, 0.0f)
+        assertEquals(0.88f, FrostedChromeAlpha, 0.0f)
     }
 
     @Test
     fun scaledContainerAlphaKeepsFrostedExactly() {
-        // Frost (0.97) must not dilute the pinned 0.92; every other
+        // Frost (0.97) must not dilute the pinned 0.88; every other
         // style (1.0) passes it through unchanged either way.
-        assertEquals(0.92f, scaledContainerAlpha(0.92f, 0.97f, true), 0.0f)
-        assertEquals(0.92f, scaledContainerAlpha(0.92f, 1f, true), 0.0f)
-        assertEquals(0.92f, scaledContainerAlpha(0.92f, 1f, false), 0.0f)
+        assertEquals(0.88f, scaledContainerAlpha(0.88f, 0.97f, true), 0.0f)
+        assertEquals(0.88f, scaledContainerAlpha(0.88f, 1f, true), 0.0f)
+        assertEquals(0.88f, scaledContainerAlpha(0.88f, 1f, false), 0.0f)
     }
 
     @Test

@@ -73,6 +73,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import app.autospace.R
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.FrostedChromeAlpha
+import app.autospace.car.theme.NavBarItemAlpha
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
@@ -645,7 +647,7 @@ internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NA
 /**
  * r43 overlay: when true the bar floats over the map instead of sitting
  * below Home in-flow, so it takes the floating card's frosted treatment
- * (surfaceContainerLow at 0.92 alpha, Pitlane-only texture, same 6dp
+ * (surfaceContainerLow at 0.88 alpha, Pitlane-only texture, same 6dp
  * elevation, same Pitch-gated hairline) — an opaque bar would hide the
  * map behind it and defeat the round, and true transparency would
  * drown the buttons in a busy moving map. The texture modifier gates
@@ -672,7 +674,7 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
     Surface(
         modifier = modifier.padding(horizontal = NAV_BAR_FLOAT_HORIZONTAL, vertical = NAV_BAR_FLOAT_VERTICAL),
         shape = gsShape(),
-        color = if (overlay) MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.92f)
+        color = if (overlay) MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
             else MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -856,8 +858,8 @@ private fun NavAppIcon(
     GsIconBox(
         onClick,
         Modifier.size(52.dp),
-        colors = if (showing) GsColors(scheme.primary, scheme.onPrimary)
-        else GsColors(scheme.surfaceVariant, scheme.onSurfaceVariant),
+        colors = if (showing) GsColors(scheme.primary.copy(alpha = NavBarItemAlpha), scheme.onPrimary)
+        else GsColors(scheme.surfaceVariant.copy(alpha = NavBarItemAlpha), scheme.onSurfaceVariant),
         latched = showing,
         onLongClick = onLongClick,
     ) {
@@ -889,8 +891,11 @@ private fun NavChip(selected: Boolean, onClick: () -> Unit, content: @Composable
 @Composable
 private fun navColors(selected: Boolean): GsColors {
     val s = MaterialTheme.colorScheme
-    return if (selected) GsColors(s.primary, s.onPrimary)
-    else GsColors(s.surfaceContainerHighest, s.onSurface)
+    // r56: item fills sit one fixed offset above the bar's frost level, so buttons and
+    // tiles always read slightly less transparent than the bar beneath them, at any
+    // future float level. Content colors stay full-strength; only fills go translucent.
+    return if (selected) GsColors(s.primary.copy(alpha = NavBarItemAlpha), s.onPrimary)
+    else GsColors(s.surfaceContainerHighest.copy(alpha = NavBarItemAlpha), s.onSurface)
 }
 
 /**
@@ -961,7 +966,7 @@ private fun NavTurnPill(turn: NextTurn, onClick: () -> Unit) {
     GsIconBox(
         onClick,
         Modifier.widthIn(max = 340.dp).height(44.dp),
-        colors = gsColors(GsTone.Primary),
+        colors = gsColors(GsTone.Primary).let { it.copy(container = it.container.copy(alpha = NavBarItemAlpha)) },
     ) {
         Row(
             Modifier.padding(NAV_ITEM_PADDING),
@@ -1037,7 +1042,7 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
             .fillMaxWidth()
             .height(52.dp),
         shape = gsButtonShape(RoundedCornerShape(14.dp)),
-        color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
+        color = (if (selected) scheme.primaryContainer else scheme.secondaryContainer).copy(alpha = NavBarItemAlpha),
         contentColor = onPill,
     ) {
         Box {

@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            24, "0.4.13-alpha",
+            listOf(
+                "Floating surfaces are a little more see-through throughout: map chrome, the floating media card, widget cards, and the floating nav bar now sit at a lighter frost level, so the map reads through more.",
+                "Buttons and tiles on the nav bar stay slightly less see-through than the bar itself, so they keep standing out against it.",
+            ),
+        ),
+        Release(
             23, "0.4.12-alpha",
             listOf(
                 "The assistant answers faster: replies now speak sentence by sentence as they arrive instead of waiting for the whole answer, and the reply text appears on screen as it streams.",

@@ -32,6 +32,7 @@ import androidx.car.app.navigation.model.RoutingInfo
 import app.autospace.car.theme.GsIconButton
 import kotlin.math.roundToInt
 import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsLook
@@ -315,7 +316,7 @@ private fun WidgetCard(onClick: () -> Unit, content: @Composable () -> Unit) {
         modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape).clickable { onClick() },
         shape = cardShape,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.92f),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,

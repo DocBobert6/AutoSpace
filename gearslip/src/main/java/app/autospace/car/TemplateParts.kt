@@ -98,7 +98,7 @@ import app.autospace.host.text
  * meant. That stays the default — and r46 adds one experimental exception for map chrome:
  * with the frosted-map-chrome toggle on, a surface marked [frosted] draws the shared
  * frosted treatment ([FrostedPanelSurface], the floating media card's own surface at the
- * pinned 0.92 alpha) instead of the opaque fill, with its shape routed through gsButtonShape
+ * pinned 0.88 alpha) instead of the opaque fill, with its shape routed through gsButtonShape
  * and its elevation kept. Surfaces inside a frosted pane pass through ([ChromeSurfaceMode])
  * so the fill is drawn exactly once per pane, and full-screen content surfaces (which never
  * pass [frosted]) stay opaque whatever the toggle says.
@@ -322,14 +322,14 @@ private fun CarRow.isBlank(): Boolean =
  *
  * r46: the map's edge controls pass [frosted], and with the frosted-map-chrome toggle on
  * their fill becomes the shared frosted fill — the scheme's surfaceContainerLow (primary
- * while active, the app's own color when it names one) at the pinned 0.92 alpha, with the
+ * while active, the app's own color when it names one) at the pinned 0.88 alpha, with the
  * style's depth language from GsIconBox and the alpha kept exactly (Frost's 0.97 container
  * scaling must not dilute it — see [scaledContainerAlpha]). Shapes, sizes and behavior
  * are untouched; every other caller keeps today's opaque button.
  *
  * r54: HeaderBar passes [mapHeader] for header buttons on the map, and
  * those follow the frosted treatment with neutral colors only
- * (surfaceContainerLow at 0.92, onSurface glyphs) — never primary, never
+ * (surfaceContainerLow at 0.88, onSurface glyphs) — never primary, never
  * an app-named color — except a Search button's magnifier glyph, which
  * may use primary. The opaque branch is unchanged.
  */
