@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            38, "0.4.27-alpha",
+            listOf(
+                "Quick settings panel on the car screen: a Do Not Disturb tile that silences the phone itself, plus brightness and a shortcut to Settings.",
+            ),
+        ),
+        Release(
             37, "0.4.26-alpha",
             listOf(
                 "The floating media card can dock to the start, center, or end of the bottom edge, as an experimental option.",

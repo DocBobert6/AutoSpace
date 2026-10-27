@@ -37,6 +37,7 @@ import app.autospace.GearslipLog
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.BrightnessMedium
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -451,6 +452,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - effectiveBrightness)))
                 }
                 if (BrightnessSheetVisibility.state.value) BrightnessSheet()
+                if (QuickTilesVisibility.state.value) QuickTilesSheet(onOpenSettings = { QuickTilesVisibility.close(); navigator.settings() })
                 }
             }
           }
@@ -760,6 +762,13 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
                 // not reach the projected display, so this is the only brightness
                 // control the driver has.
                 GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
+                Spacer(Modifier.width(6.dp))
+                // r70: quick settings, next to brightness — the shade is a
+                // small panel, not a full Quick Settings rewrite, and there is
+                // no battery/signal entry on this bar to hang it on (the
+                // battery is text inside the clock chip, and no signal icon
+                // exists), so it gets its own button rather than a fake one.
+                GsIconButton(Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open)
                 Spacer(Modifier.width(6.dp))
                 if (app.autospace.BuildConfig.DEBUG) {
                     DebugBuildBadge()
