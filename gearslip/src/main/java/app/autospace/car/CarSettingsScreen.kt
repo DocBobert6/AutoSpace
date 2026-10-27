@@ -69,6 +69,7 @@ fun CarSettingsScreen() {
     // page -> menu -> exit, never trapping the user on a page. One extra
     // tap per setting (menu -> page) is the intended cost of shorter pages.
     var page by remember { mutableStateOf<SettingsCategory?>(null) }
+    val webPageKeyboardSlot = remember { WebPageKeyboardSlot() }
     val navigator = LocalCarNavigator.current
     DisposableEffect(page) {
         navigator.backInterceptor = if (page != null) {
@@ -127,13 +128,24 @@ fun CarSettingsScreen() {
                     SettingsCategory.APPEARANCE -> AppearancePage()
                     SettingsCategory.AUDIO_AND_CALLS -> AudioAndCallsPage()
                     SettingsCategory.VOICE -> VoicePage()
-                    SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage()
+                    SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage(webPageKeyboardSlot)
                     SettingsCategory.SCREEN_AND_SHARING -> ScreenAndSharingPage()
                     SettingsCategory.CONNECTION -> ConnectionPage()
                     SettingsCategory.ABOUT_AND_EXPERIMENTAL -> AboutAndExperimentalPage()
                     null -> Unit
                 }
             }
+        }
+        // r82: screen-level keyboard slot (see WebPageKeyboardSlot) —
+        // below the scrollable, so it sits flush at the bottom and
+        // never scrolls with the page.
+        webPageKeyboardSlot.request?.let { req ->
+            CarKeyboard(
+                text = req.text,
+                onTextChange = req.onTextChange,
+                onSubmit = req.onSubmit,
+                onDismiss = req.onDismiss,
+            )
         }
     }
 }
@@ -597,10 +609,10 @@ private fun VoicePage() {
 }
 
 @Composable
-private fun BrowserAndVideoPage() {
+private fun BrowserAndVideoPage(webPageKeyboardSlot: WebPageKeyboardSlot) {
     val playerSkipSec by CarSettings.playerSkipSec.collectAsState()
 
-    WebPageSetting()
+    WebPageSetting(webPageKeyboardSlot)
 
     ChoiceRow(
         "Video skip seconds",
@@ -1564,16 +1576,60 @@ private fun ExperimentalFeatureRow(
 }
 
 /** The URL (or raw HTML) the Browser app shows. Edited with [CarKeyboard] - no phone in hand needed. */
+/**
+ * r82: the web-page keyboard renders at the settings-screen level,
+ * outside the scrollable page column (same shape as the launcher): a
+ * glide drag on keys inside a scrollable scrolls the page and carries
+ * the keyboard away mid-trace. [WebPageSetting] owns the field and
+ * posts a request here when its field is tapped; the screen renders
+ * the keyboard below the scrollable and clears the request when the
+ * setting leaves composition, so a category switch never strands a
+ * keyboard on another page. The request's text is refreshed on every
+ * keystroke (see WebPageSetting), so the screen-level keyboard never
+ * types from a stale snapshot (r49).
+ */
+private class WebPageKeyboardSlot {
+    var request by mutableStateOf<WebPageKeyboardRequest?>(null)
+}
+
+private data class WebPageKeyboardRequest(
+    val text: String,
+    val onTextChange: (String) -> Unit,
+    val onSubmit: () -> Unit,
+    val onDismiss: () -> Unit,
+)
+
 @Composable
-private fun WebPageSetting() {
+private fun WebPageSetting(keyboardSlot: WebPageKeyboardSlot) {
     val context = LocalContext.current
-    var editing by remember { mutableStateOf(false) }
     var url by remember { mutableStateOf(AppSettings.startupUrl(context)) }
+    // r82: editing IS the slot request (single source of truth) — the
+    // keyboard renders at the screen level, outside the scrollable
+    // page column, so a glide can never scroll it away. Leaving this
+    // section clears the request (below), so the keyboard never
+    // survives onto another settings page.
+    val editing = keyboardSlot.request != null
+    DisposableEffect(Unit) { onDispose { keyboardSlot.request = null } }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Web page", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Surface(
-            onClick = { editing = !editing },
+            onClick = {
+                keyboardSlot.request = if (keyboardSlot.request == null) {
+                    WebPageKeyboardRequest(
+                        text = url,
+                        onTextChange = {
+                            url = it
+                            AppSettings.setStartupUrl(context, it)
+                            keyboardSlot.request = keyboardSlot.request?.copy(text = it)
+                        },
+                        onSubmit = { keyboardSlot.request = null },
+                        onDismiss = { keyboardSlot.request = null },
+                    )
+                } else {
+                    null
+                }
+            },
             // Phase 7 kit: bright grouped-card colour, 20dp radius (r29:
             // squared under Pit Lane like the other sheet cards).
             shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
@@ -1593,17 +1649,9 @@ private fun WebPageSetting() {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (editing) {
-            CarKeyboard(
-                url,
-                onTextChange = {
-                    url = it
-                    AppSettings.setStartupUrl(context, it)
-                },
-                onSubmit = { editing = false },
-                onDismiss = { editing = false },
-            )
-        }
+        // r82: no keyboard here anymore — it renders at the screen
+        // level from the slot request (see WebPageKeyboardSlot), below
+        // the scrollable, flush at the bottom.
     }
 }
 

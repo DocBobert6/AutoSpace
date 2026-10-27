@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            50, "0.4.39-alpha",
+            listOf(
+                "The car keyboard gets a rework: glides no longer jump on scrollable screens, the keyboard sits flush at the bottom while typing, learned words rank by how often you use them, mistyped words still get a tap-to-accept suggestion, and holding backspace deletes repeatedly.",
+            ),
+        ),
+        Release(
             49, "0.4.38-alpha",
             listOf(
                 "App icons can come from an installed icon pack, picked on the Appearance page — and long-pressing an app offers Change icon to pick a different pack icon for just that app.",

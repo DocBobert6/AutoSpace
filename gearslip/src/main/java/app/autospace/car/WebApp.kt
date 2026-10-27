@@ -2046,83 +2046,90 @@ private fun BrowserStartPage(
 ) {
     var searchText by remember { mutableStateOf("") }
     var searchEditing by remember { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        Text(
-            "New tab",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-        )
-        Box(
-            Modifier.fillMaxWidth().height(44.dp)
-                .frostBar(gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)), 6.dp)
-                .clickable { searchEditing = true }
-                .padding(horizontal = 16.dp),
-            contentAlignment = Alignment.CenterStart,
+    // r82: the keyboard sits OUTSIDE the scrollable column (same shape as
+    // the launcher): a glide drag on keys inside a scrollable scrolls the
+    // page and carries the keyboard away mid-trace — the scrollable
+    // claims the gesture in the Initial pass, before any child-side
+    // consume runs. No child-side consume can beat that ordering.
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            KeyboardFieldText(
-                searchText,
-                "Search or type an address…",
-                showCaret = searchEditing,
-            )
-        }
-        Text(
-            "Search uses your search engine setting (No-AI DuckDuckGo unless you set a custom one).",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text("Pins", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-        if (pins.isEmpty()) {
             Text(
-                "No pins yet. Pin a page from Saved & history (the star button) and it shows here.",
+                "New tab",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+            )
+            Box(
+                Modifier.fillMaxWidth().height(44.dp)
+                    .frostBar(gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)), 6.dp)
+                    .clickable { searchEditing = true }
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                KeyboardFieldText(
+                    searchText,
+                    "Search or type an address…",
+                    showCaret = searchEditing,
+                )
+            }
+            Text(
+                "Search uses your search engine setting (No-AI DuckDuckGo unless you set a custom one).",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        } else {
-            pins.forEach { pin ->
-                Row(
-                    Modifier.fillMaxWidth()
-                        .background(
-                            MaterialTheme.colorScheme.surfaceContainerHigh,
-                            gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
-                        )
-                        .clickable { onOpen(pin.url) }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            pin.title.takeIf { it.isNotBlank() }
-                                ?: runCatching { Uri.parse(pin.url).host ?: pin.url }.getOrDefault(pin.url),
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            pin.url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+            Text("Pins", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (pins.isEmpty()) {
+                Text(
+                    "No pins yet. Pin a page from Saved & history (the star button) and it shows here.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                pins.forEach { pin ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                            )
+                            .clickable { onOpen(pin.url) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                pin.title.takeIf { it.isNotBlank() }
+                                    ?: runCatching { Uri.parse(pin.url).host ?: pin.url }.getOrDefault(pin.url),
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                pin.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
                     }
-                    GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
                 }
             }
-        }
-        Text("Bookmarks", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
-        if (bookmarks.isEmpty()) {
-            Text(
-                "No bookmarks yet.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            bookmarks.forEach { url ->
-                GsButton(onClick = { onOpen(url) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
-                    Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("Bookmarks", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (bookmarks.isEmpty()) {
+                Text(
+                    "No bookmarks yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                bookmarks.forEach { url ->
+                    GsButton(onClick = { onOpen(url) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                        Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }

@@ -211,7 +211,7 @@ fun CarKeyboard(
     val context = LocalContext.current
     var stripEnabled by remember { mutableStateOf(KeyboardSuggestions.isStripEnabled(context)) }
     var showKeyboardSettings by remember { mutableStateOf(false) }
-    var learned by remember { mutableStateOf(KeyboardSuggestions.learnedWords(context)) }
+    var learned by remember { mutableStateOf(KeyboardSuggestions.learnedEntries(context)) }
     var clearedNotice by remember { mutableStateOf(false) }
     val wordlist = remember { KeyboardSuggestions.loadWordlist(context) }
     // r50: glide typing state (see [GlideMatcher] + [GlideState]). The live rank
@@ -226,14 +226,14 @@ fun CarKeyboard(
     DisposableEffect(glideState) { onDispose { glideState.clearKeys() } }
     val glideRank by remember {
         derivedStateOf {
-            if (glideState.active) GlideMatcher.rank(glideState.pathKeys, learned.asReversed(), wordlist) else emptyList()
+            if (glideState.active) GlideMatcher.rank(glideState.pathKeys, KeyboardSuggestions.rankedLearnedWords(learned), wordlist) else emptyList()
         }
     }
     var prevText by remember { mutableStateOf(text) }
     LaunchedEffect(text) {
         KeyboardSuggestions.completedWord(prevText, text)?.let { word ->
             if (KeyboardSuggestions.learnWord(context, word)) {
-                learned = KeyboardSuggestions.learnedWords(context)
+                learned = KeyboardSuggestions.learnedEntries(context)
             }
         }
         prevText = text
@@ -245,7 +245,7 @@ fun CarKeyboard(
     val submitWithLearn = {
         KeyboardSuggestions.currentWord(text).takeIf { it.length >= 2 }?.let { word ->
             if (KeyboardSuggestions.learnWord(context, word.lowercase())) {
-                learned = KeyboardSuggestions.learnedWords(context)
+                learned = KeyboardSuggestions.learnedEntries(context)
             }
         }
         onSubmit()
@@ -259,7 +259,7 @@ fun CarKeyboard(
     // Insert replaces the current word like a strip tap; a weak trace offers
     // its candidates on the strip instead of inserting.
     val onGlideLift = { path: List<Char> ->
-        when (val result = GlideMatcher.resolve(path, learned.asReversed(), wordlist)) {
+        when (val result = GlideMatcher.resolve(path, KeyboardSuggestions.rankedLearnedWords(learned), wordlist)) {
             is GlideMatcher.Result.Insert -> {
                 keyInsert.insertWord(result.word, capitalize = shifted)
                 shifted = false
@@ -419,8 +419,8 @@ fun CarKeyboard(
                             onGlideLift = onGlideLift,
                         )
                     }
-                    Key("⌫", Modifier.weight(1.4f)) {
-                        if (text.isNotEmpty()) onTextChange(text.dropLast(1))
+                    BackspaceKey(Modifier.weight(1.4f)) {
+                        if (latestText.value.isNotEmpty()) latestChange(latestText.value.dropLast(1))
                     }
                 }
 
@@ -596,6 +596,101 @@ private fun Key(
         // r30: the Gboard keycap read — a crisp bottom edge inside the key's
         // own clipped shape (see [KeyEdge]).
         KeyEdge(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+    }
+}
+
+/**
+ * r82: backspace with hold-to-repeat. A plain tap deletes exactly one
+ * character (on lift, as before); holding past
+ * [BackspaceRepeatPolicy.INITIAL_DELAY_MS] deletes repeatedly every
+ * [BackspaceRepeatPolicy.REPEAT_INTERVAL_MS] until lift. The interval is
+ * constant, never accelerating — predictable while driving. The repeat
+ * job is a child of this pointer-input block's scope, so it dies with
+ * the block (key leaves composition, stream torn down) as well as on
+ * lift/cancel; a consumed lift cancels without deleting, so a
+ * passenger-gate pop mid-hold can never strand a deleting job.
+ * Deletion reads the current text through [latestDelete]'s indirection
+ * (r49), never a snapshot. Plain [Key] is untouched: its GsIconBox
+ * onClick would also fire on lift after a hold, double-deleting.
+ */
+internal object BackspaceRepeatPolicy {
+    const val INITIAL_DELAY_MS = 500L
+    const val REPEAT_INTERVAL_MS = 100L
+
+    /** A lift deletes only when the hold never reached the repeat phase. */
+    fun liftDeletes(repeatFired: Boolean): Boolean = !repeatFired
+}
+
+@Composable
+private fun BackspaceKey(
+    modifier: Modifier = Modifier,
+    onDeleteOnce: () -> Unit,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val latestDelete = rememberUpdatedState(onDeleteOnce)
+    val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
+    val shape = gsButtonShape(RoundedCornerShape(12.dp))
+    Box(
+        modifier
+            .height(LocalKeyHeight.current)
+            .gsSurface(colors.container, shape, colors.border, pressed)
+            .semantics { role = Role.Button; onClick { latestDelete.value(); true } }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val down = awaitFirstDown()
+                        pressed = true
+                        var repeatFired = false
+                        val repeatJob = launch {
+                            delay(BackspaceRepeatPolicy.INITIAL_DELAY_MS)
+                            repeatFired = true
+                            while (true) {
+                                latestDelete.value()
+                                delay(BackspaceRepeatPolicy.REPEAT_INTERVAL_MS)
+                            }
+                        }
+                        try {
+                            var done = false
+                            var cancelled = false
+                            while (!done && !cancelled) {
+                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                                if (!change.pressed) {
+                                    if (change.isConsumed) cancelled = true else done = true
+                                } else {
+                                    // Moves during a hold claim nothing
+                                    // else: like r52's key moves, they
+                                    // must not scroll an ancestor while
+                                    // the finger is down.
+                                    change.consume()
+                                }
+                            }
+                            repeatJob.cancel()
+                            if (done && BackspaceRepeatPolicy.liftDeletes(repeatFired)) latestDelete.value()
+                        } finally {
+                            repeatJob.cancel()
+                            pressed = false
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "⌫",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+            }
+        }
+        KeyEdge(colors.container)
     }
 }
 

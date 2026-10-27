@@ -22,7 +22,7 @@ package app.autospace.car
  *   intended word for a strip tap, but never auto-inserts it.
  * - Ranking: learned words first (most-recent-first input; within learned, and within
  *   the wordlist, anchor-perfect beats anchor-missed, fewer skipped keys beats more,
- *   and the input order — recency for learned, frequency for the wordlist — breaks
+ *   and the input order — frequency-then-recency for learned, frequency for the wordlist — breaks
  *   ties, via a stable sort).
  * - Confidence gate ([resolve]): insert only when the best candidate is
  *   anchor-perfect AND either it is a learned word (the user's own vocabulary is a

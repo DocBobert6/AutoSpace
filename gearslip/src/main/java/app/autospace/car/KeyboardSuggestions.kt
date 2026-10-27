@@ -19,12 +19,19 @@ import app.autospace.AppSettings
  * Deliberately NOT here: autocorrect/auto-replace (tap-to-accept only),
  * next-word prediction (needs a model), contact-name suggestions (privacy),
  * clipboard history (current clipboard item only).
+ *
+ * r82: learned words carry a use count (see [LearnedEntry]) and rank by
+ * frequency, then recency; the strip also offers distance-1 typo
+ * corrections as tap-to-accept candidates, never as auto-replace.
  */
 object KeyboardSuggestions {
 
     const val MAX_CANDIDATES = 3
     const val MIN_WORD_LENGTH = 2
     const val MAX_LEARNED_WORDS = 500
+
+    /** Typed words shorter than this get prefix matches only, never near-misses. */
+    const val NEAR_MISS_MIN_LENGTH = 3
 
     private val BOUNDARY_CHARS = setOf(' ', '.', ',', '!', '?', ';', ':')
 
@@ -63,24 +70,93 @@ object KeyboardSuggestions {
     }
 
     /**
-     * Up to [MAX_CANDIDATES] completions for [word]: learned words first
-     * (most-recent-first), then the frequency wordlist in order. Only words
-     * LONGER than the typed prefix qualify — suggesting the word already
-     * typed is noise. Case-insensitive; learned words are stored lowercase.
+     * Up to [MAX_CANDIDATES] completions for [word], in tier order:
+     * exact-prefix learned words (frequency, then recency), exact-prefix
+     * wordlist words (frequency order), then — only when [word] is at
+     * least [NEAR_MISS_MIN_LENGTH] letters — distance-1 typo corrections
+     * (learned first, then wordlist). Only words LONGER than the typed
+     * prefix qualify for the prefix tiers — suggesting the word already
+     * typed is noise. A near-miss correction MAY be shorter than the
+     * typed word (an extra typed letter). Case-insensitive; learned
+     * words are stored lowercase. Every tier is tap-to-accept only:
+     * nothing here ever replaces text unasked (autocorrect stays off).
      */
-    fun candidates(word: String, learned: List<String>, wordlist: List<String>): List<String> {
+    fun candidates(word: String, learned: List<LearnedEntry>, wordlist: List<String>): List<String> {
         if (word.length < MIN_WORD_LENGTH) return emptyList()
         val lower = word.lowercase()
         val out = ArrayList<String>(MAX_CANDIDATES)
-        for (w in learned.asReversed()) {
+        fun offer(w: String) {
+            if (out.size < MAX_CANDIDATES && w !in out) out.add(w)
+        }
+        for (w in rankedLearnedWords(learned)) {
             if (out.size >= MAX_CANDIDATES) break
-            if (w.length > word.length && w.startsWith(lower) && w !in out) out.add(w)
+            if (w.length > word.length && w.startsWith(lower)) offer(w)
         }
         for (w in wordlist) {
             if (out.size >= MAX_CANDIDATES) break
-            if (w.length > word.length && w.startsWith(lower) && w !in out) out.add(w)
+            if (w.length > word.length && w.startsWith(lower)) offer(w)
+        }
+        if (word.length >= NEAR_MISS_MIN_LENGTH) {
+            for (w in rankedLearnedWords(learned)) {
+                if (out.size >= MAX_CANDIDATES) break
+                if (editDistanceOne(lower, w)) offer(w)
+            }
+            for (w in wordlist) {
+                if (out.size >= MAX_CANDIDATES) break
+                if (editDistanceOne(lower, w)) offer(w)
+            }
         }
         return out
+    }
+
+    /**
+     * True when [a] and [b] differ by exactly one edit: one insertion,
+     * deletion, substitution, or adjacent transposition, at any
+     * position. Inputs are lowercased here, so callers need not be.
+     * Exact equality is false (not a miss); anything beyond one edit
+     * is false. The length pre-check plus early exits keep the
+     * per-keystroke scan of the wordlist cheap.
+     */
+    fun editDistanceOne(a: String, b: String): Boolean {
+        val x = a.lowercase()
+        val y = b.lowercase()
+        if (x == y) return false
+        val n = x.length
+        val m = y.length
+        if (kotlin.math.abs(n - m) > 1) return false
+        if (n == m) {
+            var diffs = 0
+            var i = 0
+            while (i < n) {
+                if (x[i] != y[i]) {
+                    diffs++
+                    if (diffs == 1 && i + 1 < n && x[i] == y[i + 1] && x[i + 1] == y[i]) {
+                        i += 2
+                        continue
+                    }
+                    if (diffs > 1) return false
+                }
+                i++
+            }
+            return diffs == 1
+        }
+        val short = if (n < m) x else y
+        val long = if (n < m) y else x
+        var i = 0
+        var j = 0
+        var skipped = false
+        while (i < short.length && j < long.length) {
+            if (short[i] == long[j]) {
+                i++
+                j++
+            } else if (!skipped) {
+                skipped = true
+                j++
+            } else {
+                return false
+            }
+        }
+        return true
     }
 
     /**
@@ -118,24 +194,76 @@ object KeyboardSuggestions {
         AppSettings.setKeyboardSuggestionsEnabled(context, enabled)
     }
 
-    fun learnedWords(context: Context): List<String> {
-        val raw = AppSettings.getString(context, AppSettings.KEY_KEYBOARD_LEARNED_WORDS, "")
+    fun learnedWords(context: Context): List<String> =
+        learnedEntries(context).map { it.word }
+
+    /**
+     * Learned words in stored order (oldest last-use first), with use
+     * counts. A legacy bare `word` line decodes as count 1, so installs
+     * from before r82 migrate on their next learn — no migration step,
+     * and the next learnWord write rewrites the whole list in the new
+     * format. Malformed lines (empty word, bad or < 1 count) are skipped.
+     */
+    fun learnedEntries(context: Context): List<LearnedEntry> =
+        decodeLearnedEntries(AppSettings.getString(context, AppSettings.KEY_KEYBOARD_LEARNED_WORDS, ""))
+
+    /** Pure decode of the learned-words pref value (see [learnedEntries]). */
+    fun decodeLearnedEntries(raw: String): List<LearnedEntry> {
         if (raw.isEmpty()) return emptyList()
-        return raw.split('\n').filter { it.isNotEmpty() }
+        return raw.split('\n').mapNotNull { line ->
+            if (line.isEmpty()) return@mapNotNull null
+            val eq = line.indexOf('=')
+            if (eq < 0) {
+                LearnedEntry(line, 1)
+            } else {
+                val word = line.substring(0, eq)
+                val count = line.substring(eq + 1).toIntOrNull()
+                if (word.isEmpty() || count == null || count < 1) null else LearnedEntry(word, count)
+            }
+        }
     }
 
-    /** Learn [word] (already lowercased by [completedWord]); most-recent-last, capped. True if changed. */
+    /** Pure encode of learned entries to the pref value (one `word=count` line each). */
+    fun encodeLearnedEntries(entries: List<LearnedEntry>): String =
+        entries.joinToString("\n") { "${it.word}=${it.count}" }
+
+    /**
+     * Learn [word] (already lowercased by [completedWord]). An existing
+     * word gains a use AND moves to the end (most recent); a new word
+     * enters at count 1. The 500 cap still drops from the front, so the
+     * cap is a least-recently-used eviction — frequency affects RANKING
+     * only, never retention. True if the stored value changed.
+     */
     fun learnWord(context: Context, word: String): Boolean {
         if (word.length < MIN_WORD_LENGTH) return false
-        val words = learnedWords(context).toMutableList()
-        words.remove(word)
-        words.add(word)
-        while (words.size > MAX_LEARNED_WORDS) words.removeAt(0)
-        val joined = words.joinToString("\n")
+        val entries = learnedEntries(context).toMutableList()
+        val at = entries.indexOfFirst { it.word == word }
+        if (at >= 0) {
+            val entry = entries.removeAt(at)
+            entries.add(entry.copy(count = entry.count + 1))
+        } else {
+            entries.add(LearnedEntry(word, 1))
+        }
+        while (entries.size > MAX_LEARNED_WORDS) entries.removeAt(0)
+        val joined = encodeLearnedEntries(entries)
         if (joined == AppSettings.getString(context, AppSettings.KEY_KEYBOARD_LEARNED_WORDS, "")) return false
         AppSettings.putString(context, AppSettings.KEY_KEYBOARD_LEARNED_WORDS, joined)
         return true
     }
+
+    /**
+     * Learned words best-first for ranking: use count first, then
+     * recency (stored order is oldest last-use first, so later entries
+     * are more recent). A ten-times-used word outranks a once-used one
+     * however old; among equal counts the more recently used wins.
+     */
+    fun rankedLearnedWords(entries: List<LearnedEntry>): List<String> =
+        entries.withIndex()
+            .sortedWith(
+                compareByDescending<IndexedValue<LearnedEntry>> { it.value.count }
+                    .thenByDescending { it.index },
+            )
+            .map { it.value.word }
 
     fun clearLearnedWords(context: Context) {
         AppSettings.putString(context, AppSettings.KEY_KEYBOARD_LEARNED_WORDS, "")
@@ -158,5 +286,13 @@ object KeyboardSuggestions {
         return loaded
     }
 }
+
+/**
+ * A learned word with its use count. Stored as one `word=count` line
+ * per word in the learned-words pref (see
+ * [KeyboardSuggestions.learnedEntries]); a legacy bare `word` line
+ * decodes as count 1.
+ */
+data class LearnedEntry(val word: String, val count: Int)
 
 enum class DismissPlacement { IN_STRIP, IN_BOTTOM_ROW }

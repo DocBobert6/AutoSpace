@@ -46,11 +46,74 @@ class KeyboardSuggestionsTest {
 
     @Test
     fun candidatesPreferLearnedMostRecentFirstThenWordlistOrder() {
-        val learned = listOf("helios", "helmet")
+        // Equal counts: recency breaks the tie (stored order is oldest
+        // last-use first, so helmet, stored later, ranks first).
+        val learned = listOf(LearnedEntry("helios", 1), LearnedEntry("helmet", 1))
+        assertEquals(listOf("helmet", "helios", "hello"), KeyboardSuggestions.candidates("hel", learned, wordlist))
+    }
+
+    @Test
+    fun candidatesPreferFrequentLearnedOverRecent() {
+        // r82: frequency beats recency — helios, used five times but
+        // stored earlier, outranks helmet, used once but more recently.
+        val learned = listOf(LearnedEntry("helios", 5), LearnedEntry("helmet", 1))
+        assertEquals(listOf("helios", "helmet", "hello"), KeyboardSuggestions.candidates("hel", learned, wordlist))
+    }
+
+    @Test
+    fun decodeLearnedEntriesLegacyAndMalformed() {
         assertEquals(
-            listOf("helmet", "helios", "hello"),
-            KeyboardSuggestions.candidates("hel", learned, wordlist),
+            listOf(LearnedEntry("hello", 1), LearnedEntry("world", 3)),
+            KeyboardSuggestions.decodeLearnedEntries("hello\nworld=3"),
         )
+        // Malformed lines are skipped, never crash the strip.
+        assertEquals(
+            listOf(LearnedEntry("ok", 2)),
+            KeyboardSuggestions.decodeLearnedEntries("=5\nbad=x\nzero=0\n\nok=2"),
+        )
+        assertEquals(emptyList(), KeyboardSuggestions.decodeLearnedEntries(""))
+        assertEquals("a=1\nb=12", KeyboardSuggestions.encodeLearnedEntries(listOf(LearnedEntry("a", 1), LearnedEntry("b", 12))))
+    }
+
+    @Test
+    fun editDistanceOneRules() {
+        assertTrue(KeyboardSuggestions.editDistanceOne("hllo", "hello")) // insertion
+        assertTrue(KeyboardSuggestions.editDistanceOne("teh", "the")) // transposition
+        assertTrue(KeyboardSuggestions.editDistanceOne("bokk", "book")) // substitution
+        assertTrue(KeyboardSuggestions.editDistanceOne("helllo", "hello")) // deletion (extra letter)
+        assertTrue(!KeyboardSuggestions.editDistanceOne("hello", "hello")) // identical is not a miss
+        assertTrue(!KeyboardSuggestions.editDistanceOne("hello", "world")) // far apart
+        assertTrue(!KeyboardSuggestions.editDistanceOne("he", "hello")) // length gap > 1
+    }
+
+    @Test
+    fun candidatesOfferNearMissAfterExactPrefix() {
+        // "hllo": no exact-prefix match; "hello" is a distance-1 insertion.
+        assertEquals(listOf("hello"), KeyboardSuggestions.candidates("hllo", emptyList(), wordlist))
+        // "teh": transposition of "the"; "them"/"there" are two edits away.
+        assertEquals(listOf("the"), KeyboardSuggestions.candidates("teh", emptyList(), wordlist))
+    }
+
+    @Test
+    fun candidatesPrefixTierFillsBeforeNearMiss() {
+        // "hell": exact prefix "hello" first, then near-misses "help"/"held"
+        // (one substitution each), cap still 3.
+        assertEquals(listOf("hello", "help", "held"), KeyboardSuggestions.candidates("hell", emptyList(), wordlist))
+    }
+
+    @Test
+    fun candidatesNearMissLearnedBeforeWordlist() {
+        // Learned "hallo" (distance 1 from "hllo") outranks wordlist "hello".
+        val learned = listOf(LearnedEntry("hallo", 2))
+        assertEquals(listOf("hallo", "hello"), KeyboardSuggestions.candidates("hllo", learned, wordlist))
+    }
+
+    @Test
+    fun candidatesTwoLetterInputStaysPrefixOnly() {
+        // "hy" is distance 1 from "hey", but two-letter input never gets
+        // near-misses — too ambiguous. Three-letter "hye" does.
+        assertEquals(emptyList(), KeyboardSuggestions.candidates("hy", emptyList(), listOf("hey")))
+        assertEquals(listOf("hey"), KeyboardSuggestions.candidates("hye", emptyList(), listOf("hey")))
     }
 
     @Test
