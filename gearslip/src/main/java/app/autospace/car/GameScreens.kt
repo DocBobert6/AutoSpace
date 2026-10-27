@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedPanelSurface
 import app.autospace.car.theme.gsButtonShape
+import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

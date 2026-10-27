@@ -265,7 +265,7 @@ object GameImport {
                 val isCue = child.name.endsWith(".cue", ignoreCase = true)
                 val isM3u = child.name.endsWith(".m3u", ignoreCase = true)
                 if (!isCue && !isM3u) continue
-                val system = GameLibrary.systemForExtension(
+                val system = GameConsoles.systemForExtension(
                     child.name.substringAfterLast('.', ""),
                     target,
                 ) ?: continue
