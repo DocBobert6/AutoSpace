@@ -1115,7 +1115,7 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
                 GsIconButton(
                     if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
                     if (now.playing) "Pause" else "Play",
-                    media::togglePlay,
+                    { CarServices.userTogglePlay() },
                     tone = GsTone.Primary, size = 44.dp, iconSize = 24.dp,
                 )
                 GsIconButton(

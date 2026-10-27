@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.SystemClock
 import app.autospace.audio.CarAudio
 import app.autospace.host.CarAppCatalog
 import app.autospace.host.CarAppConnection
@@ -59,6 +60,19 @@ object CarServices {
     /** Set when the driver stops the map by hand, so going Home doesn't immediately restart it. */
     private var navStopped = false
     private var autoplayPending = false
+
+    /**
+     * r62 (A50): elapsedRealtime when autoplay last started playback, so a
+     * prompt pause can be recognized as stopping autoplay. Null when no
+     * autoplay session is live. Cleared on any user pause or play, on
+     * close, and on shutdown — a stop only ever counts against the
+     * autoplay that started it, never against a later session.
+     */
+    private var autoplaySessionStartMs: Long? = null
+
+    /** r62 (A50): true while the turn-autoplay-off offer is up on Home. */
+    private val _autoplayOfferVisible = MutableStateFlow(false)
+    val autoplayOfferVisible: StateFlow<Boolean> = _autoplayOfferVisible.asStateFlow()
 
     fun init(appContext: Context) {
         context = appContext.applicationContext
@@ -169,8 +183,11 @@ object CarServices {
 
     // --- media ---------------------------------------------------------------------------
 
-    fun openMedia(app: MediaApp, autoplay: Boolean = false) {
+    fun openMedia(app: MediaApp, autoplay: Boolean = false, userInitiated: Boolean = true) {
         CarSettings.setLastMedia(app.component.flattenToString())
+        // r62 (A49): only a real use refreshes recency — autostart's automatic
+        // reopen must not, or a stale app could never go stale.
+        if (userInitiated) CarSettings.setLastMediaUsedMs(System.currentTimeMillis())
         val phase = media.phase.value
         val live = phase == CarMedia.Phase.READY || phase == CarMedia.Phase.CONNECTING
         if (_mediaApp.value?.component == app.component && live) return
@@ -198,6 +215,9 @@ object CarServices {
 
     /** Closes the media app from the car: stops what it's playing and drops the connection. */
     fun closeMedia() {
+        // r62 (A50): closing a playing app stops autoplay just as pausing
+        // does; closing a silent one just ends the session's attribution.
+        if (media.now.value.playing) recordAutoplayStopIfDue() else autoplaySessionStartMs = null
         if (media.now.value.playing) media.togglePlay()
         media.disconnect()
         _mediaApp.value = null
@@ -208,7 +228,70 @@ object CarServices {
     fun autoplayIfDue() {
         if (!autoplayPending) return
         autoplayPending = false
-        if (!media.now.value.playing) media.togglePlay()
+        if (!media.now.value.playing) {
+            media.togglePlay()
+            // r62 (A50): the session starts here, when autoplay actually
+            // starts playback — not when it was merely asked for.
+            autoplaySessionStartMs = SystemClock.elapsedRealtime()
+        }
+    }
+
+    /**
+     * r62 (A49/A50): the car UI's play/pause button, for the card, the nav
+     * pill, the steering-wheel keys and voice resume — every driver
+     * press, never the app's own state changes. A pause within
+     * [AutoplayPolicy.STOP_WINDOW_MS] of an autoplay start counts as
+     * stopping autoplay; three such stops raise the offer. A play press
+     * ends the session's attribution and refreshes recency: what plays
+     * now is the driver's choice, not autoplay's.
+     */
+    fun userTogglePlay() {
+        if (media.now.value.playing) {
+            recordAutoplayStopIfDue()
+        } else {
+            autoplaySessionStartMs = null
+            if (_mediaApp.value != null) CarSettings.setLastMediaUsedMs(System.currentTimeMillis())
+        }
+        media.togglePlay()
+    }
+
+    /**
+     * r62 (A50): voice "pause" — a real pause, not a toggle. The
+     * assistant's own after-release pause stays on media.pause()
+     * directly: that one is the system keeping music down, not the
+     * driver stopping autoplay.
+     */
+    fun userPause() {
+        if (media.now.value.playing) recordAutoplayStopIfDue() else autoplaySessionStartMs = null
+        media.pause()
+    }
+
+    private fun recordAutoplayStopIfDue() {
+        val start = autoplaySessionStartMs
+        autoplaySessionStartMs = null
+        if (!AutoplayPolicy.countsAsAutoplayStop(start, SystemClock.elapsedRealtime())) return
+        val stops = CarSettings.autoplayStops.value + 1
+        CarSettings.setAutoplayStops(stops)
+        if (AutoplayPolicy.shouldOffer(stops) && CarSettings.autoplay.value) {
+            _autoplayOfferVisible.value = true
+        }
+    }
+
+    /** r62 (A50): offer answer — turn autoplay off and clear the count. */
+    fun autoplayOfferTurnOff() {
+        _autoplayOfferVisible.value = false
+        CarSettings.setAutoplayStops(0)
+        CarSettings.setAutoplay(false)
+    }
+
+    /**
+     * r62 (A50): offer dismissed or kept — the count resets either way,
+     * so the driver is asked again only after three more prompt stops,
+     * never every drive.
+     */
+    fun autoplayOfferKeep() {
+        _autoplayOfferVisible.value = false
+        CarSettings.setAutoplayStops(0)
     }
 
     // --- start and stop ------------------------------------------------------------------
@@ -244,7 +327,19 @@ object CarServices {
             } else {
                 val last = CarSettings.lastMedia.value
                 val app = last?.let { id -> catalog.firstOrNull { it.component == ComponentName.unflattenFromString(id) } }
-                if (app != null) openMedia(app, autoplay = CarSettings.autoplay.value)
+                // r62 (A49): a stale last app still opens, but it is no
+                // longer selected for autoplay — playback only auto-starts
+                // when the app was used recently. Unknown recency (0, e.g.
+                // upgraded installs) counts as stale: one manual open
+                // re-establishes it.
+                val recent = AutoplayPolicy.isRecent(
+                    CarSettings.lastMediaUsedMs.value, System.currentTimeMillis(),
+                )
+                if (app != null) openMedia(
+                    app,
+                    autoplay = CarSettings.autoplay.value && recent,
+                    userInitiated = false,
+                )
             }
         }
     }
@@ -311,5 +406,7 @@ object CarServices {
         CarAudio.release()
         _mediaApp.value = null
         navStopped = false
+        autoplaySessionStartMs = null
+        _autoplayOfferVisible.value = false
     }
 }

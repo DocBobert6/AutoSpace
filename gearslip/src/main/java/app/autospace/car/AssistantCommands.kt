@@ -693,13 +693,13 @@ object AssistantCommands {
         val media = CarServices.media
         return when {
             "pause" in heard || heard.startsWith("stop") || heard == "quiet" || heard == "shut up" -> {
-                media.pause()
+                CarServices.userPause()
                 VoiceFocus.afterRelease { media.pause() }
                 "Paused."
             }
             "resume" in heard || "unpause" in heard || heard in RESUME_PHRASES ||
                 (heard.startsWith("play") && "playing" !in heard) -> {
-                if (!media.now.value.playing) media.togglePlay()
+                if (!media.now.value.playing) CarServices.userTogglePlay()
                 "Playing."
             }
             "next" in heard || "skip" in heard || heard.startsWith("change the song") -> {

@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            30, "0.4.19-alpha",
+            listOf(
+                "Autoplay on connect now skips a media app you have not used in a while, instead of starting it anyway.",
+                "If you keep stopping autoplay right after it starts, the car now offers to turn autoplay off in one tap.",
+            ),
+        ),
+        Release(
             29, "0.4.18-alpha",
             listOf(
                 "Map chrome in Appearance: Google recreation matches Google's navigation look with a solid green turn card and a dark trip pill, and it is the default.",

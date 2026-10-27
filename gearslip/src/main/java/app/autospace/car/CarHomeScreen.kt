@@ -70,6 +70,7 @@ fun CarHome() {
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
+    val autoplayOffer by CarServices.autoplayOfferVisible.collectAsStateWithLifecycle()
     val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
     val widgetsOn by CarSettings.homeWidgetsEnabled.collectAsStateWithLifecycle()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
@@ -91,6 +92,15 @@ fun CarHome() {
     LaunchedEffect(now.playing) {
         if (floatingOn && shouldResurfaceOnPlayTransition(FloatingHomeState.lastPlaying, now.playing)) FloatingHomeState.reset()
         FloatingHomeState.lastPlaying = now.playing
+    }
+    // r62 (A50): the turn-autoplay-off offer answers itself after 30 s
+    // of no answer, like a dismissal — the driver is asked again only
+    // after three more prompt stops, never every drive.
+    LaunchedEffect(autoplayOffer) {
+        if (autoplayOffer) {
+            delay(30_000)
+            CarServices.autoplayOfferKeep()
+        }
     }
 
     val navigator = LocalCarNavigator.current
@@ -258,6 +268,21 @@ fun CarHome() {
             }
         }
         HomeFrameOverlay(Modifier.fillMaxSize())
+        }
+        // r62 (A50): the turn-autoplay-off offer, top-center so it never
+        // covers the turn card, the edge controls, the widget column or
+        // the media card. CarHome never leaves the composition, so it
+        // shows over other screens too until answered or timed out.
+        if (autoplayOffer) {
+            Box(
+                Modifier.fillMaxSize().padding(12.dp),
+                contentAlignment = Alignment.TopCenter,
+            ) {
+                AutoplayOfferCard(
+                    onTurnOff = CarServices::autoplayOfferTurnOff,
+                    onKeep = CarServices::autoplayOfferKeep,
+                )
+            }
         }
     }
 }

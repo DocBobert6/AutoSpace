@@ -110,9 +110,9 @@ object CarKeys {
         if (!down) return keyCode in WANTED
         val media = CarServices.media
         when (keyCode) {
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> media.togglePlay()
-            KeyEvent.KEYCODE_MEDIA_PLAY -> if (!media.now.value.playing) media.togglePlay()
-            KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP -> if (media.now.value.playing) media.togglePlay()
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> CarServices.userTogglePlay()
+            KeyEvent.KEYCODE_MEDIA_PLAY -> if (!media.now.value.playing) CarServices.userTogglePlay()
+            KeyEvent.KEYCODE_MEDIA_PAUSE, KeyEvent.KEYCODE_MEDIA_STOP -> if (media.now.value.playing) CarServices.userTogglePlay()
             KeyEvent.KEYCODE_MEDIA_NEXT -> if (!videoSeek(true)) media.next()
             KeyEvent.KEYCODE_MEDIA_PREVIOUS -> if (!videoSeek(false)) media.previous()
             KeyEvent.KEYCODE_SEARCH, KeyEvent.KEYCODE_VOICE_ASSIST -> voice()

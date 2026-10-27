@@ -68,6 +68,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_LAST_NAV = "car_last_nav"
     private const val KEY_LAST_MEDIA = "car_last_media"
     private const val KEY_AUTOPLAY = "car_autoplay"
+    private const val KEY_LAST_MEDIA_USED_MS = "car_last_media_used_ms"
+    private const val KEY_AUTOPLAY_STOPS = "car_autoplay_stops"
     // KEY_PLAYER_TITLE retired with playerTitle (see above); the stored
     // value is simply never read again.
     // KEY_APP_THEME retired in r35 with the scheme/mode split (see
@@ -133,6 +135,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val lastNavFlow = MutableStateFlow<String?>(null)
     private val lastMediaFlow = MutableStateFlow<String?>(null)
     private val autoplayFlow = MutableStateFlow(false)
+    private val lastMediaUsedMsFlow = MutableStateFlow(0L)
+    private val autoplayStopsFlow = MutableStateFlow(0)
     // (playerTitle removed: the nav pill shows title AND skip buttons
     // together now, so the old Skip-buttons-vs-Song-title choice is dead.)
     private val schemeFlow = MutableStateFlow(ColorScheme.NEUTRAL)
@@ -252,6 +256,12 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     /** Whether the media app starts playing by itself when the car connects. */
     val autoplay: StateFlow<Boolean> = autoplayFlow
+
+    /** Wall-clock ms the open media app was last opened or played by the driver (r62 A49); 0 when unknown. */
+    val lastMediaUsedMs: StateFlow<Long> = lastMediaUsedMsFlow
+
+    /** Prompt autoplay stops since the last offer or reset (r62 A50). */
+    val autoplayStops: StateFlow<Int> = autoplayStopsFlow
 
     val scale: StateFlow<Float> = scaleFlow
     /** App-icon size fraction, 0..1: 1.0 is the Phase 6 large size, 0 hides the icon. Tiles do not shrink with it. */
@@ -407,6 +417,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
         lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
         lastMediaFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA, "").ifEmpty { null }
+        lastMediaUsedMsFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA_USED_MS, "0").toLongOrNull() ?: 0L
         // r35 migration, same one-time pattern as PHONE -> MATERIAL_YOU
         // above: the old car_app_theme value mixed a palette with a mode,
         // so it splits into car_scheme + car_appearance_mode via
@@ -470,6 +481,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             else -> MirrorFit.FIT
         }
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
+        autoplayStopsFlow.value = AppSettings.getString(app, KEY_AUTOPLAY_STOPS, "0").toIntOrNull() ?: 0
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
         // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
         // own voice already reaches the car.
@@ -631,6 +643,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setAutoplay(on: Boolean) {
         autoplayFlow.value = on
         AppSettings.putString(app, KEY_AUTOPLAY, on.toString())
+    }
+
+    fun setLastMediaUsedMs(ms: Long) {
+        lastMediaUsedMsFlow.value = ms
+        AppSettings.putString(app, KEY_LAST_MEDIA_USED_MS, ms.toString())
+    }
+
+    fun setAutoplayStops(n: Int) {
+        autoplayStopsFlow.value = n
+        AppSettings.putString(app, KEY_AUTOPLAY_STOPS, n.toString())
     }
 
     /**

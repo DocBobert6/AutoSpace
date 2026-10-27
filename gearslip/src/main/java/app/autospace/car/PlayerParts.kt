@@ -297,7 +297,7 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
         GsIconButton(
             if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
             if (now.playing) "Pause" else "Play",
-            media::togglePlay,
+            { CarServices.userTogglePlay() },
             colors = if (accent != null) GsColors(accent, accentContentColor(accent)) else gsColors(GsTone.Primary),
             size = play, iconSize = play * 0.58f, shape = playShape,
         )
