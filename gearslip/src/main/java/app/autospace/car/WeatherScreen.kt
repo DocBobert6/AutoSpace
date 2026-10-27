@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.autospace.car.theme.gsButtonShape
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,7 +58,8 @@ fun WeatherScreen() {
 private fun Forecast(w: WeatherData) {
     Text(w.place, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
 
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.extraLarge) {
+    // r54 (D4): card shape through the style rule, so Pitlane squares it.
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = gsButtonShape(MaterialTheme.shapes.extraLarge)) {
         Row(
             Modifier.fillMaxWidth().padding(24.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -80,7 +82,8 @@ private fun Forecast(w: WeatherData) {
     Text("Next hours", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(w.hours) { h ->
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+            // r54 (D4): card shape through the style rule, so Pitlane squares it.
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = gsButtonShape(MaterialTheme.shapes.large)) {
                 Column(
                     Modifier.width(84.dp).padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -104,7 +107,8 @@ private fun Forecast(w: WeatherData) {
     Text("This week", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         w.days.forEachIndexed { i, d ->
-            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+            // r54 (D4): card shape through the style rule, so Pitlane squares it.
+            Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = gsButtonShape(MaterialTheme.shapes.large)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,

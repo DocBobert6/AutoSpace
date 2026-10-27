@@ -579,9 +579,10 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
     add(
         GuidePage(
             title = "Experimental.",
-            explanation = "Two extras change how Home looks: floating media puts the player " +
-                "over the full-screen map, and home widgets add weather, messages, " +
-                "and next event beside it. Vehicle data is separate: a live, raw " +
+            explanation = "Three extras change how Home looks: floating media puts the player " +
+                "over the full-screen map, home widgets add weather, messages, " +
+                "and next event beside it, and frosted map chrome lets the map show " +
+                "through its panes and buttons. Vehicle data is separate: a live, raw " +
                 "dump of the car's sensor channel, with field labels carried over " +
                 "from other projects and unverified — treat them as a guess, not a fact.",
             icon = glyph(Icons.Filled.Build),
@@ -589,10 +590,14 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
             content = {
                 val floating by CarSettings.floatingMediaEnabled.collectAsState()
                 val widgets by CarSettings.homeWidgetsEnabled.collectAsState()
+                val frosted by CarSettings.frostedMapChromeEnabled.collectAsState()
                 val sensors by CarSettings.carSensorsEnabled.collectAsState()
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     GuideSwitch("Floating media over map", floating, CarSettings::setFloatingMediaEnabled)
                     GuideSwitch("Home widgets", widgets, CarSettings::setHomeWidgetsEnabled)
+                    // r54 (D5): the third floating-look extra, between Home widgets
+                    // and Vehicle data; vehicle data stays last as its own switch.
+                    GuideSwitch("Frosted map chrome", frosted, CarSettings::setFrostedMapChromeEnabled)
                     GuideSwitch("Vehicle data", sensors, CarSettings::setCarSensorsEnabled)
                 }
             },

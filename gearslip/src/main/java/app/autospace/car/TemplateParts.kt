@@ -201,7 +201,7 @@ internal fun HeaderBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        startAction?.takeIf { it.isDrawable() }?.let { ActionButton(it) }
+        startAction?.takeIf { it.isDrawable() }?.let { ActionButton(it, mapHeader = onMap != null) }
         Text(
             title,
             style = ChromeType.title,
@@ -215,7 +215,7 @@ internal fun HeaderBar(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        end.forEach { ActionButton(it) }
+        end.forEach { ActionButton(it, mapHeader = onMap != null) }
     }
 }
 
@@ -326,6 +326,12 @@ private fun CarRow.isBlank(): Boolean =
  * style's depth language from GsIconBox and the alpha kept exactly (Frost's 0.97 container
  * scaling must not dilute it — see [scaledContainerAlpha]). Shapes, sizes and behavior
  * are untouched; every other caller keeps today's opaque button.
+ *
+ * r54: HeaderBar passes [mapHeader] for header buttons on the map, and
+ * those follow the frosted treatment with neutral colors only
+ * (surfaceContainerLow at 0.92, onSurface glyphs) — never primary, never
+ * an app-named color — except a Search button's magnifier glyph, which
+ * may use primary. The opaque branch is unchanged.
  */
 @Composable
 internal fun ActionButton(
@@ -338,6 +344,8 @@ internal fun ActionButton(
     glyphSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_GLYPH,
     /** r46: this button is map-edge chrome eligible for the frosted treatment (RightEdgeControls only). */
     frosted: Boolean = false,
+    /** r54: a header button on the map (HeaderBar passes true when the pane sits beside a map). */
+    mapHeader: Boolean = false,
 ) {
     if (action.type == Action.TYPE_APP_ICON) {
         AppIconBadge()
@@ -352,7 +360,15 @@ internal fun ActionButton(
     val fallback = scheme.surfaceContainerHighest
     val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
     val frostedButton = frosted && frostedOn
-    val background = if (frostedButton) {
+    // r54: header buttons on the map follow the float transparency with
+    // neutral colors only — never primary, never an app-named color. The
+    // search glyph alone may use the vibrant color; everything else stays
+    // neutral. The opaque branch below is unchanged.
+    val headerFrosted = mapHeader && frostedOn
+    val isSearch = title.trim().equals("Search", ignoreCase = true)
+    val background = if (headerFrosted) {
+        scheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
+    } else if (frostedButton) {
         val frostedBase = when {
             active -> scheme.primary
             custom -> action.backgroundColor.color(dark, fallback)
@@ -361,6 +377,8 @@ internal fun ActionButton(
         frostedBase.copy(alpha = FrostedChromeAlpha)
     } else if (active) scheme.primary else action.backgroundColor.color(dark, fallback)
     val content = when {
+        headerFrosted && isSearch -> scheme.primary
+        headerFrosted -> scheme.onSurface
         active -> scheme.onPrimary
         custom -> Color.White
         else -> scheme.onSurface
@@ -378,7 +396,7 @@ internal fun ActionButton(
         enabled = action.isEnabled,
         shape = if (title.isEmpty()) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(if (large) 28.dp else 24.dp),
         latched = active,
-        keepAlpha = frostedButton,
+        keepAlpha = frostedButton || headerFrosted,
     ) {
         if (large && title.isNotEmpty()) {
             // The label sits dead centre on the button; the icon hangs off the left edge, so the

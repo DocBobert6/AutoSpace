@@ -16,6 +16,14 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            22, "0.4.11-alpha",
+            listOf(
+                "Map panes, dialogs, and content cards now follow the button style's corners everywhere, so Pitlane's square corners apply consistently instead of only in some places.",
+                "Map header buttons now use the same see-through frosted treatment as the rest of the map chrome, in neutral colors, with the search magnifier allowed its vibrant color.",
+                "The onboarding Experimental page now lists the frosted map chrome switch, so a fresh install sees all three floating-look extras.",
+            ),
+        ),
+        Release(
             21, "0.4.10-alpha",
             listOf(
                 "A new \"All experimental features\" switch at the top of the experimental settings turns on the whole floating look at once: floating media, home widgets, and frosted map chrome. Turning it off turns floating media and home widgets back off; vehicle data stays its own switch at the bottom of the list and is never touched by the master.",

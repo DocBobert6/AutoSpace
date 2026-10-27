@@ -114,7 +114,8 @@ private fun ConversationCard(n: CarNotification, onRead: () -> Unit, onReply: ()
     var quick by rememberSaveable(n.key) { mutableStateOf(false) }
 
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        // r54 (D4): card shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier
             .fillMaxWidth()

@@ -120,14 +120,17 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
 @Composable
 private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
     if (info.isLoading) {
-        ChromeSurface(modifier, frosted = true) {
+        // r54 (D2): outer pane shape through the style rule, so the frosted
+        // toggle cannot change corners; inner 0dp fills below stay untouched.
+        ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), frosted = true) {
             Text("Finding a route…", Modifier.padding(16.dp), style = ChromeType.title)
         }
         return
     }
 
     val step = info.currentStep ?: return
-    ChromeSurface(modifier, frosted = true) {
+    // r54 (D2): outer pane shape through the style rule, as above.
+    ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), frosted = true) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 CarGlyph(step.maneuver?.icon, Modifier.size(44.dp))
@@ -265,7 +268,8 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
 
     // The same solid card the manoeuvre card above it uses - one surface for the whole map
     // chrome, rather than this one spot styled on its own as a bar over the map.
-    ChromeSurface(modifier, shadowElevation = 8.dp, frosted = true) {
+    // r54 (D2): outer pane shape through the style rule, as above.
+    ChromeSurface(modifier, shape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)), shadowElevation = 8.dp, frosted = true) {
         val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()
         Row(
             Modifier.padding(start = 8.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
@@ -330,7 +334,11 @@ private fun MapPaneLayout(
                     .padding(12.dp)
                     .width(maxOf(maxWidth * CONTENT_PANE_FRACTION - 12.dp, 232.dp))
                     .let { if (fullHeight) it.height(maxHeight - 24.dp) else it.heightIn(max = maxHeight - 24.dp) },
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                // r54 (D2): the outer pane shape routes through the style rule,
+                // so Pitlane squares it (6dp) in BOTH branches; the frosted branch
+                // re-routes idempotently, and the inner 0dp fills below stay 0dp
+                // flush in opaque mode and passthrough when frosted.
+                shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                 shadowElevation = 8.dp,
                 frosted = true,
             ) {

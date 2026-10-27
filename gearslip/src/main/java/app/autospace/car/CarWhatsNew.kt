@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import app.autospace.Changelog
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsSwitch
+import app.autospace.car.theme.gsButtonShape
 import app.autospace.notify.CarMotion
 
 /**
@@ -65,7 +66,8 @@ fun CarWhatsNew() {
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = RoundedCornerShape(24.dp),
+            // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
+            shape = gsButtonShape(RoundedCornerShape(24.dp)),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             // Swallows taps on the card itself, so only the scrim around it closes.
             modifier = Modifier

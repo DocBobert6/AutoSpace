@@ -76,6 +76,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.gsColors
@@ -470,7 +471,8 @@ private fun CarSafetyWizard(onDone: () -> Unit) {
         ) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = RoundedCornerShape(28.dp),
+                // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
+                shape = gsButtonShape(RoundedCornerShape(28.dp)),
                 modifier = Modifier.fillMaxWidth(),
                 border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
             ) {

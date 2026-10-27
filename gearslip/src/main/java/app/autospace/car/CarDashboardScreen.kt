@@ -29,6 +29,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.gsButtonShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -80,7 +81,8 @@ private fun WeatherCard(context: Context) {
     GsIconBox(
         onClick = { navigator.weather() },
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-        shape = MaterialTheme.shapes.extraLarge,
+        // r54 (D4): shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(MaterialTheme.shapes.extraLarge),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(20.dp),
@@ -134,7 +136,8 @@ private fun AgendaCard(context: Context) {
 private fun EventRow(event: AgendaEvent) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shape = MaterialTheme.shapes.large,
+        // r54 (D4): card shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(MaterialTheme.shapes.large),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Row(

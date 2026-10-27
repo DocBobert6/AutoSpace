@@ -355,7 +355,8 @@ private fun DockedPlayer(now: NowPlaying, modifier: Modifier) {
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        // r54 (D4): panel shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(RoundedCornerShape(20.dp)),
         color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant),
     ) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
@@ -427,7 +428,8 @@ private fun SideLyrics(now: NowPlaying, modifier: Modifier) {
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        // r54 (D4): panel shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(RoundedCornerShape(20.dp)),
         color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant),
     ) {
         Column(Modifier.fillMaxSize().padding(16.dp)) {

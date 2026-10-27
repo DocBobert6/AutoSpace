@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
+import app.autospace.car.theme.gsButtonShape
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.CarFocus
@@ -216,7 +217,8 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>)
     ) {
         // Phase 7 kit dialog: solid sheet colour, 28dp corners.
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
+            shape = gsButtonShape(RoundedCornerShape(28.dp)),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             // Swallows taps on the card itself, so only the scrim around it dismisses.
             modifier = Modifier

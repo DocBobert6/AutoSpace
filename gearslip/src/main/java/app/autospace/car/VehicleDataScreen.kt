@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.gsButtonShape
 
 /**
  * Everything the head unit's sensor channel is willing to send, live and unfiltered - see
@@ -54,7 +55,8 @@ fun VehicleDataScreen() {
 
 @Composable
 private fun ReadingRow(reading: CarSensors.Reading) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+    // r54 (D4): row shape through the style rule, so Pitlane squares it.
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = gsButtonShape(MaterialTheme.shapes.large)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(reading.typeName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

@@ -132,7 +132,8 @@ internal fun AccessBanner(onOpen: () -> Unit) {
 @Composable
 private fun NotificationRow(n: CarNotification, onReply: (CarNotification) -> Unit) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        // r54 (D4): card shape through the style rule, so Pitlane squares it.
+        shape = gsButtonShape(RoundedCornerShape(16.dp)),
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -196,7 +197,8 @@ private fun ReplyPane(n: CarNotification, onDone: () -> Unit) {
         ) {
             GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onDone)
             Surface(
-                shape = RoundedCornerShape(24.dp),
+                // r54 (D4): card shape through the style rule, so Pitlane squares it.
+                shape = gsButtonShape(RoundedCornerShape(24.dp)),
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.weight(1f),
             ) {
