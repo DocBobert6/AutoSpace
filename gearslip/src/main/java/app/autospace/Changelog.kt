@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            47, "0.4.36-alpha",
+            listOf(
+                "A new Horizon look joins the Appearance pickers — deep navy tones, full-pill buttons, and 28dp cards.",
+            ),
+        ),
+        Release(
             46, "0.4.35-alpha",
             listOf(
                 "The map pane can collapse down to the app's logo, as an experimental option — tapping the logo brings it back, and the pane still counts as open while collapsed.",

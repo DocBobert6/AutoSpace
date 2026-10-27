@@ -87,6 +87,18 @@ data class ControlLook(
      */
     val rectangularButtons: Boolean = false,
     /**
+     * r79 (Horizon only): button containers on the [gsShape] path
+     * ([GsButton], [GsIconButton], the nav bar, the side rail, the
+     * transport row, the autoplay offer) render as full pills instead
+     * of the style's
+     * corner. False everywhere else, so no other style's shapes
+     * change. Surfaces on the [gsButtonShape] path (switch knob,
+     * safety dialog, media pill, full-player panels) keep their
+     * call-site fallback — the pill rule is the button rule, not a
+     * second card rule, so dialogs stay 28dp and panels keep 20dp.
+     */
+    val pillButtons: Boolean = false,
+    /**
      * r48 (Verve only): state-change animations (press sink/lift,
      * toggle travel, morph) use [stateChangeMotionSpec] — the Verve
      * spring when parked, an instant snap while moving — instead of
@@ -94,6 +106,13 @@ data class ControlLook(
      * style's motion changes.
      */
     val springMotion: Boolean = false,
+    /**
+     * r79: damping for the spring-motion spec ([stateChangeMotionSpec]).
+     * Default 0.7 is Verve's approved spring, so every existing style
+     * is unchanged; Horizon passes 0.65. Only read when [springMotion]
+     * is true.
+     */
+    val springDamping: Float = 0.7f,
     /**
      * r48 (Verve only): card/sheet surfaces ([GsGroupedCard],
      * [GsPanelCard], [GsSheetSurface], the floating media card, widget
@@ -398,6 +417,57 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Horizon (2026-10-27, r79; Verve's sibling): a Cielo-flavored
+     * pair with ORIGINAL values, never "the Cielo look". The button
+     * style: full-pill buttons (pillButtons) with a 28dp corner for
+     * cards/sheets (cardsUseStyleCorner), a soft shadow and a light
+     * top edge, and the DOT hold marker. r79 motion: springMotion
+     * with a 0.65 damping spring when parked (Verve's shared spec
+     * defaults to 0.7; Horizon passes its own damping — see
+     * [stateChangeMotionSpec]), an instant snap while moving, and a
+     * 0.97 pressed scale. The color scheme lives in
+     * [app.autospace.car.ColorScheme.HORIZON] (palette tokens in
+     * HorizonPalette); style and scheme are independently selectable,
+     * as with every other pair.
+     */
+    val Horizon = GsTheme(
+        id = "horizon",
+        name = "Horizon",
+        control = ControlLook(
+            corner = 28.dp,
+            topLight = 0.05f,
+            rimAlpha = 0.20f,
+            hairlineAlpha = 0.30f,
+            shadow = 4.dp,
+            shadowAlpha = 0.28f,
+            pressedDim = 0.16f,
+            pressedScale = 0.97f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            springMotion = true,
+            springDamping = 0.65f,
+            cardsUseStyleCorner = true,
+            pillButtons = true,
+            light = ControlLook(
+                corner = 28.dp,
+                topLight = 0.04f,
+                rimAlpha = 0.20f,
+                hairlineAlpha = 0.30f,
+                shadow = 4.dp,
+                shadowAlpha = 0.22f,
+                pressedDim = 0.12f,
+                pressedScale = 0.97f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+                springMotion = true,
+                springDamping = 0.65f,
+                cardsUseStyleCorner = true,
+                pillButtons = true,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -411,7 +481,9 @@ object GsThemes {
     // untouched and nobody moves to it automatically.
     // r48: Verve appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve)
+    // r79: Horizon appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

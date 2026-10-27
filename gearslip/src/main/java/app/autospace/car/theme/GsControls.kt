@@ -84,8 +84,17 @@ fun gsColors(tone: GsTone): GsColors {
     }
 }
 
+/**
+ * r79: the pure button-shape rule behind [gsShape], kept free of
+ * Composition so it is unit-testable: a pillButtons style (Horizon
+ * only) takes the full pill; every other style takes the style's
+ * corner exactly, as before.
+ */
+fun buttonShapeForLook(look: ControlLook): Shape =
+    if (look.pillButtons) GsKit.PillShape else RoundedCornerShape(look.corner)
+
 @Composable
-fun gsShape(): Shape = RoundedCornerShape(gsLook().corner)
+fun gsShape(): Shape = buttonShapeForLook(gsLook())
 
 /**
  * r24: a capsule or explicitly round button/tile container's shape.
@@ -132,9 +141,11 @@ fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
  * snap — no spring while driving. Never continuous or looping: this
  * spec is only ever fed to state-change animations, and it is only
  * used by looks with [ControlLook.springMotion] (Verve only).
+ * r79: [dampingRatio] defaults to Verve's approved 0.7, so existing
+ * callers are unchanged; Horizon passes 0.65.
  */
-fun <T> stateChangeMotionSpec(moving: Boolean): AnimationSpec<T> =
-    if (moving) snap() else spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium)
+fun <T> stateChangeMotionSpec(moving: Boolean, dampingRatio: Float = 0.7f): AnimationSpec<T> =
+    if (moving) snap() else spring(dampingRatio = dampingRatio, stiffness = Spring.StiffnessMedium)
 
 /**
  * r32: texture reads once per surface. A control sitting on a Pitlane panel
@@ -190,15 +201,15 @@ fun Modifier.gsSurface(
     // The keycap's face sinks onto its base while pressed, and stays down while latched: the base
     // shrinks to nothing and the face moves down by the same amount, so the control's overall size
     // never changes.
-    // r48: under a spring-motion style (Verve only) press animations
-    // use the state-change spec (spring parked, snap moving); every
+    // r48: under a spring-motion style (Verve; Horizon since r79) press
+    // animations use the state-change spec (spring parked, snap moving); every
     // other style keeps its exact tween durations. The moving flag is
     // read at the state change, which is when the decision matters.
     val moving = CarMotion.moving
-    val lipNow by animateDpAsState(if (down) 0.dp else look.lip, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 110), label = "keycap")
+    val lipNow by animateDpAsState(if (down) 0.dp else look.lip, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 110), label = "keycap")
     // Tactile: the drop shadow collapses and the face drops by [ControlLook.sink].
-    val lift by animateFloatAsState(if (down) 0f else 1f, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 140), label = "lift")
-    val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, if (look.springMotion) stateChangeMotionSpec(moving) else tween(if (pressed) 50 else 140), label = "sink")
+    val lift by animateFloatAsState(if (down) 0f else 1f, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 140), label = "lift")
+    val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 140), label = "sink")
     var m = this
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
         m = m.drawBehind { drawSoftShadow(shape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
