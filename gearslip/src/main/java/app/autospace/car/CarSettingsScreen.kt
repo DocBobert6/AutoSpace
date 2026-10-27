@@ -615,6 +615,7 @@ private fun AboutAndExperimentalPage() {
     val multiTurn by CarSettings.multiTurnEnabled.collectAsState()
     val sideBar by CarSettings.sideBarEnabled.collectAsState()
     val browserPip by CarSettings.browserPipEnabled.collectAsState()
+    val liveSwap by CarSettings.liveSwapEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -639,7 +640,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip, liveSwap)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1270,7 +1271,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean, liveSwap: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1324,6 +1325,17 @@ private fun ExperimentalFeaturesList(
             description = "Adds a pop-out button in the browser bar when the page has playable media. It sends the video to a mini video card on Home, played by AutoSpace's own player. WebView video itself can never be popped out — the button only appears for media the finder can already hand off. Turn this off and the browser returns to exactly today's behavior.",
             checked = browserPip,
         ) { CarSettings.setBrowserPipEnabled(it) }
+        // r76: A58 Live conversation widget swap — placed with the
+        // other Home-card rows (floating media, card docking, side
+        // bar, PiP) at the top of the list. Still behind the general
+        // experimental opt-in: the card swaps only when experiments
+        // are on AND this is on. Off returns exactly today's media
+        // card, which never swaps.
+        ExperimentalFeatureRow(
+            title = "Live conversation widget (experimental)",
+            description = "While the assistant is talking with you, the floating media card swaps for a conversation widget showing the current turn — and, when parked, the last turns of the conversation. It never claims full-duplex: it chains turns the way the follow-up window already does. Turn this off and the media card never swaps.",
+            checked = liveSwap,
+        ) { CarSettings.setLiveSwapEnabled(it) }
         ExperimentalFeatureRow(
             title = "Frosted map chrome (experimental)",
             description = "The map pane, turn card, trip bar, and edge buttons get the same " +

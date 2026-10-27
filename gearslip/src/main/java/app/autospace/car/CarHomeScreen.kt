@@ -83,6 +83,8 @@ fun CarHome() {
     val browserPipToggle by CarSettings.browserPipEnabled.collectAsStateWithLifecycle()
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
     val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
+    val liveSwapToggle by CarSettings.liveSwapEnabled.collectAsStateWithLifecycle()
+    val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -140,10 +142,23 @@ fun CarHome() {
     // floats over classic Home too.
     val showMiniVideo = browserPipNow(experimentalOn, browserPipToggle) &&
         miniVideoItem != null && onHome
+    // r76: A58 Live conversation widget swap — while a live
+    // conversation is active, the floating media card's slot shows
+    // the conversation widget instead of the card. Precedence is
+    // mini video first (hiding it would stop playback — its player
+    // lives in composition), then the conversation widget (hiding
+    // the audio card stops nothing), then the audio card. The swap
+    // is drawn only inside the floating branch below, so classic
+    // Home is untouched; the lyrics split is excluded like the card
+    // itself. The widget swaps back the moment the phase returns to
+    // IDLE — the follow-up window expiring ends the conversation.
+    val showLiveWidget = liveSwapNow(experimentalOn, liveSwapToggle) &&
+        isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
+        !showMiniVideo
     val showFloatingCard = shouldShowFloatingCard(
         floatingOn, phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
-    ) && !showMiniVideo
+    ) && !showMiniVideo && !showLiveWidget
     // r69: mini-player docking (A44/A45, experimental). The trip bar
     // sits at the bottom-start corner during guidance (see
     // NavigationChrome), so the effective dock steps a Start dock
@@ -221,6 +236,17 @@ fun CarHome() {
                     contentAlignment = mediaCardDockAlignment(cardDock),
                 ) {
                     FloatingMediaCard(now, Modifier.width(floatingCardWidth(maxWidth)))
+                }
+            }
+            if (showLiveWidget) {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().padding(
+                        start = 24.dp, top = 24.dp, end = 24.dp,
+                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                    ),
+                    contentAlignment = mediaCardDockAlignment(cardDock),
+                ) {
+                    LiveConversationWidget(assistantState, Modifier.width(floatingCardWidth(maxWidth)))
                 }
             }
             if (showWidgetColumn) {

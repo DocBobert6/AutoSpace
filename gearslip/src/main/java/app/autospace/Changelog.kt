@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            44, "0.4.33-alpha",
+            listOf(
+                "While the assistant is talking with you, the floating media card can swap for a conversation widget, as an experimental option.",
+            ),
+        ),
+        Release(
             43, "0.4.32-alpha",
             listOf(
                 "The browser can pop a page's video out to a mini video card on Home, as an experimental option.",

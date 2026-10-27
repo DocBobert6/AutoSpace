@@ -112,6 +112,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_MULTI_TURN = "car_multi_turn"
     private const val KEY_SIDE_BAR = "car_side_bar"
     private const val KEY_BROWSER_PIP = "car_browser_pip"
+    private const val KEY_LIVE_SWAP = "car_live_swap"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
@@ -205,6 +206,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val multiTurnFlow = MutableStateFlow(false)
     private val sideBarFlow = MutableStateFlow(false)
     private val browserPipFlow = MutableStateFlow(false)
+    private val liveSwapFlow = MutableStateFlow(false)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -451,6 +453,18 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     val browserPipEnabled: StateFlow<Boolean> = browserPipFlow
 
     /**
+     * r76: Live conversation widget (A58). Off by default; it joins no
+     * master switch: the r53 master never touches it, and it never
+     * affects the master's derived state. It still sits behind the
+     * general experimental opt-in: the media card swaps only when
+     * [experimentalFeaturesEnabled] and this are both on (see
+     * [liveSwapNow]). The toggle never rewrites other state, and
+     * turning it off never clears the multi-turn session — that
+     * toggle owns the session.
+     */
+    val liveSwapEnabled: StateFlow<Boolean> = liveSwapFlow
+
+    /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
      * Re-enabled only from the widget settings row, or by turning the
@@ -601,6 +615,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         multiTurnFlow.value = AppSettings.getString(app, KEY_MULTI_TURN, "false") == "true"
         sideBarFlow.value = AppSettings.getString(app, KEY_SIDE_BAR, "false") == "true"
         browserPipFlow.value = AppSettings.getString(app, KEY_BROWSER_PIP, "false") == "true"
+        liveSwapFlow.value = AppSettings.getString(app, KEY_LIVE_SWAP, "false") == "true"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -728,6 +743,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setBrowserPipEnabled(on: Boolean) {
         browserPipFlow.value = on
         AppSettings.putString(app, KEY_BROWSER_PIP, on.toString())
+    }
+
+    fun setLiveSwapEnabled(on: Boolean) {
+        liveSwapFlow.value = on
+        AppSettings.putString(app, KEY_LIVE_SWAP, on.toString())
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {
