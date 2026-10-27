@@ -317,9 +317,12 @@ object CarServices {
             val last = CarSettings.lastNav.value
             // The one used last, or - first run, nothing on record yet - whichever comes first:
             // a driver who plugs in for the first time shouldn't have to go pick one by hand
-            // before the map shows up at all.
-            val lastComponent = last?.let(ComponentName::unflattenFromString)
-            val app = candidates.firstOrNull { it.component == lastComponent } ?: candidates.firstOrNull()
+            // before the map shows up at all. A stale value matches nothing and falls back to
+            // the first candidate: the retired mirrored-Maps tile was never a templated
+            // component, so a stored "maps-mirrored" can never strand the map — see
+            // resolveLastNav, which pins this fallback.
+            val resolved = resolveLastNav(last, candidates.map { it.component.flattenToString() })
+            val app = candidates.firstOrNull { it.component.flattenToString() == resolved }
             if (app != null) connectNav(app, frame)
         }
 

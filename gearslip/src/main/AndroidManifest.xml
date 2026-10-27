@@ -95,9 +95,6 @@
          LAUNCHER query below to find, so the setup guide's Android Auto check needs this to see
          whether the package is installed at all. -->
     <package android:name="com.google.android.projection.gearhead" />
-    <!-- Phase 4.2: the mirrored Maps tile's installed-check needs to see stock Maps
-         even if the MAIN/LAUNCHER intent query below ever narrows. -->
-    <package android:name="com.google.android.apps.maps" />
     <!-- The opt-in usage note names the OS: GrapheneOS's setup app and /e/OS's app store give
          them away (UsageStats.osName). -->
     <package android:name="app.grapheneos.setupwizard" />

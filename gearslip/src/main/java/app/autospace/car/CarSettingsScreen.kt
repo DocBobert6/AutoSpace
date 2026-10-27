@@ -1165,7 +1165,7 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
     // Phase 8 audit fix: the section header sits ABOVE the card in a
     // neutral colour (not blue text inside it); chips wrap to rows of at
-    // most 3, so 6 app-theme chips and long "Maps (mirrored)" labels are
+    // most 3, so 6 app-theme chips and long labels are
     // never squeezed into one row; labels never wrap mid-chip (maxLines 1
     // + ellipsis). Phase 10: the selected state is the theme PRIMARY
     // (dynamic accent under Material You, system blue under plain) with

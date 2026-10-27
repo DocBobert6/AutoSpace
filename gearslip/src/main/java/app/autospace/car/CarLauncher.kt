@@ -179,15 +179,8 @@ internal fun rememberAllEntries(): List<Entry> {
     LaunchedEffect(context) {
         if (LauncherCache.entries == null) withContext(Dispatchers.IO) { LauncherCache.load(context) }
     }
-    // The mirrored Maps tile is shown only when stock Maps can actually be launched
-    // (same test PhoneApps.launch uses, so visibility and launchability never disagree).
-    // A dead tile on a phone without Maps — possibly after prompting for screen-capture
-    // consent for nothing — is worse than no tile.
-    val mapsInstalled = remember(context) {
-        context.packageManager.getLaunchIntentForPackage(MAPS_PACKAGE_NAME) != null
-    }
-    return remember(installed, mapsInstalled) {
-        BuiltInApps.entries.filter { it.builtIn !== BuiltInApps.MapsMirrored || mapsInstalled } + installed.orEmpty()
+    return remember(installed) {
+        BuiltInApps.entries + installed.orEmpty()
     }
 }
 

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            53, "0.4.42-alpha",
+            listOf(
+                "Mirrored Maps is retired: the phone-mirrored Google Maps tile is removed from the launcher and voice app list, and any stored choice pointing at it falls back to a real navigation app instead of a dead tile.",
+            ),
+        ),
+        Release(
             52, "0.4.41-alpha",
             listOf(
                 "Ad blocking is now the real thing: the browser downloads EasyList, EasyPrivacy, AdGuard and uBlock filter lists in the background, hides ad containers on the page, and shows how many requests it blocked in the browser menu — with the bundled host list still covering offline. The menu's My rules row lets you block a host or address, or allow a site the lists break.",

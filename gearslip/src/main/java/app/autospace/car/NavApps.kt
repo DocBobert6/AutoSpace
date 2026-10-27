@@ -18,7 +18,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -88,32 +87,18 @@ internal class BuiltInApp(
     val open: (CarNavigator) -> Unit,
 )
 
-/** Stock Google Maps' package, the mirrored tile's one and only target (Phase 4.2). */
-internal const val MAPS_PACKAGE_NAME = "com.google.android.apps.maps"
-
 internal object BuiltInApps {
     val Web = BuiltInApp("web", "Browser", Icons.Filled.Search, CarScreen.App("web")) { it.open("web") }
     val ScreenSharing = BuiltInApp("phone", "Screen sharing", Icons.Filled.Share, CarScreen.App("phone")) { it.open("phone") }
     val Phone = BuiltInApp("dialer", "Phone", Icons.Filled.Call, CarScreen.App("dialer")) { it.open("dialer") }
 
-    /**
-     * Maps (mirrored) — Phase 4.2's shipping form of Google Maps support. This is
-     * phone mirroring, NOT a native car template: it opens stock Maps on the phone
-     * and shows the phone's UI on the car screen. The "(mirrored)" qualifier in
-     * the label is load-bearing — it must never be dropped, or a driver will
-     * mistake this for native Maps. A generic Place glyph is used deliberately:
-     * never Google's Maps trademark icon. Native promotion happens only if the
-     * Phase 4.1 spike proves a working template handshake (it has not, and the
-     * spike patch is deliberately NOT merged — see BUILD_LOG Phase 4).
-     */
-    val MapsMirrored = BuiltInApp("maps-mirrored", "Maps (mirrored)", Icons.Filled.Place, CarScreen.App("maps-mirrored")) { it.open("maps-mirrored") }
     val VehicleData = BuiltInApp("vehicle", "Vehicle data", Icons.Filled.Info, CarScreen.VehicleData) { it.vehicleData() }
     val Settings = BuiltInApp("settings", "Settings", Icons.Filled.Settings, CarScreen.Settings) { it.settings() }
 
     /** Hands the screen back to the car's own interface, like Android Auto's Exit. */
     val Exit = BuiltInApp("exit", "Exit", CarGlyph, screen = null) { CarFocus.exitToCar() }
 
-    val all = listOf(Web, ScreenSharing, Phone, MapsMirrored, VehicleData, Settings, Exit)
+    val all = listOf(Web, ScreenSharing, Phone, VehicleData, Settings, Exit)
     val entries: List<Entry> = all.map { Entry(it.label, icon = null, builtIn = it) }
 }
 
