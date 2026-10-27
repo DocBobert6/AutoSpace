@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,9 @@ object CarApps {
         },
         CarApp("settings", "Settings", Icons.Filled.Settings) {
             CarSettingsScreen()
+        },
+        CarApp("games", "Games", Icons.Filled.SportsEsports) {
+            GamesScreen()
         },
     )
 

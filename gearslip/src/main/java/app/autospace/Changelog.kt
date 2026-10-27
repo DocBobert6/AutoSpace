@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            56, "0.4.45-alpha",
+            listOf(
+                "Games section: a library and console pages for eight consoles — import a folder of ROMs or a single ROM, browse your library, and pair a Bluetooth controller for menu navigation. Games open only while parked, and playback arrives in a later round.",
+            ),
+        ),
+        Release(
             55, "0.4.44-alpha",
             listOf(
                 "The floating media card now scrubs with the same waveform bars as the full player: tap or drag the bars to seek, and the card still switches sessions with a swipe on the song row.",

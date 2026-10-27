@@ -29,6 +29,8 @@
         hands over its Wi-Fi details; Gearslip then joins that network to reach the car.
     -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- r89: controller discovery for the Games section. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission
         android:name="android.permission.NEARBY_WIFI_DEVICES"

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -96,10 +97,13 @@ internal object BuiltInApps {
     val VehicleData = BuiltInApp("vehicle", "Vehicle data", Icons.Filled.Info, CarScreen.VehicleData) { it.vehicleData() }
     val Settings = BuiltInApp("settings", "Settings", Icons.Filled.Settings, CarScreen.Settings) { it.settings() }
 
+    /** r89: the Games library — a launcher tile that opens the Games section. */
+    val Games = BuiltInApp("games", "Games", Icons.Filled.SportsEsports, CarScreen.App("games")) { it.open("games") }
+
     /** Hands the screen back to the car's own interface, like Android Auto's Exit. */
     val Exit = BuiltInApp("exit", "Exit", CarGlyph, screen = null) { CarFocus.exitToCar() }
 
-    val all = listOf(Web, ScreenSharing, Phone, VehicleData, Settings, Exit)
+    val all = listOf(Web, ScreenSharing, Phone, VehicleData, Settings, Games, Exit)
     val entries: List<Entry> = all.map { Entry(it.label, icon = null, builtIn = it) }
 }
 
