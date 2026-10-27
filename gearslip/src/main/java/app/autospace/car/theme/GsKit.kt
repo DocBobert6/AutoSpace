@@ -289,11 +289,14 @@ fun FrostedPanelSurface(
     elevation: Dp,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
+    // r88: the media card passes a lower fill when album art sits behind it so the art
+    // reads clearly; every other caller keeps the default, so their fill is unchanged.
+    fillAlpha: Float = FrostedChromeAlpha,
 ) {
     Surface(
         modifier = modifier.pitLanePanelBorder(shape),
         shape = shape,
-        color = frostedChromeColor(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha),
         shadowElevation = elevation,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {

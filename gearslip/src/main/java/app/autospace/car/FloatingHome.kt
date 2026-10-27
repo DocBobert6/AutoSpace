@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.FrostedPanelSurface
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsIconButton
@@ -239,6 +240,17 @@ internal val FloatingCardDismissGlyphSize: Dp = 20.dp
 internal val FloatingCardSessionSwipeMinDp: Dp = 24.dp
 
 /**
+ * r88: the floating media card's frosted fill alpha. With album art behind it the fill
+ * drops to 0.60 so the blurred art reads clearly — at the pinned 0.88 only ~12% showed
+ * through, which is why it read as faint. Without art the card keeps the pinned 0.88
+ * exactly, so the missing-art card is unchanged. The art is a heavily blurred 64px copy
+ * with no sharp edges, and the title stays bold over a 0.60 scrim, so text stays readable.
+ * Pure so it is unit-testable.
+ */
+internal fun mediaCardFillAlpha(hasArt: Boolean): Float =
+    if (hasArt) 0.60f else FrostedChromeAlpha
+
+/**
  * The floating media card. Ordinary Compose surface in the window layer
  * above the map SurfaceView (same mechanism as HomeFrameOverlay) — no
  * map-pipeline, VirtualDisplay, or CarAppStage changes, so it survives
@@ -252,8 +264,10 @@ internal val FloatingCardSessionSwipeMinDp: Dp = 24.dp
  *
  * r60 (A27): when album art is available, a blurred copy of it sits
  * behind the card as its background — under the frosted fill, never
- * over it, so the 0.88 fill stays the only translucent layer and
- * legibility is unchanged from today. This is NOT live map blur (still
+ * over it, so the fill stays the only translucent layer. r88: with art
+ * present the fill drops to 0.60 (mediaCardFillAlpha) so the art reads
+ * clearly; without art it stays the pinned 0.88. This is NOT live map
+ * blur (still
  * impossible over the SurfaceView): the art is our own image, blurred
  * once per art change and cached by its URI. No art means no background
  * image: the card keeps exactly today's background.
@@ -296,9 +310,13 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     val swipeThresholdPx = with(LocalDensity.current) { FloatingCardSessionSwipeMinDp.toPx() }
     Box(modifier) {
         // r60 (A27): the blurred art sits behind the card, clipped to the
-        // card's shape, and the frosted surface draws its 0.88 fill over
-        // it — the fill is the scrim, so no second translucent layer is
-        // added and the art can never hurt legibility. The art is drawn
+        // card's shape, and the frosted surface draws its fill over it —
+        // the fill is the scrim, so no second translucent layer is added.
+        // r88: with art present the fill drops to 0.60 (mediaCardFillAlpha),
+        // so the art reads clearly instead of the ~12% that showed through
+        // the pinned 0.88; the art is a heavily blurred copy with no sharp
+        // edges, so the bold title over a 0.60 scrim stays readable.
+        // Without art the fill stays 0.88. The art is drawn
         // at the card's size (matchParentSize) and cropped, then upscaled
         // with bilinear filtering; the working copy is only 64px, so the
         // upscale stays smooth. Null art (or a failed blur) draws nothing:
@@ -314,6 +332,7 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
         FrostedPanelSurface(
             shape = cardShape,
             elevation = 4.dp,
+            fillAlpha = mediaCardFillAlpha(blurredArt != null),
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -365,14 +384,6 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        Box(
-                            Modifier
-                                .size(56.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(scheme.surface),
-                        ) {
-                            art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                        }
                         Column(Modifier.weight(1f)) {
                             // r42: the title wraps to two lines — the extra
                             // height that makes the narrower card slightly
@@ -412,7 +423,7 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                     }
                 }
                 if (now.durationMs > 0) {
-                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false)
+                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false, waveform = true)
                 } else {
                     Spacer(Modifier.height(6.dp))
                 }

@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            55, "0.4.44-alpha",
+            listOf(
+                "The floating media card now scrubs with the same waveform bars as the full player: tap or drag the bars to seek, and the card still switches sessions with a swipe on the song row.",
+                "The card's album art background is stronger now, and the small square album art beside the song title is gone, so the title has the full row.",
+            ),
+        ),
+        Release(
             54, "0.4.43-alpha",
             listOf(
                 "The steering-side app bar is now a full-height rail at the screen edge, like Google's: the map, the apps grid, and settings all sit beside it instead of sliding underneath it, and its clock shows the full time and battery instead of cutting the time off.",

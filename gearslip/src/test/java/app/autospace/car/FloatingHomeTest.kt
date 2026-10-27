@@ -2,6 +2,7 @@ package app.autospace.car
 
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.FrostedChromeAlpha
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -146,5 +147,17 @@ class FloatingHomeTest {
         // Card bottom clearance in overlay mode: the r42 24dp inset
         // plus the strip, so the card sits where it sat in-flow.
         assertEquals(104.dp, 24.dp + NAV_BAR_STRIP_HEIGHT)
+    }
+
+    @Test
+    fun mediaCardFillAlphaDropsWithArt() {
+        // r88: art behind the card reads clearly at 0.60, up from ~12% through 0.88.
+        assertEquals(0.60f, mediaCardFillAlpha(true))
+    }
+
+    @Test
+    fun mediaCardFillAlphaKeepsPinnedWithoutArt() {
+        // r88: no art means no background image, so the card keeps the pinned fill exactly.
+        assertEquals(FrostedChromeAlpha, mediaCardFillAlpha(false))
     }
 }

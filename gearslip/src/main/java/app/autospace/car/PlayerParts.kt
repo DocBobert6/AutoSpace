@@ -192,7 +192,7 @@ internal fun playMorphCorner(playing: Boolean, styleCorner: Dp, playSize: Dp): D
 
 /**
  * The seek bar, with elapsed and total time under it when [showTimes]. [waveform] swaps the
- * capsule bar for waveform bars (full player only — the floating card keeps the capsule);
+ * capsule bar for waveform bars (full player, and since r88 the floating media card too);
  * [accent] tints the waveform fill, defaulting to the scheme primary.
  */
 @Composable
