@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            58, "0.4.47-alpha",
+            listOf(
+                "Fixed the Games section still crashing on open: importing a folder or a single game now opens the file picker on your phone.",
+            ),
+        ),
+        Release(
             57, "0.4.46-alpha",
             listOf(
                 "Fixed a crash on opening the Games section: tapping the Games button no longer closes the app.",

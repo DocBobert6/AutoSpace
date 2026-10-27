@@ -12,7 +12,10 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.result.ActivityResultRegistryOwner
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -96,7 +99,22 @@ class ScreenProjector(private val context: Context) {
         decor.setViewTreeViewModelStoreOwner(treeOwner)
         decor.setBackgroundColor(Color.BLACK)
 
-        show.setContentView(ComposeView(show.context).apply { setContent(content) })
+        // A ComposeView outside an Activity has no ActivityResultRegistryOwner to find
+        // up its view tree, so rememberLauncherForActivityResult crashes on open (Games,
+        // r91; its BackHandler sibling was r90). Both callers hand us an Activity, so
+        // provide its registry owner at the root: pickers register against the phone
+        // activity and open on the phone screen, while their result callbacks run back
+        // into this composition. The back dispatcher owner is deliberately NOT provided:
+        // the car surface has no system back, and back stays with goBack().
+        val owner = context as? ActivityResultRegistryOwner
+        val ownedContent: @Composable () -> Unit = {
+            if (owner != null) {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) { content() }
+            } else {
+                content()
+            }
+        }
+        show.setContentView(ComposeView(show.context).apply { setContent(ownedContent) })
         show.show()
 
         presentation = show

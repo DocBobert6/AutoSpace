@@ -86,6 +86,7 @@ fun GamesScreen() {
     var resultText by remember { mutableStateOf<String?>(null) }
     var gameActions by remember { mutableStateOf<GameEntry?>(null) }
     var removeTarget by remember { mutableStateOf<GameEntry?>(null) }
+    var pickerNote by remember { mutableStateOf(false) }
 
     // Parked gate, live: a plain property, not a flow, so it is polled.
     LaunchedEffect(Unit) {
@@ -106,6 +107,7 @@ fun GamesScreen() {
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
+        pickerNote = false
         if (uri == null) return@rememberLauncherForActivityResult
         val target = (page as? GamesPage.Console)?.key
         importing = true
@@ -122,6 +124,7 @@ fun GamesScreen() {
     val singlePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
+        pickerNote = false
         val target = (page as? GamesPage.Console)?.key ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
         importing = true
@@ -135,6 +138,27 @@ fun GamesScreen() {
         }
     }
 
+    // The picker UI opens on the phone (its registry lives in the phone activity,
+    // provided at the projector root). Say so while it is open: the car screen
+    // otherwise shows nothing at all until the result comes back. A launch failure
+    // never crashes — it reports honestly instead.
+    fun launchFolderPicker() {
+        pickerNote = true
+        val ok = runCatching { folderPicker.launch(null) }.isSuccess
+        if (!ok) {
+            pickerNote = false
+            resultText = "Import needs the file picker on your phone, and it could not be opened. Try again."
+        }
+    }
+
+    fun launchSinglePicker() {
+        pickerNote = true
+        val ok = runCatching { singlePicker.launch(arrayOf("*/*")) }.isSuccess
+        if (!ok) {
+            pickerNote = false
+            resultText = "Import needs the file picker on your phone, and it could not be opened. Try again."
+        }
+    }
     Box(
         Modifier.fillMaxSize().onKeyEvent { event ->
             // Gamepad B goes back.
@@ -170,21 +194,33 @@ fun GamesScreen() {
                     games = games,
                     importing = importing,
                     onConsole = { page = GamesPage.Console(it) },
-                    onImportFolder = { folderPicker.launch(null) },
+                    onImportFolder = { launchFolderPicker() },
                     onControllers = { page = GamesPage.Controllers },
                 )
                 is GamesPage.Console -> ConsolePage(
                     consoleKey = current.key,
                     games = games.filter { it.system == current.key },
                     importing = importing,
-                    onImportRom = { singlePicker.launch(arrayOf("*/*")) },
-                    onImportFolder = { folderPicker.launch(null) },
+                    onImportRom = { launchSinglePicker() },
+                    onImportFolder = { launchFolderPicker() },
                     onGame = { gameActions = it },
                 )
                 GamesPage.Controllers -> ControllersScreen()
             }
         }
         if (!moving) {
+            if (pickerNote) {
+                GameOverlay(onDismiss = { pickerNote = false }) {
+                    Text("The file picker opened on your phone.", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Pick there — your games will appear here when you are done.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    GameMenuRow("OK", null) { pickerNote = false }
+                }
+            }
             resultText?.let { text ->
                 GameOverlay(onDismiss = { resultText = null }) {
                     Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
