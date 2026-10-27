@@ -56,6 +56,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.autospace.media.CarMedia
@@ -155,44 +156,52 @@ fun MediaScreen(app: MediaApp, onExit: () -> Unit) {
         // Two columns, split the same way on every tab so nothing jumps when switching: the app
         // and the art (or, beside a list, the compact player) on the left; the tabs across the
         // top of the right column, over whatever the tab shows.
-        Row(
+        BoxWithConstraints(
             Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Column(Modifier.weight(0.8f).fillMaxHeight()) {
-                AppIdentity(app, onExit)
-                Spacer(Modifier.height(12.dp))
-                if (tab == Tab.NOW_PLAYING) {
-                    CoverArt(art, Modifier.weight(1f).fillMaxWidth())
-                } else {
-                    CompactPlayer(now, media, Modifier.weight(1f).fillMaxWidth())
-                }
-            }
-            Column(Modifier.weight(1.2f).fillMaxHeight()) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MediaTab("Now playing", tab == Tab.NOW_PLAYING, Modifier.weight(1f)) { tab = Tab.NOW_PLAYING }
-                    MediaTab("Browse", tab == Tab.BROWSE, Modifier.weight(1f)) { tab = Tab.BROWSE }
-                    MediaTab("Up next", tab == Tab.QUEUE, Modifier.weight(1f)) { tab = Tab.QUEUE }
-                    MediaTab("Lyrics", tab == Tab.LYRICS, Modifier.weight(1f)) { tab = Tab.LYRICS }
-                    if (now.canSearch || media.canSearchLibrary) {
-                        GsIconButton(
-                            Icons.Filled.Search,
-                            "Search ${app.label}",
-                            { searching = true },
-                            colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-                            size = 44.dp,
-                            shape = MaterialTheme.shapes.large,
-                        )
+            // The art column takes everything the controls column does not need (see
+            // playerArtWeightFraction): on a wide head unit the cover grows, on a narrow
+            // one the split stays today's 0.8 / 1.2 so the transport row still fits.
+            val artFraction = playerArtWeightFraction(maxWidth - 24.dp)
+            Row(
+                Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                Column(Modifier.weight(artFraction).fillMaxHeight()) {
+                    AppIdentity(app, onExit)
+                    Spacer(Modifier.height(12.dp))
+                    if (tab == Tab.NOW_PLAYING) {
+                        CoverArt(art, Modifier.weight(1f).fillMaxWidth())
+                    } else {
+                        CompactPlayer(now, media, Modifier.weight(1f).fillMaxWidth())
                     }
                 }
-                search?.let { SearchStatus(it, app.label, media::dismissSearch) }
-                Spacer(Modifier.height(12.dp))
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    when (tab) {
-                        Tab.NOW_PLAYING -> NowPlayingControls(now, media, Modifier.fillMaxSize())
-                        Tab.BROWSE -> BrowsePanel(browse, media, app.label, Modifier.fillMaxSize())
-                        Tab.QUEUE -> QueuePanel(queue, now, media, Modifier.fillMaxSize())
-                        Tab.LYRICS -> LyricsPanel(now, Modifier.fillMaxSize())
+                Column(Modifier.weight(1f - artFraction).fillMaxHeight()) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MediaTab("Now playing", tab == Tab.NOW_PLAYING, Modifier.weight(1f)) { tab = Tab.NOW_PLAYING }
+                        MediaTab("Browse", tab == Tab.BROWSE, Modifier.weight(1f)) { tab = Tab.BROWSE }
+                        MediaTab("Up next", tab == Tab.QUEUE, Modifier.weight(1f)) { tab = Tab.QUEUE }
+                        MediaTab("Lyrics", tab == Tab.LYRICS, Modifier.weight(1f)) { tab = Tab.LYRICS }
+                        if (now.canSearch || media.canSearchLibrary) {
+                            GsIconButton(
+                                Icons.Filled.Search,
+                                "Search ${app.label}",
+                                { searching = true },
+                                colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
+                                size = 44.dp,
+                                shape = MaterialTheme.shapes.large,
+                            )
+                        }
+                    }
+                    search?.let { SearchStatus(it, app.label, media::dismissSearch) }
+                    Spacer(Modifier.height(12.dp))
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        when (tab) {
+                            Tab.NOW_PLAYING -> NowPlayingControls(now, media, Modifier.fillMaxSize())
+                            Tab.BROWSE -> BrowsePanel(browse, media, app.label, Modifier.fillMaxSize())
+                            Tab.QUEUE -> QueuePanel(queue, now, media, Modifier.fillMaxSize())
+                            Tab.LYRICS -> LyricsPanel(now, Modifier.fillMaxSize())
+                        }
                     }
                 }
             }
@@ -469,13 +478,39 @@ private fun Notice(title: String, detail: String?, action: Pair<String, () -> Un
  */
 @Composable
 internal fun NowPlayingPage(now: NowPlaying, media: CarMedia, modifier: Modifier) {
-    Row(
-        modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        CoverArt(rememberArt(now), Modifier.weight(0.8f).fillMaxHeight())
-        NowPlayingControls(now, media, Modifier.weight(1.2f).fillMaxHeight())
+    BoxWithConstraints(modifier) {
+        // Same responsive split as the media screen's two columns (see
+        // playerArtWeightFraction): the cover grows where the controls still fit.
+        val artFraction = playerArtWeightFraction(maxWidth - 72.dp)
+        Row(
+            Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            CoverArt(rememberArt(now), Modifier.weight(artFraction).fillMaxHeight())
+            NowPlayingControls(now, media, Modifier.weight(1f - artFraction).fillMaxHeight())
+        }
     }
+}
+
+/**
+ * How wide the full-player controls column must stay so the 5-button transport row fits:
+ * Previous/Next 60dp + -10s/+10s 72dp + Play 96dp + 4 x 18dp spacing = 432dp, plus 8dp slack.
+ */
+internal const val PLAYER_CONTROLS_MIN_WIDTH_DP = 440f
+
+/**
+ * The art column's share of the full player's two columns, from the width the columns split.
+ * The art takes everything the controls column does not need, so the cover grows on a wide
+ * head unit (0.55 of a 968dp split, capped at 0.60 on wider ones) and clamps to today's 0.40
+ * share on splits narrower than ~733dp, where even the minimum controls width would not
+ * fit. Wherever the fraction is uncapped the controls column is exactly the minimum, and
+ * wherever it caps it is wider still, so the transport row always fits; below the clamp
+ * the split is exactly today's, never worse. Pure so it is unit-testable; the Compose
+ * layout itself is not JVM-observable.
+ */
+internal fun playerArtWeightFraction(columnsWidth: Dp): Float {
+    if (columnsWidth.value <= 0f) return 0.4f
+    return ((columnsWidth.value - PLAYER_CONTROLS_MIN_WIDTH_DP) / columnsWidth.value).coerceIn(0.4f, 0.6f)
 }
 
 /** The cover, as big a square as its space allows, centred in it. */

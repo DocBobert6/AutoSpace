@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            32, "0.4.21-alpha",
+            listOf(
+                "Album art on the full Now Playing screen is bigger.",
+            ),
+        ),
+        Release(
             31, "0.4.20-alpha",
             listOf(
                 "Map chrome is now called Meridian, and it is experimental: turn on experimental features to use it.",
