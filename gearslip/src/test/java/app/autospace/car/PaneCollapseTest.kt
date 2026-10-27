@@ -6,7 +6,7 @@ import androidx.car.app.model.ItemList
 import androidx.car.app.model.Pane
 import androidx.car.app.model.PaneTemplate
 import androidx.car.app.model.PlaceListMapTemplate
-import androidx.car.app.model.PlaceListNavigationTemplate
+import androidx.car.app.navigation.model.PlaceListNavigationTemplate
 import androidx.car.app.model.Row
 import androidx.car.app.navigation.model.MapTemplate
 import androidx.car.app.navigation.model.MapWithContentTemplate
