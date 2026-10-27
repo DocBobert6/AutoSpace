@@ -31,7 +31,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.onSizeChanged
+import androidx.compose.ui.layout.onSizeChanged
 import app.autospace.media.MediaArt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -263,6 +263,12 @@ fun CarHome() {
                             NAV_BAR_STRIP_HEIGHT.value,
                         ),
                     )
+                    // r77 fix: captured here, in the BoxWithConstraints
+                    // scope — the inner Box content has neither the scope
+                    // receiver (maxWidth) nor a composable context
+                    // (LocalDensity.current) for the size callback.
+                    val clearanceCardWidth = floatingCardWidth(maxWidth)
+                    val clearanceDensity = LocalDensity.current
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
@@ -272,8 +278,8 @@ fun CarHome() {
                     ) {
                         FloatingMediaCard(
                             now,
-                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
-                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            Modifier.width(clearanceCardWidth).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
                             },
                         )
                     }
@@ -294,6 +300,12 @@ fun CarHome() {
                             NAV_BAR_STRIP_HEIGHT.value,
                         ),
                     )
+                    // r77 fix: captured here, in the BoxWithConstraints
+                    // scope — the inner Box content has neither the scope
+                    // receiver (maxWidth) nor a composable context
+                    // (LocalDensity.current) for the size callback.
+                    val clearanceCardWidth = floatingCardWidth(maxWidth)
+                    val clearanceDensity = LocalDensity.current
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
@@ -303,8 +315,8 @@ fun CarHome() {
                     ) {
                         LiveConversationWidget(
                             assistantState,
-                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
-                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            Modifier.width(clearanceCardWidth).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
                             },
                         )
                     }
@@ -420,6 +432,12 @@ fun CarHome() {
                             NAV_BAR_STRIP_HEIGHT.value,
                         ),
                     )
+                    // r77 fix: captured here, in the BoxWithConstraints
+                    // scope — the inner Box content has neither the scope
+                    // receiver (maxWidth) nor a composable context
+                    // (LocalDensity.current) for the size callback.
+                    val clearanceCardWidth = floatingCardWidth(maxWidth)
+                    val clearanceDensity = LocalDensity.current
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
@@ -429,8 +447,8 @@ fun CarHome() {
                     ) {
                         MiniVideoCard(
                             miniItem,
-                            Modifier.width(floatingCardWidth(maxWidth)).onSizeChanged {
-                                CardClearanceState.reportCardHeight(with(LocalDensity.current) { it.height.toDp().value })
+                            Modifier.width(clearanceCardWidth).onSizeChanged {
+                                CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
                             },
                         )
                     }
