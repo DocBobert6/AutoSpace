@@ -106,10 +106,10 @@ class ScreenProjector(private val context: Context) {
         // activity and open on the phone screen, while their result callbacks run back
         // into this composition. The back dispatcher owner is deliberately NOT provided:
         // the car surface has no system back, and back stays with goBack().
-        val owner = context as? ActivityResultRegistryOwner
+        val resultOwner = context as? ActivityResultRegistryOwner
         val ownedContent: @Composable () -> Unit = {
-            if (owner != null) {
-                CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner) { content() }
+            if (resultOwner != null) {
+                CompositionLocalProvider(LocalActivityResultRegistryOwner provides resultOwner) { content() }
             } else {
                 content()
             }
