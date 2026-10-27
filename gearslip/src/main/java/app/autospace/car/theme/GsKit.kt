@@ -288,10 +288,12 @@ fun FrostedPanelSurface(
     shape: Shape,
     elevation: Dp,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
     // r88: the media card passes a lower fill when album art sits behind it so the art
     // reads clearly; every other caller keeps the default, so their fill is unchanged.
+    // This sits BEFORE content on purpose: content is the trailing-lambda parameter, and
+    // a parameter after it would steal every call site's trailing lambda block.
     fillAlpha: Float = FrostedChromeAlpha,
+    content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = modifier.pitLanePanelBorder(shape),
