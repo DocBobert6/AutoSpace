@@ -56,9 +56,10 @@ import kotlinx.coroutines.withContext
 /**
  * r89: the Games section, ported from Mariner's games suite home: one row per
  * console, each console's page holding its games and its import, refined only
- * for the car screen — full-width rows, large type, Frost styling, and
- * controller navigation (D-pad moves focus, A confirms, B goes back, exactly
- * like the touchscreen rows they sit beside). Round 2 wires playback:
+ * for the car screen — full-width rows, large type, Frost styling.
+ * Menus are touchscreen-navigable; a paired controller drives only an
+ * open game and never moves UI focus or backs out of a screen (r95
+ * scope lock). Round 2 wires playback:
  * a game's Play row downloads its core (verified by size and hash)
  * and opens the playback screen, whose engine seam waits on the
  * native runner — until then the screen says so plainly instead of
@@ -81,7 +82,6 @@ private sealed interface GamesPage {
 @Composable
 fun GamesScreen() {
     val context = LocalContext.current
-    val navigator = LocalCarNavigator.current
     val scope = rememberCoroutineScope()
     var page by remember { mutableStateOf<GamesPage>(GamesPage.Home) }
     var games by remember { mutableStateOf(GameImport.load(context)) }
@@ -114,10 +114,6 @@ fun GamesScreen() {
 
     fun refresh() {
         games = GameImport.load(context)
-    }
-
-    fun goBack() {
-        if (page != GamesPage.Home) page = GamesPage.Home else navigator.back()
     }
 
     val folderPicker = rememberLauncherForActivityResult(
@@ -266,16 +262,11 @@ fun GamesScreen() {
             }
         }
     }
+    // No key handler on this root: controller input is scoped
+     // to an open game at the activity (r95), so no controller
+     // key may back out of Games from here.
     Box(
-        Modifier.fillMaxSize().onKeyEvent { event ->
-            // Gamepad B goes back.
-            if (event.type == KeyEventType.KeyDown && event.key == Key.ButtonB) {
-                goBack()
-                true
-            } else {
-                false
-            }
-        },
+        Modifier.fillMaxSize(),
     ) {
         Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
             if (moving) {

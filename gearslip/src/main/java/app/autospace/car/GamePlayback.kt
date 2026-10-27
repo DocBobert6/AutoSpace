@@ -274,15 +274,20 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
 
     Box(
         Modifier.fillMaxSize().onKeyEvent { event ->
-            // Gamepad B goes back through the Games root; while the
-            // pause menu is open, D-pad and A belong to the menu.
-            if (menuOpen) {
-                false
-            } else if (event.key == Key.ButtonB) {
+            // Scope lock (r95): controller input never leaves this
+            // screen. B is a game button while playing, and closes
+            // the pause menu back to the game while it is open —
+            // it never walks back through the Games root. While the
+            // menu is open, D-pad and A still belong to the menu.
+            if (event.key == Key.ButtonB && menuOpen) {
+                if (event.type == KeyEventType.KeyDown) menuOpen = false
+                true
+            } else if (menuOpen) {
                 false
             } else if (event.type == KeyEventType.KeyDown ||
                 event.type == KeyEventType.KeyUp
             ) {
+                // Every mapped key, B included, is a game button.
                 router.onKey(
                     event.nativeKeyEvent.keyCode,
                     event.type == KeyEventType.KeyDown

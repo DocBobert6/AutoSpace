@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            62, "0.4.51-alpha",
+            listOf(
+                "Fixed the controller closing Games: a paired controller now only drives a game that is actually open — it never moves through menus or backs out of a screen.",
+            ),
+        ),
+        Release(
             61, "0.4.50-alpha",
             listOf(
                 "The steering-side app bar floats again: it sits off the screen edges with margins all around, and its corners follow your button style — square under Pitlane, rounded under the rest.",
