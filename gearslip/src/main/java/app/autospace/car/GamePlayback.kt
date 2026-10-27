@@ -3,6 +3,7 @@ package app.autospace.car
 import android.content.Context
 import android.hardware.input.InputManager
 import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -62,11 +63,11 @@ import kotlinx.coroutines.withContext
  * actual gameplay takes a Bluetooth controller, routed through
  * GameKeyRouter into the engine.
  *
- * The native runner is not in this round, so the engine here is
- * NoEngine: every call is a safe no-op, and starting a game says so
- * plainly instead of pretending to play. Saves, disc swap, and
- * options are already wired through this seam, so they light up
- * unchanged when the runner lands.
+ * The engine here is RetroEngine (r93): the native libretro runner
+ * behind this same seam, so a verified core renders frames and
+ * plays audio on the SurfaceView below. Saves, disc swap, and
+ * options were already wired through this seam, so they light up
+ * unchanged now the runner is real.
  */
 interface GameEngine {
     /** Start a game. Returns null on success, or the honest reason
@@ -93,33 +94,6 @@ interface GameEngine {
     fun diskIndex(): Int
     fun diskSwap(index: Int): Boolean
     fun destroy()
-}
-
-/** Stand-in until the native runner lands: every call is a safe
- * no-op, and create() reports the honest reason. */
-object NoEngine : GameEngine {
-    override fun create(
-        corePath: String,
-        romPath: String,
-        systemDir: String,
-        saveDir: String,
-        options: Array<String>
-    ): String? = "The playback engine arrives in a later round."
-
-    override fun setSurface(surface: Surface?) = Unit
-    override fun start() = Unit
-    override fun stop() = Unit
-    override fun setPaused(paused: Boolean) = Unit
-    override fun setInput(mask: Int) = Unit
-    override fun setAnalog(lx: Int, ly: Int, rx: Int, ry: Int) = Unit
-    override fun setControllerDevice(device: Int) = Unit
-    override fun saveState(path: String): Boolean = false
-    override fun loadState(path: String): Boolean = false
-    override fun reset(): Boolean = false
-    override fun diskCount(): Int = 0
-    override fun diskIndex(): Int = 0
-    override fun diskSwap(index: Int): Boolean = false
-    override fun destroy() = Unit
 }
 
 /**
@@ -181,8 +155,8 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     var surface by remember { mutableStateOf<Surface?>(null) }
     var inputMask by remember { mutableStateOf(0) }
 
-    // NoEngine for r92; a real runner drops in behind this same seam.
-    val engine: GameEngine = remember { NoEngine }
+    // RetroEngine for r93: the native runner behind this same seam.
+    val engine: GameEngine = remember { RetroEngine }
 
     val router = remember {
         GameKeyRouter(
@@ -218,6 +192,44 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
         }
         monitor.start()
         onDispose { monitor.stop() }
+    }
+
+    // Motion-axis hook (r93): a phone-paired controller's sticks
+    // and hat arrive at the activity as generic motion events and
+    // land here through GameMotionSink while this screen is up.
+    // The handler is cleared on leave, so motion never leaks into
+    // another screen. Keys travel the same activity path (see
+    // GearslipActivity) into this Box's onKeyEvent below. The
+    // handler takes every joystick or gamepad move, including the
+    // return to center, which is what clears the router's bits.
+    DisposableEffect(router) {
+        val handler: (MotionEvent) -> Boolean = { event ->
+            if (event.action == MotionEvent.ACTION_MOVE) {
+                router.onAxes(
+                    event.getAxisValue(MotionEvent.AXIS_X),
+                    event.getAxisValue(MotionEvent.AXIS_Y),
+                    isStick = true,
+                )
+                router.onRightStick(
+                    event.getAxisValue(MotionEvent.AXIS_Z),
+                    event.getAxisValue(MotionEvent.AXIS_RZ),
+                )
+                router.onAxes(
+                    event.getAxisValue(MotionEvent.AXIS_HAT_X),
+                    event.getAxisValue(MotionEvent.AXIS_HAT_Y),
+                    isStick = false,
+                )
+                true
+            } else {
+                false
+            }
+        }
+        GameMotionSink.handler = handler
+        onDispose {
+            if (GameMotionSink.handler === handler) {
+                GameMotionSink.handler = null
+            }
+        }
     }
 
     DisposableEffect(Unit) {
@@ -471,9 +483,9 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                         menuNote = if (ok) {
                             if (info.exists) "Loaded." else "Saved."
                         } else if (info.exists) {
-                            "Loading a save state needs the playback engine."
+                            "Could not load the save state."
                         } else {
-                            "Saving a state needs the playback engine."
+                            "Could not save the state."
                         }
                     }
                 }
@@ -511,7 +523,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                                 menuNote = if (engine.diskSwap(index)) {
                                     "Disc ${index + 1} selected."
                                 } else {
-                                    "Disc swapping needs the playback engine."
+                                    "Disc swap failed."
                                 }
                             }
                         }
@@ -526,7 +538,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                 }
                 item(key = "options-note") {
                     Text(
-                        "Options are saved and applied when the playback engine lands.",
+                        "Options are saved and apply the next time the game starts.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -549,7 +561,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                         menuNote = if (engine.reset()) {
                             "Game reset."
                         } else {
-                            "Reset needs the playback engine."
+                            "Reset failed."
                         }
                     }
                 }

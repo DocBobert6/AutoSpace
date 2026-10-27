@@ -20,6 +20,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Install NDK and CMake
+        run: |
+          echo "y" | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.0.12077973" "cmake;3.22.1"
+
+      - name: Fetch oboe (pinned, r93)
+        run: |
+          mkdir -p third_party/oboe
+          curl -sL -o /tmp/oboe.tar.gz https://github.com/google/oboe/archive/refs/tags/1.9.0.tar.gz
+          echo "e030276d25b8bdfaeb04f66646821b1ba4a2b6a580a7e84fb144a478eaecd663  /tmp/oboe.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/oboe.tar.gz -C third_party/oboe --strip-components=1
+
       - name: Write signing key and properties
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > gearslip-release.jks

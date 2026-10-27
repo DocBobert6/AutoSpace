@@ -41,6 +41,19 @@ object GamepadMap {
 }
 
 /**
+ * r93: the one registered consumer of phone-side controller motion
+ * events. The playback screen sets this while it is up (and clears
+ * it on leave); ScreenProjector delivers activity-forwarded motion
+ * here first. The handler takes every joystick or gamepad move,
+ * including the return to center, which is what clears the
+ * router's stick bits.
+ */
+object GameMotionSink {
+    @Volatile
+    var handler: ((MotionEvent) -> Boolean)? = null
+}
+
+/**
  * Routes controller input into a libretro button mask. The router
  * remembers which D-pad bits the hat and stick set, so returning to
  * center clears exactly what was set and never a held D-pad key.
@@ -59,6 +72,23 @@ class GameKeyRouter(
     private var stickBits = 0
     private val heldKeys = HashSet<Int>()
 
+    // Analog stick positions, kept apart so the right stick never
+    // clobbers the left (r93): each stick update re-emits the
+    // combined vector.
+    private var leftX = 0f
+    private var leftY = 0f
+    private var rightX = 0f
+    private var rightY = 0f
+
+    private fun emitAnalog() {
+        onAnalog(
+            (leftX * 32767).toInt(),
+            (leftY * 32767).toInt(),
+            (rightX * 32767).toInt(),
+            (rightY * 32767).toInt()
+        )
+    }
+
     /** Returns true when the key maps to a game button. */
     fun onKey(code: Int, down: Boolean): Boolean {
         val bit = GamepadMap.bitForKeyCode(code)
@@ -73,12 +103,9 @@ class GameKeyRouter(
      * report through onAnalog; the hat still feeds the D-pad bits. */
     fun onAxes(x: Float, y: Float, isStick: Boolean = false) {
         if (analogMode && isStick) {
-            onAnalog(
-                (x * 32767).toInt(),
-                (y * 32767).toInt(),
-                0,
-                0
-            )
+            leftX = x
+            leftY = y
+            emitAnalog()
             return
         }
         val bits = GamepadMap.bitsForAxes(x, y)
@@ -88,6 +115,17 @@ class GameKeyRouter(
             applyAxisBits(bits, hatBits) { hatBits = it }
         }
         onActivity()
+    }
+
+    /** Feed the right stick in analog mode: it updates only the
+     * right axes and re-emits the combined vector, so the left
+     * stick's position survives. Ignored in digital mode, where
+     * only the left stick drives the D-pad bits. */
+    fun onRightStick(x: Float, y: Float) {
+        if (!analogMode) return
+        rightX = x
+        rightY = y
+        emitAnalog()
     }
 
     private fun applyAxisBits(

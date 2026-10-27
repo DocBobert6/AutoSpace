@@ -93,6 +93,34 @@ class GameInputTest {
     }
 
     @Test
+    fun rightStickUpdatesOnlyRightAxesInAnalogMode() {
+        var analog = listOf(0, 0, 0, 0)
+        val router = GameKeyRouter(setBit = { _, _ -> })
+        router.analogMode = true
+        router.onAnalog = { lx, ly, rx, ry -> analog = listOf(lx, ly, rx, ry) }
+        router.onAxes(0.5f, -0.5f, isStick = true)
+        assertEquals(listOf(16383, -16383, 0, 0), analog)
+        router.onRightStick(-0.25f, 0.75f)
+        assertEquals(listOf(16383, -16383, -8191, 24575), analog)
+        // Centering the right stick clears only its axes.
+        router.onRightStick(0f, 0f)
+        assertEquals(listOf(16383, -16383, 0, 0), analog)
+    }
+
+    @Test
+    fun rightStickIgnoredInDigitalMode() {
+        var mask = 0
+        var analogCalls = 0
+        val router = GameKeyRouter(setBit = { bit, on ->
+            mask = if (on) mask or (1 shl bit) else mask and (1 shl bit).inv()
+        })
+        router.onAnalog = { _, _, _, _ -> analogCalls++ }
+        router.onRightStick(0.9f, 0.9f)
+        assertEquals(0, mask)
+        assertEquals(0, analogCalls)
+    }
+
+    @Test
     fun controllerDeviceIsDualShockOnlyForPlayStation() {
         assertEquals(261, GameInput.controllerDeviceFor("ps1"))
         assertTrue(GameInput.analogCapable("ps1"))

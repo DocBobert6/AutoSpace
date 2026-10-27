@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            60, "0.4.49-alpha",
+            listOf(
+                "Games now actually play: the in-game screen runs games with sound, and a Bluetooth controller drives gameplay including the sticks.",
+            ),
+        ),
+        Release(
             59, "0.4.48-alpha",
             listOf(
                 "Games: core downloads, BIOS checks, save slots, and the in-game screen with controller controls.",

@@ -28,6 +28,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import app.autospace.car.GameMotionSink
 
 /**
  * Renders the car UI into the encoder's input Surface.
@@ -235,6 +236,42 @@ class ScreenProjector(private val context: Context) {
             android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, android.view.InputDevice.SOURCE_DPAD,
         )
         target.dispatchKeyEvent(event)
+    }
+
+    /**
+     * A phone-paired controller's key or motion, forwarded by the
+     * activity (r93): the car composition has no generic-motion
+     * hook of its own, so the activity captures gamepad-class
+     * input on the phone window and hands it here.
+     *
+     * Motion goes to the registered GameMotionSink handler first
+     * (the playback screen, while it is up); with no handler it
+     * falls back to the root view, like any other motion event.
+     * Keys go straight to the root view with the same touch-mode
+     * and focus preamble as dispatchKey, so Compose routes them
+     * to the focused row or the playback screen's key handler.
+     * Both return true when the event was handled.
+     */
+    fun dispatchMotion(event: MotionEvent): Boolean {
+        GameMotionSink.handler?.let { return it(event) }
+        val target = root ?: return false
+        return target.dispatchGenericMotionEvent(event)
+    }
+
+    fun dispatchControllerKey(keyCode: Int, down: Boolean, source: Int): Boolean {
+        val target = root ?: return false
+        if (target.isInTouchMode) {
+            target.requestFocusFromTouch()
+        }
+        if (target.findFocus() == null) target.requestFocus()
+        val now = SystemClock.uptimeMillis()
+        val event = android.view.KeyEvent(
+            now, now,
+            if (down) android.view.KeyEvent.ACTION_DOWN else android.view.KeyEvent.ACTION_UP,
+            keyCode, 0, 0,
+            android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0, source,
+        )
+        return target.dispatchKeyEvent(event)
     }
 
     fun stop() {

@@ -804,6 +804,49 @@ class GearslipActivity : ComponentActivity(), Projection {
         }
     }
 
+    // --- Phone-paired controller input (r93) -------------------------------
+    //
+    // A Bluetooth controller pairs with the PHONE, so its keys and
+    // motion arrive at this activity's window, not at the virtual
+    // display's: the car composition never sees them on its own.
+    // While a car session is projecting, gamepad-class input is
+    // forwarded to the projector, where keys reach the focused row
+    // or the playback screen and motion reaches the playback
+    // screen's registered handler. Gated on a live projector, so
+    // controller input on the phone's own screens is untouched,
+    // and a session with no projector never forwards anything.
+    private fun isGamepadInput(source: Int): Boolean =
+        source and android.view.InputDevice.SOURCE_GAMEPAD ==
+            android.view.InputDevice.SOURCE_GAMEPAD ||
+            source and android.view.InputDevice.SOURCE_JOYSTICK ==
+                android.view.InputDevice.SOURCE_JOYSTICK ||
+            source and android.view.InputDevice.SOURCE_DPAD ==
+                android.view.InputDevice.SOURCE_DPAD
+
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        val projector = screenProjector
+        if (projector != null && isGamepadInput(event.source)) {
+            if (projector.dispatchControllerKey(keyCode, true, event.source)) return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        val projector = screenProjector
+        if (projector != null && isGamepadInput(event.source)) {
+            if (projector.dispatchControllerKey(keyCode, false, event.source)) return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        val projector = screenProjector
+        if (projector != null && isGamepadInput(event.source)) {
+            if (projector.dispatchMotion(event)) return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
     override fun onProjectionStopped() {
         // Before the car UI goes, while the media connection is still up.
         app.autospace.car.CarServices.pausePhoneMedia()

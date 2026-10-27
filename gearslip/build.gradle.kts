@@ -24,6 +24,12 @@ val keystoreProperties = Properties().apply {
     ).firstOrNull { it.exists() }?.inputStream()?.use { load(it) }
 }
 
+// Oboe for the native game runner (r93): fetched and hash-pinned
+// by CI into third_party/oboe at the repository root; -PoboeDir=
+// overrides it for local builds.
+val oboeDir = project.findProperty("oboeDir")?.toString()
+    ?: "${rootProject.projectDir}/third_party/oboe"
+
 // Keeps build output out of the module folder: <root>/build/gearslip/... instead of
 // <root>/gearslip/build/..., so everything this project produces lands under one
 // root-level build/ directory. Set before android {}, which works out the path to R8's default
@@ -33,6 +39,9 @@ layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("gearslip"))
 android {
     namespace = "app.autospace"
     compileSdk = 37
+    // Pinned to the NDK CI installs (see release.yml / codeql.yml),
+    // so a runner with several NDKs never picks a surprise one.
+    ndkVersion = "27.0.12077973"
 
     defaultConfig {
         applicationId = "app.autospace"
@@ -107,6 +116,16 @@ android {
         buildConfig = true
     }
 
+    // Native game runner (r93): the libretro shim in src/main/cpp.
+    // Oboe comes from the CI fetch step, never vendored; without it
+    // CMake fails with a plain message naming the missing variable.
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
@@ -116,6 +135,11 @@ android {
         // Speech-to-text (sherpa-onnx, in jniLibs) ships for 64-bit ARM only: every phone
         // Gearslip runs on, and one copy of the native library instead of four.
         ndk { abiFilters += "arm64-v8a" }
+        externalNativeBuild {
+            cmake {
+                arguments("-DOBOE_DIR=$oboeDir")
+            }
+        }
     }
 
     testOptions {
