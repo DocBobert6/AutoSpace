@@ -16,6 +16,13 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            25, "0.4.14-alpha",
+            listOf(
+                "The assistant keeps listening for a few seconds after it answers, so you can keep talking without waking it again.",
+                "The overlay shows it is still listening while the window is open; stay quiet and it closes quietly on its own.",
+            ),
+        ),
+        Release(
             24, "0.4.13-alpha",
             listOf(
                 "Floating surfaces are a little more see-through throughout: map chrome, the floating media card, widget cards, and the floating nav bar now sit at a lighter frost level, so the map reads through more.",

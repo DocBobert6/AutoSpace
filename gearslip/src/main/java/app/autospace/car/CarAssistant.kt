@@ -70,6 +70,8 @@ object CarAssistant {
         val missingPermission: Boolean = false,
         /** False from the press until the microphone is actually open, so the overlay doesn't claim to listen early. */
         val ready: Boolean = false,
+        /** r57: true while the post-reply listen window is open — the overlay reads "Still listening…" instead of "Listening…". */
+        val followUp: Boolean = false,
         /** True when the reply being shown is an AI answer (r25 badge); local replies never set this. */
         val fromAi: Boolean = false,
         /**
@@ -180,6 +182,7 @@ object CarAssistant {
         VoiceEngine.stop()
         releaseSpeechFocus()
         synchronized(streamLock) { streamSession = null }
+        clearFollowUpExpiry()
         warmForListen(context)
         _state.value = State(Phase.LISTENING)
         busySinceMs = SystemClock.uptimeMillis()
@@ -221,6 +224,7 @@ object CarAssistant {
 
     /** Closes the overlay from wherever it's showing: mid-listen, mid-think, or after speaking. */
     fun cancel() {
+        clearFollowUpExpiry()
         releaseRecognizer()
         VoiceEngine.stop()
         releaseSpeechFocus()
@@ -228,6 +232,94 @@ object CarAssistant {
         _pendingCommand.value = null
         AssistantCommands.clearPendingAiAction()
         _state.value = State(Phase.IDLE)
+    }
+
+    // r57: post-response listen window. After a reply finishes
+    // speaking, the assistant keeps listening this long for a
+    // follow-up instead of dropping straight to IDLE, so a driver
+    // can have a little conversation without re-invoking. One
+    // tunable constant. Speech in the window starts a fresh turn
+    // exactly like a fresh listen (no wake word, no button); the
+    // window's own expiry, or a listen error, ends the turn
+    // quietly at IDLE — the reply already succeeded, so a missed
+    // follow-up is never worth an error card. The timer resets on
+    // every partial, so it can never cut off a live utterance:
+    // only five seconds with no partials at all ends the window,
+    // by which point the engine's own endpointing has already
+    // ended any real utterance. Single-turn semantics are
+    // preserved: a result lands in pendingCommand exactly like any
+    // other turn, with no history carried over (conversational
+    // memory is the later A59 multi-turn round, not this one).
+    private const val FOLLOW_UP_LISTEN_MS = 5_000L
+    private var followUpGeneration = 0
+    private var followUpExpiry: Runnable? = null
+
+    /** Disarms any pending window expiry; the window state itself is left to its caller. */
+    private fun clearFollowUpExpiry() {
+        followUpGeneration++
+        followUpExpiry?.let { mainHandler.removeCallbacks(it) }
+        followUpExpiry = null
+    }
+
+    /**
+     * Opens the post-reply listen window: phase LISTENING with
+     * [State.followUp] set, so the overlay reads "Still listening…"
+     * while the window is open. Callbacks mirror a fresh listen,
+     * except a failed listen ends quietly at IDLE instead of an
+     * error state. A call starting mid-reply also ends the turn
+     * at IDLE, the same way a fresh listen refuses during a call.
+     */
+    private fun openFollowUpWindow() {
+        if (appContext == null || CarCalls.state.value is CallUiState.Active) {
+            _state.value = _state.value.copy(phase = Phase.IDLE)
+            return
+        }
+        val generation = ++followUpGeneration
+        _state.value = _state.value.copy(
+            phase = Phase.LISTENING,
+            heard = "",
+            ready = false,
+            followUp = true,
+        )
+        busySinceMs = SystemClock.uptimeMillis()
+        val expiry = Runnable {
+            if (followUpGeneration != generation) return@Runnable
+            followUpExpiry = null
+            releaseRecognizer()
+            _state.value = State(Phase.IDLE)
+        }
+        followUpExpiry = expiry
+        mainHandler.postDelayed(expiry, FOLLOW_UP_LISTEN_MS)
+        listenOnce(
+            onListening = { _state.value = _state.value.copy(ready = true) },
+            onPartial = { text ->
+                // Live speech keeps resetting the timer; only a
+                // stretch with no partials at all can expire it.
+                if (followUpGeneration == generation) {
+                    followUpExpiry?.let { mainHandler.removeCallbacks(it) }
+                    mainHandler.postDelayed(expiry, FOLLOW_UP_LISTEN_MS)
+                }
+                _state.value = _state.value.copy(heard = text)
+            },
+            onHeard = {
+                clearFollowUpExpiry()
+                _state.value = _state.value.copy(phase = Phase.THINKING, followUp = false)
+                busySinceMs = SystemClock.uptimeMillis()
+            },
+            onResult = { text ->
+                clearFollowUpExpiry()
+                lastListenEndMs = SystemClock.elapsedRealtime()
+                GearslipLog.i("assistant: latency listen-end")
+                _state.value = _state.value.copy(phase = Phase.THINKING, heard = text, followUp = false)
+                busySinceMs = SystemClock.uptimeMillis()
+                _pendingCommand.value = text
+            },
+            onError = {
+                clearFollowUpExpiry()
+                releaseRecognizer()
+                _state.value = State(Phase.IDLE)
+            },
+        )
     }
 
     /**
@@ -282,7 +374,7 @@ object CarAssistant {
         _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
-            _state.value = _state.value.copy(phase = Phase.IDLE)
+            openFollowUpWindow()
         }, onSilent = {
             // 2026-10-25 round 3: the old text blamed the voice files
             // for every silent render — but onSilent fires only after
@@ -408,7 +500,7 @@ object CarAssistant {
                     context, lastListenEndMs,
                     onDone = {
                         releaseSpeechFocus()
-                        _state.value = _state.value.copy(phase = Phase.IDLE)
+                        openFollowUpWindow()
                     },
                     onSilent = {
                         // The worker is dead after this — mark the

@@ -177,7 +177,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             PulsingMic(listening)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 val (small, big) = when (state.phase) {
-                    CarAssistant.Phase.LISTENING -> "" to state.heard.ifBlank { if (state.ready) "Listening…" else "One moment…" }
+                    CarAssistant.Phase.LISTENING -> "" to state.heard.ifBlank { if (state.followUp && state.ready) "Still listening…" else if (state.ready) "Listening…" else "One moment…" }
                     // r55: a streaming reply grows here during
                     // THINKING, so its text streams ahead of speech;
                     // with no stream in flight the reply is blank and
@@ -216,7 +216,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 }
                 Text(
                     big,
-                    color = if (big == "Listening…" || big == "One moment…" || big == "…") Color.White.copy(alpha = 0.7f) else Color.White,
+                    color = if (big == "Listening…" || big == "Still listening…" || big == "One moment…" || big == "…") Color.White.copy(alpha = 0.7f) else Color.White,
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
