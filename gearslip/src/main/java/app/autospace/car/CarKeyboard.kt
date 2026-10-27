@@ -605,9 +605,10 @@ private fun Key(
  * [BackspaceRepeatPolicy.INITIAL_DELAY_MS] deletes repeatedly every
  * [BackspaceRepeatPolicy.REPEAT_INTERVAL_MS] until lift. The interval is
  * constant, never accelerating — predictable while driving. The repeat
- * job is a child of this pointer-input block's scope, so it dies with
- * the block (key leaves composition, stream torn down) as well as on
- * lift/cancel; a consumed lift cancels without deleting, so a
+ * job runs in the key's remembered coroutine scope (like LetterKey's
+ * gestureScope — AwaitPointerEventScope is not itself a scope) and is
+ * cancelled explicitly on lift, in the press finally, and by
+ * composition teardown; a consumed lift cancels without deleting, so a
  * passenger-gate pop mid-hold can never strand a deleting job.
  * Deletion reads the current text through [latestDelete]'s indirection
  * (r49), never a snapshot. Plain [Key] is untouched: its GsIconBox
@@ -628,6 +629,7 @@ private fun BackspaceKey(
 ) {
     var pressed by remember { mutableStateOf(false) }
     val latestDelete = rememberUpdatedState(onDeleteOnce)
+    val gestureScope = rememberCoroutineScope()
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
     val shape = gsButtonShape(RoundedCornerShape(12.dp))
     Box(
@@ -641,7 +643,7 @@ private fun BackspaceKey(
                         val down = awaitFirstDown()
                         pressed = true
                         var repeatFired = false
-                        val repeatJob = launch {
+                        val repeatJob = gestureScope.launch {
                             delay(BackspaceRepeatPolicy.INITIAL_DELAY_MS)
                             repeatFired = true
                             while (true) {
