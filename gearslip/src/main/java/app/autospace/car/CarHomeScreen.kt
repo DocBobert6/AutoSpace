@@ -80,6 +80,9 @@ fun CarHome() {
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
     val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsStateWithLifecycle()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsStateWithLifecycle()
+    val browserPipToggle by CarSettings.browserPipEnabled.collectAsStateWithLifecycle()
+    val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
+    val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -130,10 +133,17 @@ fun CarHome() {
     // the driver explicitly opened, not a player placement. Everything
     // below in the else branch is the classic Home, verbatim.
     val useFloating = floatingOn && panel != SidePanel.LYRICS
+    // r75: the mini video card takes the floating card's slot
+    // while it is showing, so two cards never share one corner; the
+    // audio card returns when the mini video is dismissed. The mini
+    // card's own gate, not the floating toggle, governs it, so it
+    // floats over classic Home too.
+    val showMiniVideo = browserPipNow(experimentalOn, browserPipToggle) &&
+        miniVideoItem != null && onHome
     val showFloatingCard = shouldShowFloatingCard(
         floatingOn, phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
-    )
+    ) && !showMiniVideo
     // r69: mini-player docking (A44/A45, experimental). The trip bar
     // sits at the bottom-start corner during guidance (see
     // NavigationChrome), so the effective dock steps a Start dock
@@ -291,6 +301,36 @@ fun CarHome() {
                 AutoplayOfferCard(
                     onTurnOff = CarServices::autoplayOfferTurnOff,
                     onKeep = CarServices::autoplayOfferKeep,
+                )
+            }
+        }
+        // r75: browser PiP — the mini video card floats over Home in
+        // the same bottom-dock slot and width as the floating media
+        // card (both modes; its own experimental gate, not the
+        // floating toggle), and the passenger gate dialog covers Home
+        // while unanswered, exactly like the browser gate: video keeps
+        // playing behind the dim until the driver answers Yes
+        // (audio-only) or the passenger answers (video). Drawn after
+        // the offer so the gate dialog sits above everything on Home;
+        // the scaffold nav bar above this stays reachable, as it does
+        // over the browser gate.
+        if (showMiniVideo) {
+            val miniItem = miniVideoItem
+            if (miniItem != null) {
+                BoxWithConstraints(
+                    Modifier.fillMaxSize().padding(
+                        start = 24.dp, top = 24.dp, end = 24.dp,
+                        bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                    ),
+                    contentAlignment = mediaCardDockAlignment(cardDock),
+                ) {
+                    MiniVideoCard(miniItem, Modifier.width(floatingCardWidth(maxWidth)))
+                }
+            }
+            if (miniVideoGateOpen) {
+                PassengerGateDialog(
+                    onDriving = { MiniVideoState.onDrivingAnswer() },
+                    onPassenger = { MiniVideoState.onPassengerAnswer() },
                 )
             }
         }

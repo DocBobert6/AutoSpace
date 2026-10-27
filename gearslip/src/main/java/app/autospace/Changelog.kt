@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            43, "0.4.32-alpha",
+            listOf(
+                "The browser can pop a page's video out to a mini video card on Home, as an experimental option.",
+            ),
+        ),
+        Release(
             42, "0.4.31-alpha",
             listOf(
                 "The app bar can float on the driver's side of the screen instead of along the bottom, as an experimental option.",

@@ -38,9 +38,13 @@ data class FoundMedia(val url: String, val title: String? = null) {
  * ConfirmCallOverlay comment), so every popup here is drawn in-composition.
  * All chrome uses Material You colours and Gs controls, so the sheet follows
  * the app theme exactly like the rest of AutoSpace (Phase 3.0).
+ * r75: onPopOut, when non-null, adds a "Pop out" button beside each
+ * row — the precise per-item alternative to the browser bar button's
+ * most-recent heuristic. Null (the default) renders exactly today's
+ * sheet: the feature does not exist while its gate is off.
  */
 @Composable
-fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit) {
+fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit, onPopOut: ((FoundMedia) -> Unit)? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(
@@ -78,39 +82,57 @@ fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onCl
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(items, key = { it.url }) { item ->
-                            GsButton(
-                                onClick = { onOpen(item) },
-                                tone = GsTone.Neutral,
+                            // r75: the row becomes info + Pop out, so
+                            // the two actions never nest: tapping info
+                            // opens the full player, tapping Pop out
+                            // pops exactly this item to the mini card.
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.fillMaxWidth(),
+                                GsButton(
+                                    onClick = { onOpen(item) },
+                                    tone = GsTone.Neutral,
+                                    modifier = Modifier.weight(1f),
                                 ) {
-                                    Text(
-                                        item.kindLabel,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
-                                    Column(Modifier.weight(1f)) {
-                                        item.title?.let {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(
+                                            item.kindLabel,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            item.title?.let {
+                                                Text(
+                                                    it,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                )
+                                            }
                                             Text(
-                                                it,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
+                                                item.url,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2,
                                                 overflow = TextOverflow.Ellipsis,
                                             )
                                         }
-                                        Text(
-                                            item.url,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
+                                    }
+                                }
+                                if (onPopOut != null) {
+                                    GsButton(
+                                        onClick = { onPopOut(item) },
+                                        tone = GsTone.Tonal,
+                                    ) {
+                                        Text("Pop out")
                                     }
                                 }
                             }

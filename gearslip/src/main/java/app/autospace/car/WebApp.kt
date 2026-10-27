@@ -54,6 +54,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tab
@@ -252,6 +253,26 @@ fun WebApp(content: String) {
         }
     }
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
+    // r75: browser PiP (experimental). The button renders only when
+    // the general opt-in AND this toggle are on (see browserPipNow),
+    // and only while the active tab's finder list is non-empty — the
+    // button appears only where a handoff is actually possible.
+    val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val browserPipToggle by CarSettings.browserPipEnabled.collectAsState()
+    val browserPipOn = browserPipNow(experimentalFeatures, browserPipToggle)
+    /**
+     * r75: the handoff. The finder URL goes to the mini video state
+     * and Home becomes current, so the mini card shows and plays.
+     * The WebView's own video is NOT detached — it cannot be (the
+     * WebView owns that stream); this hands the extracted URL to our
+     * own Media3 player. Audio focus (the mini player's, like the
+     * full player's) pauses or ducks whatever the WebView was
+     * playing, so there is never double audio.
+     */
+    fun popOut(item: FoundMedia) {
+        MiniVideoState.popOut(item.url, item.title)
+        navigator.home()
+    }
     var tabsOpen by remember { mutableStateOf(false) }
     fun addMedia(tab: BrowserTab, url: String, title: String?) {
         if (!VideoUrl.isPlayableUrl(url)) return
@@ -1000,6 +1021,18 @@ fun WebApp(content: String) {
                 // icon with a count badge, shown only when the active
                 // tab actually has media — the old GsButton row below
                 // the bar is gone.
+                if (browserPipOn && activeTab.foundMedia.isNotEmpty()) {
+                    // r75: pop out the most-recently-detected
+                    // playable URL (addMedia prepends, so index
+                    // 0 is the video that most recently started
+                    // loading — a reasonable "the video"
+                    // heuristic, NOT a guarantee; the sheet's
+                    // per-row Pop out is the precise
+                    // alternative). Sits beside the finder
+                    // button, same size, chrome not page.
+                    GsIconButton(Icons.Filled.PictureInPictureAlt, "Pop out video", { popOut(activeTab.foundMedia.first()) }, size = 56.dp, iconSize = 28.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
                 if (activeTab.foundMedia.isNotEmpty()) {
                     Box(contentAlignment = Alignment.TopEnd) {
                         Box(
@@ -1798,6 +1831,14 @@ fun WebApp(content: String) {
                         activeTab.foundMedia.indexOf(item).coerceAtLeast(0),
                     )
                 },
+                // r75: per-row Pop out — the precise alternative to
+                // the bar button's most-recent heuristic. Null while
+                // the gate is off, so the sheet is exactly today's
+                // sheet when PiP is off.
+                onPopOut = if (browserPipOn) { { item ->
+                    sheetOpen = false
+                    popOut(item)
+                } } else null,
                 onClose = { sheetOpen = false },
             )
         }

@@ -614,6 +614,7 @@ private fun AboutAndExperimentalPage() {
     val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
     val multiTurn by CarSettings.multiTurnEnabled.collectAsState()
     val sideBar by CarSettings.sideBarEnabled.collectAsState()
+    val browserPip by CarSettings.browserPipEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -638,7 +639,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1269,7 +1270,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1313,6 +1314,16 @@ private fun ExperimentalFeaturesList(
             description = "Moves the app bar to a floating rail on the driver's side of the screen instead of along the bottom. The bottom bar returns when this is off. The rail steps to the passenger side when the turn card, the widget column, or the media card occupies the driver's side.",
             checked = sideBar,
         ) { CarSettings.setSideBarEnabled(it) }
+        // r75: browser PiP — placed with the other Home-card layout
+        // rows (floating media, card docking, side bar) at the top of
+        // the list. Still behind the general experimental opt-in: the
+        // button renders only when experiments are on AND this is on.
+        // Off returns exactly today's browser: no button, no handoff.
+        ExperimentalFeatureRow(
+            title = "Browser picture-in-picture (experimental)",
+            description = "Adds a pop-out button in the browser bar when the page has playable media. It sends the video to a mini video card on Home, played by AutoSpace's own player. WebView video itself can never be popped out — the button only appears for media the finder can already hand off. Turn this off and the browser returns to exactly today's behavior.",
+            checked = browserPip,
+        ) { CarSettings.setBrowserPipEnabled(it) }
         ExperimentalFeatureRow(
             title = "Frosted map chrome (experimental)",
             description = "The map pane, turn card, trip bar, and edge buttons get the same " +
