@@ -261,16 +261,14 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         sourceCount = AssistantCommands.lastReplySourceCount,
                         provider = AssistantCommands.lastReplyProvider,
                     )
-                    // r73: multi-turn session record — only a completed
-                    // AI turn, only while the gate is on. A superseded
+                    // r97 graduation: multi-turn session record — only
+                    // a completed AI turn. A superseded
                     // turn never reaches here (its reply is discarded
                     // above), so a barged-in reply's tail can never
                     // enter the session; a built-in, unmatched, refused,
                     // or emergency reply is not an AI answer and is not
                     // recorded either.
-                    if (AssistantCommands.lastReplyWasAi &&
-                        multiTurnNow(CarSettings.experimentalFeaturesEnabled.value, CarSettings.multiTurnEnabled.value)
-                    ) {
+                    if (AssistantCommands.lastReplyWasAi) {
                         ConversationSession.record(AssistantCommands.lastAiUtterance ?: heard, reply)
                     }
                 } else {
@@ -346,19 +344,8 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 }
                 val screen = navigator.current
                 val safetyWarningSeen by CarSettings.hasSeenSafetyWarning.collectAsState()
-                // r83: the bar's own switch. Toggling floating media
-                // never moves the bar now.
-                val barSwitchOn by CarSettings.floatingNavBarEnabled.collectAsState()
-                // r43, re-based in r83: the nav bar overlays the
-                // full-height map instead of sitting below Home in-flow
-                // exactly when its own switch is on. The switch decides
-                // alone: floating media off, or the lyrics split, keeps
-                // the bar in-flow; other screens keep the classic bar.
-                val overlayNavBar = shouldOverlayNavBar(
-                    screen == CarScreen.Home, barSwitchOn, navigator.sidePanel,
-                )
-                // The keyboard takes the nav bar's row instead of squeezing in above it -
-                // nothing on the nav bar is useful mid-type, and the screen is too small to
+                // The keyboard takes the rail's row instead of squeezing in above it -
+                // nothing on the rail is useful mid-type, and the screen is too small to
                 // show both.
                 // Phase 9 immersive player: when the video player is the
                 // active screen AND its controls are hidden (3.5s
@@ -372,12 +359,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // top bar (the breadcrumb is off, and call/notification
                 // overlays are urgent and transient, not chrome), and
                 // the player's own top capsule already follows
-                // controlsVisible, so the nav bar is the chrome that
+                // controlsVisible, so the rail is the chrome that
                 // had to be lifted here; the video stays full-bleed.
                 val keyboardVisible by CarKeyboardVisibility.state
                 val playerImmersiveHide = screen is CarScreen.VideoPlayer && !playerControlsVisible
                 // Browser immersive: same hide, extended, not
-                // restructured — the nav bar goes only while
+                // restructured — the rail goes only while
                 // the browser is the active screen AND its
                 // immersive state is set; leaving the browser
                 // clears that state, so the bar returns.
@@ -391,14 +378,13 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // alignment/strip mappings stay as the seam a future
                 // steering-side setting would flip; nothing today moves
                 // the rail off its side.
-                val sideBarExperimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
-                val sideBarToggle by CarSettings.sideBarEnabled.collectAsState()
                 val sideBarSide = SideBarSide.DRIVER_SIDE
-                val sideBarVisible = barVisible && sideBarNow(sideBarExperimentalOn, sideBarToggle)
+                // r97 graduation: the rail is the only app bar — it
+                // shows whenever a bar shows, with no toggle gating it.
+                val sideBarVisible = barVisible
                 // r87: the content inset that keeps everything beside the
-                // rail. When the rail is off the inset is empty, so
-                // toggle-off restores the bottom bar and the full-width
-                // content exactly.
+                // rail. When the rail hides (keyboard, immersive, mirror)
+                // the inset is empty, so content takes the full width.
                 val sideBarContentPadding = if (sideBarVisible) {
                     if (sideBarStripOnStart(sideBarSide)) {
                         PaddingValues(start = NAV_BAR_SIDE_STRIP_WIDTH)
@@ -408,12 +394,11 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 } else {
                     PaddingValues()
                 }
-                // r83: the one pure bar decision — rail wins, else the
-                // overlay rule. Equivalent to the two branch conditions
-                // it replaces, and pinned by NavBarTreatmentTest.
-                val navBarTreatment = navBarTreatment(
-                    barSwitchOn, sideBarVisible, screen == CarScreen.Home, navigator.sidePanel,
-                )
+                // r97 graduation: the rail is the only bar, so Home's
+                // map surface extends under its strip exactly when it
+                // shows; no bottom strip is ever reserved anymore (the
+                // r87 dead-80dp-strip quirk is gone by construction).
+                val mapSurfaceStrip = if (sideBarVisible) NAV_BAR_SIDE_STRIP_WIDTH else 0.dp
                 Box(Modifier.fillMaxSize().padding(pad)) {
                 Column(Modifier.fillMaxSize().padding(sideBarContentPadding)) {
                     if (!safetyWarningSeen) {
@@ -422,14 +407,14 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     }
                     // Header navigation (breadcrumb trail) - off for now, kept to tweak later.
                     // BreadcrumbBar(navigator)
-                    // r43: in overlay mode this box is the full frame, so
-                    // the map runs behind the bar; classic keeps the
-                    // weight, so the bar's row stays its own strip.
-                    Box(if (overlayNavBar) Modifier.fillMaxSize() else Modifier.weight(1f).fillMaxWidth()) {
+                    // r97: the content box is always the full frame —
+                    // the rail is a scaffold sibling in its own strip,
+                    // never a row below the content.
+                    Box(Modifier.fillMaxSize()) {
                         // Home never leaves the composition; other screens cover it. Dropping it
                         // would tear down the map's surface, and coming back would then show black
                         // while the nav app redrew on a new one.
-                        CarHome(if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp)
+                        CarHome(mapSurfaceStrip)
                         if (screen != CarScreen.Home) {
                             Box(
                                 Modifier
@@ -454,13 +439,8 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                                 }
                             }
                         }
-                        // r43: in overlay mode the content box is the full
-                        // frame, so bottom-anchored overlays clear the bar
-                        // strip to sit where they sat when the bar lived
-                        // below Home in-flow. Classic: 0dp, a no-op.
                         CarToastOverlay(
-                            Modifier.align(Alignment.BottomCenter)
-                                .padding(bottom = if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp),
+                            Modifier.align(Alignment.BottomCenter),
                         )
                         CallPromptOverlay()
                         BluetoothPairOverlay()
@@ -474,23 +454,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         VoiceHelpOverlay(Modifier.align(Alignment.Center))
                         CallOverlay(Modifier.align(Alignment.TopCenter))
                         AssistantOverlay(
-                            Modifier.align(Alignment.BottomCenter)
-                                .padding(bottom = if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp),
+                            Modifier.align(Alignment.BottomCenter),
                         )
                         // Phase 8 audit fix: the debug badge no longer
-                        // floats over content at all — it lives in the nav
-                        // bar (see CarNavBar), where it can cover nothing.
+                        // floats over content at all — it lives in the
+                        // rail (see CarSideBar), where it can cover nothing.
                     }
-                    // r83: in-flow branch — the treatment already
-                    // accounts for the rail, so no separate rail check.
-                    if (barVisible && navBarTreatment == NavBarTreatment.IN_FLOW) CarNavBar(navigator)
-                }
-                // r43: the overlay bar draws over the full-height map,
-                // above the Column content but below AppMenu (which stays
-                // over everything, nav bar included) and the brightness
-                // dim (which dims the bar exactly as in classic mode).
-                if (barVisible && navBarTreatment == NavBarTreatment.FLOATING) {
-                    CarNavBar(navigator, overlay = true, Modifier.align(Alignment.BottomCenter))
                 }
                 // r87: the steering-side rail draws in its own reserved strip
                 // at the frame edge, below AppMenu (which stays over everything,
@@ -498,11 +467,11 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // Column carries the matching inset, so nothing but the rail
                 // draws in the strip. It follows barVisible exactly, so it
                 // hides for the keyboard and the immersive player/browser
-                // and mirror states, like the bar.
+                // and mirror states, like the old bar did.
                 if (sideBarVisible) {
                     CarSideBar(navigator, Modifier.align(sideBarAlignment(sideBarSide)))
                 }
-                // Over everything, nav bar included: a long press on an app, anywhere.
+                // Over everything, rail included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps(), contentPadding = sideBarContentPadding)
                 IconPickerSheet(navigator, contentPadding = sideBarContentPadding)
                 if (safetyWarningSeen) CarWhatsNew(contentPadding = sideBarContentPadding)
@@ -692,26 +661,11 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
     }
 }
 
-/** r29 floating nav bar: the bar keeps its row in the Column, but insets
- * inside it — side + bottom/top margins, the style's corner, slight
- * elevation — so it reads as floating over the background instead of a
- * full-width strip. Height and touch targets are unchanged (64dp); the
- * hide logic (player/browser immersive, mirror, keyboard) is untouched;
- * the corner follows the button style (rounded under Frost/Flat/Tactile/
- * Edge via gsShape(), rectangular under Pit Lane). Pinned by unit test
- * so the numbers cannot drift silently. */
+/** r97: the rail reuses the old bar's 64dp width and 4dp elevation;
+ * the bar itself is gone. */
 internal val NAV_BAR_HEIGHT = 64.dp
-internal val NAV_BAR_FLOAT_HORIZONTAL = 12.dp
-internal val NAV_BAR_FLOAT_VERTICAL = 8.dp
 internal val NAV_BAR_FLOAT_ELEVATION = 4.dp
 
-/**
- * r43: the strip the nav bar occupies at the frame bottom — the 64dp bar
- * plus its 8dp floating margins top and bottom. When the bar overlays the
- * map in floating Home, the card, the template chrome, and the bottom
- * overlays clear exactly this height, so each sits where it sat when the
- * bar lived below Home in-flow. Pure Dp math so it is unit-testable. */
-internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NAV_BAR_FLOAT_VERTICAL
 
 /**
  * r94: the strip the steering-side rail reserves at the frame edge —
@@ -724,172 +678,6 @@ internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NA
 internal val NAV_BAR_SIDE_FLOAT = 12.dp
 internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT
 
-/**
- * Apps and open/pinned shortcuts on the left; now-playing pill against them; clock (tap for
- * calendar and weather), phone battery and the darkness signal on the right. Icon-only: a driver
- * reads a glyph faster than a label, and it keeps the bar short enough to leave the app underneath
- * more room.
- */
-/**
- * r43 overlay: when true the bar floats over the map instead of sitting
- * below Home in-flow, so it takes the floating card's frosted treatment
- * (surfaceContainerLow at 0.88 alpha, Pitlane-only texture, same 4dp
- * elevation, same Pitch-gated hairline) — an opaque bar would hide the
- * map behind it and defeat the round, and true transparency would
- * drown the buttons in a busy moving map. The texture modifier gates
- * itself to Pitlane internally, so other styles are byte-identical.
- * Content, buttons, height, shape, margins, and behavior are untouched;
- * only the fill changes. [modifier] is the caller's placement (the
- * overlay branch aligns it to the frame bottom); classic callers pass
- * nothing and the bar is exactly as before. */
-@Composable
-private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifier: Modifier = Modifier) {
-    val battery by CarEnvironment.battery.collectAsState()
-    val now by rememberNow()
-    val weather by Weather.state.collectAsState()
-    val weatherData = (weather as? WeatherState.Ready)?.data
-
-    val pinnedIds by CarSettings.pinnedApps.collectAsState()
-    val entries = rememberAllEntries()
-    val pinnedEntries = remember(entries, pinnedIds) {
-        pinnedIds.mapNotNull { id -> entries.find { it.componentId == id } }
-    }
-    val frame by CarEnvironment.frame.collectAsState()
-    val running = rememberRunningApps()
-
-    Surface(
-        modifier = modifier.padding(horizontal = NAV_BAR_FLOAT_HORIZONTAL, vertical = NAV_BAR_FLOAT_VERTICAL),
-        shape = gsShape(),
-        color = if (overlay) MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
-            else MaterialTheme.colorScheme.surfaceContainer,
-        shadowElevation = NAV_BAR_FLOAT_ELEVATION,
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
-    ) {
-        BoxWithConstraints(
-            Modifier.fillMaxWidth().height(NAV_BAR_HEIGHT)
-                .then(if (overlay) Modifier.pitLanePanelTexture() else Modifier)
-                .padding(horizontal = 10.dp),
-        ) {
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                // Home and Apps are two different places now, not a toggle on one button - the
-                // breadcrumb trail is how you retrace your steps, but reaching for either of
-                // these two from three screens deep in a media app shouldn't mean reading it
-                // first.
-                NavHomeButton(navigator, entries, running)
-                Spacer(Modifier.width(6.dp))
-                NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
-                Spacer(Modifier.width(6.dp))
-                NavAssistantIcon()
-                // r58 widget popup button: on Home only, while the column
-                // could show (widgets + floating on). It toggles the SAME
-                // persisted dismissal flag as the column's "Hide widgets"
-                // X. r59 restack removed the template gate, so the press
-                // takes effect at once even during a template — the column
-                // follows the flag immediately. While driving it recalls
-                // the column for a glance instead. r74: the press logic
-                // lives in NavWidgetsPopupButton, shared with the rail, so
-                // the two buttons cannot drift; only the bar's spacer and
-                // the call-site condition stay here.
-                val widgetsOnBar by CarSettings.homeWidgetsEnabled.collectAsState()
-                val floatingOnBar by CarSettings.floatingMediaEnabled.collectAsState()
-                if (navigator.current == CarScreen.Home && widgetsOnBar && floatingOnBar) {
-                    Spacer(Modifier.width(6.dp))
-                    NavWidgetsPopupButton(navigator)
-                }
-
-                // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
-                // open stays in its pinned spot, marked with a dot, instead of showing up twice.
-                // The map app lives on the Home button, so it never gets a second icon here.
-                val runningEntries = running.keys
-                    .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
-                    .mapNotNull { id -> entries.find { it.componentId == id } }
-                val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
-                if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDivider()
-                shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
-                if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDivider()
-                runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
-
-                // Next turn first, off the map only; the player shares the space when it fits,
-                // and gives way to the turn when it doesn't.
-                val turn = rememberNextTurn().takeIf { navigator.current != CarScreen.Home }
-                BoxWithConstraints(Modifier.weight(1f).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
-                    val roomForBoth = maxWidth >= TURN_AND_PLAYER_MIN_WIDTH
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        turn?.let { NavTurnPill(it) { navigator.home() } }
-                        if (turn == null || roomForBoth) {
-                            NavNowPlaying(navigator, selected = navigator.current == CarScreen.Media, modifier = Modifier.weight(1f, fill = false))
-                        }
-                    }
-                }
-
-                // Brightness, one tap to the slider sheet: the phone's brightness does
-                // not reach the projected display, so this is the only brightness
-                // control the driver has.
-                GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
-                Spacer(Modifier.width(6.dp))
-                // r70: quick settings, next to brightness — the shade is a
-                // small panel, not a full Quick Settings rewrite, and there is
-                // no battery/signal entry on this bar to hang it on (the
-                // battery is text inside the clock chip, and no signal icon
-                // exists), so it gets its own button rather than a fake one.
-                GsIconButton(Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open)
-                Spacer(Modifier.width(6.dp))
-                if (app.autospace.BuildConfig.DEBUG) {
-                    DebugBuildBadge()
-                    Spacer(Modifier.width(6.dp))
-                }
-                // Weather no longer has its own chip - the temperature alone (no icon, no room
-                // for one) sits where "Night"/"Day" used to, freeing a whole chip's width for the
-                // Home button above.
-                // The clock is also the notifications button: the dashboard lists them under the
-                // calendar and weather, and a dot here marks anything unread.
-                val unread by CarNotifications.unread.collectAsState()
-                NavChip(
-                    navigator.current == CarScreen.Dashboard || navigator.current is CarScreen.Notifications,
-                    { navigator.dashboard() },
-                ) {
-                    if (unread > 0) {
-                        Box(
-                            Modifier
-                                .align(Alignment.TopEnd)
-                                .offset(x = 8.dp, y = (-2).dp)
-                                .size(8.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                            if (battery.percent >= 0) {
-                                Text(
-                                    "${battery.percent}%",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                if (battery.charging) {
-                                    ChargingGlyph(Modifier.size(13.dp))
-                                }
-                            }
-                            weatherData?.let { w ->
-                                Text(
-                                    "  ·  ${w.temp}°",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 
 /**
  * r87: the steering-side app bar as an edge dock. The bottom bar's
@@ -900,9 +688,9 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
  * the dashboard. The turn pill and the now-playing pill do NOT move
  * to the rail: on Home the turn card and the floating media card
  * already show that glance, and off Home they are absent while the
- * rail is on — a known tradeoff of this experimental layout,
- * reversible with one toggle. The rail clock shows time + battery
- * only: the bar's temperature line does not fit the 64dp column.
+ * rail is on — a known tradeoff of this layout. The rail clock
+ * shows time + battery only: the bar's temperature line does not
+ * fit the 64dp column.
  * The rail takes the overlay bar's floating treatment exactly
  * (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
  * texture, OLED hairline) — and, since r94, it floats: 12dp margins
@@ -962,9 +750,7 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                     NavHomeButton(navigator, entries, running)
                     NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
                     NavAssistantIcon()
-                    val widgetsOnRail by CarSettings.homeWidgetsEnabled.collectAsState()
-                    val floatingOnRail by CarSettings.floatingMediaEnabled.collectAsState()
-                    if (navigator.current == CarScreen.Home && widgetsOnRail && floatingOnRail) {
+                    if (navigator.current == CarScreen.Home) {
                         NavWidgetsPopupButton(navigator)
                     }
 
@@ -1130,18 +916,6 @@ private fun NavHomeButton(navigator: CarNavigator, entries: List<Entry>, running
     }
 }
 
-/** Splits the nav bar's sections: Home and Apps, pinned apps, open apps. */
-@Composable
-private fun NavDivider() {
-    Box(
-        Modifier
-            .padding(horizontal = 10.dp)
-            .width(1.dp)
-            .height(28.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant),
-    )
-}
-
 /**
  * A pinned or open app on the nav bar. Tapping brings it back without reconnecting if it's
  * already open; a long press opens its menu (pin, unpin, close).
@@ -1199,14 +973,6 @@ private fun NavAppIcon(
     }
 }
 
-/** A tappable group in the bar that stays highlighted while its screen is open, like [NavItem]. */
-@Composable
-private fun NavChip(selected: Boolean, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
-    GsIconBox(onClick, colors = navColors(selected), latched = selected) {
-        Box(Modifier.padding(horizontal = 10.dp, vertical = 2.dp)) { content() }
-    }
-}
-
 /** Every nav bar item is raised, so it reads as pressable; the current screen's takes the accent colour. r29: the selected item takes the scheme primary itself (was secondaryContainer) — the active tab is the one thing on the bar that should carry the accent. */
 @Composable
 private fun navColors(selected: Boolean): GsColors {
@@ -1248,187 +1014,6 @@ internal fun rememberNow(): State<Long> = produceState(System.currentTimeMillis(
     while (true) {
         value = System.currentTimeMillis()
         delay(60_000 - value % 60_000)
-    }
-}
-
-/** Below this, the nav bar's middle only has room for the turn, not the player beside it. */
-private val TURN_AND_PLAYER_MIN_WIDTH = 520.dp
-
-/** The next manoeuvre, as the running nav app last described it. */
-private class NextTurn(val icon: CarIcon?, val distance: String, val road: String)
-
-/**
- * Read straight off the nav app's own template: a navigation app keeps sending its routing card
- * while it's running, whether or not the map is the screen being shown.
- */
-@Composable
-private fun rememberNextTurn(): NextTurn? {
-    val status by CarServices.nav.status.collectAsState()
-    val template by CarServices.nav.template.collectAsState()
-    // Read so a change of units redraws the distance straight away, not at the next update.
-    CarSettings.units.collectAsState().value
-    if (status.phase != CarAppConnection.Phase.RUNNING) return null
-    val routing = (template as? NavigationTemplate)?.navigationInfo as? RoutingInfo ?: return null
-    if (routing.isLoading) return null
-    val step = routing.currentStep ?: return null
-    return NextTurn(
-        icon = step.maneuver?.icon,
-        distance = routing.currentDistance.display(),
-        road = step.road.text().ifEmpty { step.cue.text() },
-    )
-}
-
-/** The next turn in the nav bar: arrow, how far, onto what. Tapping goes back to the map. */
-@Composable
-private fun NavTurnPill(turn: NextTurn, onClick: () -> Unit) {
-    // Same finish as every other button on the bar, in the accent colour; the text runs a step
-    // bigger than anything else there, since it's the one thing worth a glance mid-drive.
-    GsIconBox(
-        onClick,
-        Modifier.widthIn(max = 340.dp).height(44.dp),
-        colors = gsColors(GsTone.Primary).let { it.copy(container = it.container.copy(alpha = NavBarItemAlpha)) },
-    ) {
-        Row(
-            Modifier.padding(NAV_ITEM_PADDING),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CarGlyph(turn.icon, Modifier.size(28.dp))
-            if (turn.distance.isNotEmpty()) {
-                Text(turn.distance, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-            }
-            if (turn.road.isNotEmpty()) {
-                Text(
-                    turn.road,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/** "Title - Artist" on one line. The text itself cuts it off, and only where the pill runs out of room. */
-private fun nowPlayingLabel(title: String, artist: String): String =
-    listOf(title.trim(), artist.trim()).filter { it.isNotEmpty() }.joinToString(" - ")
-        .ifEmpty { "Nothing playing" }
-
-/**
- * The player in the nav bar, on every screen. Art and title open the full media screen;
- * play/pause and skip work right here. The dock button moves the player into the column beside
- * the map on Home (see [CarHome]), and the pill steps aside there while it's docked - unless the
- * column is showing lyrics instead, when the pill stays and its dock button swaps them back.
- * In floating mode the dock button restores a dismissed card instead (see
- * [pillDockRestoresFloatingCard]): while dismissed it resets the card and closes the side
- * panel, so the pill cannot re-hide itself through the docked-column gate.
- */
-@Composable
-private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: Modifier = Modifier) {
-    val media = CarServices.media
-    val phase by media.phase.collectAsState()
-    val now by media.now.collectAsState()
-    val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
-    val dismissed = FloatingHomeState.dismissed.value
-    if (phase != CarMedia.Phase.READY || !now.isActive) return
-    // Placement gates only (readiness gated above): the pill hides exactly when it would
-    // repeat a player already on screen — the docked column in classic mode only, the
-    // floating card, or the full media screen itself. r36: the docked-column gate no
-    // longer fires in floating mode, where the column never renders.
-    if (!shouldShowNavPill(floatingOn, dismissed, navigator.sidePanel, navigator.current == CarScreen.Home, navigator.current == CarScreen.Media)) return
-    val context = LocalContext.current
-    val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
-    val position by produceState(now.currentPosition(), now) {
-        while (true) {
-            value = now.currentPosition()
-            if (!now.playing) break
-            delay(1000)
-        }
-    }
-
-    // Audit (second video): the pill used to have two layouts — a
-    // full-width title + play + dock while a new song "announced"
-    // itself, then a compact art + prev/play/next + dock once the
-    // announcement expired — so the same bar read as two different
-    // players from one frame to the next. There is one layout now:
-    // art + title (always, taking the room the bar has) + prev/play/
-    // next + dock, every button a 44dp target, pill 52dp tall.
-    val scheme = MaterialTheme.colorScheme
-    val onPill = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer
-    Surface(
-        modifier = modifier
-            .animateContentSize()
-            .fillMaxWidth()
-            .height(52.dp),
-        shape = gsButtonShape(RoundedCornerShape(14.dp)),
-        color = (if (selected) scheme.primaryContainer else scheme.secondaryContainer).copy(alpha = NavBarItemAlpha),
-        contentColor = onPill,
-    ) {
-        Box {
-            Row(
-                Modifier.fillMaxHeight().padding(horizontal = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                // Art and title open the full media screen.
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { navigator.media() },
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(scheme.surfaceVariant)) {
-                        art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                    }
-                    Text(
-                        nowPlayingLabel(now.title, now.artist),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                GsIconButton(
-                    MediaIcons.Previous, "Previous", media::previous,
-                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = 44.dp, iconSize = 24.dp,
-                )
-                GsIconButton(
-                    if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
-                    if (now.playing) "Pause" else "Play",
-                    { CarServices.userTogglePlay() },
-                    tone = GsTone.Primary, size = 44.dp, iconSize = 24.dp,
-                )
-                GsIconButton(
-                    MediaIcons.Next, "Next", media::next,
-                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = 44.dp, iconSize = 24.dp,
-                )
-                // r36: in floating mode, while on Home and dismissed, this button restores
-                // the card (reset + panel NONE, so the docked-column gate cannot re-hide
-                // the pill) instead of docking. Everywhere else it docks as today.
-                val restoreFloatingCard = pillDockRestoresFloatingCard(floatingOn, dismissed, navigator.current == CarScreen.Home)
-                GsIconButton(
-                    MediaIcons.DockRight,
-                    if (restoreFloatingCard) "Show media card" else "Move the player beside the map",
-                    if (restoreFloatingCard) ({ FloatingHomeState.reset(); navigator.closeSidePanel() }) else navigator::togglePlayerDock,
-                    size = 44.dp, iconSize = 24.dp,
-                )
-            }
-            if (now.durationMs > 0) {
-                // matchParentSize, so the line follows the pill's width rather than widening it.
-                Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomStart) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth((position.toFloat() / now.durationMs).coerceIn(0f, 1f))
-                            .height(2.dp)
-                            .background(onPill.copy(alpha = 0.7f)),
-                    )
-                }
-            }
-        }
     }
 }
 

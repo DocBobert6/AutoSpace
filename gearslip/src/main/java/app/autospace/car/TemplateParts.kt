@@ -101,7 +101,7 @@ import app.autospace.host.text
  * pinned 0.88 alpha) instead of the opaque fill, with its shape routed through gsButtonShape
  * and its elevation kept. Surfaces inside a frosted pane pass through ([ChromeSurfaceMode])
  * so the fill is drawn exactly once per pane, and full-screen content surfaces (which never
- * pass [frosted]) stay opaque whatever the toggle says.
+ * pass [frosted]) stay opaque.
  */
 @Composable
 internal fun ChromeSurface(
@@ -114,7 +114,6 @@ internal fun ChromeSurface(
     meridian: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
     // r65: inside a Meridian pane the outer pane already drew the one
     // solid fill, so every inner surface passes through rather than
     // painting a second fill over it — the same rule as the frosted
@@ -135,7 +134,7 @@ internal fun ChromeSurface(
         }
         return
     }
-    when (chromeSurfaceMode(frostedOn, frosted, LocalInsideFrostedChrome.current)) {
+    when (chromeSurfaceMode(true, frosted, LocalInsideFrostedChrome.current)) {
         ChromeSurfaceMode.PASSTHROUGH -> content()
         ChromeSurfaceMode.FROSTED -> CompositionLocalProvider(LocalInsideFrostedChrome provides true) {
             // r48: the frosted branch routes through the look-fed card
@@ -412,13 +411,12 @@ internal fun ActionButton(
     val scheme = MaterialTheme.colorScheme
     val custom = action.backgroundColor?.type?.let { it != androidx.car.app.model.CarColor.TYPE_DEFAULT } == true
     val fallback = scheme.surfaceContainerHighest
-    val frostedOn by CarSettings.frostedMapChromeEnabled.collectAsState()
-    val frostedButton = frosted && frostedOn
+    val frostedButton = frosted
     // r54: header buttons on the map follow the float transparency with
     // neutral colors only — never primary, never an app-named color. The
     // search glyph alone may use the vibrant color; everything else stays
     // neutral. The opaque branch below is unchanged.
-    val headerFrosted = mapHeader && frostedOn
+    val headerFrosted = mapHeader
     val isSearch = title.trim().equals("Search", ignoreCase = true)
     // r65: Meridian wins over the frosted treatment wherever both could
     // apply — a fixed-color look cannot also be frosted. Roles, not app

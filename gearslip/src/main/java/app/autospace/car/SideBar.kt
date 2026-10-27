@@ -45,14 +45,10 @@ enum class SideBarSide {
 }
 
 /**
- * r74: the side-bar gate. Pure, so the unit test pins it: the rail
- * renders only when the driver has opted into experimental features
- * as a whole AND the side-bar toggle is on. Either off returns exactly
- * today's bottom bar, and the stored toggle is preserved, never
- * rewritten, while the gate is off.
+ * r97 graduation: the rail is the only app bar now — there is no gate
+ * and no bottom bar to return to. The scaffold still hides it with the
+ * bar (keyboard, immersive player/browser, mirror); see CarUi.
  */
-fun sideBarNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn
 
 /** Maps a rail side to the frame Box alignment. Pure, so the unit test pins it. */
 fun sideBarAlignment(side: SideBarSide): Alignment = when (side) {

@@ -260,13 +260,10 @@ fun WebApp(content: String) {
         }
     }
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
-    // r75: browser PiP (experimental). The button renders only when
-    // the general opt-in AND this toggle are on (see browserPipNow),
-    // and only while the active tab's finder list is non-empty — the
+    // r97 graduation: browser PiP is regular now. The button
+    // renders while the active tab's finder list is non-empty — the
     // button appears only where a handoff is actually possible.
-    val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val browserPipToggle by CarSettings.browserPipEnabled.collectAsState()
-    val browserPipOn = browserPipNow(experimentalFeatures, browserPipToggle)
+    val browserPipOn = activeTab.foundMedia.isNotEmpty()
     /**
      * r75: the handoff. The finder URL goes to the mini video state
      * and Home becomes current, so the mini card shows and plays.
@@ -1089,7 +1086,7 @@ fun WebApp(content: String) {
                 // icon with a count badge, shown only when the active
                 // tab actually has media — the old GsButton row below
                 // the bar is gone.
-                if (browserPipOn && activeTab.foundMedia.isNotEmpty()) {
+                if (browserPipOn) {
                     // r75: pop out the most-recently-detected
                     // playable URL (addMedia prepends, so index
                     // 0 is the video that most recently started
@@ -2062,9 +2059,7 @@ fun WebApp(content: String) {
                     )
                 },
                 // r75: per-row Pop out — the precise alternative to
-                // the bar button's most-recent heuristic. Null while
-                // the gate is off, so the sheet is exactly today's
-                // sheet when PiP is off.
+                // the bar button's most-recent heuristic.
                 onPopOut = if (browserPipOn) { { item ->
                     sheetOpen = false
                     popOut(item)

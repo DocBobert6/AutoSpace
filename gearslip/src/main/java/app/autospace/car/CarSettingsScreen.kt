@@ -131,7 +131,7 @@ fun CarSettingsScreen() {
                     SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage(webPageKeyboardSlot)
                     SettingsCategory.SCREEN_AND_SHARING -> ScreenAndSharingPage()
                     SettingsCategory.CONNECTION -> ConnectionPage()
-                    SettingsCategory.ABOUT_AND_EXPERIMENTAL -> AboutAndExperimentalPage()
+                    SettingsCategory.ABOUT -> AboutPage()
                     null -> Unit
                 }
             }
@@ -176,9 +176,9 @@ private enum class SettingsCategory(val title: String, val description: String) 
         "Connection",
         "What opens on connect, location warning, phone, vehicle and certificate",
     ),
-    ABOUT_AND_EXPERIMENTAL(
-        "About & experimental",
-        "Version, what's new, experimental features",
+    ABOUT(
+        "About",
+        "Version, what's new",
     ),
 }
 
@@ -193,7 +193,11 @@ private fun AppearancePage() {
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
-    val floatingNavBar by CarSettings.floatingNavBarEnabled.collectAsState()
+    val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
+    val dockEnabled by CarSettings.mediaCardDockEnabled.collectAsState()
+    val mapTheme by CarSettings.mapTheme.collectAsState()
+    val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
+    val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
 
     // UI size (Phase 10, correcting Phase 9's display): the slider
     // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
@@ -371,19 +375,68 @@ private fun AppearancePage() {
     // appearance choice that changes how apps look.
     IconPackSection()
 
-    // r83: the floating nav bar's own switch — a normal Appearance
-    // setting, not an experimental row. It no longer follows the
-    // floating-media toggle: turning floating media on or off never
-    // moves the bar, and this switch never moves the floating media
-    // card. The steering-side rail still wins when it is on.
-    ExperimentalFeatureRow(
-        title = "Floating nav bar",
-        description = "The nav bar floats over Home — frosted, elevated, " +
-            "with margins — instead of sitting below it in-flow. " +
-            "Floating media on or off never moves the bar, and this " +
-            "switch never moves the floating media card.",
-        checked = floatingNavBar,
-    ) { CarSettings.setFloatingNavBarEnabled(it) }
+    // r97 graduation: the media card's dock is a regular setting now.
+    // ON docks the card to the position below; OFF leaves it free at
+    // today's placement. A Start dock steps aside to End while the
+    // trip bar shows, so it never covers the ETA pill.
+    SettingsToggleRow(
+        title = "Dock media card",
+        description = "Dock the floating media card to a fixed corner instead of leaving it free.",
+        checked = dockEnabled,
+    ) { CarSettings.setMediaCardDockEnabled(it) }
+    ChoiceRow(
+        "Media card dock position",
+        listOf(MediaCardDock.START to "Start", MediaCardDock.CENTER to "Center", MediaCardDock.END to "End"),
+        mediaCardDock,
+        enabled = dockEnabled,
+    ) { CarSettings.setMediaCardDock(it) }
+    Text(
+        "Start steps aside to End while the trip bar shows, so the card never covers the ETA pill.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // r97 graduation: the map theme. Themed follows the button style
+    // and color scheme and is the default; Meridian wears its fixed
+    // colors. Meridian never replaces themed chrome — it is one
+    // choice beside it.
+    ChoiceRow(
+        "Map theme",
+        listOf(MapChrome.THEMED to "Themed", MapChrome.MERIDIAN to "Meridian"),
+        mapTheme,
+    ) { CarSettings.setMapTheme(it) }
+    Text(
+        "Themed follows your style and color scheme; Meridian wears fixed colors.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    // r97 graduation: the Home widget column is regular now. These
+    // rows hide individual widgets, and the button below brings the
+    // whole column back after it was dismissed.
+    SettingsToggleRow(
+        title = "Weather widget",
+        description = "Shows the weather chip in the Home widget column.",
+        checked = WidgetKind.WEATHER !in hiddenWidgets,
+    ) { CarSettings.setWidgetHidden(WidgetKind.WEATHER, !it) }
+    SettingsToggleRow(
+        title = "Notification digest widget",
+        description = "Shows the unread count and latest sender in the Home widget column. Never message text.",
+        checked = WidgetKind.DIGEST !in hiddenWidgets,
+    ) { CarSettings.setWidgetHidden(WidgetKind.DIGEST, !it) }
+    SettingsToggleRow(
+        title = "Next event widget",
+        description = "Shows the next scheduled event in the Home widget column.",
+        checked = WidgetKind.EVENT !in hiddenWidgets,
+    ) { CarSettings.setWidgetHidden(WidgetKind.EVENT, !it) }
+    if (widgetsDismissed) {
+        GsButton(
+            onClick = { CarSettings.setWidgetsDismissed(false) },
+            tone = GsTone.Tonal, modifier = Modifier.height(56.dp),
+        ) {
+            Text("Show widget column again", style = MaterialTheme.typography.titleMedium)
+        }
+    }
 
     ChoiceRow(
         "Map day/night",
@@ -482,7 +535,7 @@ private fun AudioAndCallsPage() {
     // when the call ends. Voice commands, assistant speech, and media are
     // untouched. The car's Bluetooth may reassert its route, which this
     // cannot override; that is a car-test result, not a setting failure.
-    ExperimentalFeatureRow(
+    SettingsToggleRow(
         title = "Answer calls on the phone speaker",
         description = "When a call starts, its audio goes to the phone's speaker instead " +
             "of the car's Bluetooth route, so the caller hears you through the " +
@@ -519,7 +572,7 @@ private fun VoicePage() {
 
     VoiceTraceSettings()
 
-    ExperimentalFeatureRow(
+    SettingsToggleRow(
         title = "Use the phone's speech recognition",
         description = "Listens through the phone's own speech service instead of AutoSpace's. On " +
             "most phones that's Google's, which may send your voice to Google. GrapheneOS has " +
@@ -531,7 +584,7 @@ private fun VoicePage() {
     // for a car whose built-in mic is broken. Voice commands and voice
     // replies only — this does NOT affect phone calls, which keep the
     // car's audio route exactly as before.
-    ExperimentalFeatureRow(
+    SettingsToggleRow(
         title = "Use phone microphone for voice commands",
         description = "Voice commands and voice replies listen through the phone's " +
             "microphone instead of the car's, even when the car has one. " +
@@ -548,7 +601,7 @@ private fun VoicePage() {
     // the phone mic even when the car has one — the workaround for
     // a broken car mic. Button-press commands, calls, and the
     // voice-microphone setting above are untouched by this switch.
-    ExperimentalFeatureRow(
+    SettingsToggleRow(
         title = "Listen for “Hey AutoSpace” on the phone microphone",
         description = "Hotword listening only: uses the phone's microphone even when " +
             "the car has one. Turn this on if the car's microphone doesn't work " +
@@ -557,7 +610,7 @@ private fun VoicePage() {
         checked = hotwordPhoneMic,
     ) { CarSettings.setHotwordPhoneMic(it) }
 
-    ExperimentalFeatureRow(
+    SettingsToggleRow(
         title = "Listen for “Hey AutoSpace”",
         description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
             "(or “Hey Gearslip”) and opens the assistant without a button press. " +
@@ -703,52 +756,14 @@ private fun ConnectionPage() {
 }
 
 @Composable
-private fun AboutAndExperimentalPage() {
-    val experimentalFeatures by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val carSensors by CarSettings.carSensorsEnabled.collectAsState()
-    val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
-    val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
-    val meridianChrome by CarSettings.meridianChromeEnabled.collectAsState()
-    val fullWidthGlow by CarSettings.fullWidthGlowEnabled.collectAsState()
-    val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
-    val multiTurn by CarSettings.multiTurnEnabled.collectAsState()
-    val sideBar by CarSettings.sideBarEnabled.collectAsState()
-    val browserPip by CarSettings.browserPipEnabled.collectAsState()
-    val liveSwap by CarSettings.liveSwapEnabled.collectAsState()
-    val cardClearance by CarSettings.cardClearanceEnabled.collectAsState()
-    val paneCollapse by CarSettings.paneCollapseEnabled.collectAsState()
-    val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
-    val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
-    val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
+private fun AboutPage() {
     val whatsNew by CarSettings.whatsNewAfterUpdates.collectAsState()
-
-    // r53: the master switch — a control, not a feature row, so it stays
-    // visible like the Hide/Show row itself (see ExperimentalMaster).
-    ExperimentalFeatureRow(
-        title = "All experimental features",
-        description = "Turns on the whole floating look at once: floating media, home widgets, " +
-            "and frosted map chrome, and shows the experimental rows below. Turning it off " +
-            "turns floating media and home widgets back off; frosted chrome and the row " +
-            "visibility stay as they are. Vehicle data is never touched — it stays its own " +
-            "switch at the bottom of the list. Turning any one feature off makes this read off again.",
-        checked = ExperimentalMaster.isOn(floatingMedia, homeWidgets),
-    ) { on ->
-        applyMasterWrites(if (on) ExperimentalMaster.onWrites() else ExperimentalMaster.offWrites())
-    }
-    ChoiceRow(
-        "Experimental features",
-        listOf(false to "Hide", true to "Show"),
-        experimentalFeatures,
-    ) { CarSettings.setExperimentalFeaturesEnabled(it) }
-    if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn, sideBar, browserPip, liveSwap, cardClearance, paneCollapse)
-    }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("About", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
         Info("Version", app.autospace.BuildConfig.VERSION_NAME)
         Info("Build", app.autospace.BuildConfig.VERSION_CODE.toString())
-        ExperimentalFeatureRow(
+        SettingsToggleRow(
             "What's new after updates",
             "Show the list of changes once, the first time the car connects after an update.",
             whatsNew,
@@ -1345,222 +1360,8 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
     }
 }
 
-/**
- * Individually-switched experimental features, shown once the driver has opted into
- * experimental features as a whole. Each is its own row - a title, what it does, and a switch -
- * so the list reads fine whether there's one entry or several.
- *
- * Order (r53, audit #4 D1 + Robert's 2026-10-26 correction): floating media,
- * frosted map chrome, home widgets, then vehicle data LAST — vehicle data is
- * never part of the master switch (see ExperimentalMaster) and sits last as
- * its own switch. The master row itself lives in AboutAndExperimentalPage
- * above the Hide/Show row, always visible; this list only renders when the
- * rows are shown.
- * r65: Meridian map chrome sits after frosted map chrome; vehicle data stays last.
- * r67: full-width listening glow sits after Meridian; vehicle data stays last.
- * r73: multi-turn conversation sits after the glow; vehicle data stays last.
- */
-
-/** r53: applies one master-switch action's writes through the existing setters, field by field. */
-private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
-    writes.experimentalFeatures?.let { CarSettings.setExperimentalFeaturesEnabled(it) }
-    writes.floatingMedia?.let { CarSettings.setFloatingMediaEnabled(it) }
-    writes.homeWidgets?.let { CarSettings.setHomeWidgetsEnabled(it) }
-    writes.widgetsDismissed?.let { CarSettings.setWidgetsDismissed(it) }
-    writes.frostedMapChrome?.let { CarSettings.setFrostedMapChromeEnabled(it) }
-}
 @Composable
-private fun ExperimentalFeaturesList(
-    carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean, sideBar: Boolean, browserPip: Boolean, liveSwap: Boolean, cardClearance: Boolean, paneCollapse: Boolean,
-) {
-    Column(
-        Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        ExperimentalFeatureRow(
-            title = "Floating media over map (experimental)",
-            description = "Home shows the map full-screen with the player as a floating card " +
-                "over it, instead of side-by-side. The card is a frosted approximation, " +
-                "not live blur, and it never covers turn instructions. Classic Home " +
-                "returns when this is off.",
-            checked = floatingMedia,
-        ) { CarSettings.setFloatingMediaEnabled(it) }
-        // r69: mini-player docking (A44/A45) — the floating media
-        // card's bottom dock, placed with the card's own feature row.
-        // End is today's placement; Center centers it; Start moves it
-        // to the opposite corner, which is the passenger side in a
-        // right-hand-drive car. Start/End follow layout direction,
-        // they are not absolute left/right. During guidance the trip
-        // bar sits at the bottom-start corner, so a Start dock steps
-        // aside to End while the trip bar is showing rather than
-        // covering it (see effectiveMediaCardDock).
-        ChoiceRow(
-            "Mini-player docking (experimental)",
-            listOf(MediaCardDock.START to "Start", MediaCardDock.CENTER to "Center", MediaCardDock.END to "End"),
-            mediaCardDock,
-        ) { CarSettings.setMediaCardDock(it) }
-        Text(
-            "Takes effect only while experimental features are on; with experiments off the card stays at today's placement and the stored choice is preserved.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        // r74: steering-side floating app bar (A1). The bottom bar's
-        // app row, stood on its side on the driver's side — placed with
-        // the other layout rows (floating media, card docking) at the
-        // top of the list. Still behind the general experimental
-        // opt-in: the rail renders only when experiments are on AND
-        // this is on. Off returns exactly today's bottom bar.
-        ExperimentalFeatureRow(
-            title = "Steering-side app bar (experimental)",
-            description = "Moves the app bar to a floating rail on the driver's side of the screen instead of along the bottom. The bottom bar returns when this is off. The rail owns a reserved strip at the frame edge, so everything else sits beside it instead of under it — it never covers the turn card, the widget column, or the media card.",
-            checked = sideBar,
-        ) { CarSettings.setSideBarEnabled(it) }
-        // r75: browser PiP — placed with the other Home-card layout
-        // rows (floating media, card docking, side bar) at the top of
-        // the list. Still behind the general experimental opt-in: the
-        // button renders only when experiments are on AND this is on.
-        // Off returns exactly today's browser: no button, no handoff.
-        ExperimentalFeatureRow(
-            title = "Browser picture-in-picture (experimental)",
-            description = "Adds a pop-out button in the browser bar when the page has playable media. It sends the video to a mini video card on Home, played by AutoSpace's own player. WebView video itself can never be popped out — the button only appears for media the finder can already hand off. Turn this off and the browser returns to exactly today's behavior.",
-            checked = browserPip,
-        ) { CarSettings.setBrowserPipEnabled(it) }
-        // r76: A58 Live conversation widget swap — placed with the
-        // other Home-card rows (floating media, card docking, side
-        // bar, PiP) at the top of the list. Still behind the general
-        // experimental opt-in: the card swaps only when experiments
-        // are on AND this is on. Off returns exactly today's media
-        // card, which never swaps.
-        ExperimentalFeatureRow(
-            title = "Live conversation widget (experimental)",
-            description = "While the assistant is talking with you, the floating media card swaps for a conversation widget showing the current turn — and, when parked, the last turns of the conversation. It never claims full-duplex: it chains turns the way the follow-up window already does. Turn this off and the media card never swaps.",
-            checked = liveSwap,
-        ) { CarSettings.setLiveSwapEnabled(it) }
-        // r77: card-vs-controls clearance (audit break 1) — placed with the
-        // other Home-card rows at the top of the list. Still behind the general
-        // experimental opt-in: the card steps aside only when experiments are on
-        // AND this is on. Off returns exactly today's card, which can cover the
-        // map's edge buttons on short screens.
-        ExperimentalFeatureRow(
-            title = "Card clearance (experimental)",
-            description = "On short screens, the floating media card can cover the map's edge buttons and steal their taps. With this on, the card steps aside — to the opposite corner, or to the center — whenever it would cover edge buttons that are showing, and returns when they fade. Turn this off and the card never moves.",
-            checked = cardClearance,
-        ) { CarSettings.setCardClearanceEnabled(it) }
-        // r78: map-pane collapse to logo — placed with the other
-        // Home-card rows at the top of the list. Still behind the
-        // general experimental opt-in: panes collapse only when
-        // experiments are on AND this is on. Off returns exactly
-        // today's pane, which never collapses.
-        ExperimentalFeatureRow(
-            title = "Map pane collapse (experimental)",
-            description = "Adds a button at the top of the map pane that folds the pane down to the app's logo; tapping the logo brings it back. The pane still counts as open while collapsed, so widgets and the map layout don't move, and the collapse resets when the pane closes. Turn this off and panes never collapse.",
-            checked = paneCollapse,
-        ) { CarSettings.setPaneCollapseEnabled(it) }
-        ExperimentalFeatureRow(
-            title = "Frosted map chrome (experimental)",
-            description = "The map pane, turn card, trip bar, and edge buttons get the same " +
-                "frosted treatment as the floating media card — the map shows through " +
-                "faintly at the same level, in the active style and scheme. This is a " +
-                "frosted approximation, not live blur. Classic opaque chrome returns " +
-                "when this is off.",
-            checked = frostedMapChrome,
-        ) { CarSettings.setFrostedMapChromeEnabled(it) }
-        // r65: the ONE Meridian toggle. It gates the whole Meridian
-        // look at once — turn card, trip pill, panes, and edge
-        // controls — and absorbs the retired Appearance choice row, so
-        // there is no second control that can disagree with it. It
-        // still sits behind the general experimental opt-in: Meridian
-        // renders only when experiments are on AND this is on.
-        ExperimentalFeatureRow(
-            title = "Meridian map chrome (experimental)",
-            description = "The whole map look wears Meridian at once: a solid green turn card, " +
-                "a dark trip pill, dark solid panes with white text, and dark edge " +
-                "controls. Meridian's colors are fixed and do not follow the theme. " +
-                "Turn this off and everything returns to the themed look.",
-            checked = meridianChrome,
-        ) { CarSettings.setMeridianChromeEnabled(it) }
-        // r67: the full-width listening glow. It widens the assistant's
-        // listening glow to a full-width band at the bottom edge while
-        // listening — our own scheme colors, never Gemini's look — and
-        // still sits behind the general experimental opt-in: it renders
-        // only when experiments are on AND this is on. Off returns the
-        // overlay to exactly today's small glow.
-        ExperimentalFeatureRow(
-            title = "Full-width listening glow (experimental)",
-            description = "While the assistant is listening, its glow spans the full width " +
-                "of the screen at the bottom edge instead of a small segment. It uses " +
-                "the active theme's colors, never covers anything tappable, and " +
-                "disappears when the assistant stops listening. Turn this off and " +
-                "the small glow returns.",
-            checked = fullWidthGlow,
-        ) { CarSettings.setFullWidthGlowEnabled(it) }
-        // r73: multi-turn conversation (A59). Follow-up answers can
-        // refer to earlier turns of the same conversation instead of
-        // answering each question on its own. Still behind the general
-        // experimental opt-in: history is sent only when experiments
-        // are on AND this is on. Off returns exactly today's
-        // single-turn answers, and clears the in-memory session.
-        ExperimentalFeatureRow(
-            title = "Multi-turn conversation (experimental)",
-            description = "Follow-up answers can refer to earlier turns of the same conversation instead of answering each question on its own. History lives only in memory for the current drive and is never saved; turning this off clears it at once. It still needs experimental features on, and single-turn answers return when this is off.",
-            checked = multiTurn,
-        ) { CarSettings.setMultiTurnEnabled(it) }
-        ExperimentalFeatureRow(
-            title = "Home widgets (experimental)",
-            description = "Shows weather, notification digest, and next event as a column " +
-                "over the full-screen map when floating media is on. Widgets appear " +
-                "only on that floating base — classic Home is unchanged when this " +
-                "is off. The column stays up while navigating, moving to the " +
-                "passenger side when guidance or a map panel is showing. " +
-                "Dismissing the column hides it until you bring it back " +
-                "here, across drives.",
-            checked = homeWidgets,
-        ) { CarSettings.setHomeWidgetsEnabled(it) }
-        if (widgetsDismissed) {
-            GsButton(
-                onClick = { CarSettings.setWidgetsDismissed(false) },
-                tone = GsTone.Tonal, modifier = Modifier.height(56.dp),
-            ) {
-                Text("Show widget column again", style = MaterialTheme.typography.titleMedium)
-            }
-        }
-        // r58 B10: per-widget hide toggles — which of the three widgets
-        // the column shows. A hidden widget never renders, and the
-        // empty-state explainer names it as hidden rather than empty.
-        // The master switch never touches these (see ExperimentalMaster).
-        if (homeWidgets) {
-            ExperimentalFeatureRow(
-                title = "Weather widget",
-                description = "Shows the weather chip in the Home widget column.",
-                checked = WidgetKind.WEATHER !in hiddenWidgets,
-            ) { CarSettings.setWidgetHidden(WidgetKind.WEATHER, !it) }
-            ExperimentalFeatureRow(
-                title = "Notification digest widget",
-                description = "Shows the unread count and latest sender in the Home widget column. Never message text.",
-                checked = WidgetKind.DIGEST !in hiddenWidgets,
-            ) { CarSettings.setWidgetHidden(WidgetKind.DIGEST, !it) }
-            ExperimentalFeatureRow(
-                title = "Next event widget",
-                description = "Shows the next scheduled event in the Home widget column.",
-                checked = WidgetKind.EVENT !in hiddenWidgets,
-            ) { CarSettings.setWidgetHidden(WidgetKind.EVENT, !it) }
-        }
-        // r53: vehicle data LAST, as its own switch — never part of the
-        // master switch (see ExperimentalMaster).
-        ExperimentalFeatureRow(
-            title = "Vehicle data",
-            description = "Adds a Vehicle data tile: a live, raw dump of the head unit's sensor " +
-                "channel. Field labels (speed, RPM, fuel...) are carried over from other " +
-                "reverse-engineering projects and unverified against this car - treat them as a " +
-                "guess, not a fact, until you've watched one change for yourself.",
-            checked = carSensors,
-        ) { CarSettings.setCarSensorsEnabled(it) }
-    }
-}
-
-@Composable
-private fun ExperimentalFeatureRow(
+private fun SettingsToggleRow(
     title: String,
     description: String,
     checked: Boolean,

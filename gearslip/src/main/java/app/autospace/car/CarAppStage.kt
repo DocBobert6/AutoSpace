@@ -31,6 +31,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.car.app.model.Template
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -58,12 +62,17 @@ fun CarAppStage(
     /** Inside the home screen's map pane: no title bar, the template gets the whole area. */
     embedded: Boolean = false,
     /**
-     * r43: lifts the template chrome off the frame bottom without
-     * shrinking the surface — bottom chrome (the travel-estimate bar)
-     * keeps its classic place above the overlay nav bar while the map
-     * tiles run full-size behind it. Every other caller passes 0.
+     * r97: the start-side strip the steering-side rail occupies. The
+     * lent surface extends under the rail's strip, so the map fills
+     * the strip instead of the scaffold's background showing through
+     * as a white band behind the floating rail; the chrome sibling
+     * keeps the inset size, so no chrome ever moves, and the app's
+     * visible area ([visibleAreaFor] with the matching coveredStartPx)
+     * is the uncovered remainder, so centering is unchanged. Only
+     * Home's map pane passes a non-zero value — a non-map app's
+     * surface must NOT extend under the rail.
      */
-    chromeBottomClearance: Dp = 0.dp,
+    surfaceStartInset: Dp = 0.dp,
     onDisconnect: () -> Unit,
 ) {
     val template by connection.template.collectAsStateWithLifecycle()
@@ -72,13 +81,16 @@ fun CarAppStage(
         // The app's own drawing goes underneath; everything else is the host's rendering of
         // the template it described, laid over the top.
         if (status.surfaceRequested) {
-            AppSurface(connection, frame, template, Modifier.fillMaxSize())
+            AppSurface(
+                connection, frame, template,
+                Modifier.fillMaxSize().extendSurfaceStart(surfaceStartInset),
+                surfaceStartInset,
+            )
         }
         TemplateChrome(
             template,
             Modifier.fillMaxSize().padding(
                 top = if (embedded) 0.dp else CHROME_BAR,
-                bottom = chromeBottomClearance,
             ),
             // r78: the connected app's package, for the collapsed
             // pane's logo (its own launcher icon).
@@ -89,10 +101,45 @@ fun CarAppStage(
 }
 
 /**
+ * Extends a surface under the start-side rail strip: measures the child
+ * wider by the inset and places it shifted into the strip (LTR: shifted
+ * left; RTL: start is right, so it overflows right instead). No-op at
+ * zero or negative insets, and on an unbounded width, where no strip
+ * width can be computed. The host never clips this, so the extension
+ * is not cut off at the frame edge; the rail, composed later in the
+ * scaffold, keeps hit-testing first, so rail taps reach the rail and
+ * taps in the margin reach the map underneath.
+ */
+internal fun Modifier.extendSurfaceStart(inset: Dp): Modifier = this.then(
+    Modifier.layout { measurable, constraints ->
+        if (inset <= 0.dp || constraints.maxWidth == Constraints.Infinity) {
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        } else {
+            val extra = inset.roundToPx()
+            val placeable = measurable.measure(
+                constraints.copy(maxWidth = constraints.maxWidth + extra),
+            )
+            layout(placeable.width - extra, placeable.height) {
+                if (layoutDirection == LayoutDirection.Ltr) {
+                    placeable.place(-extra, 0)
+                } else {
+                    placeable.place(0, 0)
+                }
+            }
+        }
+    },
+)
+
+/**
  * A SurfaceView lent to the app for as long as it is on screen.
  *
  * The app writes into this from its own process, so the surface must outlive the handoff;
  * [SurfaceHolder.Callback] is what tells us when that stops being true.
+ *
+ * [surfaceStartInset] is the start-side strip the surface extends under
+ * (see [CarAppStage]); the visible area reported to the app covers only
+ * the uncovered remainder.
  */
 @Composable
 private fun AppSurface(
@@ -100,15 +147,20 @@ private fun AppSurface(
     frame: CarEnvironment.Frame,
     template: Template?,
     modifier: Modifier = Modifier,
+    surfaceStartInset: Dp = 0.dp,
 ) {
     var size by remember { mutableStateOf(0 to 0) }
 
     // The app lays its map out around whatever the host covers, so a template change moves the
     // visible area even though the surface itself hasn't changed.
-    LaunchedEffect(template, size) {
+    // r97: the visible area is the surface minus the covered strip,
+    // so the app centers in the uncovered remainder exactly as when
+    // the surface itself was inset.
+    val coveredStartPx = with(LocalDensity.current) { surfaceStartInset.roundToPx() }
+    LaunchedEffect(template, size, coveredStartPx) {
         val (width, height) = size
         if (width > 0 && height > 0) {
-            val visible = visibleAreaFor(template, width, height)
+            val visible = visibleAreaFor(template, width, height, coveredStartPx)
             connection.reportAreas(visible = visible, stable = visible)
         }
     }

@@ -146,15 +146,6 @@ fun cardOverlapsControls(
     return rectsOverlap(cardLeft, cardTop, cardRight, cardBottom, controlsLeft, controlsTop, controlsRight, controlsBottom)
 }
 
-/**
- * r77: the clearance gate. Pure, so the unit test pins it: the card
- * steps aside only when the driver has opted into experimental
- * features as a whole AND this toggle is on. Either off returns the
- * card to exactly today's placement, and the stored choice is
- * preserved, never rewritten, while the gate is off. It joins no
- * master switch.
- */
-fun cardClearanceNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean = experimentalOn && toggleOn
 
 /**
  * The clearance-adjusted dock for the slot's card. Pure, so the unit

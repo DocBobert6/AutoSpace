@@ -107,13 +107,6 @@ internal object BuiltInApps {
     val entries: List<Entry> = all.map { Entry(it.label, icon = null, builtIn = it) }
 }
 
-/** Vehicle data is experimental: raw, unverified sensor labels (see [CarSensors]). */
-@Composable
-internal fun rememberVehicleDataShown(): Boolean {
-    val experimental by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val sensors by CarSettings.carSensorsEnabled.collectAsState()
-    return experimental && sensors
-}
 
 /**
  * Where an open app lives - decides where tapping it goes and how it closes. Gearslip's own
@@ -485,7 +478,8 @@ private fun PackIconCell(packPkg: String, drawable: String, selected: Boolean, o
 @Composable
 private fun MoveButtons(id: String) {
     val custom by CarSettings.appOrder.collectAsState()
-    val order = launcherOrder(rememberAllEntries(), rememberVehicleDataShown(), custom).mapNotNull { it.componentId }
+    // r97 graduation: vehicle data is regular now, so its tile always shows.
+    val order = launcherOrder(rememberAllEntries(), true, custom).mapNotNull { it.componentId }
     val index = order.indexOf(id)
     if (index < 0) return
     fun move(by: Int) {

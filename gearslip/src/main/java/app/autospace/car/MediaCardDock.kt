@@ -33,17 +33,17 @@ fun mediaCardDockFromStored(stored: String): MediaCardDock = when (stored) {
 }
 
 /**
- * r69: the docking gate. Pure, so the unit test pins it: the card
- * docks only when the driver has opted into experimental features as
- * a whole AND the stored choice says so. Either off returns the card
- * to exactly today's placement, and the stored choice is preserved,
- * never rewritten, while the gate is off.
+ * r97 graduation: docking is a regular on/off toggle now, not an
+ * experimental gate. Pure, so the unit test pins it: the card docks
+ * to the stored choice only while the toggle is on; off returns the
+ * card to exactly today's placement, and the stored choice is
+ * preserved, never rewritten, while off.
  */
-fun mediaCardDockNow(experimentalOn: Boolean, stored: MediaCardDock): MediaCardDock =
-    if (experimentalOn) stored else MediaCardDock.END
+fun mediaCardDockNow(dockEnabled: Boolean, stored: MediaCardDock): MediaCardDock =
+    if (dockEnabled) stored else MediaCardDock.END
 
 /**
- * r69: the effective dock, gate plus collision fallback. During
+ * r69: the effective dock, toggle plus collision fallback. During
  * guidance the trip bar sits at the bottom-start corner (see
  * NavigationChrome), so a Start dock would land exactly on top of it
  * and cover its Stop control. A Start dock therefore steps aside to
@@ -55,8 +55,8 @@ fun mediaCardDockNow(experimentalOn: Boolean, stored: MediaCardDock): MediaCardD
  * combined heights — the device list checks that visually rather than
  * inventing a numeric threshold here.
  */
-fun effectiveMediaCardDock(experimentalOn: Boolean, stored: MediaCardDock, etaBarVisible: Boolean): MediaCardDock {
-    val docked = mediaCardDockNow(experimentalOn, stored)
+fun effectiveMediaCardDock(dockEnabled: Boolean, stored: MediaCardDock, etaBarVisible: Boolean): MediaCardDock {
+    val docked = mediaCardDockNow(dockEnabled, stored)
     return if (docked == MediaCardDock.START && etaBarVisible) MediaCardDock.END else docked
 }
 

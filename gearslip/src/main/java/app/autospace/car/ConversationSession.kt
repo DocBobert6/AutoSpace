@@ -76,8 +76,7 @@ class ConversationHistory {
  * The live session holder: in-memory only, never persisted. Spoken
  * conversation history is sensitive, and a disk copy would outlive the
  * drive, survive backups, and need its own deletion story. The session
- * dies with the process, on toggle-off (see
- * [CarSettings.setMultiTurnEnabled]), and on timeout (see
+ * dies with the process, and on timeout (see
  * [ConversationHistory]).
  */
 object ConversationSession {
@@ -93,13 +92,3 @@ object ConversationSession {
     fun clear() = history.clear()
 }
 
-/**
- * r73: the multi-turn gate. Pure, so the unit test pins it: history
- * is sent only when the driver has opted into experimental features
- * as a whole AND the multi-turn toggle is on. Either off sends exactly
- * today's single-turn request, and the stored session is never
- * consulted — toggling off additionally clears it (see
- * [CarSettings.setMultiTurnEnabled]).
- */
-fun multiTurnNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn

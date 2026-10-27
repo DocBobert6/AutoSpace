@@ -3,28 +3,12 @@ package app.autospace.car
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** r76 A58 Live conversation widget swap: gate, liveness, labels, turn display rule. */
+/** r76 A58 Live conversation widget swap: liveness, labels, turn display rule. */
 class LiveSwapTest {
 
-    @Test
-    fun gateBothOnSwaps() {
-        assertEquals(true, liveSwapNow(true, true))
-    }
 
-    @Test
-    fun gateExperimentalOffNoSwap() {
-        assertEquals(false, liveSwapNow(false, true))
-    }
 
-    @Test
-    fun gateToggleOffNoSwap() {
-        assertEquals(false, liveSwapNow(true, false))
-    }
 
-    @Test
-    fun gateBothOffNoSwap() {
-        assertEquals(false, liveSwapNow(false, false))
-    }
 
     @Test
     fun idleIsNotLive() {

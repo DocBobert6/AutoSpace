@@ -50,13 +50,3 @@ package app.autospace.car
  * icon — glanceable by construction, nothing to read.
  */
 
-/**
- * r78: the pane-collapse gate. Pure, so the unit test pins it: the
- * pane collapses only when the driver has opted into experimental
- * features as a whole AND the collapse toggle is on. Either off
- * returns exactly today's pane, and the stored toggle is preserved,
- * never rewritten, while the gate is off. The toggle joins no
- * master switch.
- */
-fun paneCollapseNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn

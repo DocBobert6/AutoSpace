@@ -42,7 +42,9 @@ sealed interface CarScreen {
     data class App(val id: String) : CarScreen
 }
 
-enum class SidePanel { NONE, CONTROLS, LYRICS }
+// r97 graduation: only lyrics remains — the in-flow media column
+// (CONTROLS) is gone with the classic Home split.
+enum class SidePanel { NONE, LYRICS }
 
 /** One step on the breadcrumb trail: the screen it shows and the word for it in the trail. */
 data class Crumb(val screen: CarScreen, val label: String)
@@ -85,26 +87,13 @@ class CarNavigator(startId: String) {
     }
 
     /**
-     * What the column beside the map on Home is showing, if anything. The player lives in one
-     * place at a time: with [SidePanel.CONTROLS] it moves into the column and the nav bar's pill
-     * steps aside; with [SidePanel.LYRICS] the column is all lyrics and the pill comes back.
-     * Every other screen has no room for the column, so there the pill stays in the nav bar.
+     * What the column beside the map on Home is showing, if anything.
+     * r97 graduation: only lyrics remains — with [SidePanel.LYRICS] the
+     * column is all lyrics. Every other screen has no room for the
+     * column.
      */
     var sidePanel by mutableStateOf(SidePanel.NONE)
         private set
-
-    /**
-     * The pill's dock button: moves the player beside the map, going Home first if need be. With
-     * lyrics already there it swaps them for the controls; with the controls there it closes.
-     */
-    fun togglePlayerDock() {
-        if (current != CarScreen.Home) {
-            sidePanel = SidePanel.CONTROLS
-            home()
-            return
-        }
-        sidePanel = if (sidePanel == SidePanel.CONTROLS) SidePanel.NONE else SidePanel.CONTROLS
-    }
 
     fun showSideLyrics() { sidePanel = SidePanel.LYRICS }
 

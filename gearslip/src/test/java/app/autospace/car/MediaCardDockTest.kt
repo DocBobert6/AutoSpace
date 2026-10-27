@@ -4,7 +4,7 @@ import androidx.compose.ui.Alignment
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** r69 mini-player docking: stored-choice parsing, experimental gate, trip-bar fallback, alignment mapping. */
+/** r69 mini-player docking: stored-choice parsing, regular dock toggle, trip-bar fallback, alignment mapping. */
 class MediaCardDockTest {
 
     @Test
@@ -38,22 +38,22 @@ class MediaCardDockTest {
     }
 
     @Test
-    fun gateOffReturnsEndForStart() {
+    fun toggleOffReturnsEndForStart() {
         assertEquals(MediaCardDock.END, mediaCardDockNow(false, MediaCardDock.START))
     }
 
     @Test
-    fun gateOffReturnsEndForCenter() {
+    fun toggleOffReturnsEndForCenter() {
         assertEquals(MediaCardDock.END, mediaCardDockNow(false, MediaCardDock.CENTER))
     }
 
     @Test
-    fun gateOnKeepsStart() {
+    fun toggleOnKeepsStart() {
         assertEquals(MediaCardDock.START, mediaCardDockNow(true, MediaCardDock.START))
     }
 
     @Test
-    fun gateOnKeepsCenter() {
+    fun toggleOnKeepsCenter() {
         assertEquals(MediaCardDock.CENTER, mediaCardDockNow(true, MediaCardDock.CENTER))
     }
 

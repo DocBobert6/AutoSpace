@@ -7,28 +7,12 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r87 steering-side app bar, r94 float: experimental gate, strip mapping, alignment mapping, clock split. */
+/** r87 steering-side app bar, r94 float: strip mapping, alignment mapping, clock split. */
 class SideBarTest {
 
-    @Test
-    fun gateBothOnShowsRail() {
-        assertEquals(true, sideBarNow(true, true))
-    }
 
-    @Test
-    fun gateExperimentalOffHidesRail() {
-        assertEquals(false, sideBarNow(false, true))
-    }
 
-    @Test
-    fun gateToggleOffHidesRail() {
-        assertEquals(false, sideBarNow(true, false))
-    }
 
-    @Test
-    fun gateBothOffHidesRail() {
-        assertEquals(false, sideBarNow(false, false))
-    }
 
     @Test
     fun stripWidthIsRailWidthPlusFloat() {

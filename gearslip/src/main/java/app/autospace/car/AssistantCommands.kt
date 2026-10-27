@@ -334,16 +334,12 @@ object AssistantCommands {
         // superseded turn's late sentences die in streamText/streamSentence
         // instead of re-speaking an interrupted reply's tail.
         val streamGeneration = CarAssistant.turnGeneration
-        // r73: multi-turn history, gated twice (general experimental
-        // opt-in AND the multi-turn toggle). Either off sends exactly
-        // today's [system, user] request; the stored session never
-        // leaks into a single-turn turn. History rides both Groq calls
-        // (search + answer) and the single Gemini call.
-        val history = if (multiTurnNow(CarSettings.experimentalFeaturesEnabled.value, CarSettings.multiTurnEnabled.value)) {
-            ConversationSession.historyForRequest()
-        } else {
-            emptyList()
-        }
+        // r97 graduation: multi-turn is regular now, so the session
+        // history rides the request whenever one exists. No gate:
+        // session memory is part of the assistant, not an experiment.
+        // History rides both Groq calls (search + answer) and the
+        // single Gemini call.
+        val history = ConversationSession.historyForRequest()
         val result: Any = withContext(Dispatchers.IO) {
             when (provider) {
                 // r55: Groq streams (display text + sentences as they
@@ -544,11 +540,9 @@ object AssistantCommands {
         triggers.firstOrNull { text.startsWith(it) }?.let { text.removePrefix(it).trim() }
 
     private suspend fun allEntries(context: Context): List<Entry> {
-        val vehicleData = CarSettings.experimentalFeaturesEnabled.value && CarSettings.carSensorsEnabled.value
-        val builtIn = BuiltInApps.entries.filter {
-            it.builtIn !== BuiltInApps.VehicleData || vehicleData
-        }
-        return builtIn + (LauncherCache.entries ?: withContext(Dispatchers.IO) { LauncherCache.load(context) })
+        // r97 graduation: vehicle data is regular now, so its tile
+        // always shows; no filter is needed.
+        return BuiltInApps.entries + (LauncherCache.entries ?: withContext(Dispatchers.IO) { LauncherCache.load(context) })
     }
 
     /**
@@ -1200,12 +1194,10 @@ object AssistantCommands {
             "Opening settings."
         }
         "vehicle data" in heard || "car data" in heard -> {
-            if (CarSettings.experimentalFeaturesEnabled.value && CarSettings.carSensorsEnabled.value) {
-                navigator.vehicleData()
-                "Opening vehicle data."
-            } else {
-                "Vehicle data is off. Turn it on under experimental features in settings."
-            }
+            // r97 graduation: vehicle data is regular now, so the
+            // shortcut always opens the screen.
+            navigator.vehicleData()
+            "Opening vehicle data."
         }
         else -> null
     }

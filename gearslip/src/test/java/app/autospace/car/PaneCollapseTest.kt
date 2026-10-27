@@ -52,25 +52,9 @@ class PaneCollapseTest {
             .build(),
     )
 
-    @Test
-    fun gateBothOnCollapses() {
-        assertEquals(true, paneCollapseNow(true, true))
-    }
 
-    @Test
-    fun gateExperimentalOffNeverCollapses() {
-        assertEquals(false, paneCollapseNow(false, true))
-    }
 
-    @Test
-    fun gateToggleOffNeverCollapses() {
-        assertEquals(false, paneCollapseNow(true, false))
-    }
 
-    @Test
-    fun gateBothOffNeverCollapses() {
-        assertEquals(false, paneCollapseNow(false, false))
-    }
 
     @Test
     fun collapsedPaneStillCountsAsPanelOpen() {

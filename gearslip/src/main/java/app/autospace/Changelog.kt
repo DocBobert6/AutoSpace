@@ -16,6 +16,15 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            64, "0.4.53-alpha",
+            listOf(
+                "Experimental features are now the regular interface: the floating media card, home widgets, and the steering-side rail as the only app bar are always on, and the experimental section is gone.",
+                "The media card's background is now the album art itself, and the card shows the elapsed and total time.",
+                "Map theme is a regular setting: Themed follows your style and color scheme, or pick Meridian's fixed colors.",
+                "Media-card docking is a regular setting: dock the card to a corner, or leave it free.",
+            ),
+        ),
+        Release(
             63, "0.4.52-alpha",
             listOf(
                 "Voice navigation now waits until you finish talking: the map starts guiding only after the short listen window closes, so its voice can't be mistaken for a follow-up.",

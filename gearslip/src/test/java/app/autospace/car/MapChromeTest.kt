@@ -60,26 +60,8 @@ class MapChromeTest {
         assertEquals(0xFF131429L, MapChromeColors.MERIDIAN_STOP_CONTENT)
     }
 
-    @Test
-    fun gateNeedsToggleAndExperiments() {
-        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(meridianToggle = true, experimentalOn = true))
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = true, experimentalOn = false))
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = false, experimentalOn = true))
-        assertEquals(MapChrome.THEMED, effectiveMapChrome(meridianToggle = false, experimentalOn = false))
-    }
 
-    @Test
-    fun migrationCarriesStoredMeridianOn() {
-        assertTrue(migrateMeridianToggle("MERIDIAN"))
-        assertTrue(migrateMeridianToggle("GOOGLE"))
-    }
 
-    @Test
-    fun migrationLeavesAnythingElseOff() {
-        assertFalse(migrateMeridianToggle("THEMED"))
-        assertFalse(migrateMeridianToggle(""))
-        assertFalse(migrateMeridianToggle("NEON"))
-    }
 
     @Test
     fun meridianPaneAndEdgeShareThePillDark() {

@@ -54,18 +54,17 @@ import app.autospace.media.orderedSwipeSessions
 
 /**
  * Floating Home (r34): the map full-bleed with media as a floating card over
- * it, behind an experimental toggle that defaults OFF. Classic Home is
- * untouched when the toggle is off.
+ * it. r97 graduation: this is the only Home now — the classic split is
+ * gone except for the lyrics view.
  *
- * Per-session card dismissal: in-memory only, so a fresh process (or cycling
- * the toggle off and back on, which resets it) brings the card back. It is
- * deliberately NOT persisted: a dismissed card must never be unrecoverable,
- * and the toggle itself is the re-enable path. r36 adds two more restore
- * paths, because toggle-cycling from Settings is unreachable while driving:
- * the nav-bar pill's dock button restores the card while dismissed in
- * floating mode, and a playback-start transition (paused/stopped -> playing)
- * re-enables it — see [shouldResurfaceOnPlayTransition] and the CarHome
- * effect that drives it.
+ * Per-session card dismissal: in-memory only, so a fresh process brings
+ * the card back. It is deliberately NOT persisted: a dismissed card must
+ * never be unrecoverable. r36's restore paths: a playback-start
+ * transition (paused/stopped -> playing) re-enables it — see
+ * [shouldResurfaceOnPlayTransition] and the CarHome effect that drives
+ * it. r97 graduation removed the other two paths with the toggle and
+ * the nav-bar pill; a dismissed card returns on the next drive or on
+ * a pause-then-play edge.
  */
 object FloatingHomeState {
     val dismissed = mutableStateOf(false)
@@ -89,75 +88,21 @@ object FloatingHomeState {
 
 /**
  * Whether the floating card shows. Pure so it is unit-testable. Every gate
- * matters: the toggle (default OFF), something actually playing, the card
- * not dismissed this session, actually on Home, and never while the lyrics
- * column owns the side (lyrics falls back to the classic split instead).
+ * matters: something actually playing, the card not dismissed this
+ * session, actually on Home, and never while the lyrics column owns
+ * the side (lyrics falls back to the split instead). r97 graduation:
+ * the card is the only media treatment now — no toggle gates it.
  */
 fun shouldShowFloatingCard(
-    floatingEnabled: Boolean,
     isPlaying: Boolean,
     dismissed: Boolean,
     sidePanel: SidePanel,
     onHome: Boolean,
-): Boolean = floatingEnabled && isPlaying && !dismissed && onHome && sidePanel != SidePanel.LYRICS
+): Boolean = isPlaying && !dismissed && onHome && sidePanel != SidePanel.LYRICS
 
-/**
- * Whether the nav bar's now-playing pill steps aside for the floating card.
- * Mirrors the docked-column rule (pill steps aside when the player is
- * already on screen): the card IS the player on screen, so the pill hides
- * while it is visible and comes back the moment the card is dismissed.
- */
-fun shouldStepAsidePillForFloatingCard(
-    floatingEnabled: Boolean,
-    dismissed: Boolean,
-    onHome: Boolean,
-): Boolean = floatingEnabled && !dismissed && onHome
 
-/**
- * Whether the pill steps aside for the docked player column. r36: this
- * applies ONLY in classic mode. In floating mode the classic column NEVER
- * renders (floating branch = MapPane + card only), so letting this gate fire
- * there hid the pill whenever sidePanel was CONTROLS — docked before floating
- * was enabled, or dock pressed from another screen, which sets CONTROLS +
- * Home. Dismissed card + CONTROLS panel then meant no card AND no pill:
- * total media UI loss. In floating mode the floating gate above is the only
- * step-aside that may hide the pill.
- */
-fun shouldStepAsidePillForDockedColumn(
-    floatingEnabled: Boolean,
-    sidePanel: SidePanel,
-    onHome: Boolean,
-): Boolean = !floatingEnabled && sidePanel == SidePanel.CONTROLS && onHome
 
-/**
- * Whether the nav bar's now-playing pill shows, placement gates only (media
- * readiness — phase READY and a session active — is a separate gate in
- * NavNowPlaying). The pill hides exactly when it would repeat a player
- * already on screen: the docked column (classic mode only), the floating
- * card, or the full media screen itself.
- */
-fun shouldShowNavPill(
-    floatingEnabled: Boolean,
-    dismissed: Boolean,
-    sidePanel: SidePanel,
-    onHome: Boolean,
-    onMediaScreen: Boolean,
-): Boolean = !shouldStepAsidePillForDockedColumn(floatingEnabled, sidePanel, onHome) &&
-    !shouldStepAsidePillForFloatingCard(floatingEnabled, dismissed, onHome) &&
-    !onMediaScreen
 
-/**
- * Whether the pill's dock button restores the floating card instead of
- * docking. r36: in floating mode, while on Home and dismissed, the pill is
- * the only media UI on screen, so its dock button becomes the restore
- * button (reset dismissed + panel NONE, label "Show media card"). Everywhere
- * else the dock button keeps today's togglePlayerDock behavior and label.
- */
-fun pillDockRestoresFloatingCard(
-    floatingEnabled: Boolean,
-    dismissed: Boolean,
-    onHome: Boolean,
-): Boolean = floatingEnabled && dismissed && onHome
 
 /**
  * Whether a playback-start transition re-enables a dismissed card. r36:
@@ -171,46 +116,6 @@ fun pillDockRestoresFloatingCard(
 fun shouldResurfaceOnPlayTransition(wasPlaying: Boolean, isPlaying: Boolean): Boolean =
     !wasPlaying && isPlaying
 
-/**
- * r43, re-based in r83: the nav bar overlays the map (instead of
- * sitting below Home in-flow) exactly when the bar's own switch is on:
- * on Home, floating nav bar on, and not the lyrics split — lyrics keeps
- * the classic split with the bar in-flow, and other screens keep the
- * classic bar. The floating-media flag used to sit in this rule; since
- * r83 the bar switch decides alone, so toggling floating media never
- * moves the bar. Pure so it is unit-testable; the scaffold and the card
- * clearance both read it.
- */
-fun shouldOverlayNavBar(onHome: Boolean, barSwitchOn: Boolean, panel: SidePanel): Boolean =
-    onHome && barSwitchOn && panel != SidePanel.LYRICS
-
-/**
- * r83: the nav bar's treatment, as one pure decision over the bar
- * switch, the steering-side rail, Home vs other screens, and the
- * lyrics split. The rail always wins (it IS the app bar while it is
- * on); otherwise the overlay rule decides floating vs in-flow. The
- * scaffold reads this for the two bar branches; the overlay rule
- * itself still drives the content-box layout and the strip padding.
- * Pure so it is unit-testable.
- */
-enum class NavBarTreatment {
-    FLOATING,
-    IN_FLOW,
-    RAIL,
-}
-
-fun navBarTreatment(
-    barSwitchOn: Boolean,
-    railVisible: Boolean,
-    onHome: Boolean,
-    panel: SidePanel,
-): NavBarTreatment = if (railVisible) {
-    NavBarTreatment.RAIL
-} else if (shouldOverlayNavBar(onHome, barSwitchOn, panel)) {
-    NavBarTreatment.FLOATING
-} else {
-    NavBarTreatment.IN_FLOW
-}
 
 /**
  * Card width: a glanceable card, not a panel — r42 narrows it to 40% of
@@ -239,16 +144,6 @@ internal val FloatingCardDismissGlyphSize: Dp = 20.dp
  */
 internal val FloatingCardSessionSwipeMinDp: Dp = 24.dp
 
-/**
- * r88: the floating media card's frosted fill alpha. With album art behind it the fill
- * drops to 0.60 so the blurred art reads clearly — at the pinned 0.88 only ~12% showed
- * through, which is why it read as faint. Without art the card keeps the pinned 0.88
- * exactly, so the missing-art card is unchanged. The art is a heavily blurred 64px copy
- * with no sharp edges, and the title stays bold over a 0.60 scrim, so text stays readable.
- * Pure so it is unit-testable.
- */
-internal fun mediaCardFillAlpha(hasArt: Boolean): Float =
-    if (hasArt) 0.60f else FrostedChromeAlpha
 
 /**
  * The floating media card. Ordinary Compose surface in the window layer
@@ -258,19 +153,17 @@ internal fun mediaCardFillAlpha(hasArt: Boolean): Float =
  *
  * Frosted approximation, NOT live blur: live blur over a SurfaceView is
  * impossible (a SurfaceFlinger layer cannot be sampled by an overlay), so
- * the card is a translucent fill + panel texture in the frost-bar
- * language, never claimed as blur. The fill is translucent so the map
- * reads through faintly; the content itself stays opaque for glanceability.
+ * the card is a translucent layer + panel texture in the frost-bar
+ * language, never claimed as blur. The content itself stays opaque for
+ * glanceability.
  *
- * r60 (A27): when album art is available, a blurred copy of it sits
- * behind the card as its background — under the frosted fill, never
- * over it, so the fill stays the only translucent layer. r88: with art
- * present the fill drops to 0.60 (mediaCardFillAlpha) so the art reads
- * clearly; without art it stays the pinned 0.88. This is NOT live map
- * blur (still
+ * r97 graduation (review #1 fix): when album art is available, the
+ * artwork itself is the card's background, drawn at the pinned frosted
+ * alpha (0.88) — the transparency treatment is applied TO the artwork,
+ * replacing r88's fill-over-art. This is NOT live map blur (still
  * impossible over the SurfaceView): the art is our own image, blurred
  * once per art change and cached by its URI. No art means no background
- * image: the card keeps exactly today's background.
+ * image: the card keeps exactly today's background (pinned 0.88 fill).
  *
  * Turn-zone clearance is structural, not numeric: the card is bottom-
  * anchored in the Home Box while the nav bar (which carries the turn pill
@@ -309,30 +202,32 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // r71 (A28): the swipe threshold in pixels, resolved once per composition.
     val swipeThresholdPx = with(LocalDensity.current) { FloatingCardSessionSwipeMinDp.toPx() }
     Box(modifier) {
-        // r60 (A27): the blurred art sits behind the card, clipped to the
-        // card's shape, and the frosted surface draws its fill over it —
-        // the fill is the scrim, so no second translucent layer is added.
-        // r88: with art present the fill drops to 0.60 (mediaCardFillAlpha),
-        // so the art reads clearly instead of the ~12% that showed through
-        // the pinned 0.88; the art is a heavily blurred copy with no sharp
-        // edges, so the bold title over a 0.60 scrim stays readable.
-        // Without art the fill stays 0.88. The art is drawn
-        // at the card's size (matchParentSize) and cropped, then upscaled
-        // with bilinear filtering; the working copy is only 64px, so the
-        // upscale stays smooth. Null art (or a failed blur) draws nothing:
-        // the card keeps exactly today's background.
+        // r97 graduation (review #1 fix): the artwork itself is the
+        // card's background now, at the theme's pinned frosted alpha
+        // (0.88) — the transparency treatment is applied TO the
+        // artwork, replacing r88's fill-over-art, so the art reads
+        // instead of showing through a fill. No second translucent
+        // layer is added: with art the panel fill is transparent.
+        // The art is a heavily blurred copy with no sharp edges, so
+        // the bold title stays readable over it. Without art the card
+        // keeps exactly today's background (pinned 0.88 fill, no
+        // image). The art is drawn at the card's size (matchParentSize)
+        // and cropped, then upscaled with bilinear filtering; the
+        // working copy is only 64px, so the upscale stays smooth.
+        // Null art (or a failed blur) draws nothing.
         blurredArt?.let {
             Image(
                 it, null,
                 Modifier.matchParentSize().clip(cardShape),
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.Medium,
+                alpha = FrostedChromeAlpha,
             )
         }
         FrostedPanelSurface(
             shape = cardShape,
             elevation = 4.dp,
-            fillAlpha = mediaCardFillAlpha(blurredArt != null),
+            fillAlpha = if (blurredArt != null) 0f else FrostedChromeAlpha,
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -423,7 +318,7 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                     }
                 }
                 if (now.durationMs > 0) {
-                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = false, waveform = true)
+                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = true, waveform = true)
                 } else {
                     Spacer(Modifier.height(6.dp))
                 }

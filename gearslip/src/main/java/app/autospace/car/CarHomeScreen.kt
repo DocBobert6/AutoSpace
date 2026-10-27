@@ -62,48 +62,38 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The home screen: the map on the left, the docked player on the right when asked for.
- *
- * The map is whatever navigation app was used last, brought back on its own. The player sits in
- * the nav bar's pill until its dock button moves it here; the column closes itself back to a
- * full-width map once nothing is playing.
+ * The home screen: the map full-bleed, with the floating media card,
+ * the live conversation widget, and the widget column over it. The map
+ * is whatever navigation app was used last, brought back on its own.
+ * The one exception is lyrics: it keeps a split (map + lyrics column),
+ * since lyrics is a view the driver explicitly opened.
  */
 @Composable
 /**
- * r83: [navBarStrip] is the strip the floating nav bar occupies at the
- * frame bottom when it floats, else 0.dp — the
- * scaffold passes exactly the overlay decision, so Home's strip
- * clearance can never disagree with the bar's actual treatment. When
- * the bar floats, floating Home clears the strip exactly as before and
- * classic Home's row ends above it; when the bar sits in-flow, no
- * strip is reserved anywhere, so no dead gap is left behind.
+ * r97: [mapSurfaceStrip] is the start-side strip the steering-side
+ * rail occupies, else 0.dp — the scaffold passes it so Home's map
+ * surface can extend under the rail while the chrome stays inset.
  */
-fun CarHome(navBarStrip: Dp) {
+fun CarHome(mapSurfaceStrip: Dp) {
     val frame by CarEnvironment.frame.collectAsStateWithLifecycle()
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
     val autoplayOffer by CarServices.autoplayOfferVisible.collectAsStateWithLifecycle()
-    val floatingOn by CarSettings.floatingMediaEnabled.collectAsStateWithLifecycle()
-    val widgetsOn by CarSettings.homeWidgetsEnabled.collectAsStateWithLifecycle()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsStateWithLifecycle()
     val navTemplate by CarServices.nav.template.collectAsStateWithLifecycle()
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
-    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsStateWithLifecycle()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsStateWithLifecycle()
-    val browserPipToggle by CarSettings.browserPipEnabled.collectAsStateWithLifecycle()
+    val dockEnabled by CarSettings.mediaCardDockEnabled.collectAsStateWithLifecycle()
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
     val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
-    val liveSwapToggle by CarSettings.liveSwapEnabled.collectAsStateWithLifecycle()
-    val cardClearanceToggle by CarSettings.cardClearanceEnabled.collectAsStateWithLifecycle()
-    val sideBarToggle by CarSettings.sideBarEnabled.collectAsStateWithLifecycle()
     val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
+    // r97: the rail is the only app bar; a non-zero strip means it is showing.
+    val railVisible = mapSurfaceStrip > 0.dp
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
-    // Cycling the toggle back on re-enables a card dismissed earlier in the session.
-    LaunchedEffect(floatingOn) { if (floatingOn) FloatingHomeState.reset() }
     // r36 restore: a playback-start transition (paused/stopped -> playing) re-enables a
     // card dismissed earlier in the session, so pressing play after a stop brings the
     // card back without reaching for Settings. Transition-gated, not level-gated:
@@ -112,7 +102,7 @@ fun CarHome(navBarStrip: Dp) {
     // are observed across screens, including the music app. The previous value lives
     // in FloatingHomeState, not a remember, so it survives recomposition.
     LaunchedEffect(now.playing) {
-        if (floatingOn && shouldResurfaceOnPlayTransition(FloatingHomeState.lastPlaying, now.playing)) FloatingHomeState.reset()
+        if (shouldResurfaceOnPlayTransition(FloatingHomeState.lastPlaying, now.playing)) FloatingHomeState.reset()
         FloatingHomeState.lastPlaying = now.playing
     }
     // r62 (A50): the turn-autoplay-off offer answers itself after 30 s
@@ -143,19 +133,16 @@ fun CarHome(navBarStrip: Dp) {
     }
     val splitScreen = phase == CarMedia.Phase.READY && now.isActive && panel != SidePanel.NONE
 
-    // r34 floating Home: the toggle (default OFF) swaps the split for a
-    // full-bleed map with a floating media card. The lyrics column is the
-    // one exception — it keeps the classic split, since lyrics is a view
-    // the driver explicitly opened, not a player placement. Everything
-    // below in the else branch is the classic Home, verbatim.
-    val useFloating = floatingOn && panel != SidePanel.LYRICS
+    // r97 graduation: Home is the full-bleed map with floating cards,
+    // always. The lyrics column is the one exception — it keeps a
+    // split, since lyrics is a view the driver explicitly opened, not
+    // a player placement.
     // r75: the mini video card takes the floating card's slot
     // while it is showing, so two cards never share one corner; the
-    // audio card returns when the mini video is dismissed. The mini
-    // card's own gate, not the floating toggle, governs it, so it
-    // floats over classic Home too.
-    val showMiniVideo = browserPipNow(experimentalOn, browserPipToggle) &&
-        miniVideoItem != null && onHome
+    // audio card returns when the mini video is dismissed. r97
+    // graduation: PiP is regular now, so the card shows whenever a
+    // mini video is active.
+    val showMiniVideo = miniVideoItem != null && onHome
     // r76: A58 Live conversation widget swap — while a live
     // conversation is active, the floating media card's slot shows
     // the conversation widget instead of the card. Precedence is
@@ -166,20 +153,19 @@ fun CarHome(navBarStrip: Dp) {
     // Home is untouched; the lyrics split is excluded like the card
     // itself. The widget swaps back the moment the phase returns to
     // IDLE — the follow-up window expiring ends the conversation.
-    val showLiveWidget = liveSwapNow(experimentalOn, liveSwapToggle) &&
-        isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
+    val showLiveWidget = isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
         !showMiniVideo
     val showFloatingCard = shouldShowFloatingCard(
-        floatingOn, phase == CarMedia.Phase.READY && now.isActive,
+        phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
     ) && !showMiniVideo && !showLiveWidget
-    // r69: mini-player docking (A44/A45, experimental). The trip bar
+    // r69: mini-player docking (A44/A45). The trip bar
     // sits at the bottom-start corner during guidance (see
     // NavigationChrome), so the effective dock steps a Start dock
     // aside to today's placement while it is showing — no other
     // chrome moves to fit a docked position.
     val etaBarVisible = !navPanMode && (navTemplate as? NavigationTemplate)?.destinationTravelEstimate != null
-    val cardDock = effectiveMediaCardDock(experimentalOn, mediaCardDock, etaBarVisible)
+    val cardDock = effectiveMediaCardDock(dockEnabled, mediaCardDock, etaBarVisible)
     // r77: card-clearance START veto. A Start card would land on the trip bar's Stop
     // control during guidance (the r69 fallback exists for this) and under a
     // driver-side rail (the rail occupies the left edge). The veto is
@@ -191,9 +177,9 @@ fun CarHome(navBarStrip: Dp) {
     val turnCardShowing = onHome && turnCardRouting != null &&
         (turnCardRouting.isLoading || turnCardRouting.currentStep != null)
     val clearanceStartAllowed = !etaBarVisible &&
-        !(sideBarNow(experimentalOn, sideBarToggle) && !turnCardShowing)
-    // r37 widget layer: driver-side column over the full-bleed map base
-    // only (floating ON). Classic split hides it and stays byte-for-byte.
+        !(railVisible && !turnCardShowing)
+    // r37 widget layer: column over the full-bleed map base only (the
+    // lyrics split hides it).
     // r59 restack: the column no longer steps aside for nav templates —
     // it moves to the passenger side when the template's own chrome
     // occupies the driver side, and hides only for full-screen content
@@ -202,7 +188,7 @@ fun CarHome(navBarStrip: Dp) {
     // so the two can never disagree.
     val widgetPlacement = widgetColumnPlacement(navTemplate, navPanMode)
     val showWidgetColumn = shouldShowWidgetColumn(
-        widgetsOn, floatingOn, widgetsDismissed, onHome, panel, widgetPlacement,
+        widgetsDismissed, onHome, panel, widgetPlacement,
     )
 
     // Phase 8: 12dp outer padding (so rounded corners actually show against
@@ -237,7 +223,7 @@ fun CarHome(navBarStrip: Dp) {
     // cover) go square instead of rounded. Square inner corners beat
     // dots on the map.
     Box(Modifier.fillMaxSize()) {
-        if (useFloating) {
+        if (panel != SidePanel.LYRICS) {
             // Full-bleed map: no Row padding and no frame overlay — the map
             // IS the background here, so masking its edges would defeat the
             // point. The card is an ordinary Compose surface in the window
@@ -246,12 +232,11 @@ fun CarHome(navBarStrip: Dp) {
             // SurfaceView recreation as an independent node. Bottom-end
             // (passenger side) reserves the driver side for the later
             // widget column; r42 moves it to 24dp in from the frame edges
-            // (left and up). r43: the nav bar overlays this Box's bottom
-            // instead of sitting below it in-flow, so the card clears the
-            // bar with bottom padding of 24dp plus the bar strip — and can
+            // (left and up). r97: no bottom bar exists anymore, so the
+            // card clears with bottom padding of 24dp alone — and can
             // never cover the turn zone.
             Box(Modifier.fillMaxSize()) {
-                MapPane(navStatus, frame, navBarStrip)
+                MapPane(navStatus, frame, mapSurfaceStrip)
             }
             if (showFloatingCard) {
                 // r77: the slot reads its frame here (not on the padded
@@ -263,13 +248,13 @@ fun CarHome(navBarStrip: Dp) {
                     val clearanceAlignment = mediaCardDockAlignment(
                         clearanceDock(
                             cardDock,
-                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            true, // r97 graduation: break 1 is regular now.
                             CardClearanceState.controls,
                             clearanceStartAllowed,
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            navBarStrip.value,
+                            0f, // r97: no bottom bar strip anymore.
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -281,7 +266,7 @@ fun CarHome(navBarStrip: Dp) {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + navBarStrip,
+                            bottom = 24.dp,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
@@ -300,13 +285,13 @@ fun CarHome(navBarStrip: Dp) {
                     val clearanceAlignment = mediaCardDockAlignment(
                         clearanceDock(
                             cardDock,
-                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            true, // r97 graduation: break 1 is regular now.
                             CardClearanceState.controls,
                             clearanceStartAllowed,
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            navBarStrip.value,
+                            0f, // r97: no bottom bar strip anymore.
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -318,7 +303,7 @@ fun CarHome(navBarStrip: Dp) {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + navBarStrip,
+                            bottom = 24.dp,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
@@ -336,8 +321,8 @@ fun CarHome(navBarStrip: Dp) {
                 // like VideoPlayerScreen/CarWhatsNew do (1 s; GPS only
                 // updates every 2 s). It gates the narrow-frame parked
                 // exception AND the r58 hide-while-driving rule; the poll
-                // runs only while the column could render, never on
-                // classic Home.
+                // runs only while the column could render, never
+                // while the lyrics split is up.
                 val moving by produceState(CarMotion.moving) {
                     while (true) { value = CarMotion.moving; delay(1_000) }
                 }
@@ -350,11 +335,10 @@ fun CarHome(navBarStrip: Dp) {
                 // side when guidance or a map pane occupies the driver side
                 // (see widgetColumnPlacement). Top-anchored below the top
                 // inset (proposal §3); the media card sits bottom-end, so
-                // the two never collide. r43: the nav bar now overlays
-                // this Box's bottom instead of sitting below it in-flow,
-                // but the column is top-anchored so it is unaffected —
-                // and on Home the bar carries no turn pill anyway. The
-                // turn card stays clear because the column moved, not
+                // the two never collide. r97: there is no bottom bar
+                // anymore; the column is top-anchored so it is
+                // unaffected. The turn card stays clear because the
+                // column moved, not
                 // because it hid — checked visually on device (test list).
                 // r58 hide-while-driving: a driving-hidden column renders
                 // nothing at all, explainer included — a hidden column
@@ -374,8 +358,10 @@ fun CarHome(navBarStrip: Dp) {
                 }
             }
         } else {
+        // r97 graduation: lyrics is the only split left — map plus
+        // the lyrics column, with the frame overlay as before.
         Row(
-            Modifier.fillMaxSize().padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + navBarStrip),
+            Modifier.fillMaxSize().padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Audit (second video): the pane's clip is gone. It cannot
@@ -388,11 +374,11 @@ fun CarHome(navBarStrip: Dp) {
                     .weight(if (splitScreen) 1.75f else 1f)
                     .fillMaxHeight(),
             ) {
-                MapPane(navStatus, frame)
+                MapPane(navStatus, frame, mapSurfaceStrip)
             }
             if (splitScreen) {
                 val side = Modifier.weight(1f).fillMaxHeight()
-                if (panel == SidePanel.LYRICS) SideLyrics(now, side) else DockedPlayer(now, side)
+                SideLyrics(now, side)
             }
         }
         HomeFrameOverlay(Modifier.fillMaxSize())
@@ -414,13 +400,13 @@ fun CarHome(navBarStrip: Dp) {
         }
         // r75: browser PiP — the mini video card floats over Home in
         // the same bottom-dock slot and width as the floating media
-        // card (both modes; its own experimental gate, not the
-        // floating toggle), and the passenger gate dialog covers Home
+        // card (r97 graduation: PiP is regular now), and the passenger
+        // gate dialog covers Home
         // while unanswered, exactly like the browser gate: video keeps
         // playing behind the dim until the driver answers Yes
         // (audio-only) or the passenger answers (video). Drawn after
         // the offer so the gate dialog sits above everything on Home;
-        // the scaffold nav bar above this stays reachable, as it does
+        // the scaffold rail above this stays reachable, as it does
         // over the browser gate.
         if (showMiniVideo) {
             val miniItem = miniVideoItem
@@ -432,13 +418,13 @@ fun CarHome(navBarStrip: Dp) {
                     val clearanceAlignment = mediaCardDockAlignment(
                         clearanceDock(
                             cardDock,
-                            cardClearanceNow(experimentalOn, cardClearanceToggle),
+                            true, // r97 graduation: break 1 is regular now.
                             CardClearanceState.controls,
                             clearanceStartAllowed,
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            navBarStrip.value,
+                            0f, // r97: no bottom bar strip anymore.
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -450,7 +436,7 @@ fun CarHome(navBarStrip: Dp) {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + navBarStrip,
+                            bottom = 24.dp,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
@@ -504,16 +490,16 @@ private fun HomeFrameOverlay(modifier: Modifier = Modifier) {
 }
 
 /**
- * r43: [chromeBottomClearance] lifts the nav app's template chrome off
- * the frame bottom in floating mode, so bottom chrome (the
- * travel-estimate bar) keeps its classic place above the bar while the
- * map surface itself stays full-size behind it. Classic passes 0.
+ * r97: [surfaceStartInset] extends the lent surface under the
+ * steering-side rail's strip, so the map fills the strip instead of
+ * the scaffold background showing through behind the floating rail.
+ * The chrome sibling keeps the inset size, so no chrome moves.
  */
 @Composable
 private fun MapPane(
     status: CarAppConnection.Status,
     frame: CarEnvironment.Frame,
-    chromeBottomClearance: Dp = 0.dp,
+    surfaceStartInset: Dp = 0.dp,
 ) {
     val navigator = LocalCarNavigator.current
     if (status.phase == CarAppConnection.Phase.RUNNING) {
@@ -529,7 +515,7 @@ private fun MapPane(
         Box(Modifier.fillMaxSize()) {
             CarAppStage(
                 CarServices.nav, status, frame, embedded = true,
-                chromeBottomClearance = chromeBottomClearance,
+                surfaceStartInset = surfaceStartInset,
             ) { CarServices.stopNav() }
         }
         return
@@ -575,86 +561,11 @@ private fun MapPane(
     }
 }
 
-/**
- * The player, docked beside the map: art, title, progress, transport, then like, shuffle, repeat
- * and lyrics. While it's here the nav bar's pill steps aside on Home, so the controls never show
- * twice. The X sends it back to the nav bar.
- */
-@Composable
-private fun DockedPlayer(now: NowPlaying, modifier: Modifier) {
-    val navigator = LocalCarNavigator.current
-    val media = CarServices.media
-    val context = LocalContext.current
-    val scheme = MaterialTheme.colorScheme
-    val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
-
-    Surface(
-        modifier = modifier,
-        // r54 (D4): panel shape through the style rule, so Pitlane squares it.
-        shape = gsButtonShape(RoundedCornerShape(20.dp)),
-        color = rememberArtColor(art, MaterialTheme.colorScheme.surfaceVariant),
-    ) {
-        BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
-            // Whatever height the controls below leave over, so the art grows on a taller
-            // screen and shrinks rather than pushing the buttons off a short one.
-            val artSize = minOf(maxWidth - 44.dp, maxHeight - 250.dp).coerceIn(56.dp, 200.dp)
-            // Audit (second video): the panel's content sat top-loaded with
-            // ~40% dead space below the mode row. The block is centred
-            // vertically now, so the dead space splits top and bottom
-            // instead of pooling underneath.
-            Column(
-                Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(Modifier.fillMaxWidth()) {
-                    // Art opens the full media screen, same as on the pill.
-                    Box(
-                        Modifier
-                            .align(Alignment.TopCenter)
-                            .size(artSize)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(scheme.surface)
-                            .clickable { navigator.media() },
-                    ) {
-                        art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                    }
-                    GsIconButton(
-                        Icons.Filled.Close, "Back to the nav bar", navigator::closeSidePanel,
-                        Modifier.align(Alignment.TopEnd), size = 36.dp, iconSize = 20.dp,
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    now.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    now.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                )
-                if (now.durationMs > 0) {
-                    PlayerProgress(now, media, Modifier.fillMaxWidth().padding(vertical = 2.dp), showTimes = false)
-                } else {
-                    Spacer(Modifier.height(10.dp))
-                }
-                TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(10.dp))
-                PlayModeRow(now, media, size = 42.dp, modifier = Modifier.fillMaxWidth()) {
-                    GsIconButton(
-                        ImageVector.vectorResource(R.drawable.lyrics_24), "Lyrics", navigator::showSideLyrics,
-                        size = 42.dp, iconSize = 22.dp,
-                    )
-                }
-            }
-        }
-    }
-}
 
 /**
  * Lyrics alone beside the map, big enough to read at a glance. No art: that space goes to a
- * larger title and artist instead. The player goes back to the nav bar meanwhile, whose dock
- * button swaps these back out for the controls.
+ * larger title and artist instead. The floating card stays hidden while
+ * lyrics owns the side.
  */
 @Composable
 private fun SideLyrics(now: NowPlaying, modifier: Modifier) {

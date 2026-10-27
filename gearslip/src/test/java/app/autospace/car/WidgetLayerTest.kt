@@ -41,22 +41,20 @@ class WidgetLayerTest {
 
     @Test
     fun columnShowsOnlyWhenEveryGatePasses() {
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.CONTROLS, WidgetColumnPlacement.PASSENGER_SIDE))
+        assertTrue(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertTrue(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.PASSENGER_SIDE))
     }
 
     @Test
     fun columnHidesWhenAnyGateFails() {
         // Master switch off (the default): classic Home, no column.
-        assertFalse(shouldShowWidgetColumn(false, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Classic split base: no full-bleed background to overlay.
-        assertFalse(shouldShowWidgetColumn(true, false, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Dismissed (persisted): stays hidden across drives until re-enabled.
-        assertFalse(shouldShowWidgetColumn(true, true, true, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertFalse(shouldShowWidgetColumn(true, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Not on Home: the column lives in CarHome only.
-        assertFalse(shouldShowWidgetColumn(true, true, false, false, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertFalse(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
         // Lyrics owns the side: classic split instead, no background.
-        assertFalse(shouldShowWidgetColumn(true, true, false, true, SidePanel.LYRICS, WidgetColumnPlacement.DRIVER_SIDE))
+        assertFalse(shouldShowWidgetColumn(false, true, SidePanel.LYRICS, WidgetColumnPlacement.DRIVER_SIDE))
     }
 
     @Test
@@ -326,12 +324,12 @@ class WidgetLayerTest {
     @Test
     fun columnShowsOnEitherSideButNotWhenHidden() {
         // Both sides show when every other gate passes...
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
-        assertTrue(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.PASSENGER_SIDE))
+        assertTrue(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.DRIVER_SIDE))
+        assertTrue(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.PASSENGER_SIDE))
         // ...and HIDDEN hides without dismissing: the dismissed argument
         // is unchanged throughout, so the column returns on its own when
         // the template clears — no settings visit.
-        assertFalse(shouldShowWidgetColumn(true, true, false, true, SidePanel.NONE, WidgetColumnPlacement.HIDDEN))
+        assertFalse(shouldShowWidgetColumn(false, true, SidePanel.NONE, WidgetColumnPlacement.HIDDEN))
     }
 
     @Test

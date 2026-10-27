@@ -13,75 +13,25 @@ class FloatingHomeTest {
 
     @Test
     fun cardShowsOnlyWhenEveryGatePasses() {
-        assertTrue(shouldShowFloatingCard(true, true, false, SidePanel.NONE, true))
-        assertTrue(shouldShowFloatingCard(true, true, false, SidePanel.CONTROLS, true))
+        assertTrue(shouldShowFloatingCard(true, false, SidePanel.NONE, true))
     }
 
     @Test
     fun cardHidesWhenAnyGateFails() {
         // Toggle off (the default): classic Home, no card.
-        assertFalse(shouldShowFloatingCard(false, true, false, SidePanel.NONE, true))
         // Nothing playing: full-bleed map, no card.
-        assertFalse(shouldShowFloatingCard(true, false, false, SidePanel.NONE, true))
+        assertFalse(shouldShowFloatingCard(false, false, SidePanel.NONE, true))
         // Dismissed this session: map only, pill comes back.
-        assertFalse(shouldShowFloatingCard(true, true, true, SidePanel.NONE, true))
+        assertFalse(shouldShowFloatingCard(true, true, SidePanel.NONE, true))
         // Lyrics owns the side: classic split instead.
-        assertFalse(shouldShowFloatingCard(true, true, false, SidePanel.LYRICS, true))
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.LYRICS, true))
         // Not on Home: the card lives in CarHome only.
-        assertFalse(shouldShowFloatingCard(true, true, false, SidePanel.NONE, false))
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.NONE, false))
     }
 
-    @Test
-    fun pillStepsAsideForTheCardAndReturnsOnDismiss() {
-        assertTrue(shouldStepAsidePillForFloatingCard(true, false, true))
-        assertFalse(shouldStepAsidePillForFloatingCard(true, true, true))
-        assertFalse(shouldStepAsidePillForFloatingCard(false, false, true))
-        assertFalse(shouldStepAsidePillForFloatingCard(true, false, false))
-    }
 
-    @Test
-    fun dockedColumnStepsAsideOnlyInClassicMode() {
-        // Classic mode, docked beside the map: pill steps aside for the column.
-        assertTrue(shouldStepAsidePillForDockedColumn(false, SidePanel.CONTROLS, true))
-        // r36: floating mode, docked panel, on Home — the classic column never
-        // renders here, so the docked gate must NOT hide the pill.
-        assertFalse(shouldStepAsidePillForDockedColumn(true, SidePanel.CONTROLS, true))
-        // Not docked, or not on Home: no step-aside either way.
-        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.NONE, true))
-        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.CONTROLS, false))
-        assertFalse(shouldStepAsidePillForDockedColumn(false, SidePanel.LYRICS, true))
-    }
 
-    @Test
-    fun pillShowsInFloatingModeWithControlsPanel() {
-        // r36, the reported loss: floating on, card dismissed, panel CONTROLS
-        // (docked before floating was enabled, or dock from another screen).
-        // No card AND no pill was the bug; the pill must show now.
-        assertTrue(shouldShowNavPill(true, true, SidePanel.CONTROLS, true, false))
-        // Card visible in floating mode: pill still steps aside for the card.
-        assertFalse(shouldShowNavPill(true, false, SidePanel.NONE, true, false))
-        // Classic docked column: pill steps aside.
-        assertFalse(shouldShowNavPill(false, false, SidePanel.CONTROLS, true, false))
-        // Classic, not docked: pill shows.
-        assertTrue(shouldShowNavPill(false, false, SidePanel.NONE, true, false))
-        // Full media screen: pill repeats the player, stays hidden.
-        assertFalse(shouldShowNavPill(false, false, SidePanel.NONE, true, true))
-        assertFalse(shouldShowNavPill(true, true, SidePanel.NONE, true, true))
-        // Not on Home, floating card not on screen: pill shows.
-        assertTrue(shouldShowNavPill(true, false, SidePanel.NONE, false, false))
-    }
 
-    @Test
-    fun pillDockButtonRestoresDismissedCardOnlyInFloatingModeOnHome() {
-        assertTrue(pillDockRestoresFloatingCard(true, true, true))
-        // Card not dismissed: pill is hidden by the floating gate anyway; the
-        // button is unreachable, and it must not claim restore semantics.
-        assertFalse(pillDockRestoresFloatingCard(true, false, true))
-        // Floating off: classic dock behavior, never restore.
-        assertFalse(pillDockRestoresFloatingCard(false, true, true))
-        // Not on Home: the card lives in CarHome only; dock keeps its behavior.
-        assertFalse(pillDockRestoresFloatingCard(true, true, false))
-    }
 
     @Test
     fun playbackStartTransitionResurfacesButLevelDoesNot() {
@@ -127,37 +77,7 @@ class FloatingHomeTest {
         assertEquals(CircleShape, DefaultTransportShape)
     }
 
-    @Test
-    fun navBarOverlaysMapOnlyInFloatingHome() {
-        // r43: on Home, floating on, classic split never (lyrics).
-        assertTrue(shouldOverlayNavBar(true, true, SidePanel.NONE))
-        assertTrue(shouldOverlayNavBar(true, true, SidePanel.CONTROLS))
-        // Lyrics keeps the classic split, bar in-flow below Home.
-        assertFalse(shouldOverlayNavBar(true, true, SidePanel.LYRICS))
-        // Floating off: classic Home, bar in-flow.
-        assertFalse(shouldOverlayNavBar(true, false, SidePanel.NONE))
-        // Not on Home: other screens keep the classic bar.
-        assertFalse(shouldOverlayNavBar(false, true, SidePanel.NONE))
-    }
 
-    @Test
-    fun navBarStripHeightIsBarPlusMargins() {
-        // r43: 64dp bar + 8dp floating margins top and bottom.
-        assertEquals(80.dp, NAV_BAR_STRIP_HEIGHT)
-        // Card bottom clearance in overlay mode: the r42 24dp inset
-        // plus the strip, so the card sits where it sat in-flow.
-        assertEquals(104.dp, 24.dp + NAV_BAR_STRIP_HEIGHT)
-    }
 
-    @Test
-    fun mediaCardFillAlphaDropsWithArt() {
-        // r88: art behind the card reads clearly at 0.60, up from ~12% through 0.88.
-        assertEquals(0.60f, mediaCardFillAlpha(true))
-    }
 
-    @Test
-    fun mediaCardFillAlphaKeepsPinnedWithoutArt() {
-        // r88: no art means no background image, so the card keeps the pinned fill exactly.
-        assertEquals(FrostedChromeAlpha, mediaCardFillAlpha(false))
-    }
 }

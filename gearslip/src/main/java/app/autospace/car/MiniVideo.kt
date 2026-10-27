@@ -134,15 +134,6 @@ object MiniVideoState {
     }
 }
 
-/**
- * r75: the PiP gate. Pure, so the unit test pins it: the button and
- * the card render only when the driver has opted into experimental
- * features as a whole AND the PiP toggle is on. Either off returns
- * exactly today's browser, and the stored toggle is preserved, never
- * rewritten, while the gate is off. The toggle joins no master switch.
- */
-fun browserPipNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn
 
 /** r75: the mini card shows only while gated on, handed off, and on Home. */
 fun shouldShowMiniVideoCard(pipGateOn: Boolean, active: Boolean, onHome: Boolean): Boolean =

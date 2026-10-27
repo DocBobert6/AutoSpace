@@ -92,8 +92,6 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             AssistantCommands.clearPendingAiAction()
         }
     }
-    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
-    val glowToggleOn by CarSettings.fullWidthGlowEnabled.collectAsState()
     val listening = state.phase == CarAssistant.Phase.LISTENING && state.ready
     val glow = MaterialTheme.colorScheme.primary
     val glow2 = MaterialTheme.colorScheme.tertiary
@@ -105,12 +103,12 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
         CarAssistant.Phase.ERROR -> 0.3f
         else -> 0.6f
     }
-    // r67: the band renders only in the LISTENING phase with the gate
-    // on — speaking, thinking, and idle keep exactly today's treatment,
-    // and the r57 follow-up window keeps the phase at LISTENING, so the
-    // band stays up through "Still listening…" with no special-casing.
-    val fullWidthGlow = fullWidthGlowNow(experimentalOn, glowToggleOn) &&
-        state.phase == CarAssistant.Phase.LISTENING
+    // r97 graduation: the band is the regular listening treatment
+    // now — it renders in the LISTENING phase, and speaking, thinking,
+    // and idle keep exactly today's treatment. The r57 follow-up window
+    // keeps the phase at LISTENING, so the band stays up through
+    // "Still listening…" with no special-casing.
+    val fullWidthGlow = state.phase == CarAssistant.Phase.LISTENING
 
     Box(
         modifier
@@ -299,14 +297,6 @@ fun MicGlyph(modifier: Modifier = Modifier) {
  * and the glyph names the provider that grounded it — globe for Groq, Google "G"
  * for Gemini. Ungrounded answers get the badge alone.
  */
-/**
- * r67: the full-width listening glow gate. Pure, so the unit test pins
- * it: the band renders only when the driver has opted into experimental
- * features as a whole AND switched this glow on. Either off returns
- * the overlay to exactly today's small glow.
- */
-internal fun fullWidthGlowNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn
 
 internal enum class GroundedGlyph { NONE, GLOBE, GOOGLE_G }
 

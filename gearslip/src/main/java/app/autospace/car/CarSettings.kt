@@ -83,7 +83,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_UI_THEME = "car_ui_theme"
     private const val KEY_PINNED = "car_pinned_apps"
     private const val KEY_APP_ORDER = "car_app_order"
-    private const val KEY_EXPERIMENTAL_FEATURES = "car_experimental_features"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
     private const val KEY_HOTWORD = "car_hotword"
@@ -101,21 +100,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SUB_COLOR = "car_sub_color"
     private const val KEY_SUB_BG = "car_sub_bg"
     private const val KEY_SUB_EDGE = "car_sub_edge"
-    private const val KEY_CAR_SENSORS = "car_sensors_enabled"
-    private const val KEY_FLOATING_MEDIA = "car_floating_media"
-    private const val KEY_FLOATING_NAV_BAR = "car_floating_nav_bar"
-    private const val KEY_HOME_WIDGETS = "car_home_widgets"
-    private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
-    private const val KEY_MAP_CHROME = "car_map_chrome"
-    private const val KEY_MERIDIAN_CHROME = "car_meridian_chrome"
-    private const val KEY_FULL_WIDTH_GLOW = "car_full_width_glow"
     private const val KEY_MEDIA_CARD_DOCK = "car_media_card_dock"
-    private const val KEY_MULTI_TURN = "car_multi_turn"
-    private const val KEY_SIDE_BAR = "car_side_bar"
-    private const val KEY_BROWSER_PIP = "car_browser_pip"
-    private const val KEY_LIVE_SWAP = "car_live_swap"
-    private const val KEY_CARD_CLEARANCE = "car_card_clearance"
-    private const val KEY_PANE_COLLAPSE = "car_pane_collapse"
+    private const val KEY_MEDIA_CARD_DOCK_ENABLED = "car_media_card_dock_enabled"
+    private const val KEY_MAP_THEME = "car_map_theme"
     private const val KEY_ICON_PACK = "car_icon_pack"
     private const val KEY_ICON_OVERRIDES = "car_icon_overrides"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
@@ -195,7 +182,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val iconPackFlow = MutableStateFlow<String?>(null)
     private val iconOverridesFlow = MutableStateFlow<Map<String, String>>(emptyMap())
     private val appOrderFlow = MutableStateFlow<List<String>>(emptyList())
-    private val experimentalFeaturesFlow = MutableStateFlow(false)
     private val systemSpeechFlow = MutableStateFlow(false)
     private val phoneMicFlow = MutableStateFlow(false)
     private val hotwordFlow = MutableStateFlow(false)
@@ -203,20 +189,9 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val callSpeakerFlow = MutableStateFlow(false)
     private val playerSpeedFlow = MutableStateFlow(1f)
     private val playerSkipSecFlow = MutableStateFlow(10)
-    private val carSensorsFlow = MutableStateFlow(false)
-    private val floatingMediaFlow = MutableStateFlow(false)
-    private val floatingNavBarFlow = MutableStateFlow(false)
-    private val homeWidgetsFlow = MutableStateFlow(false)
-    private val frostedMapChromeFlow = MutableStateFlow(false)
-    private val meridianChromeFlow = MutableStateFlow(false)
-    private val fullWidthGlowFlow = MutableStateFlow(false)
     private val mediaCardDockFlow = MutableStateFlow(MediaCardDock.END)
-    private val multiTurnFlow = MutableStateFlow(false)
-    private val sideBarFlow = MutableStateFlow(false)
-    private val browserPipFlow = MutableStateFlow(false)
-    private val liveSwapFlow = MutableStateFlow(false)
-    private val cardClearanceFlow = MutableStateFlow(false)
-    private val paneCollapseFlow = MutableStateFlow(false)
+    private val mediaCardDockEnabledFlow = MutableStateFlow(false)
+    private val mapThemeFlow = MutableStateFlow(MapChrome.THEMED)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
@@ -336,11 +311,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
 
     fun markAudioChoiceAsked() = AppSettings.putString(app, KEY_AUDIO_CHOICE_ASKED, "true")
 
-    /**
-     * Off by default: a driver has to opt into experimental features as a whole before any of
-     * them - the voice assistant included - show up to turn on individually.
-     */
-    val experimentalFeaturesEnabled: StateFlow<Boolean> = experimentalFeaturesFlow
 
     /** Listen with the phone's own speech service instead of Gearslip's on-device model. */
     val systemSpeech: StateFlow<Boolean> = systemSpeechFlow
@@ -367,166 +337,63 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     /** Video player skip interval in seconds, persisted (Notscape playerSkipSec). */
     val playerSkipSec: StateFlow<Int> = playerSkipSecFlow
 
-    /**
-     * Vehicle data is experimental and off by default: the launcher's tile for it, and the
-     * voice assistant's "vehicle data" command, only show up once this and
-     * [experimentalFeaturesEnabled] are both on. See [app.autospace.car.CarSensors]
-     * for why the raw sensor feed it shows is worth gating - the field labels are unverified.
-     */
-    val carSensorsEnabled: StateFlow<Boolean> = carSensorsFlow
 
-    /**
-     * Floating Home (r34): Home shows the map full-bleed with the player
-     * as a floating card over it instead of side-by-side. Experimental
-     * and off by default; classic Home is byte-for-byte when off. It
-     * graduates only on Robert's drive tests — never on a builder's say-so.
-     */
-    val floatingMediaEnabled: StateFlow<Boolean> = floatingMediaFlow
 
-    /**
-     * Floating nav bar (r83): the nav bar's own switch, no longer tied
-     * to floating media. ON floats the bar over Home; OFF keeps it
-     * in-flow below Home. Seeded once from the floating-media value at
-     * first load (see init), so no existing install changes appearance
-     * on update; thereafter the two are independent. The master switch
-     * never touches this key.
-     */
-    val floatingNavBarEnabled: StateFlow<Boolean> = floatingNavBarFlow
 
-    /**
-     * Widget layer (r37): the three-widget Home column, behind the
-     * experimental-features Show switch, default OFF. Classic Home is
-     * byte-for-byte when off; the column renders only over the floating
-     * full-bleed map base.
-     */
-    val homeWidgetsEnabled: StateFlow<Boolean> = homeWidgetsFlow
 
-    /**
-     * Frosted map chrome (r46): the map pane, turn card, trip bar and
-     * edge buttons draw the shared frosted treatment (the floating
-     * media card's own surface at the pinned 0.92 alpha) instead of the
-     * opaque chrome. Experimental and off by default; classic opaque
-     * chrome returns when off. It joins the floating-look master suite:
-     * the r53 master switch sets this ON alongside floating media and
-     * home widgets (turning the master OFF leaves it as-is), and the
-     * individual toggle keeps working after.
-     */
-    val frostedMapChromeEnabled: StateFlow<Boolean> = frostedMapChromeFlow
 
-    /**
-     * r65: the single Meridian toggle. One control for the whole
-     * Meridian look — turn card, trip pill, panes, edge controls —
-     * replacing the retired r63 Themed/Meridian choice row. Off by
-     * default; a stored Meridian choice migrates it on once (see the
-     * load migration below). It joins no master switch: the r53
-     * master never touches it, and it never affects the master's
-     * derived state.
-     */
-    val meridianChromeEnabled: StateFlow<Boolean> = meridianChromeFlow
 
-    /**
-     * r67: the full-width listening glow toggle. Off by default; it
-     * joins no master switch: the r53 master never touches it, and it
-     * never affects the master's derived state. It still sits behind
-     * the general experimental opt-in: the band renders only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [fullWidthGlowNow]).
-     */
-    val fullWidthGlowEnabled: StateFlow<Boolean> = fullWidthGlowFlow
 
     /**
      * r69: mini-player docking (A44/A45). The floating media card's
      * bottom dock: END is today's placement, CENTER centers it,
      * START moves it to the opposite corner — the passenger side in
-     * a right-hand-drive car. Off by default (END); it joins no master
-     * switch: the r53 master never touches it, and it never affects
-     * the master's derived state. It still sits behind the general
-     * experimental opt-in: the card docks only when
-     * [experimentalFeaturesEnabled] is on (see [effectiveMediaCardDock]),
-     * and the stored choice is preserved, never rewritten, while off.
+     * a right-hand-drive car. Off by default (END). r97 graduation:
+     * the card docks only when the regular dock toggle is on (see
+     * [mediaCardDockEnabled] and [effectiveMediaCardDock]), and the
+     * stored choice is preserved, never rewritten, while off.
      */
     val mediaCardDock: StateFlow<MediaCardDock> = mediaCardDockFlow
 
     /**
-     * r73: multi-turn conversation (A59). Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: history is sent only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [multiTurnNow]). Turning it off clears the in-memory session at
-     * once, so no history survives the toggle.
+     * r97 graduation: media-card docking is a regular on/off toggle
+     * now. ON docks the card to the stored [mediaCardDock] choice;
+     * OFF leaves the card free at today's placement. The stored
+     * choice is preserved while off. Migrated once from the old
+     * experimental opt-in (see init), so no install changes
+     * placement on update.
      */
-    val multiTurnEnabled: StateFlow<Boolean> = multiTurnFlow
+    val mediaCardDockEnabled: StateFlow<Boolean> = mediaCardDockEnabledFlow
 
     /**
-     * r74: steering-side floating app bar (A1). Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: the rail renders only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [sideBarNow]). The toggle never rewrites other state.
+     * r97 graduation: the map-theme choice. THEMED follows the
+     * style and scheme and is the default; MERIDIAN wears its fixed
+     * colors. Meridian never replaces themed chrome — it is one
+     * choice beside it. Migrated once from the old Meridian toggle
+     * and legacy choice (see init).
      */
-    val sideBarEnabled: StateFlow<Boolean> = sideBarFlow
+    val mapTheme: StateFlow<MapChrome> = mapThemeFlow
 
-    /**
-     * r75: browser picture-in-picture. Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: the pop-out button renders only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [browserPipNow]). The toggle never rewrites other state.
-     */
-    val browserPipEnabled: StateFlow<Boolean> = browserPipFlow
 
-    /**
-     * r76: Live conversation widget (A58). Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: the media card swaps only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [liveSwapNow]). The toggle never rewrites other state, and
-     * turning it off never clears the multi-turn session — that
-     * toggle owns the session.
-     */
-    val liveSwapEnabled: StateFlow<Boolean> = liveSwapFlow
 
-    /**
-     * r77: card-vs-controls clearance (audit break 1). Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: the card steps aside only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [cardClearanceNow]). The toggle never rewrites other state.
-     */
-    val cardClearanceEnabled: StateFlow<Boolean> = cardClearanceFlow
 
-    /**
-     * r78: map-pane collapse to logo. Off by default; it joins no
-     * master switch: the r53 master never touches it, and it never
-     * affects the master's derived state. It still sits behind the
-     * general experimental opt-in: the pane collapses only when
-     * [experimentalFeaturesEnabled] and this are both on (see
-     * [paneCollapseNow]). The toggle never rewrites other state.
-     */
-    val paneCollapseEnabled: StateFlow<Boolean> = paneCollapseFlow
+
+
 
     /**
      * Column-level widget dismissal, REMEMBERED across drives (persisted
      * pref, §7(5)) — unlike the floating card's per-session dismissal.
-     * Re-enabled only from the widget settings row, or by turning the
-     * r53 "All experimental features" master switch ON — never by
-     * cycling the experimental-features Hide/Show row or the floating
-     * toggle. (The pre-r53 wording's "master switch" meant the Hide/Show
-     * row; the r53 master is a different control and DOES clear this on ON.)
+     * Re-enabled only from the widget settings row in Appearance.
+     * Graduation preserves a stored dismissal: it is a user preference,
+     * not an experimental gate.
      */
     val widgetsDismissed: StateFlow<Boolean> = widgetsDismissedFlow
 
     /**
      * r58 B10: per-widget hide toggles — the set of widget kinds the
      * driver hid from the column. Empty by default (everything shows).
-     * Persisted as comma-joined kind names. The master switch never
-     * touches it (see ExperimentalMaster — deliberately not a member):
-     * hiding one widget is a column preference, not a suite flag.
+     * Persisted as comma-joined kind names. Graduation never touches
+     * it: hiding one widget is a column preference, not a suite flag.
      */
     val hiddenWidgets: StateFlow<Set<WidgetKind>> = hiddenWidgetsFlow
 
@@ -630,7 +497,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             .split(",").filter { it.isNotEmpty() }
         iconPackFlow.value = AppSettings.getString(app, KEY_ICON_PACK, "").ifEmpty { null }
         iconOverridesFlow.value = decodeOverrides(AppSettings.getString(app, KEY_ICON_OVERRIDES, ""))
-        experimentalFeaturesFlow.value = AppSettings.getString(app, KEY_EXPERIMENTAL_FEATURES, "false") == "true"
         systemSpeechFlow.value = AppSettings.getString(app, KEY_SYSTEM_SPEECH, "false") == "true"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
         hotwordFlow.value = AppSettings.getString(app, KEY_HOTWORD, "false") == "true"
@@ -638,49 +504,46 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         callSpeakerFlow.value = AppSettings.getString(app, KEY_CALL_SPEAKER, "false") == "true"
         playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
-        carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
-        floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
-        // r83 one-time seeding, same pattern as the r65 Meridian
-        // migration: the floating nav bar's own switch starts from the
-        // floating-media value it used to follow, so no existing
-        // install changes appearance on update; thereafter the two are
-        // independent, and the seed never re-runs to overwrite a later
-        // choice. A fresh install (floating media off by default) lands
-        // with the bar in-flow, which is exactly today's fresh default.
-        val storedNavBar = AppSettings.getString(app, KEY_FLOATING_NAV_BAR, "")
-        floatingNavBarFlow.value = if (storedNavBar.isEmpty()) {
-            floatingMediaFlow.value.also {
-                AppSettings.putString(app, KEY_FLOATING_NAV_BAR, it.toString())
+        mediaCardDockFlow.value = mediaCardDockFromStored(AppSettings.getString(app, KEY_MEDIA_CARD_DOCK, ""))
+        // r97 graduation migrations, same one-time pattern as the
+        // retired r65/r83 blocks: a missing new key means first run
+        // on r97, so the old experimental state seeds it once and
+        // the new key is persisted at once; a present key is trusted.
+        // The retired key names below are literals on purpose: their
+        // constants are deleted, and these reads must never run again
+        // after the new keys exist. Dock: on exactly when the old
+        // experimental opt-in was on, so visible placement is
+        // preserved (ON + stored choice reproduces the old gated
+        // behavior; OFF reproduces the free END placement). Map
+        // theme: MERIDIAN only when experiments were on AND (the
+        // Meridian toggle was on OR the legacy choice parses to
+        // Meridian, covering a pre-r65 jumper); otherwise THEMED,
+        // which is the default for fresh installs. The legacy choice
+        // key is cleared so it can never re-run.
+        val storedDockEnabled = AppSettings.getString(app, KEY_MEDIA_CARD_DOCK_ENABLED, "")
+        mediaCardDockEnabledFlow.value = if (storedDockEnabled.isEmpty()) {
+            (AppSettings.getString(app, "car_experimental_features", "false") == "true").also {
+                AppSettings.putString(app, KEY_MEDIA_CARD_DOCK_ENABLED, it.toString())
             }
         } else {
-            storedNavBar == "true"
+            storedDockEnabled == "true"
         }
-        homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
-        frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
-        // r65 one-time migration, same pattern as the r35 theme split:
-        // the retired car_map_chrome choice becomes the single Meridian
-        // toggle, and the old key is cleared so the migration can never
-        // re-run and overwrite a later choice. A stored Meridian choice
-        // (including a legacy "GOOGLE" value, which parses to Meridian)
-        // carries the toggle on; Themed, blank, or unrecognized leaves
-        // it off. A fresh install (no keys at all) lands off, which is
-        // exactly the old Themed default.
-        val legacyChrome = AppSettings.getString(app, KEY_MAP_CHROME, "")
-        if (legacyChrome.isNotEmpty()) {
-            meridianChromeFlow.value = migrateMeridianToggle(legacyChrome)
-            AppSettings.putString(app, KEY_MERIDIAN_CHROME, meridianChromeFlow.value.toString())
-            AppSettings.putString(app, KEY_MAP_CHROME, "")
+        val storedMapTheme = AppSettings.getString(app, KEY_MAP_THEME, "")
+        mapThemeFlow.value = if (storedMapTheme.isEmpty()) {
+            val experimentsOn = AppSettings.getString(app, "car_experimental_features", "false") == "true"
+            val meridianOn = AppSettings.getString(app, "car_meridian_chrome", "false") == "true"
+            val legacyChrome = AppSettings.getString(app, "car_map_chrome", "")
+            val theme = if (experimentsOn && (meridianOn || mapChromeFromStored(legacyChrome) == MapChrome.MERIDIAN)) {
+                MapChrome.MERIDIAN
+            } else {
+                MapChrome.THEMED
+            }
+            AppSettings.putString(app, KEY_MAP_THEME, theme.name)
+            AppSettings.putString(app, "car_map_chrome", "")
+            theme
         } else {
-            meridianChromeFlow.value = AppSettings.getString(app, KEY_MERIDIAN_CHROME, "false") == "true"
+            mapChromeFromStored(storedMapTheme)
         }
-        fullWidthGlowFlow.value = AppSettings.getString(app, KEY_FULL_WIDTH_GLOW, "false") == "true"
-        mediaCardDockFlow.value = mediaCardDockFromStored(AppSettings.getString(app, KEY_MEDIA_CARD_DOCK, ""))
-        multiTurnFlow.value = AppSettings.getString(app, KEY_MULTI_TURN, "false") == "true"
-        sideBarFlow.value = AppSettings.getString(app, KEY_SIDE_BAR, "false") == "true"
-        browserPipFlow.value = AppSettings.getString(app, KEY_BROWSER_PIP, "false") == "true"
-        liveSwapFlow.value = AppSettings.getString(app, KEY_LIVE_SWAP, "false") == "true"
-        cardClearanceFlow.value = AppSettings.getString(app, KEY_CARD_CLEARANCE, "false") == "true"
-        paneCollapseFlow.value = AppSettings.getString(app, KEY_PANE_COLLAPSE, "false") == "true"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
@@ -779,51 +642,28 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_SCHEME, scheme.name)
     }
 
-    fun setMeridianChromeEnabled(on: Boolean) {
-        meridianChromeFlow.value = on
-        AppSettings.putString(app, KEY_MERIDIAN_CHROME, on.toString())
-    }
 
-    fun setFullWidthGlowEnabled(on: Boolean) {
-        fullWidthGlowFlow.value = on
-        AppSettings.putString(app, KEY_FULL_WIDTH_GLOW, on.toString())
-    }
 
     fun setMediaCardDock(dock: MediaCardDock) {
         mediaCardDockFlow.value = dock
         AppSettings.putString(app, KEY_MEDIA_CARD_DOCK, dock.name)
     }
 
-    fun setMultiTurnEnabled(on: Boolean) {
-        multiTurnFlow.value = on
-        AppSettings.putString(app, KEY_MULTI_TURN, on.toString())
-        if (!on) ConversationSession.clear()
+    fun setMediaCardDockEnabled(on: Boolean) {
+        mediaCardDockEnabledFlow.value = on
+        AppSettings.putString(app, KEY_MEDIA_CARD_DOCK_ENABLED, on.toString())
     }
 
-    fun setSideBarEnabled(on: Boolean) {
-        sideBarFlow.value = on
-        AppSettings.putString(app, KEY_SIDE_BAR, on.toString())
+    fun setMapTheme(theme: MapChrome) {
+        mapThemeFlow.value = theme
+        AppSettings.putString(app, KEY_MAP_THEME, theme.name)
     }
 
-    fun setBrowserPipEnabled(on: Boolean) {
-        browserPipFlow.value = on
-        AppSettings.putString(app, KEY_BROWSER_PIP, on.toString())
-    }
 
-    fun setLiveSwapEnabled(on: Boolean) {
-        liveSwapFlow.value = on
-        AppSettings.putString(app, KEY_LIVE_SWAP, on.toString())
-    }
 
-    fun setCardClearanceEnabled(on: Boolean) {
-        cardClearanceFlow.value = on
-        AppSettings.putString(app, KEY_CARD_CLEARANCE, on.toString())
-    }
 
-    fun setPaneCollapseEnabled(on: Boolean) {
-        paneCollapseFlow.value = on
-        AppSettings.putString(app, KEY_PANE_COLLAPSE, on.toString())
-    }
+
+
 
     fun setAppearanceMode(mode: AppearanceMode) {
         modeFlow.value = mode
@@ -900,10 +740,6 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_LOCATION_WARNING, on.toString())
     }
 
-    fun setExperimentalFeaturesEnabled(on: Boolean) {
-        experimentalFeaturesFlow.value = on
-        AppSettings.putString(app, KEY_EXPERIMENTAL_FEATURES, on.toString())
-    }
 
     fun setSystemSpeech(on: Boolean) {
         systemSpeechFlow.value = on
@@ -966,30 +802,10 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setSubtitleBg(value: String) = AppSettings.putString(app, KEY_SUB_BG, value)
     fun setSubtitleEdge(value: String) = AppSettings.putString(app, KEY_SUB_EDGE, value)
 
-    fun setCarSensorsEnabled(on: Boolean) {
-        carSensorsFlow.value = on
-        AppSettings.putString(app, KEY_CAR_SENSORS, on.toString())
-    }
 
-    fun setFloatingMediaEnabled(on: Boolean) {
-        floatingMediaFlow.value = on
-        AppSettings.putString(app, KEY_FLOATING_MEDIA, on.toString())
-    }
 
-    fun setFloatingNavBarEnabled(on: Boolean) {
-        floatingNavBarFlow.value = on
-        AppSettings.putString(app, KEY_FLOATING_NAV_BAR, on.toString())
-    }
 
-    fun setHomeWidgetsEnabled(on: Boolean) {
-        homeWidgetsFlow.value = on
-        AppSettings.putString(app, KEY_HOME_WIDGETS, on.toString())
-    }
 
-    fun setFrostedMapChromeEnabled(on: Boolean) {
-        frostedMapChromeFlow.value = on
-        AppSettings.putString(app, KEY_FROSTED_MAP_CHROME, on.toString())
-    }
 
     fun setWidgetsDismissed(dismissed: Boolean) {
         widgetsDismissedFlow.value = dismissed

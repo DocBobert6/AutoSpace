@@ -12,20 +12,8 @@ class MiniVideoTest {
         MiniVideoState.clear()
     }
 
-    @Test
-    fun gateBothOnShowsPip() {
-        assertEquals(true, browserPipNow(true, true))
-    }
 
-    @Test
-    fun gateExperimentalOffHidesPip() {
-        assertEquals(false, browserPipNow(false, true))
-    }
 
-    @Test
-    fun gateToggleOffHidesPip() {
-        assertEquals(false, browserPipNow(true, false))
-    }
 
     @Test
     fun cardShowsWhenGatedActiveAndOnHome() {

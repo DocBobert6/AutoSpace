@@ -277,7 +277,6 @@ fun CarLauncher() {
     // Painted from the cache at once; scanned only if [Prefetch] has not got there first.
     val all = rememberAllEntries()
     val running = rememberRunningApps()
-    val showVehicleData = rememberVehicleDataShown()
 
     fun tileOf(entry: Entry): Tile {
         // Only apps that don't work get a mark. The X rates an app's own car screens; a messenger
@@ -304,7 +303,8 @@ fun CarLauncher() {
     // width alone (2 columns on an 800px screen, 1 on a narrow one),
     // not from the tile-size slider. Tile size scales pill HEIGHT
     // (see AppTile), icon size scales the pill icon.
-    val ordered = launcherOrder(all, showVehicleData, appOrder)
+    // r97 graduation: vehicle data is regular now, so its tile always shows.
+    val ordered = launcherOrder(all, true, appOrder)
 
     // Search, through the car's own keyboard: tapping the search row opens it, typing
     // filters tiles by label, submitting or dismissing closes it again.

@@ -63,16 +63,6 @@ import kotlinx.coroutines.delay
  * the card when the conversation ends.
  */
 
-/**
- * r76: the Live swap gate. Pure, so the unit test pins it: the card
- * swaps only when the driver has opted into experimental features
- * as a whole AND the Live swap toggle is on. Either off returns
- * exactly today's media card, and the stored toggle is preserved,
- * never rewritten, while the gate is off. The toggle joins no
- * master switch.
- */
-fun liveSwapNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
-    experimentalOn && toggleOn
 
 /** r76: a conversation is live while the assistant phase is anything but IDLE. Pure. */
 fun isLiveConversation(phase: CarAssistant.Phase): Boolean =

@@ -155,13 +155,11 @@ fun isMapBackedTemplate(template: Template): Boolean = template is MapTemplate |
  * flag is touched, so it returns on its own when the template clears.
  */
 fun shouldShowWidgetColumn(
-    widgetsEnabled: Boolean,
-    floatingOn: Boolean,
     dismissed: Boolean,
     onHome: Boolean,
     sidePanel: SidePanel,
     placement: WidgetColumnPlacement,
-): Boolean = widgetsEnabled && floatingOn && !dismissed && onHome &&
+): Boolean = !dismissed && onHome &&
     sidePanel != SidePanel.LYRICS && placement != WidgetColumnPlacement.HIDDEN
 
 /**

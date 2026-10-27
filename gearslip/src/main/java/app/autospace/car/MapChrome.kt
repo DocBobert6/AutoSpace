@@ -4,12 +4,11 @@ package app.autospace.car
  * r65: which look the map chrome wears. The turn card, the trip pill,
  * the map panes, and the edge controls can either follow the current
  * theme or wear the Meridian look: fixed colors, solid surfaces, fixed
- * corners. Meridian is experimental and gated by ONE toggle: it renders
- * only when experimental features are on AND the Meridian toggle is on
- * (see [effectiveMapChrome]); Themed is the default. The r63
- * Themed/Meridian choice row is retired: the toggle absorbs it, so one
- * control decides the whole look and no stored choice can disagree
- * with it. Standalone map header buttons stay themed in both modes.
+ * corners. The choice is a regular setting (see [CarSettings.mapTheme]):
+ * Themed is the default, and Meridian never replaces it — it is one
+ * choice beside it, so the turn card, trip pill, panes, and edge
+ * controls can never disagree about which look they wear. Standalone
+ * map header buttons stay themed in both modes.
  */
 enum class MapChrome {
     /** The fixed-color look: solid surfaces, fixed corners, same in every theme. */
@@ -59,13 +58,10 @@ object MapChromeColors {
 const val MERIDIAN_DIM_ALPHA = 0.75f
 
 /**
- * Parses a stored map-chrome value. r63: a stored r61/r62 "GOOGLE" value
- * migrates to MERIDIAN, so the rename itself never resets anyone's
- * choice. Anything else unrecognized — including a blank value on a
- * fresh install or an upgrade from before this setting existed —
- * lands on THEMED, which is the default. r65: kept only for the
- * one-time toggle migration ([migrateMeridianToggle]); nothing renders
- * from a stored choice anymore.
+ * Parses a stored map-theme choice. r63: a stored r61/r62 "GOOGLE"
+ * value migrates to MERIDIAN, so the rename itself never resets
+ * anyone's choice. Anything else unrecognized — including a blank
+ * value on a fresh install — lands on THEMED, which is the default.
  */
 fun mapChromeFromStored(stored: String): MapChrome = when (stored) {
     MapChrome.MERIDIAN.name -> MapChrome.MERIDIAN
@@ -74,26 +70,7 @@ fun mapChromeFromStored(stored: String): MapChrome = when (stored) {
     else -> MapChrome.THEMED
 }
 
-/**
- * r65: the one-time migration from the retired choice to the toggle. A
- * stored Meridian choice — including a legacy "GOOGLE" value, which
- * parses to MERIDIAN above — carries the toggle on; anything else
- * (Themed, blank, unrecognized) leaves it off. Pure so it is
- * unit-testable; [CarSettings] owns running it once and clearing the
- * old key so it can never re-run and overwrite a later choice.
- */
-fun migrateMeridianToggle(stored: String): Boolean =
-    mapChromeFromStored(stored) == MapChrome.MERIDIAN
 
-/**
- * r65: the experimental gate, and the ONLY gate. Meridian renders only
- * when experimental features are on AND the Meridian toggle is on;
- * anything else renders Themed. There is no per-surface toggle and no
- * stored choice anymore, so the turn card, trip pill, panes, and edge
- * controls can never disagree about which look they wear.
- */
-fun effectiveMapChrome(meridianToggle: Boolean, experimentalOn: Boolean): MapChrome =
-    if (experimentalOn && meridianToggle) MapChrome.MERIDIAN else MapChrome.THEMED
 
 /** The next-step strip exists only in Meridian mode, and only when a next step exists. */
 fun showNextStrip(meridian: Boolean, hasNext: Boolean): Boolean = meridian && hasNext

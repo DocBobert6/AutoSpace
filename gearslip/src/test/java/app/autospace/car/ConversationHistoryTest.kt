@@ -73,10 +73,4 @@ class ConversationHistoryTest {
         assertTrue(history.isEmpty())
     }
 
-    @Test fun multiTurnNowTruthTable() {
-        assertTrue(multiTurnNow(true, true))
-        assertFalse(multiTurnNow(true, false))
-        assertFalse(multiTurnNow(false, true))
-        assertFalse(multiTurnNow(false, false))
-    }
 }

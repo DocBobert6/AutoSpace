@@ -6,7 +6,7 @@ import app.autospace.car.theme.cardShapeForLook
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** r29 themes round: the shape rule and the floating nav bar's pinned numbers. */
+/** r29 themes round: the shape rule and the rail's pinned numbers (r97: the bar is gone; the rail reuses its width and elevation). */
 class ThemesRoundTest {
 
     @Test
@@ -27,12 +27,13 @@ class ThemesRoundTest {
     }
 
     @Test
-    fun floatingNavBarNumbersArePinned() {
-        // r29: the bar keeps its 64dp height and targets; it only insets
-        // inside its row (12dp sides, 8dp vertical) with 6dp elevation.
+    fun railNumbersArePinned() {
+        // r97: the rail reuses the old bar's 64dp width and 4dp
+        // elevation, floats with 12dp margins, and reserves an
+        // 88dp strip (64 + 12 + 12).
         assertEquals(64, NAV_BAR_HEIGHT.value.toInt())
-        assertEquals(12, NAV_BAR_FLOAT_HORIZONTAL.value.toInt())
-        assertEquals(8, NAV_BAR_FLOAT_VERTICAL.value.toInt())
+        assertEquals(12, NAV_BAR_SIDE_FLOAT.value.toInt())
         assertEquals(4, NAV_BAR_FLOAT_ELEVATION.value.toInt())
+        assertEquals(88, NAV_BAR_SIDE_STRIP_WIDTH.value.toInt())
     }
 }

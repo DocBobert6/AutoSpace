@@ -19,11 +19,6 @@ class CardClearanceTest {
     private val sleepingControls = EdgeControlsGeometry(extentDp = 216f, widthDp = 64f, visible = false)
     private val emptyControls = EdgeControlsGeometry(extentDp = 0f, widthDp = 64f, visible = true)
 
-    @Test fun gateRequiresBoth() {
-        assertTrue(cardClearanceNow(true, true))
-        assertFalse(cardClearanceNow(false, true))
-        assertFalse(cardClearanceNow(true, false))
-    }
 
     @Test fun gateOffReturnsCurrent() {
         assertEquals(
