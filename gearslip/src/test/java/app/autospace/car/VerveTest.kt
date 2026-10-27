@@ -21,10 +21,12 @@ import org.junit.Test
 class VerveTest {
 
     @Test
-    fun verveSchemeIsAppendedLastAndNamedVerve() {
+    fun verveSchemeIsNamedVerveAndImmediatelyBeforeHorizon() {
         assertEquals(ColorScheme.VERVE, ColorScheme.valueOf("VERVE"))
         assertEquals("Verve", ColorScheme.VERVE.displayName)
-        assertEquals(ColorScheme.VERVE, colorSchemes.last())
+        // r79 appends Horizon last (pinned by HorizonTest); Verve keeps
+        // the slot immediately before it, and nothing else moved.
+        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.VERVE))
         // No legacy install migrates onto Verve by accident.
         assertFalse(isLegacyThemeName("VERVE"))
@@ -78,9 +80,11 @@ class VerveTest {
     }
 
     @Test
-    fun verveStyleIsBuiltInLastWith24dpCornerAndVerveOnlyFlags() {
+    fun verveStyleIsBuiltInWith24dpCornerAndSpringFlags() {
         assertTrue(GsThemes.builtIn.any { it.id == "verve" && it.name == "Verve" })
-        assertEquals(GsThemes.Verve, GsThemes.builtIn.last())
+        // r79 appends Horizon last (pinned by HorizonTest); Verve keeps
+        // the slot immediately before it, and nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())
@@ -99,9 +103,11 @@ class VerveTest {
         assertEquals(24, light.corner.value.toInt())
         assertTrue(light.springMotion)
         assertTrue(light.cardsUseStyleCorner)
-        // Frost is still the default; no other style carries Verve's flags.
+        // Frost is still the default; besides Horizon (r79, Verve's
+        // sibling, which shares the spring flags deliberately), no other
+        // style carries Verve's spring flags.
         assertEquals("frost", GsThemes.default.id)
-        for (other in GsThemes.builtIn.filter { it.id != "verve" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "horizon" }) {
             assertFalse(other.control.springMotion)
             assertFalse(other.control.cardsUseStyleCorner)
             assertFalse(other.control.light?.springMotion == true)
