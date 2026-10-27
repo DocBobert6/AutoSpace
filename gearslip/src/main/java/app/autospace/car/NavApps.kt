@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -192,7 +193,7 @@ internal fun closeApp(slot: RunningSlot, navigator: CarNavigator) {
  * car's virtual display has no reason to host well.
  */
 @Composable
-internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>) {
+internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>, contentPadding: PaddingValues = PaddingValues()) {
     val id = navigator.appMenu ?: return
     val entry = findEntry(id)
     if (entry == null) {
@@ -204,93 +205,101 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>)
     val barFull = !isPinned && pinned.size >= CarSettings.MAX_PINNED
     val slot = running[id]
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = navigator::dismissAppMenu,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        // Phase 7 kit dialog: solid sheet colour, 28dp corners.
-        Surface(
-            // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
-            shape = gsButtonShape(RoundedCornerShape(28.dp)),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            // Swallows taps on the card itself, so only the scrim around it dismisses.
-            modifier = Modifier
-                .widthIn(max = 420.dp)
+    // r87: the scrim stays full-screen (a tap anywhere outside the
+    // card dismisses, rail included), but the card itself centers
+    // inside the content inset, so it never draws in the rail strip.
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
+                    onClick = navigator::dismissAppMenu,
                 ),
+        )
+        Box(
+            Modifier.fillMaxSize().padding(contentPadding),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    entry.icon?.let { Image(it, null, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))) }
-                    entry.builtIn?.let { Icon(it.glyph, null, Modifier.size(36.dp)) }
-                    Text(
-                        entry.label,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 14.dp),
-                    )
-                }
-                GsButton(
-                    onClick = {
-                        CarSettings.togglePin(id)
-                        navigator.dismissAppMenu()
-                    },
-                    tone = GsTone.Tonal,
-                    enabled = !barFull,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) {
-                    Text(
-                        when {
-                            isPinned -> "Unpin from nav bar"
-                            barFull -> "Nav bar is full (${CarSettings.MAX_PINNED} pinned)"
-                            else -> "Pin to nav bar"
-                        },
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
-                // r81 icon packs: only for installed apps, and only
-                // while a pack is selected — the picker draws from the
-                // selected pack, so with no pack there is nothing to
-                // pick from. Built-in tiles keep their glyphs and get
-                // no row. The menu closes first; the picker is its own
-                // sheet over everything, drawn next to this menu.
-                val packSelected by CarSettings.iconPack.collectAsState()
-                if (entry.builtIn == null && packSelected != null) {
+            // Phase 7 kit dialog: solid sheet colour, 28dp corners.
+            Surface(
+                // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
+                shape = gsButtonShape(RoundedCornerShape(28.dp)),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                // Swallows taps on the card itself, so only the scrim around it dismisses.
+                modifier = Modifier
+                    .widthIn(max = 420.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        entry.icon?.let { Image(it, null, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))) }
+                        entry.builtIn?.let { Icon(it.glyph, null, Modifier.size(36.dp)) }
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 14.dp),
+                        )
+                    }
                     GsButton(
                         onClick = {
+                            CarSettings.togglePin(id)
                             navigator.dismissAppMenu()
-                            navigator.showIconPicker(id)
                         },
                         tone = GsTone.Tonal,
+                        enabled = !barFull,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) { Text("Change icon", style = MaterialTheme.typography.titleMedium) }
-                }
-                if (navigator.current == CarScreen.Apps) MoveButtons(id)
-                if (slot != null) {
+                    ) {
+                        Text(
+                            when {
+                                isPinned -> "Unpin from nav bar"
+                                barFull -> "Nav bar is full (${CarSettings.MAX_PINNED} pinned)"
+                                else -> "Pin to nav bar"
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                    // r81 icon packs: only for installed apps, and only
+                    // while a pack is selected — the picker draws from the
+                    // selected pack, so with no pack there is nothing to
+                    // pick from. Built-in tiles keep their glyphs and get
+                    // no row. The menu closes first; the picker is its own
+                    // sheet over everything, drawn next to this menu.
+                    val packSelected by CarSettings.iconPack.collectAsState()
+                    if (entry.builtIn == null && packSelected != null) {
+                        GsButton(
+                            onClick = {
+                                navigator.dismissAppMenu()
+                                navigator.showIconPicker(id)
+                            },
+                            tone = GsTone.Tonal,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) { Text("Change icon", style = MaterialTheme.typography.titleMedium) }
+                    }
+                    if (navigator.current == CarScreen.Apps) MoveButtons(id)
+                    if (slot != null) {
+                        GsButton(
+                            onClick = {
+                                closeApp(slot, navigator)
+                                navigator.dismissAppMenu()
+                            },
+                            tone = GsTone.Danger,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) { Text("Close app", style = MaterialTheme.typography.titleMedium) }
+                    }
                     GsButton(
-                        onClick = {
-                            closeApp(slot, navigator)
-                            navigator.dismissAppMenu()
-                        },
-                        tone = GsTone.Danger,
+                        onClick = navigator::dismissAppMenu,
+                        tone = GsTone.Neutral,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) { Text("Close app", style = MaterialTheme.typography.titleMedium) }
+                    ) { Text("Cancel", style = MaterialTheme.typography.titleMedium) }
                 }
-                GsButton(
-                    onClick = navigator::dismissAppMenu,
-                    tone = GsTone.Neutral,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("Cancel", style = MaterialTheme.typography.titleMedium) }
             }
         }
     }
@@ -310,7 +319,7 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>)
  * per visible cell through a small session cache.
  */
 @Composable
-internal fun IconPickerSheet(navigator: CarNavigator) {
+internal fun IconPickerSheet(navigator: CarNavigator, contentPadding: PaddingValues = PaddingValues()) {
     val id = navigator.iconPickerFor ?: return
     val entry = findEntry(id)
     if (entry == null) {
@@ -335,98 +344,106 @@ internal fun IconPickerSheet(navigator: CarNavigator) {
         scope.launch { withContext(Dispatchers.IO) { warmLauncherApps(context) } }
         navigator.dismissIconPicker()
     }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = navigator::dismissIconPicker,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        // Phase 7 kit dialog: solid sheet colour, 28dp corners.
-        Surface(
-            shape = gsButtonShape(RoundedCornerShape(28.dp)),
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            // Swallows taps on the card itself, so only the scrim around it dismisses.
-            modifier = Modifier
-                .widthIn(max = 520.dp)
-                .fillMaxWidth(0.92f)
+    // r87: the scrim stays full-screen (a tap anywhere outside the
+    // card dismisses, rail included), but the card itself centers
+    // inside the content inset, so it never draws in the rail strip.
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
+                    onClick = navigator::dismissIconPicker,
                 ),
+        )
+        Box(
+            Modifier.fillMaxSize().padding(contentPadding),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    entry.icon?.let { Image(it, null, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))) }
-                    entry.builtIn?.let { Icon(it.glyph, null, Modifier.size(36.dp)) }
+            // Phase 7 kit dialog: solid sheet colour, 28dp corners.
+            Surface(
+                shape = gsButtonShape(RoundedCornerShape(28.dp)),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                // Swallows taps on the card itself, so only the scrim around it dismisses.
+                modifier = Modifier
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth(0.92f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    ),
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        entry.icon?.let { Image(it, null, Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))) }
+                        entry.builtIn?.let { Icon(it.glyph, null, Modifier.size(36.dp)) }
+                        Text(
+                            entry.label,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 14.dp),
+                        )
+                    }
                     Text(
-                        entry.label,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(start = 14.dp),
-                    )
-                }
-                Text(
-                    "Choose an icon from the pack for this app only.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val map = mapping
-                when {
-                    !loaded -> Text(
-                        "Loading icons…",
+                        "Choose an icon from the pack for this app only.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    map == null -> Text(
-                        "This icon pack is no longer available — the app keeps its own icon.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    else -> {
-                        val drawables = map.values.toSortedSet()
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 72.dp),
-                            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(drawables.toList()) { drawable ->
-                                // packPkg is non-null here by the effect
-                                // key: a null pack reloads the mapping
-                                // to null, which takes the branch above.
-                                PackIconCell(
-                                    packPkg = packPkg!!,
-                                    drawable = drawable,
-                                    selected = drawable == currentOverride,
-                                ) {
-                                    CarSettings.setIconOverride(id, drawable)
-                                    rescanAndClose()
+                    val map = mapping
+                    when {
+                        !loaded -> Text(
+                            "Loading icons…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        map == null -> Text(
+                            "This icon pack is no longer available — the app keeps its own icon.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> {
+                            val drawables = map.values.toSortedSet()
+                            LazyVerticalGrid(
+                                columns = GridCells.Adaptive(minSize = 72.dp),
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(drawables.toList()) { drawable ->
+                                    // packPkg is non-null here by the effect
+                                    // key: a null pack reloads the mapping
+                                    // to null, which takes the branch above.
+                                    PackIconCell(
+                                        packPkg = packPkg!!,
+                                        drawable = drawable,
+                                        selected = drawable == currentOverride,
+                                    ) {
+                                        CarSettings.setIconOverride(id, drawable)
+                                        rescanAndClose()
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                if (currentOverride != null) {
+                    if (currentOverride != null) {
+                        GsButton(
+                            onClick = {
+                                CarSettings.setIconOverride(id, null)
+                                rescanAndClose()
+                            },
+                            tone = GsTone.Tonal,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) { Text("Reset to automatic", style = MaterialTheme.typography.titleMedium) }
+                    }
                     GsButton(
-                        onClick = {
-                            CarSettings.setIconOverride(id, null)
-                            rescanAndClose()
-                        },
-                        tone = GsTone.Tonal,
+                        onClick = navigator::dismissIconPicker,
+                        tone = GsTone.Neutral,
                         modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) { Text("Reset to automatic", style = MaterialTheme.typography.titleMedium) }
+                    ) { Text("Cancel", style = MaterialTheme.typography.titleMedium) }
                 }
-                GsButton(
-                    onClick = navigator::dismissIconPicker,
-                    tone = GsTone.Neutral,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                ) { Text("Cancel", style = MaterialTheme.typography.titleMedium) }
             }
         }
     }

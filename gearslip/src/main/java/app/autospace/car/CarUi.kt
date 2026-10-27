@@ -22,6 +22,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -344,10 +346,8 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 }
                 val screen = navigator.current
                 val safetyWarningSeen by CarSettings.hasSeenSafetyWarning.collectAsState()
-                val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
-                // r83: the bar's own switch — collected separately from
-                // floatingOn, which the side-bar yield inputs below still
-                // need. Toggling floating media never moves the bar now.
+                // r83: the bar's own switch. Toggling floating media
+                // never moves the bar now.
                 val barSwitchOn by CarSettings.floatingNavBarEnabled.collectAsState()
                 // r43, re-based in r83: the nav bar overlays the
                 // full-height map instead of sitting below Home in-flow
@@ -383,64 +383,31 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // clears that state, so the bar returns.
                 val browserImmersiveHide = screen is CarScreen.App && screen.id == "web" && browserImmersive
                 val barVisible = !keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !mirrorActive
-                // r74: steering-side floating app bar (A1, experimental).
-                // The rail yields to established surfaces (see
-                // effectiveSideBarSide); all three yield inputs are gated
-                // to Home here, where those surfaces live — other screens
-                // cover Home, so the rail never yields for a hidden
-                // surface. The turn-card condition is the widget column's
-                // own placement rule (routing info present with a current
-                // step or loading). The card input uses the effective
-                // dock, so a Start dock stepped aside to End during
-                // guidance does not push the rail aside.
+                // r87: the steering-side rail no longer yields — it owns
+                // a reserved strip at the frame edge (see
+                // NAV_BAR_SIDE_STRIP_WIDTH), so it can never overlap the
+                // turn card, the widget column, or the media card, and it
+                // stays on its side permanently. The side type and the
+                // alignment/strip mappings stay as the seam a future
+                // steering-side setting would flip; nothing today moves
+                // the rail off its side.
                 val sideBarExperimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
                 val sideBarToggle by CarSettings.sideBarEnabled.collectAsState()
-                val sideBarTemplate by CarServices.nav.template.collectAsState()
-                val sideBarPanMode by CarServices.nav.panMode.collectAsState()
-                val sideBarWidgetsOn by CarSettings.homeWidgetsEnabled.collectAsState()
-                val sideBarWidgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
-                val sideBarMediaDock by CarSettings.mediaCardDock.collectAsState()
-                val sideBarMediaPhase by CarServices.media.phase.collectAsState()
-                val sideBarMediaNow by CarServices.media.now.collectAsState()
-                val sideBarOnHome = navigator.current == CarScreen.Home
-                val sideBarRouting = (sideBarTemplate as? NavigationTemplate)?.navigationInfo as? RoutingInfo
-                val sideBarTurnCardShowing = sideBarOnHome && sideBarRouting != null &&
-                    (sideBarRouting.isLoading || sideBarRouting.currentStep != null)
-                val sideBarWidgetPlacement = widgetColumnPlacement(sideBarTemplate, sideBarPanMode)
-                val sideBarShowColumn = shouldShowWidgetColumn(
-                    sideBarWidgetsOn, floatingOn, sideBarWidgetsDismissed, sideBarOnHome,
-                    navigator.sidePanel, sideBarWidgetPlacement,
-                )
-                var sideBarColumnOnDriverSide = sideBarShowColumn &&
-                    sideBarWidgetPlacement == WidgetColumnPlacement.DRIVER_SIDE
-                if (sideBarColumnOnDriverSide) {
-                    // CarMotion.moving is a plain value, not a flow — poll
-                    // it like CarHome does (1 s). The poll runs only while
-                    // the column could show driver-side; a driving-hidden
-                    // column renders nothing, so it must not push the rail
-                    // to the passenger side.
-                    val sideBarMoving by produceState(CarMotion.moving) {
-                        while (true) { value = CarMotion.moving; delay(1_000) }
-                    }
-                    if (shouldHideWhileDriving(sideBarMoving, WidgetDrivingGlance.recalled)) {
-                        sideBarColumnOnDriverSide = false
-                    }
-                }
-                val sideBarEtaVisible = !sideBarPanMode &&
-                    (sideBarTemplate as? NavigationTemplate)?.destinationTravelEstimate != null
-                val sideBarEffectiveDock = effectiveMediaCardDock(
-                    sideBarExperimentalOn, sideBarMediaDock, sideBarEtaVisible,
-                )
-                val sideBarCardShowing = shouldShowFloatingCard(
-                    floatingOn, sideBarMediaPhase == CarMedia.Phase.READY && sideBarMediaNow.isActive,
-                    FloatingHomeState.dismissed.value, navigator.sidePanel, sideBarOnHome,
-                )
-                val sideBarCardOnDriverSide = sideBarCardShowing &&
-                    sideBarEffectiveDock == MediaCardDock.START
-                val sideBarSide = effectiveSideBarSide(
-                    sideBarTurnCardShowing, sideBarColumnOnDriverSide, sideBarCardOnDriverSide,
-                )
+                val sideBarSide = SideBarSide.DRIVER_SIDE
                 val sideBarVisible = barVisible && sideBarNow(sideBarExperimentalOn, sideBarToggle)
+                // r87: the content inset that keeps everything beside the
+                // rail. When the rail is off the inset is empty, so
+                // toggle-off restores the bottom bar and the full-width
+                // content exactly.
+                val sideBarContentPadding = if (sideBarVisible) {
+                    if (sideBarStripOnStart(sideBarSide)) {
+                        PaddingValues(start = NAV_BAR_SIDE_STRIP_WIDTH)
+                    } else {
+                        PaddingValues(end = NAV_BAR_SIDE_STRIP_WIDTH)
+                    }
+                } else {
+                    PaddingValues()
+                }
                 // r83: the one pure bar decision — rail wins, else the
                 // overlay rule. Equivalent to the two branch conditions
                 // it replaces, and pinned by NavBarTreatmentTest.
@@ -448,7 +415,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     barSwitchOn, sideBarVisible, screen == CarScreen.Home, navigator.sidePanel,
                 )
                 Box(Modifier.fillMaxSize().padding(pad)) {
-                Column(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize().padding(sideBarContentPadding)) {
                     if (!safetyWarningSeen) {
                         CarSafetyWizard(onDone = CarSettings::markSafetyWarningSeen)
                         return@Column
@@ -525,18 +492,20 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 if (barVisible && navBarTreatment == NavBarTreatment.FLOATING) {
                     CarNavBar(navigator, overlay = true, Modifier.align(Alignment.BottomCenter))
                 }
-                // r74: the steering-side rail draws over the frame like the
-                // overlay bar, below AppMenu (which stays over everything,
-                // rail included) and below the brightness dim. It follows
-                // barVisible exactly, so it hides for the keyboard and the
-                // immersive player/browser and mirror states, like the bar.
+                // r87: the steering-side rail draws in its own reserved strip
+                // at the frame edge, below AppMenu (which stays over everything,
+                // rail included) and below the brightness dim. The content
+                // Column carries the matching inset, so nothing but the rail
+                // draws in the strip. It follows barVisible exactly, so it
+                // hides for the keyboard and the immersive player/browser
+                // and mirror states, like the bar.
                 if (sideBarVisible) {
                     CarSideBar(navigator, Modifier.align(sideBarAlignment(sideBarSide)))
                 }
                 // Over everything, nav bar included: a long press on an app, anywhere.
-                AppMenu(navigator, rememberRunningApps())
-                IconPickerSheet(navigator)
-                if (safetyWarningSeen) CarWhatsNew()
+                AppMenu(navigator, rememberRunningApps(), contentPadding = sideBarContentPadding)
+                IconPickerSheet(navigator, contentPadding = sideBarContentPadding)
+                if (safetyWarningSeen) CarWhatsNew(contentPadding = sideBarContentPadding)
                 // Brightness dim, over everything except the brightness sheet itself:
                 // a black overlay with no input handling, so touches pass straight
                 // through to the screen below and audio is untouched. The sheet is
@@ -553,8 +522,8 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 if (effectiveBrightness < 1f) {
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - effectiveBrightness)))
                 }
-                if (BrightnessSheetVisibility.state.value) BrightnessSheet()
-                if (QuickTilesVisibility.state.value) QuickTilesSheet(onOpenSettings = { QuickTilesVisibility.close(); navigator.settings() })
+                if (BrightnessSheetVisibility.state.value) BrightnessSheet(contentPadding = sideBarContentPadding)
+                if (QuickTilesVisibility.state.value) QuickTilesSheet(contentPadding = sideBarContentPadding, onOpenSettings = { QuickTilesVisibility.close(); navigator.settings() })
                 }
             }
           }
@@ -745,6 +714,16 @@ internal val NAV_BAR_FLOAT_ELEVATION = 4.dp
 internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NAV_BAR_FLOAT_VERTICAL
 
 /**
+ * r87: the strip the steering-side rail reserves at the frame edge —
+ * exactly the rail's own width, so the content inset and the rail
+ * can never disagree. The scaffold pads the content Column by this
+ * amount on the rail's side while the rail is visible; the rail
+ * draws in the strip, outside the padded content. Pure Dp math so
+ * it is unit-testable.
+ */
+internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT
+
+/**
  * Apps and open/pinned shortcuts on the left; now-playing pill against them; clock (tap for
  * calendar and weather), phone battery and the darkness signal on the right. Icon-only: a driver
  * reads a glyph faster than a label, and it keeps the bar short enough to leave the app underneath
@@ -912,24 +891,29 @@ private fun CarNavBar(navigator: CarNavigator, overlay: Boolean = false, modifie
 
 
 /**
- * r74: steering-side floating app bar (A1, experimental). The bottom
- * bar's app row, stood on its side: Home, Apps, assistant, the widgets
- * popup button (same conditions as the bar), pinned and open apps,
- * brightness, quick settings, the debug badge in debug builds, and a
- * compact clock that still opens the dashboard. The turn pill and the
- * now-playing pill do NOT move to the rail: on Home the turn card and
- * the floating media card already show that glance, and off Home they
- * are absent while the rail is on — a known tradeoff of this
- * experimental layout, reversible with one toggle. The rail clock
- * shows time + battery only: the bar's temperature line does not fit
- * the 52dp column. The rail takes the overlay bar's floating treatment
- * exactly (frosted surfaceContainerLow at 0.88, 4dp elevation, style
- * corners, Pitlane texture, OLED hairline), 64dp wide like the bar is
- * tall, 12dp float margins, items spaced 6dp like the bar's spacers.
- * Dividers between groups are vertical, mirroring the bar's horizontal
- * ones. The rail is always floating, so it always takes the frosted
- * fill — it never depends on the frosted-map-chrome toggle, which
- * governs map panes, not the bar.
+ * r87: the steering-side app bar as an edge dock. The bottom bar's
+ * app row, stood on its side in a reserved strip at the frame edge:
+ * Home, Apps, assistant, the widgets popup button (same conditions
+ * as the bar), pinned and open apps, brightness, quick settings,
+ * the debug badge in debug builds, and a clock that still opens
+ * the dashboard. The turn pill and the now-playing pill do NOT move
+ * to the rail: on Home the turn card and the floating media card
+ * already show that glance, and off Home they are absent while the
+ * rail is on — a known tradeoff of this experimental layout,
+ * reversible with one toggle. The rail clock shows time + battery
+ * only: the bar's temperature line does not fit the 64dp column.
+ * The rail takes the overlay bar's floating treatment exactly
+ * (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
+ * texture, OLED hairline) — except its corners, which are square:
+ * a flush full-height edge must not be rounded, and the shape
+ * system hands back one style shape, not per-corner radii, so the
+ * inner edge is square too, like Google's rail. The icon list
+ * scrolls so a long pin/running list can never push the clock off
+ * the frame; the clock stays pinned to the bottom. The clock is
+ * stacked, not squeezed: the old 52dp cell cut "9:53 AM" down to
+ * "9:53 A…", so digits sit on one line, the AM/PM marker under
+ * them, battery under that — every part always fully shown, in
+ * any locale.
  */
 @Composable
 private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
@@ -944,57 +928,80 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
     val running = rememberRunningApps()
     val unread by CarNotifications.unread.collectAsState()
 
+    // r87: the rail is an edge dock, not a floating pill — full frame
+    // height, flush to the edge, square corners (a flush edge must not
+    // be rounded; the shape system hands back one style shape, not
+    // per-corner radii, so the inner edge is square too, like
+    // Google's rail). The scaffold pads the content Column by the
+    // strip width, so this Surface is the only thing that draws in
+    // the strip. Treatment is otherwise the overlay bar's exactly
+    // (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
+    // texture, OLED hairline).
     Surface(
-        modifier = modifier.padding(12.dp),
-        shape = gsShape(),
+        modifier = modifier.fillMaxHeight(),
+        shape = RoundedCornerShape(0.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Column(
-            Modifier.width(NAV_BAR_HEIGHT).pitLanePanelTexture().padding(horizontal = 6.dp, vertical = 10.dp),
+            Modifier.width(NAV_BAR_HEIGHT).fillMaxHeight().pitLanePanelTexture().padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            NavHomeButton(navigator, entries, running)
-            NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
-            NavAssistantIcon()
-            val widgetsOnRail by CarSettings.homeWidgetsEnabled.collectAsState()
-            val floatingOnRail by CarSettings.floatingMediaEnabled.collectAsState()
-            if (navigator.current == CarScreen.Home && widgetsOnRail && floatingOnRail) {
-                NavWidgetsPopupButton(navigator)
-            }
+            // The icon list scrolls so a long pin/running list can
+            // never push the clock off the frame; the clock below
+            // stays put at the bottom either way.
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    NavHomeButton(navigator, entries, running)
+                    NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
+                    NavAssistantIcon()
+                    val widgetsOnRail by CarSettings.homeWidgetsEnabled.collectAsState()
+                    val floatingOnRail by CarSettings.floatingMediaEnabled.collectAsState()
+                    if (navigator.current == CarScreen.Home && widgetsOnRail && floatingOnRail) {
+                        NavWidgetsPopupButton(navigator)
+                    }
 
-            // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
-            // open stays in its pinned spot, marked with a dot, instead of showing up twice.
-            // The map app lives on the Home button, so it never gets a second icon here.
-            val runningEntries = running.keys
-                .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
-                .mapNotNull { id -> entries.find { it.componentId == id } }
-            val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
-            if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDividerVertical()
-            shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
-            if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDividerVertical()
-            runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
+                    // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
+                    // open stays in its pinned spot, marked with a dot, instead of showing up twice.
+                    // The map app lives on the Home button, so it never gets a second icon here.
+                    val runningEntries = running.keys
+                        .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
+                        .mapNotNull { id -> entries.find { it.componentId == id } }
+                    val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
+                    if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDividerVertical()
+                    shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
+                    if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDividerVertical()
+                    runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
 
-            // Brightness, one tap to the slider sheet: the phone's brightness does
-            // not reach the projected display, so this is the only brightness
-            // control the driver has.
-            GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
-            // r70: quick settings, next to brightness — same button as the bar.
-            GsIconButton(Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open)
-            if (app.autospace.BuildConfig.DEBUG) {
-                DebugBuildBadge()
+                    // Brightness, one tap to the slider sheet: the phone's brightness does
+                    // not reach the projected display, so this is the only brightness
+                    // control the driver has.
+                    GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
+                    // r70: quick settings, next to brightness — same button as the bar.
+                    GsIconButton(Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open)
+                    if (app.autospace.BuildConfig.DEBUG) {
+                        DebugBuildBadge()
+                    }
+                }
             }
-            // Compact clock: time + battery, tap opens the dashboard like
-            // the bar's clock chip. The temperature line does not fit the
-            // 52dp column, so it is left out here; weather still lives in
-            // the widget column and the dashboard.
+            // r87: the clock, pinned to the frame bottom. Stacked, not
+            // squeezed: the old 52dp cell cut "9:53 AM" down to "9:53
+            // A…" (titleSmall needs ~60dp for "12:00 PM"). Digits on
+            // one line, the AM/PM marker under them, battery under
+            // that — every part always fully shown, in any locale.
             val clockSelected = navigator.current == CarScreen.Dashboard ||
                 navigator.current is CarScreen.Notifications
+            val (clockTime, clockPeriod) = railClockParts(
+                DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
+            )
             GsIconBox(
                 { navigator.dashboard() },
-                Modifier.width(52.dp),
+                Modifier.fillMaxWidth(),
                 colors = navColors(clockSelected),
                 latched = clockSelected,
             ) {
@@ -1011,12 +1018,19 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
+                            clockTime,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
                         )
+                        if (clockPeriod != null) {
+                            Text(
+                                clockPeriod,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -1027,7 +1041,6 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
                                 )
                                 if (battery.charging) {
                                     ChargingGlyph(Modifier.size(13.dp))

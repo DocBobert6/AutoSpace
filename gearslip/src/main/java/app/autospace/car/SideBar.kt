@@ -3,43 +3,40 @@ package app.autospace.car
 import androidx.compose.ui.Alignment
 
 /**
- * r74: steering-side floating app bar (A1, experimental). The bottom
- * bar's app row, stood on its side on the driver's side of the screen.
+ * r87: the steering-side app bar is an edge dock, not a floating
+ * pill. The r74 rail floated over the frame — a content-height
+ * column, 64dp wide with 12dp margins, vertically centered — so it
+ * covered the map pane's left edge, the apps grid's first column,
+ * and settings pages' left text. The r87 rail fills the frame
+ * height, flush to the edge, and owns a reserved strip exactly its
+ * own width (see NAV_BAR_SIDE_STRIP_WIDTH): the scaffold pads the
+ * content Column by that amount on the rail's side, so every
+ * content surface sits beside the rail instead of under it, and
+ * the rail is the only thing that draws in the strip.
+ *
+ * The r74 passenger-side yields are gone with the overlay: a rail
+ * that never overlaps the turn card, the widget column, or the
+ * media card has nothing to yield from, so it stays on its side
+ * permanently. The side type and the alignment/strip mappings stay
+ * as the seam a future steering-side setting would flip; nothing
+ * today moves the rail off its side.
  *
  * Driver side is layout Start, the same mapping the widget column
- * already uses ("driver side (start in LTR)") and the card dock uses
- * (Start/End follow layout direction, they are not absolute left and
- * right). No steering-side setting exists anywhere in the app
- * (full-tree check at the parent ref, plus the settings key list), so
- * in a right-hand-drive car with a left-to-right locale the rail lands
- * on the passenger side — a named limitation, whose proper fix is a
- * steering-side setting, not this round. In a left-to-right locale the
- * driver side is the left edge, which is the concrete case (LHD car).
+ * already uses and the card dock uses (Start/End follow layout
+ * direction, they are not absolute left and right). No
+ * steering-side setting exists anywhere in the app, so in a
+ * right-hand-drive car with a left-to-right locale the rail lands
+ * on the passenger side — the named r74 limitation, unchanged by
+ * this round; its proper fix is still a steering-side setting.
  *
- * The rail yields to established surfaces rather than covering them
- * or shifting them: it steps to the passenger side while any of these
- * holds, and returns to the driver side when all clear. The caller
- * gates all three inputs to Home, where those surfaces live (other
- * screens cover Home, so the rail never yields for a hidden surface):
- * - the turn card is showing (NavigationTemplate routing info present
- *   with a current step or loading — the same condition the widget
- *   column's placement rule uses for "the turn card"; the turn card is
- *   TopStart, 320dp, and guidance chrome must never be covered);
- * - the widget column is actually showing on the driver side
- *   (top-anchored, same edge; a driving-hidden column renders nothing
- *   and must not push the rail aside);
- * - the floating media card is actually showing docked on the driver
- *   side (bottom corner, same edge; the effective dock, including the
- *   r69 trip-bar fallback, so a Start dock stepped aside to End during
- *   guidance does not push the rail aside).
- *
- * Disclosed compromise, same class as the r59 passenger-side column:
- * on the passenger side the rail can overlap TemplateChrome's
- * right-edge control stack at the top corner while those controls are
- * awake. The controls sleep when idle, and the rail never covers the
- * turn card or the ETA bar — both are driver-side chrome the rail
- * yields from. The quick-tiles shade is transient and draws over
- * everything, rail included, exactly as it draws over the bottom bar.
+ * The quick-tiles shade is transient and draws over everything,
+ * rail included, exactly as it draws over the bottom bar — its
+ * scrim stays full-screen, but its sheet content is constrained
+ * to the content inset, so the sheet itself never draws in the
+ * strip. The same split (full-screen scrim, inset-constrained
+ * content) holds for the long-press menu, the icon picker, the
+ * What's New card, and the brightness sheet. The brightness dim is
+ * a scrim, not content, and keeps dimming the rail as today.
  */
 enum class SideBarSide {
     DRIVER_SIDE,
@@ -56,24 +53,34 @@ enum class SideBarSide {
 fun sideBarNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
     experimentalOn && toggleOn
 
-/**
- * r74: the effective rail side, gate aside. The rail sits on the
- * driver side only when that side is free; any occupied driver-side
- * surface steps it to the passenger side. Pure, so the unit test pins
- * every yield.
- */
-fun effectiveSideBarSide(
-    turnCardShowing: Boolean,
-    columnOnDriverSide: Boolean,
-    cardOnDriverSide: Boolean,
-): SideBarSide = if (turnCardShowing || columnOnDriverSide || cardOnDriverSide) {
-    SideBarSide.PASSENGER_SIDE
-} else {
-    SideBarSide.DRIVER_SIDE
-}
-
 /** Maps a rail side to the frame Box alignment. Pure, so the unit test pins it. */
 fun sideBarAlignment(side: SideBarSide): Alignment = when (side) {
     SideBarSide.DRIVER_SIDE -> Alignment.CenterStart
     SideBarSide.PASSENGER_SIDE -> Alignment.CenterEnd
+}
+
+/**
+ * r87: which side of the content the rail's strip insets. The driver
+ * side is layout Start, the passenger side layout End — the scaffold
+ * builds PaddingValues(start/end) from this, so it never hardcodes
+ * left or right. Pure, so the unit test pins it.
+ */
+fun sideBarStripOnStart(side: SideBarSide): Boolean = side == SideBarSide.DRIVER_SIDE
+
+/**
+ * r87: split a formatted short time into its digits and its day
+ * marker, for the rail clock's stacked layout. "9:53 AM" becomes
+ * ("9:53", "AM"); a 24-hour time like "23:59" becomes ("23:59",
+ * null); a multi-word marker like "12:00 p. m." becomes ("12:00",
+ * "p. m."). The split is on the first space, including the
+ * non-breaking spaces some locales use between time and marker, so
+ * a locale's marker can never hide inside the digits line. Pure, so
+ * the unit test pins it.
+ */
+fun railClockParts(formatted: String): Pair<String, String?> {
+    val trimmed = formatted.trim()
+    val split = trimmed.indexOfFirst { it == ' ' || it == '\u00A0' || it == '\u202F' }
+    if (split < 0) return trimmed to null
+    val marker = trimmed.substring(split + 1).trim()
+    return trimmed.substring(0, split) to marker.ifEmpty { null }
 }

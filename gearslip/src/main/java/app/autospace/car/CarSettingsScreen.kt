@@ -1413,7 +1413,7 @@ private fun ExperimentalFeaturesList(
         // this is on. Off returns exactly today's bottom bar.
         ExperimentalFeatureRow(
             title = "Steering-side app bar (experimental)",
-            description = "Moves the app bar to a floating rail on the driver's side of the screen instead of along the bottom. The bottom bar returns when this is off. The rail steps to the passenger side when the turn card, the widget column, or the media card occupies the driver's side.",
+            description = "Moves the app bar to a floating rail on the driver's side of the screen instead of along the bottom. The bottom bar returns when this is off. The rail owns a reserved strip at the frame edge, so everything else sits beside it instead of under it — it never covers the turn card, the widget column, or the media card.",
             checked = sideBar,
         ) { CarSettings.setSideBarEnabled(it) }
         // r75: browser PiP — placed with the other Home-card layout

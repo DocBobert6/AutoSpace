@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -124,7 +125,7 @@ private fun readDndState(context: Context): DndTileState = try {
  * gate anywhere on this shade.
  */
 @Composable
-fun QuickTilesSheet(onOpenSettings: () -> Unit) {
+fun QuickTilesSheet(contentPadding: PaddingValues = PaddingValues(), onOpenSettings: () -> Unit) {
     val context = LocalContext.current
     // Live-read while open (1 s poll, same pattern as the nav bar's moving
     // poll): the grant can appear while the driver is on the phone's
@@ -144,7 +145,11 @@ fun QuickTilesSheet(onOpenSettings: () -> Unit) {
                 .pointerInput(Unit) { detectTapGestures { QuickTilesVisibility.close() } },
         )
         GsSheetSurface(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 440.dp),
+            // r87: the rail inset comes FIRST — padding before fillMaxWidth is a
+            // margin, so the sheet itself stays out of the strip (padding after it
+            // would only inset the sheet's content while the surface still spanned
+            // the strip and painted over the rail).
+            modifier = Modifier.padding(contentPadding).fillMaxWidth().padding(16.dp).heightIn(max = 440.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 4.dp),

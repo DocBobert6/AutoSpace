@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -64,7 +65,7 @@ object BrightnessSheetVisibility {
  * still capped at 440dp and still scrolls; only the header is sticky.
  */
 @Composable
-fun BrightnessSheet() {
+fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
     val brightness by CarSettings.brightness.collectAsState()
     val scheme by CarSettings.effectiveColorScheme.collectAsState()
     val appearanceMode by CarSettings.appearanceMode.collectAsState()
@@ -75,7 +76,11 @@ fun BrightnessSheet() {
                 .pointerInput(Unit) { detectTapGestures { BrightnessSheetVisibility.close() } },
         )
         GsSheetSurface(
-            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(max = 440.dp),
+            // r87: the rail inset comes FIRST — padding before fillMaxWidth is a
+            // margin, so the sheet itself stays out of the strip (padding after it
+            // would only inset the sheet's content while the surface still spanned
+            // the strip and painted over the rail).
+            modifier = Modifier.padding(contentPadding).fillMaxWidth().padding(16.dp).heightIn(max = 440.dp),
         ) {
             // Sticky header: Title + Done + Close, outside the scroll
             // column, so both actions are reachable without scrolling.

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            54, "0.4.43-alpha",
+            listOf(
+                "The steering-side app bar is now a full-height rail at the screen edge, like Google's: the map, the apps grid, and settings all sit beside it instead of sliding underneath it, and its clock shows the full time and battery instead of cutting the time off.",
+            ),
+        ),
+        Release(
             53, "0.4.42-alpha",
             listOf(
                 "Mirrored Maps is retired: the phone-mirrored Google Maps tile is removed from the launcher and voice app list, and any stored choice pointing at it falls back to a real navigation app instead of a dead tile.",

@@ -1,10 +1,13 @@
 package app.autospace.car
 
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r74 steering-side app bar: experimental gate, side yields, alignment mapping. */
+/** r87 steering-side app bar: experimental gate, strip mapping, alignment mapping, clock split. */
 class SideBarTest {
 
     @Test
@@ -28,28 +31,18 @@ class SideBarTest {
     }
 
     @Test
-    fun sideAllClearIsDriver() {
-        assertEquals(SideBarSide.DRIVER_SIDE, effectiveSideBarSide(false, false, false))
+    fun stripWidthIsRailWidth() {
+        assertEquals(64.dp, NAV_BAR_SIDE_STRIP_WIDTH)
     }
 
     @Test
-    fun sideTurnCardYieldsToPassenger() {
-        assertEquals(SideBarSide.PASSENGER_SIDE, effectiveSideBarSide(true, false, false))
+    fun stripDriverSideIsStart() {
+        assertTrue(sideBarStripOnStart(SideBarSide.DRIVER_SIDE))
     }
 
     @Test
-    fun sideColumnYieldsToPassenger() {
-        assertEquals(SideBarSide.PASSENGER_SIDE, effectiveSideBarSide(false, true, false))
-    }
-
-    @Test
-    fun sideCardYieldsToPassenger() {
-        assertEquals(SideBarSide.PASSENGER_SIDE, effectiveSideBarSide(false, false, true))
-    }
-
-    @Test
-    fun sideAllYieldIsPassenger() {
-        assertEquals(SideBarSide.PASSENGER_SIDE, effectiveSideBarSide(true, true, true))
+    fun stripPassengerSideIsEnd() {
+        assertFalse(sideBarStripOnStart(SideBarSide.PASSENGER_SIDE))
     }
 
     @Test
@@ -60,5 +53,25 @@ class SideBarTest {
     @Test
     fun alignmentPassengerIsCenterEnd() {
         assertEquals(Alignment.CenterEnd, sideBarAlignment(SideBarSide.PASSENGER_SIDE))
+    }
+
+    @Test
+    fun clockPartsSplitAmPm() {
+        assertEquals("9:53" to "AM", railClockParts("9:53 AM"))
+    }
+
+    @Test
+    fun clockParts24HourHasNoMarker() {
+        assertEquals("23:59" to null, railClockParts("23:59"))
+    }
+
+    @Test
+    fun clockPartsMultiWordMarker() {
+        assertEquals("12:00" to "p. m.", railClockParts("12:00 p. m."))
+    }
+
+    @Test
+    fun clockPartsNonBreakingSpaceSplits() {
+        assertEquals("9:53" to "AM", railClockParts("9:53\u00A0AM"))
     }
 }
