@@ -116,9 +116,10 @@ object AiAssistant {
     const val PRIVACY_NOTICE =
         "When AI answers are on, what you say to the assistant is sent to Google's Gemini API " +
             "to generate the answer. Your API key stays on this phone and is never sent anywhere " +
-            "except to Google's API. AutoSpace does not send your contacts, messages, location, " +
-            "or history to the AI — only the words you just said (and, for an action you confirm, " +
-            "the exact thing you approved). Turn AI answers off anytime in Settings > AI assistant, " +
+            "except to Google's API. AutoSpace does not send your contacts, messages, or location " +
+            "to the AI — only the words you just said (and, for an action you confirm, " +
+            "the exact thing you approved), plus the recent turns of the current conversation " +
+            "when the experimental multi-turn option is on. Turn AI answers off anytime in Settings > AI assistant, " +
             "and remove your key there too. Without a network connection, AI answers are unavailable " +
             "and the local assistant keeps working. When a question needs current information, " +
             "the assistant may run a Google Search through the same Gemini connection. No new " +
@@ -135,9 +136,10 @@ object AiAssistant {
     const val GROQ_PRIVACY_NOTICE =
         "When AI answers are on, what you say to the assistant is sent to Groq's API " +
             "to generate the answer. Your API key stays on this phone and is never sent anywhere " +
-            "except to Groq's API. AutoSpace does not send your contacts, messages, location, " +
-            "or history to the AI — only the words you just said (and, for an action you confirm, " +
-            "the exact thing you approved). Turn AI answers off anytime in Settings > AI assistant, " +
+            "except to Groq's API. AutoSpace does not send your contacts, messages, or location " +
+            "to the AI — only the words you just said (and, for an action you confirm, " +
+            "the exact thing you approved), plus the recent turns of the current conversation " +
+            "when the experimental multi-turn option is on. Turn AI answers off anytime in Settings > AI assistant, " +
             "and remove your key there too. Without a network connection, AI answers are unavailable " +
             "and the local assistant keeps working. When a question needs current information, " +
             "the assistant may run a web search through the same Groq connection. No new " +

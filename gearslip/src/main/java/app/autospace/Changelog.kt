@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            41, "0.4.30-alpha",
+            listOf(
+                "The assistant can follow a conversation across turns, as an experimental option: follow-up answers can refer to what you just asked.",
+            ),
+        ),
+        Release(
             40, "0.4.29-alpha",
             listOf(
                 "Say the hotword while the assistant is speaking to interrupt it and say something else.",

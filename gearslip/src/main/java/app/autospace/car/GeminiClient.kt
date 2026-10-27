@@ -118,7 +118,7 @@ object GeminiClient {
      * no userLocation, latLng, or retrieval config in this body, because option 1 puts
      * the place in the user's own words.
      */
-    fun buildRequestBody(utterance: String): String {
+    fun buildRequestBody(utterance: String, history: List<ConversationTurn> = emptyList()): String {
         fun jsonString(value: String): String {
             val out = StringBuilder()
             out.append('"')
@@ -135,9 +135,15 @@ object GeminiClient {
             out.append('"')
             return out.toString()
         }
+        val historyJson = history.joinToString(",") {
+            "{\"role\":\"user\",\"parts\":[{\"text\":${jsonString(it.user)}}]}," +
+                "{\"role\":\"model\",\"parts\":[{\"text\":${jsonString(it.assistant)}}]}"
+        }
+        val contents = (if (historyJson.isNotEmpty()) "$historyJson," else "") +
+            "{\"role\":\"user\",\"parts\":[{\"text\":${jsonString(utterance)}}]}"
         return "{" +
             "\"systemInstruction\":{\"parts\":[{\"text\":${jsonString(AiAssistant.SYSTEM_PROMPT)}}]}," +
-            "\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":${jsonString(utterance)}}]}]," +
+            "\"contents\":[$contents]," +
             "\"generationConfig\":{\"maxOutputTokens\":${AiAssistant.MAX_OUTPUT_TOKENS}}," +
             "\"tools\":[{\"googleSearch\":{}}]" +
             "}"
@@ -168,16 +174,17 @@ object GeminiClient {
     }
 
     /**
-     * One generateContent call: the fixed system prompt plus the transcribed utterance only.
-     * No contacts, numbers, messages, history, or location are sent — the request body is
-     * exactly those two texts plus the grounding tool. A single attempt: on any failure
+     * One generateContent call: the fixed system prompt plus the transcribed utterance,
+     * plus the recent turns of the current conversation when the caller supplies them
+     * (r73 experimental multi-turn only). No contacts, numbers, messages, or location
+     * are ever sent — the request body is exactly those texts plus the grounding tool. A single attempt: on any failure
      * the caller speaks the plain unavailable message, never a guessed answer.
      *
      * r27: the read timeout is the grounded timeout, because the tool is attached on
      * every fallback request — there is no separate ungrounded fallback call. The key
      * validation GET keeps the plain 15 s timeout.
      */
-    fun generate(key: String, utterance: String): Result {
+    fun generate(key: String, utterance: String, history: List<ConversationTurn> = emptyList()): Result {
         if (key.isBlank()) return Result.InvalidKey
         return try {
             val conn = (URL(AiAssistant.GENERATE_URL).openConnection() as HttpURLConnection).apply {
@@ -188,7 +195,7 @@ object GeminiClient {
                 connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
                 readTimeout = AiAssistant.GROUNDED_REQUEST_TIMEOUT_MS
             }
-            conn.outputStream.use { it.write(buildRequestBody(utterance).toByteArray(StandardCharsets.UTF_8)) }
+            conn.outputStream.use { it.write(buildRequestBody(utterance, history).toByteArray(StandardCharsets.UTF_8)) }
             val code = conn.responseCode
             if (code != 200) {
                 runCatching { conn.errorStream?.close() }

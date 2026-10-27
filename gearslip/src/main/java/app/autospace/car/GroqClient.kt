@@ -182,6 +182,23 @@ object GroqClient {
             "{\"role\":\"system\",\"content\":${jsonString(system)}}," +
             "{\"role\":\"user\",\"content\":${jsonString(user)}}]"
 
+    /**
+     * r73: multi-turn messages. The fixed system prompt stays first,
+     * then the completed turns of the current conversation in order,
+     * then the new user turn. The system prompt is never dropped and
+     * never moves; history is already truncated by [ConversationHistory].
+     */
+    private fun messagesJsonWithHistory(system: String, history: List<ConversationTurn>, user: String): String {
+        val middle = history.joinToString(",") {
+            "{\"role\":\"user\",\"content\":${jsonString(it.user)}}," +
+                "{\"role\":\"assistant\",\"content\":${jsonString(it.assistant)}}"
+        }
+        return "\"messages\":[" +
+            "{\"role\":\"system\",\"content\":${jsonString(system)}}," +
+            (if (middle.isNotEmpty()) "$middle," else "") +
+            "{\"role\":\"user\",\"content\":${jsonString(user)}}]"
+    }
+
     private fun commonJson(model: String, maxTokens: Int): String =
         "\"model\":${jsonString(model)}," +
             "\"reasoning_effort\":${jsonString(REASONING_EFFORT)}," +
@@ -197,9 +214,11 @@ object GroqClient {
      * behaves. Whether a search ran is read back from citation markers in the reply
      * (see [countCitations]), not assumed.
      */
-    fun buildSearchRequestBody(utterance: String, model: String = MODEL_ID): String {
+    fun buildSearchRequestBody(utterance: String, model: String = MODEL_ID, history: List<ConversationTurn> = emptyList()): String {
+        val messages = if (history.isEmpty()) messagesJson(AiAssistant.SYSTEM_PROMPT, utterance)
+            else messagesJsonWithHistory(AiAssistant.SYSTEM_PROMPT, history, utterance)
         return "{" +
-            messagesJson(AiAssistant.SYSTEM_PROMPT, utterance) + "," +
+            messages + "," +
             commonJson(model, SEARCH_MAX_TOKENS) + "," +
             "\"tools\":[{\"type\":\"browser_search\"}]" +
             "}"
@@ -212,14 +231,16 @@ object GroqClient {
      * tools on this call, and no forced `response_format` — the model must stay free
      * to answer in plain text or as one action JSON object (see the header comment).
      */
-    fun buildAnswerRequestBody(utterance: String, searchResults: String? = null, model: String = MODEL_ID, stream: Boolean = false): String {
+    fun buildAnswerRequestBody(utterance: String, searchResults: String? = null, model: String = MODEL_ID, stream: Boolean = false, history: List<ConversationTurn> = emptyList()): String {
         val user = if (searchResults != null) {
             "Web search results:\n$searchResults\n\nUser question: $utterance"
         } else {
             utterance
         }
+        val messages = if (history.isEmpty()) messagesJson(AiAssistant.SYSTEM_PROMPT, user)
+            else messagesJsonWithHistory(AiAssistant.SYSTEM_PROMPT, history, user)
         return "{" +
-            messagesJson(AiAssistant.SYSTEM_PROMPT, user) + "," +
+            messages + "," +
             commonJson(model, ANSWER_MAX_TOKENS) +
             (if (stream) ",\"stream\":true" else "") +
             "}"
@@ -428,25 +449,25 @@ object GroqClient {
      * and no second call runs. A 404 anywhere in the turn is ModelUnavailable, which
      * [generate] retries on the next fallback model.
      */
-    private fun generateWithModel(key: String, utterance: String, model: String): Result {
-        val search = post(key, buildSearchRequestBody(utterance, model))
+    private fun generateWithModel(key: String, utterance: String, model: String, history: List<ConversationTurn> = emptyList()): Result {
+        val search = post(key, buildSearchRequestBody(utterance, model, history))
         if (search.code != 200) {
             GearslipLog.i("assistant: ai groq search http=${search.code}")
             val mapped = resultForHttpCode(search.code)
             if (mapped is Result.ModelUnavailable) return mapped
             // Degrade: a failed search must not lose the turn — answer ungrounded.
-            return answerCall(key, utterance, null, model)
+            return answerCall(key, utterance, null, model, history = history)
         }
         val searchContent = search.body?.let { extractContent(it) }
         if (searchContent.isNullOrBlank()) {
-            return answerCall(key, utterance, null, model)
+            return answerCall(key, utterance, null, model, history = history)
         }
         val citations = countCitations(searchContent)
         if (citations == 0) {
             GearslipLog.i("assistant: ai groq generate ok grounded=false sources=0")
             return Result.Ok(searchContent, grounded = false, sourceCount = 0)
         }
-        return answerCall(key, utterance, searchContent, model, citations)
+        return answerCall(key, utterance, searchContent, model, citations, history)
     }
 
     private fun answerCall(
@@ -455,8 +476,9 @@ object GroqClient {
         searchResults: String?,
         model: String,
         citations: Int = 0,
+        history: List<ConversationTurn> = emptyList(),
     ): Result {
-        val answer = post(key, buildAnswerRequestBody(utterance, searchResults, model))
+        val answer = post(key, buildAnswerRequestBody(utterance, searchResults, model, history = history))
         if (answer.code != 200) {
             GearslipLog.i("assistant: ai groq answer http=${answer.code}")
             return resultForHttpCode(answer.code)
@@ -494,12 +516,13 @@ object GroqClient {
         listenEndMs: Long = 0L,
         onText: (String) -> Unit,
         onSentence: (String) -> Unit,
+        history: List<ConversationTurn> = emptyList(),
     ): Result {
         val full = StringBuilder()
         val splitter = SentenceSplitter()
         var prose: Boolean? = null
         var firstTokenLogged = false
-        val stream = postStream(key, buildAnswerRequestBody(utterance, searchResults, model, stream = true)) { delta ->
+        val stream = postStream(key, buildAnswerRequestBody(utterance, searchResults, model, stream = true, history = history)) { delta ->
             if (!firstTokenLogged && delta.isNotEmpty()) {
                 firstTokenLogged = true
                 if (listenEndMs > 0L) {
@@ -553,25 +576,26 @@ object GroqClient {
         listenEndMs: Long,
         onText: (String) -> Unit,
         onSentence: (String) -> Unit,
+        history: List<ConversationTurn> = emptyList(),
     ): Result {
-        val search = post(key, buildSearchRequestBody(utterance, model))
+        val search = post(key, buildSearchRequestBody(utterance, model, history))
         if (search.code != 200) {
             GearslipLog.i("assistant: ai groq search http=${search.code}")
             val mapped = resultForHttpCode(search.code)
             if (mapped is Result.ModelUnavailable) return mapped
             // Degrade: a failed search must not lose the turn — answer ungrounded.
-            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence)
+            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence, history)
         }
         val searchContent = search.body?.let { extractContent(it) }
         if (searchContent.isNullOrBlank()) {
-            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence)
+            return answerCallStreaming(key, utterance, null, model, 0, listenEndMs, onText, onSentence, history)
         }
         val citations = countCitations(searchContent)
         if (citations == 0) {
             GearslipLog.i("assistant: ai groq generate ok grounded=false sources=0")
             return Result.Ok(searchContent, grounded = false, sourceCount = 0)
         }
-        return answerCallStreaming(key, utterance, searchContent, model, citations, listenEndMs, onText, onSentence)
+        return answerCallStreaming(key, utterance, searchContent, model, citations, listenEndMs, onText, onSentence, history)
     }
 
     /**
@@ -588,11 +612,12 @@ object GroqClient {
         listenEndMs: Long = 0L,
         onText: (String) -> Unit,
         onSentence: (String) -> Unit,
+        history: List<ConversationTurn> = emptyList(),
     ): Result {
         if (key.isBlank()) return Result.InvalidKey
         val models = listOf(MODEL_ID) + MODEL_FALLBACKS
         for ((index, model) in models.withIndex()) {
-            val result = generateStreamingWithModel(key, utterance, model, listenEndMs, onText, onSentence)
+            val result = generateStreamingWithModel(key, utterance, model, listenEndMs, onText, onSentence, history)
             if (result !is Result.ModelUnavailable) return result
             if (index < models.lastIndex) {
                 GearslipLog.i("assistant: ai groq model fallback")
@@ -606,11 +631,11 @@ object GroqClient {
      * the first non-ModelUnavailable outcome. A single attempt per model (no retries
      * on any other failure — a retry doubles the cost of a failure and stalls the car).
      */
-    fun generate(key: String, utterance: String): Result {
+    fun generate(key: String, utterance: String, history: List<ConversationTurn> = emptyList()): Result {
         if (key.isBlank()) return Result.InvalidKey
         val models = listOf(MODEL_ID) + MODEL_FALLBACKS
         for ((index, model) in models.withIndex()) {
-            val result = generateWithModel(key, utterance, model)
+            val result = generateWithModel(key, utterance, model, history)
             if (result !is Result.ModelUnavailable) return result
             if (index < models.lastIndex) {
                 GearslipLog.i("assistant: ai groq model fallback")

@@ -258,6 +258,18 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         sourceCount = AssistantCommands.lastReplySourceCount,
                         provider = AssistantCommands.lastReplyProvider,
                     )
+                    // r73: multi-turn session record — only a completed
+                    // AI turn, only while the gate is on. A superseded
+                    // turn never reaches here (its reply is discarded
+                    // above), so a barged-in reply's tail can never
+                    // enter the session; a built-in, unmatched, refused,
+                    // or emergency reply is not an AI answer and is not
+                    // recorded either.
+                    if (AssistantCommands.lastReplyWasAi &&
+                        multiTurnNow(CarSettings.experimentalFeaturesEnabled.value, CarSettings.multiTurnEnabled.value)
+                    ) {
+                        ConversationSession.record(AssistantCommands.lastAiUtterance ?: heard, reply)
+                    }
                 } else {
                     GearslipLog.i("assistant: superseded turn discarded")
                 }

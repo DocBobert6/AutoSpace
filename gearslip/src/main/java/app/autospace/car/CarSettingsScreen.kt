@@ -612,6 +612,7 @@ private fun AboutAndExperimentalPage() {
     val meridianChrome by CarSettings.meridianChromeEnabled.collectAsState()
     val fullWidthGlow by CarSettings.fullWidthGlowEnabled.collectAsState()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsState()
+    val multiTurn by CarSettings.multiTurnEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -636,7 +637,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow, mediaCardDock, multiTurn)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1253,6 +1254,7 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * rows are shown.
  * r65: Meridian map chrome sits after frosted map chrome; vehicle data stays last.
  * r67: full-width listening glow sits after Meridian; vehicle data stays last.
+ * r73: multi-turn conversation sits after the glow; vehicle data stays last.
  */
 
 /** r53: applies one master-switch action's writes through the existing setters, field by field. */
@@ -1266,7 +1268,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean, mediaCardDock: MediaCardDock, multiTurn: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1337,6 +1339,17 @@ private fun ExperimentalFeaturesList(
                 "the small glow returns.",
             checked = fullWidthGlow,
         ) { CarSettings.setFullWidthGlowEnabled(it) }
+        // r73: multi-turn conversation (A59). Follow-up answers can
+        // refer to earlier turns of the same conversation instead of
+        // answering each question on its own. Still behind the general
+        // experimental opt-in: history is sent only when experiments
+        // are on AND this is on. Off returns exactly today's
+        // single-turn answers, and clears the in-memory session.
+        ExperimentalFeatureRow(
+            title = "Multi-turn conversation (experimental)",
+            description = "Follow-up answers can refer to earlier turns of the same conversation instead of answering each question on its own. History lives only in memory for the current drive and is never saved; turning this off clears it at once. It still needs experimental features on, and single-turn answers return when this is off.",
+            checked = multiTurn,
+        ) { CarSettings.setMultiTurnEnabled(it) }
         ExperimentalFeatureRow(
             title = "Home widgets (experimental)",
             description = "Shows weather, notification digest, and next event as a column " +

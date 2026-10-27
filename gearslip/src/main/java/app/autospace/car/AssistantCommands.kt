@@ -73,6 +73,16 @@ object AssistantCommands {
         private set
 
     /**
+     * r73: normalized utterance of the last AI answer, for the multi-turn
+     * session record. Set only by the Answer branch, alongside
+     * [lastReplyWasAi]; reset on every [handle] call. The collector
+     * records (this, spoken answer) for a completed AI turn, so the
+     * session holds what the model actually saw and said.
+     */
+    var lastAiUtterance: String? = null
+        private set
+
+    /**
      * Grounding outcome of the last AI answer (r27); the overlay reads it for the
      * grounded glyph (r41). Reset on every [handle] call, and only ever set on an
      * Answer path — a confirmation sheet is not an answer and carries no glyph.
@@ -95,6 +105,7 @@ object AssistantCommands {
 
     suspend fun handle(context: Context, navigator: CarNavigator, frame: CarEnvironment.Frame, heardRaw: String): String {
         lastReplyWasAi = false
+        lastAiUtterance = null
         lastReplyGrounded = false
         lastReplySourceCount = 0
         lastReplyProvider = AiAssistant.Provider.GEMINI
@@ -323,6 +334,16 @@ object AssistantCommands {
         // superseded turn's late sentences die in streamText/streamSentence
         // instead of re-speaking an interrupted reply's tail.
         val streamGeneration = CarAssistant.turnGeneration
+        // r73: multi-turn history, gated twice (general experimental
+        // opt-in AND the multi-turn toggle). Either off sends exactly
+        // today's [system, user] request; the stored session never
+        // leaks into a single-turn turn. History rides both Groq calls
+        // (search + answer) and the single Gemini call.
+        val history = if (multiTurnNow(CarSettings.experimentalFeaturesEnabled.value, CarSettings.multiTurnEnabled.value)) {
+            ConversationSession.historyForRequest()
+        } else {
+            emptyList()
+        }
         val result: Any = withContext(Dispatchers.IO) {
             when (provider) {
                 // r55: Groq streams (display text + sentences as they
@@ -338,8 +359,9 @@ object AssistantCommands {
                     key, heard, CarAssistant.lastListenEndMs,
                     onText = { CarAssistant.streamText(streamGeneration, it) },
                     onSentence = { CarAssistant.streamSentence(streamGeneration, it) },
+                    history = history,
                 )
-                AiAssistant.Provider.GEMINI -> GeminiClient.generate(key, heard)
+                AiAssistant.Provider.GEMINI -> GeminiClient.generate(key, heard, history)
             }
         }
         val modelText = when (result) {
@@ -384,6 +406,7 @@ object AssistantCommands {
                 // the overlay is the sole AI indicator.
                 val spoken = capped
                 lastReplyWasAi = true
+                lastAiUtterance = heard
                 lastReplyProvider = provider
                 lastReplyGrounded = grounded
                 lastReplySourceCount = sourceCount
