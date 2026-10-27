@@ -630,7 +630,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
 internal val NAV_BAR_HEIGHT = 64.dp
 internal val NAV_BAR_FLOAT_HORIZONTAL = 12.dp
 internal val NAV_BAR_FLOAT_VERTICAL = 8.dp
-internal val NAV_BAR_FLOAT_ELEVATION = 6.dp
+internal val NAV_BAR_FLOAT_ELEVATION = 4.dp
 
 /**
  * r43: the strip the nav bar occupies at the frame bottom — the 64dp bar
@@ -649,7 +649,7 @@ internal val NAV_BAR_STRIP_HEIGHT = NAV_BAR_HEIGHT + NAV_BAR_FLOAT_VERTICAL + NA
 /**
  * r43 overlay: when true the bar floats over the map instead of sitting
  * below Home in-flow, so it takes the floating card's frosted treatment
- * (surfaceContainerLow at 0.88 alpha, Pitlane-only texture, same 6dp
+ * (surfaceContainerLow at 0.88 alpha, Pitlane-only texture, same 4dp
  * elevation, same Pitch-gated hairline) — an opaque bar would hide the
  * map behind it and defeat the round, and true transparency would
  * drown the buttons in a busy moving map. The texture modifier gates

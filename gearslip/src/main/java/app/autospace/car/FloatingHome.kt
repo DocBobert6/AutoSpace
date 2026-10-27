@@ -265,7 +265,7 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
         }
         FrostedPanelSurface(
             shape = cardShape,
-            elevation = 6.dp,
+            elevation = 4.dp,
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

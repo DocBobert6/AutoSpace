@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            34, "0.4.23-alpha",
+            listOf(
+                "Floating bars and panels cast a softer shadow over the map.",
+            ),
+        ),
+        Release(
             33, "0.4.22-alpha",
             listOf(
                 "Meridian map chrome is now a single switch in About & experimental.",

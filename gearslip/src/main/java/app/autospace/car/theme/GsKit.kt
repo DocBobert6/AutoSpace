@@ -278,7 +278,7 @@ fun frostedChromeColor(): Color =
 /**
  * r46: the one frosted panel surface. The floating media card and the
  * frosted map chrome both read this, with their own shape and elevation
- * — the card keeps its gsButtonShape radius and 6dp elevation, map
+ * — the card keeps its gsButtonShape radius and 4dp elevation, map
  * panels keep their call-site shape (routed through gsButtonShape) and
  * elevation. Pitlane border + texture are no-ops under every other
  * style, and the hairline stays Pitch-gated, exactly as the card has it.

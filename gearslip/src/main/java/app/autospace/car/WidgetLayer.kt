@@ -472,7 +472,7 @@ private fun WidgetCard(onClick: (() -> Unit)?, content: @Composable () -> Unit) 
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Box(

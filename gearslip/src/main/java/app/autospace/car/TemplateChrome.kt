@@ -408,7 +408,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
         meridianColor = Color(MapChromeColors.MERIDIAN_ETA),
         meridian = meridian,
         themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
-        shadowElevation = 8.dp,
+        shadowElevation = 6.dp,
     ) {
         val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()
         Row(
@@ -480,7 +480,7 @@ private fun MapPaneLayout(
                 // re-routes idempotently, and the inner 0dp fills below stay 0dp
                 // flush in opaque mode and passthrough when frosted.
                 shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
-                shadowElevation = 8.dp,
+                shadowElevation = 6.dp,
                 frosted = true,
                 meridian = meridian,
             ) {

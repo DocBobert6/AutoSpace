@@ -33,6 +33,6 @@ class ThemesRoundTest {
         assertEquals(64, NAV_BAR_HEIGHT.value.toInt())
         assertEquals(12, NAV_BAR_FLOAT_HORIZONTAL.value.toInt())
         assertEquals(8, NAV_BAR_FLOAT_VERTICAL.value.toInt())
-        assertEquals(6, NAV_BAR_FLOAT_ELEVATION.value.toInt())
+        assertEquals(4, NAV_BAR_FLOAT_ELEVATION.value.toInt())
     }
 }
