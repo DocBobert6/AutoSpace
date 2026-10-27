@@ -484,6 +484,7 @@ object AssistantCommands {
      */
     private fun cancelCommand(heard: String): String? {
         if (heard !in CANCEL_PHRASES) return null
+        CarAssistant.dropHeldNavigation()
         CarAssistant.stopSpeaking()
         if (VoiceReply.active) VoiceReply.cancel()
         return ""
@@ -568,8 +569,9 @@ object AssistantCommands {
 
     /**
      * "navigate to X [with|using|on|via Y]" - Y picks the nav app by (partial) label; without it,
-     * whichever nav app was used last, or the only one installed, or the first one found. Starts
-     * it straight into navigating there via [CarAppConnection]'s `ACTION_NAVIGATE` deep link -
+     * whichever nav app was used last, or the only one installed, or the first one found. Holds
+     * the request until the post-reply listen window closes (r96), then starts
+     * it navigating there via [CarAppConnection]'s `ACTION_NAVIGATE` deep link -
      * the same one Android Auto's own Assistant integration uses - rather than opening the app
      * and leaving the driver to type the address in on the car keyboard.
      */
@@ -639,8 +641,19 @@ object AssistantCommands {
         }
         val template = chosen.template ?: return "That's not a navigation app."
 
-        CarServices.connectNav(template, frame, destination)
-        navigator.home()
+        // r96: hold, don't fire. connectNav at once would let Vela speak
+        // guidance during the confirmation and straight into the 5-second
+        // post-reply listen window, where the mic (no AEC) hears it as a
+        // follow-up. The confirmation wording below is unchanged; guidance
+        // simply starts when the window closes. This function runs only on
+        // the voice path (CarUi's pendingCommand collector is the sole
+        // handle() caller), and tap paths call connectNav directly, so no
+        // tap is ever delayed. Frame is an immutable data class, so holding
+        // the captured values across the window is safe.
+        CarAssistant.holdNavigation {
+            CarServices.connectNav(template, frame, destination)
+            navigator.home()
+        }
         return if (nearby) "Finding the nearest $destination with ${chosen.label}." else "Navigating to $destination with ${chosen.label}."
     }
 
@@ -883,9 +896,13 @@ object AssistantCommands {
      */
     private fun navExtraCommand(heard: String): String? {
         if (heard in STOP_NAV_PHRASES) {
+            // r96: a held (not yet started) navigation is a navigation to
+            // stop too — dropping it here keeps it from firing after the
+            // window closes. With no hold this branch is byte-identical.
+            val hadHeld = CarAssistant.dropHeldNavigation()
             val nav = CarServices.navOrNull()
             if (nav == null || (nav.trip.value == null && NavTurn.current() == null)) {
-                return "You're not navigating."
+                return if (hadHeld) "Navigation stopped." else "You're not navigating."
             }
             nav.stopNavigating()
             return "Navigation stopped."

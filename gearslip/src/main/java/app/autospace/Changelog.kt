@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            63, "0.4.52-alpha",
+            listOf(
+                "Voice navigation now waits until you finish talking: the map starts guiding only after the short listen window closes, so its voice can't be mistaken for a follow-up.",
+            ),
+        ),
+        Release(
             62, "0.4.51-alpha",
             listOf(
                 "Fixed the controller closing Games: a paired controller now only drives a game that is actually open — it never moves through menus or backs out of a screen.",

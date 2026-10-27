@@ -214,7 +214,10 @@ object CarAssistant {
                 busySinceMs = SystemClock.uptimeMillis()
                 _pendingCommand.value = text
             },
-            onError = { message -> _state.value = State(Phase.ERROR, reply = message) },
+            onError = { message ->
+                _state.value = State(Phase.ERROR, reply = message)
+                fireHeldNavigation()
+            },
         )
     }
 
@@ -239,6 +242,7 @@ object CarAssistant {
     /** Closes the overlay from wherever it's showing: mid-listen, mid-think, or after speaking. */
     fun cancel() {
         clearFollowUpExpiry()
+        dropHeldNavigation()
         // r72 barge-in: same supersede as a fresh listen — a dismissed turn's
         // late stream callbacks must never re-speak after the overlay closes.
         turnGate.beginTurn()
@@ -271,6 +275,45 @@ object CarAssistant {
     private var followUpGeneration = 0
     private var followUpExpiry: Runnable? = null
 
+    // r96: one held voice-navigation request. A voice navigate command holds
+    // its connectNav + home here instead of firing at once, so Vela's
+    // guidance speech cannot land in the post-reply listen window and be
+    // heard as a follow-up (there is no AEC: the mic is VOICE_RECOGNITION
+    // and TTS plays through the car speakers). The hold fires exactly once,
+    // at the first turn-ending moment after its window: window expiry, the
+    // window bailing (call active), a window listen error, or a turn end
+    // that opens no window (blank, failed, or unplayable reply; fresh-listen
+    // error). It is dropped only by an explicit cancel: cancel(), cancel
+    // words, or "stop navigation". A fresh listen disarms the window expiry
+    // but NOT the hold, so the request rides the new turn: a new navigate
+    // supersedes it, a non-navigation follow-up leaves it to fire at the new
+    // turn's window end, a cancel drops it. Tap paths call
+    // CarServices.connectNav directly and never touch the hold, so they
+    // still fire at once. All access is main-thread only, matching every
+    // caller (the CarUi collector, the window expiry runnable, cancel()).
+    // The destination is never logged, only held/fired/dropped.
+    private val navHold = NavHold()
+
+    /** Holds a voice navigate request until the listen window closes. Replaces any request still held. */
+    fun holdNavigation(action: () -> Unit) {
+        navHold.hold(action)
+        GearslipLog.i("assistant: nav held until window closes")
+    }
+
+    /** Drops a held navigate request, if any; true when one was dropped. */
+    fun dropHeldNavigation(): Boolean {
+        val dropped = navHold.drop()
+        if (dropped) GearslipLog.i("assistant: held nav dropped")
+        return dropped
+    }
+
+    /** Fires the held navigate request once, if any. */
+    private fun fireHeldNavigation() {
+        if (!navHold.hasPending) return
+        GearslipLog.i("assistant: held nav fired")
+        navHold.fire()
+    }
+
     /** Disarms any pending window expiry; the window state itself is left to its caller. */
     private fun clearFollowUpExpiry() {
         followUpGeneration++
@@ -289,6 +332,7 @@ object CarAssistant {
     private fun openFollowUpWindow() {
         if (appContext == null || CarCalls.state.value is CallUiState.Active) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
+            fireHeldNavigation()
             return
         }
         val generation = ++followUpGeneration
@@ -304,6 +348,7 @@ object CarAssistant {
             followUpExpiry = null
             releaseRecognizer()
             _state.value = State(Phase.IDLE)
+            fireHeldNavigation()
         }
         followUpExpiry = expiry
         mainHandler.postDelayed(expiry, FOLLOW_UP_LISTEN_MS)
@@ -335,6 +380,7 @@ object CarAssistant {
                 clearFollowUpExpiry()
                 releaseRecognizer()
                 _state.value = State(Phase.IDLE)
+                fireHeldNavigation()
             },
         )
     }
@@ -356,6 +402,7 @@ object CarAssistant {
         val context = appContext
         if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
+            fireHeldNavigation()
             return
         }
         // r55 streamed finish: this turn already spoke its sentences
@@ -383,6 +430,7 @@ object CarAssistant {
                         speechFailureMessage()
                     },
                 )
+                fireHeldNavigation()
                 return
             }
             is StreamFinish.Mismatch -> Unit // Falls through to normal play below.
@@ -405,6 +453,7 @@ object CarAssistant {
             // (r55: the message itself lives in speechFailureMessage,
             // shared with the streamed session's onSilent.)
             _state.value = State(Phase.ERROR, reply = speechFailureMessage())
+            fireHeldNavigation()
         })
         if (started) {
             // Audit fix (2026-10-25, A1): the last reply that
@@ -420,6 +469,7 @@ object CarAssistant {
                 Phase.ERROR,
                 reply = "No voice downloaded yet. Download Kokoro or Piper in Settings first.",
             )
+            fireHeldNavigation()
         }
     }
 
