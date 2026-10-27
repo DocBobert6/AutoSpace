@@ -24,3 +24,13 @@ internal fun isStalePhase(phase: CarAssistant.Phase, listeningActive: Boolean, a
         CarAssistant.Phase.THINKING -> ageMs > STALE_THINKING_MS
         else -> false
     }
+
+/**
+ * r98 nav-window exemption: whether a reply completion skips the
+ * post-response listen window. True exactly when a navigation request is
+ * held — a navigation turn ends at its own reply completion (fire at once,
+ * then IDLE), so no live window exists for car noise to cancel through.
+ * False for every other turn, which opens the window exactly as before.
+ * Pure, so the unit tests pin it without the assistant object.
+ */
+internal fun skipFollowUpWindow(navHeld: Boolean): Boolean = navHeld

@@ -197,6 +197,13 @@ object CarAssistant {
         // streaming in. Its late callbacks die on the generation guard, and its
         // reply is discarded by the CarUi collector.
         turnGate.beginTurn()
+        // r98 nav-window exemption: the superseded turn's held navigation is
+        // dropped here, never fired at a later turn's end — a navigation whose
+        // confirmation never finished speaking never starts. A fresh listen
+        // never starts inside the follow-up window (a live window listen makes
+        // start() no-op at the stale check above), so a window's own follow-up
+        // can never drop a hold this way.
+        dropHeldNavigation()
         warmForListen(context)
         _state.value = State(Phase.LISTENING)
         busySinceMs = SystemClock.uptimeMillis()
@@ -292,12 +299,20 @@ object CarAssistant {
     // still fire at once. All access is main-thread only, matching every
     // caller (the CarUi collector, the window expiry runnable, cancel()).
     // The destination is never logged, only held/fired/dropped.
+    // r98 nav-window exemption: a navigation turn opens no post-response
+    // listen window. Its hold fires at the turn's own reply completion (see
+    // onReplySpeechDone), and a fresh listen supersedes the turn and drops
+    // the hold (see startOnMainThread) — a superseded navigation never fires
+    // at a later turn's end. Non-navigation turns open the window exactly as
+    // before. The failure paths below still fire a held request directly, as
+    // in r96: a confirmation that could not be spoken at all must not strand
+    // the navigation, and firing there clears the hold either way.
     private val navHold = NavHold()
 
-    /** Holds a voice navigate request until the listen window closes. Replaces any request still held. */
+    /** Holds a voice navigate request until its confirmation finishes speaking. Replaces any request still held. */
     fun holdNavigation(action: () -> Unit) {
         navHold.hold(action)
-        GearslipLog.i("assistant: nav held until window closes")
+        GearslipLog.i("assistant: nav held until confirmation finishes")
     }
 
     /** Drops a held navigate request, if any; true when one was dropped. */
@@ -312,6 +327,24 @@ object CarAssistant {
         if (!navHold.hasPending) return
         GearslipLog.i("assistant: held nav fired")
         navHold.fire()
+    }
+
+    /**
+     * r98: what a reply completion does. A navigation turn ends here: the held
+     * request fires at once and the turn goes IDLE, with no post-response
+     * listen window — guidance then starts after the confirmation, and no live
+     * window exists for car noise to cancel through. Any other turn opens the
+     * window exactly as before. Both speech-completion sites (normal play in
+     * reply() and the streamed session in streamSentence()) end here, so a
+     * streamed navigation confirmation would take the same path.
+     */
+    private fun onReplySpeechDone() {
+        if (skipFollowUpWindow(navHold.hasPending)) {
+            _state.value = State(Phase.IDLE)
+            fireHeldNavigation()
+        } else {
+            openFollowUpWindow()
+        }
     }
 
     /** Disarms any pending window expiry; the window state itself is left to its caller. */
@@ -439,7 +472,7 @@ object CarAssistant {
         _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
         val started = VoiceEngine.play(context, text, onDone = {
             releaseSpeechFocus()
-            openFollowUpWindow()
+            onReplySpeechDone()
         }, onSilent = {
             // 2026-10-25 round 3: the old text blamed the voice files
             // for every silent render — but onSilent fires only after
@@ -578,7 +611,7 @@ object CarAssistant {
                     context, lastListenEndMs,
                     onDone = {
                         releaseSpeechFocus()
-                        openFollowUpWindow()
+                        onReplySpeechDone()
                     },
                     onSilent = {
                         // The worker is dead after this — mark the

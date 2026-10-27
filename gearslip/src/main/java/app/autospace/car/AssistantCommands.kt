@@ -564,8 +564,8 @@ object AssistantCommands {
     /**
      * "navigate to X [with|using|on|via Y]" - Y picks the nav app by (partial) label; without it,
      * whichever nav app was used last, or the only one installed, or the first one found. Holds
-     * the request until the post-reply listen window closes (r96), then starts
-     * it navigating there via [CarAppConnection]'s `ACTION_NAVIGATE` deep link -
+     * the request until its confirmation finishes speaking (r98: no listen window opens after
+     * a navigation turn), then starts it navigating there via [CarAppConnection]'s `ACTION_NAVIGATE` deep link -
      * the same one Android Auto's own Assistant integration uses - rather than opening the app
      * and leaving the driver to type the address in on the car keyboard.
      */
@@ -638,8 +638,9 @@ object AssistantCommands {
         // r96: hold, don't fire. connectNav at once would let Vela speak
         // guidance during the confirmation and straight into the 5-second
         // post-reply listen window, where the mic (no AEC) hears it as a
-        // follow-up. The confirmation wording below is unchanged; guidance
-        // simply starts when the window closes. This function runs only on
+        // follow-up. The confirmation wording below is unchanged; r98:
+        // guidance starts when the confirmation finishes speaking, because
+        // no listen window opens after a navigation turn at all. This function runs only on
         // the voice path (CarUi's pendingCommand collector is the sole
         // handle() caller), and tap paths call connectNav directly, so no
         // tap is ever delayed. Frame is an immutable data class, so holding
@@ -891,8 +892,7 @@ object AssistantCommands {
     private fun navExtraCommand(heard: String): String? {
         if (heard in STOP_NAV_PHRASES) {
             // r96: a held (not yet started) navigation is a navigation to
-            // stop too — dropping it here keeps it from firing after the
-            // window closes. With no hold this branch is byte-identical.
+            // stop too — dropping it here keeps it from firing at reply completion. With no hold this branch is byte-identical.
             val hadHeld = CarAssistant.dropHeldNavigation()
             val nav = CarServices.navOrNull()
             if (nav == null || (nav.trip.value == null && NavTurn.current() == null)) {

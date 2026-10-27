@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            65, "0.4.54-alpha",
+            listOf(
+                "Voice navigation no longer waits out the listen window: once the confirmation finishes, guidance starts at once, and car noise can no longer cancel it.",
+            ),
+        ),
+        Release(
             64, "0.4.53-alpha",
             listOf(
                 "Experimental features are now the regular interface: the floating media card, home widgets, and the steering-side rail as the only app bar are always on, and the experimental section is gone.",

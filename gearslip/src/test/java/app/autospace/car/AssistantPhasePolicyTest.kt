@@ -42,4 +42,14 @@ class AssistantPhasePolicyTest {
         assertEquals(10_000L, STALE_LISTENING_MS)
         assertEquals(90_000L, STALE_THINKING_MS)
     }
+
+    @Test
+    fun navHeldSkipsFollowUpWindow() {
+        assertTrue(skipFollowUpWindow(navHeld = true))
+    }
+
+    @Test
+    fun noHeldNavOpensFollowUpWindow() {
+        assertFalse(skipFollowUpWindow(navHeld = false))
+    }
 }
