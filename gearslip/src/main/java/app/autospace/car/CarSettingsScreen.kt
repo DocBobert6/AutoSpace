@@ -330,6 +330,28 @@ private fun AppearancePage() {
         uiTheme,
     ) { CarSettings.setUiTheme(it) }
 
+    // r80 Pairs: one tap sets the button style and the color scheme
+    // together. The tap writes exactly those two keys — nothing else —
+    // so the two pickers above keep working on their own afterward and
+    // no pair ever locks. The highlighted chip is derived from the two
+    // current values (themePairFor), never stored: a combination no
+    // pair names simply highlights nothing.
+    ChoiceRow(
+        "Pairs",
+        themePairs.map { it to it.label },
+        themePairFor(uiTheme, scheme),
+    ) {
+        CarSettings.setUiTheme(it.styleId)
+        CarSettings.setColorScheme(it.scheme)
+    }
+    Text(
+        "One tap sets the button style and the color scheme together. " +
+            "Picking either one on its own afterward still works — " +
+            "pairs never lock.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     ChoiceRow(
         "Map day/night",
         listOf(NightMode.AUTO to "Auto", NightMode.DAY to "Day", NightMode.NIGHT to "Night"),
@@ -1061,7 +1083,7 @@ private fun VoiceEngineRow(
 }
 
 @Composable
-private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, enabled: Boolean = true, onSelect: (T) -> Unit) {
+private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T?, enabled: Boolean = true, onSelect: (T) -> Unit) {
     // Phase 7: every choice row is its own grouped card (surfaceBright on the
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
     // Phase 8 audit fix: the section header sits ABOVE the card in a

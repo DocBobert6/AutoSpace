@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            48, "0.4.37-alpha",
+            listOf(
+                "A new Pairs section on the Appearance page sets the button style and color scheme together in one tap — Pitlane, Verve, or Frost + Neutral — and the two pickers still work on their own.",
+            ),
+        ),
+        Release(
             47, "0.4.36-alpha",
             listOf(
                 "A new Horizon look joins the Appearance pickers — deep navy tones, full-pill buttons, and 28dp cards.",
