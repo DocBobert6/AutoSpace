@@ -610,6 +610,7 @@ private fun AboutAndExperimentalPage() {
     val floatingMedia by CarSettings.floatingMediaEnabled.collectAsState()
     val frostedMapChrome by CarSettings.frostedMapChromeEnabled.collectAsState()
     val meridianChrome by CarSettings.meridianChromeEnabled.collectAsState()
+    val fullWidthGlow by CarSettings.fullWidthGlowEnabled.collectAsState()
     val homeWidgets by CarSettings.homeWidgetsEnabled.collectAsState()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsState()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsState()
@@ -634,7 +635,7 @@ private fun AboutAndExperimentalPage() {
         experimentalFeatures,
     ) { CarSettings.setExperimentalFeaturesEnabled(it) }
     if (experimentalFeatures) {
-        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome)
+        ExperimentalFeaturesList(carSensors, floatingMedia, frostedMapChrome, homeWidgets, widgetsDismissed, hiddenWidgets, meridianChrome, fullWidthGlow)
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1250,6 +1251,7 @@ private fun TimeStepperRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
  * above the Hide/Show row, always visible; this list only renders when the
  * rows are shown.
  * r65: Meridian map chrome sits after frosted map chrome; vehicle data stays last.
+ * r67: full-width listening glow sits after Meridian; vehicle data stays last.
  */
 
 /** r53: applies one master-switch action's writes through the existing setters, field by field. */
@@ -1263,7 +1265,7 @@ private fun applyMasterWrites(writes: ExperimentalMaster.Writes) {
 @Composable
 private fun ExperimentalFeaturesList(
     carSensors: Boolean, floatingMedia: Boolean, frostedMapChrome: Boolean, homeWidgets: Boolean, widgetsDismissed: Boolean,
-    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean,
+    hiddenWidgets: Set<WidgetKind>, meridianChrome: Boolean, fullWidthGlow: Boolean,
 ) {
     Column(
         Modifier.fillMaxWidth(),
@@ -1300,6 +1302,21 @@ private fun ExperimentalFeaturesList(
                 "Turn this off and everything returns to the themed look.",
             checked = meridianChrome,
         ) { CarSettings.setMeridianChromeEnabled(it) }
+        // r67: the full-width listening glow. It widens the assistant's
+        // listening glow to a full-width band at the bottom edge while
+        // listening — our own scheme colors, never Gemini's look — and
+        // still sits behind the general experimental opt-in: it renders
+        // only when experiments are on AND this is on. Off returns the
+        // overlay to exactly today's small glow.
+        ExperimentalFeatureRow(
+            title = "Full-width listening glow (experimental)",
+            description = "While the assistant is listening, its glow spans the full width " +
+                "of the screen at the bottom edge instead of a small segment. It uses " +
+                "the active theme's colors, never covers anything tappable, and " +
+                "disappears when the assistant stops listening. Turn this off and " +
+                "the small glow returns.",
+            checked = fullWidthGlow,
+        ) { CarSettings.setFullWidthGlowEnabled(it) }
         ExperimentalFeatureRow(
             title = "Home widgets (experimental)",
             description = "Shows weather, notification digest, and next event as a column " +

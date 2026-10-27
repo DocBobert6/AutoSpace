@@ -92,6 +92,8 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             AssistantCommands.clearPendingAiAction()
         }
     }
+    val experimentalOn by CarSettings.experimentalFeaturesEnabled.collectAsState()
+    val glowToggleOn by CarSettings.fullWidthGlowEnabled.collectAsState()
     val listening = state.phase == CarAssistant.Phase.LISTENING && state.ready
     val glow = MaterialTheme.colorScheme.primary
     val glow2 = MaterialTheme.colorScheme.tertiary
@@ -103,21 +105,51 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
         CarAssistant.Phase.ERROR -> 0.3f
         else -> 0.6f
     }
+    // r67: the band renders only in the LISTENING phase with the gate
+    // on — speaking, thinking, and idle keep exactly today's treatment,
+    // and the r57 follow-up window keeps the phase at LISTENING, so the
+    // band stays up through "Still listening…" with no special-casing.
+    val fullWidthGlow = fullWidthGlowNow(experimentalOn, glowToggleOn) &&
+        state.phase == CarAssistant.Phase.LISTENING
 
     Box(
         modifier
             .fillMaxWidth()
             .drawBehind {
                 drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.85f)))
-                // A wide, flat oval of light rising from the bottom edge.
-                scale(1f, 0.22f, Offset(size.width / 2, size.height)) {
-                    drawCircle(
-                        Brush.radialGradient(
-                            0f to glow.copy(alpha = 0.9f * strength), 0.5f to glow2.copy(alpha = 0.35f * strength), 1f to Color.Transparent,
-                            center = Offset(size.width / 2, size.height), radius = size.width * 0.55f,
+                if (fullWidthGlow) {
+                    // r67: the band replaces the small oval while
+                    // listening — a full-width strip at the bottom edge
+                    // in the scheme's own primary, breathing with the
+                    // same strength the oval did. It paints in
+                    // drawBehind, so it takes no touches; and it lives
+                    // inside this sheet, which already sits above the
+                    // nav-bar strip in overlay mode and above the
+                    // in-flow bar in classic mode, so it can never
+                    // cover the bar, and it adds no new footprint over
+                    // the turn card, widget column, or media card
+                    // beyond this sheet's existing one.
+                    val bandHeight = 72.dp.toPx()
+                    drawRect(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.5f to glow.copy(alpha = 0.25f * strength),
+                            1f to glow.copy(alpha = 0.75f * strength),
                         ),
-                        radius = size.width * 0.55f, center = Offset(size.width / 2, size.height),
+                        topLeft = Offset(0f, size.height - bandHeight),
+                        size = Size(size.width, bandHeight),
                     )
+                } else {
+                    // A wide, flat oval of light rising from the bottom edge.
+                    scale(1f, 0.22f, Offset(size.width / 2, size.height)) {
+                        drawCircle(
+                            Brush.radialGradient(
+                                0f to glow.copy(alpha = 0.9f * strength), 0.5f to glow2.copy(alpha = 0.35f * strength), 1f to Color.Transparent,
+                                center = Offset(size.width / 2, size.height), radius = size.width * 0.55f,
+                            ),
+                            radius = size.width * 0.55f, center = Offset(size.width / 2, size.height),
+                        )
+                    }
                 }
             }
             .padding(start = 16.dp, end = 16.dp, top = 56.dp, bottom = 20.dp),
@@ -267,6 +299,15 @@ fun MicGlyph(modifier: Modifier = Modifier) {
  * and the glyph names the provider that grounded it — globe for Groq, Google "G"
  * for Gemini. Ungrounded answers get the badge alone.
  */
+/**
+ * r67: the full-width listening glow gate. Pure, so the unit test pins
+ * it: the band renders only when the driver has opted into experimental
+ * features as a whole AND switched this glow on. Either off returns
+ * the overlay to exactly today's small glow.
+ */
+internal fun fullWidthGlowNow(experimentalOn: Boolean, toggleOn: Boolean): Boolean =
+    experimentalOn && toggleOn
+
 internal enum class GroundedGlyph { NONE, GLOBE, GOOGLE_G }
 
 internal fun groundedGlyph(fromAi: Boolean, grounded: Boolean, provider: AiAssistant.Provider): GroundedGlyph =

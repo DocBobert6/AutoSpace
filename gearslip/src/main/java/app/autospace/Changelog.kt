@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            35, "0.4.24-alpha",
+            listOf(
+                "The assistant's listening glow can span the full width of the screen, as an experimental option.",
+            ),
+        ),
+        Release(
             34, "0.4.23-alpha",
             listOf(
                 "Floating bars and panels cast a softer shadow over the map.",
