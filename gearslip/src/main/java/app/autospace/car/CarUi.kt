@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -45,6 +47,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
@@ -381,24 +384,44 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 val sideBarSide = SideBarSide.DRIVER_SIDE
                 // r97 graduation: the rail is the only app bar — it
                 // shows whenever a bar shows, with no toggle gating it.
-                val sideBarVisible = barVisible
+                // r99: in Meridian mode the bar takes one of two floating
+                // forms by display shape — a side rail on wide displays, a
+                // bottom pill on narrow or short ones (see meridianBarForm).
+                // Outside Meridian mode the bar is always the side rail, as
+                // before. The two forms are exclusive, so the side strip and
+                // the bottom strip are never both nonzero.
+                val mapTheme by CarSettings.mapTheme.collectAsState()
+                val meridianBar = mapTheme == MapChrome.MERIDIAN
+                val frame by CarEnvironment.frame.collectAsState()
+                val barForm = if (meridianBar) {
+                    meridianBarForm(frame.width, frame.height, frame.densityDpi)
+                } else {
+                    MeridianBarForm.RAIL
+                }
+                val sideBarVisible = barVisible && barForm == MeridianBarForm.RAIL
+                val pillVisible = barVisible && meridianBar && barForm == MeridianBarForm.PILL
                 // r87: the content inset that keeps everything beside the
                 // rail. When the rail hides (keyboard, immersive, mirror)
                 // the inset is empty, so content takes the full width.
-                val sideBarContentPadding = if (sideBarVisible) {
-                    if (sideBarStripOnStart(sideBarSide)) {
+                // r99: in Meridian pill form the inset moves to the bottom,
+                // keeping content clear of the pill.
+                val sideBarContentPadding = when {
+                    sideBarVisible -> if (sideBarStripOnStart(sideBarSide)) {
                         PaddingValues(start = NAV_BAR_SIDE_STRIP_WIDTH)
                     } else {
                         PaddingValues(end = NAV_BAR_SIDE_STRIP_WIDTH)
                     }
-                } else {
-                    PaddingValues()
+                    pillVisible -> PaddingValues(bottom = NAV_BAR_PILL_STRIP_WIDTH)
+                    else -> PaddingValues()
                 }
                 // r97 graduation: the rail is the only bar, so Home's
                 // map surface extends under its strip exactly when it
-                // shows; no bottom strip is ever reserved anymore (the
-                // r87 dead-80dp-strip quirk is gone by construction).
+                // shows. r99: in Meridian pill form the map surface
+                // extends under the pill's bottom strip instead; no
+                // other form ever reserves a bottom strip (the r87
+                // dead-80dp-strip quirk stays gone by construction).
                 val mapSurfaceStrip = if (sideBarVisible) NAV_BAR_SIDE_STRIP_WIDTH else 0.dp
+                val mapSurfaceBottomStrip = if (pillVisible) NAV_BAR_PILL_STRIP_WIDTH else 0.dp
                 Box(Modifier.fillMaxSize().padding(pad)) {
                 Column(Modifier.fillMaxSize().padding(sideBarContentPadding)) {
                     if (!safetyWarningSeen) {
@@ -414,7 +437,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         // Home never leaves the composition; other screens cover it. Dropping it
                         // would tear down the map's surface, and coming back would then show black
                         // while the nav app redrew on a new one.
-                        CarHome(mapSurfaceStrip)
+                        CarHome(mapSurfaceStrip, mapSurfaceBottomStrip)
                         if (screen != CarScreen.Home) {
                             Box(
                                 Modifier
@@ -469,7 +492,18 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // hides for the keyboard and the immersive player/browser
                 // and mirror states, like the old bar did.
                 if (sideBarVisible) {
-                    CarSideBar(navigator, Modifier.align(sideBarAlignment(sideBarSide)))
+                    CarSideBar(
+                        navigator,
+                        Modifier.align(sideBarAlignment(sideBarSide)),
+                        meridian = meridianBar,
+                    )
+                }
+                if (pillVisible) {
+                    CarMeridianPill(
+                        navigator,
+                        Modifier.align(Alignment.BottomCenter)
+                            .padding(bottom = NAV_BAR_SIDE_FLOAT),
+                    )
                 }
                 // Over everything, rail included: a long press on an app, anywhere.
                 AppMenu(navigator, rememberRunningApps(), contentPadding = sideBarContentPadding)
@@ -680,6 +714,23 @@ internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NA
 
 
 /**
+ * r99: the strip the Meridian bottom pill reserves at the frame's
+ * bottom edge — the pill's own height plus its floating margin on
+ * both sides, mirroring the side strip's math, so the content
+ * inset and the pill can never disagree. Pure Dp math so it is
+ * unit-testable.
+ */
+internal val NAV_BAR_PILL_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT
+
+/**
+ * r99: the Meridian rail's top and bottom float — 32dp from each
+ * vertical edge, so the rail never spans the full height, while
+ * the side float stays 12dp like every other floating bar.
+ */
+internal val MERIDIAN_RAIL_VERTICAL_FLOAT = 32.dp
+
+
+/**
  * r87: the steering-side app bar as an edge dock. The bottom bar's
  * app row, stood on its side in a reserved strip at the frame edge:
  * Home, Apps, assistant, the widgets popup button (same conditions
@@ -706,17 +757,15 @@ internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NA
  * any locale.
  */
 @Composable
-private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
-    val battery by CarEnvironment.battery.collectAsState()
-    val now by rememberNow()
+private fun CarSideBar(
+    navigator: CarNavigator,
+    modifier: Modifier = Modifier,
+    meridian: Boolean = false,
+) {
     val pinnedIds by CarSettings.pinnedApps.collectAsState()
     val entries = rememberAllEntries()
-    val pinnedEntries = remember(entries, pinnedIds) {
-        pinnedIds.mapNotNull { id -> entries.find { it.componentId == id } }
-    }
     val frame by CarEnvironment.frame.collectAsState()
     val running = rememberRunningApps()
-    val unread by CarNotifications.unread.collectAsState()
 
     // r94: the rail floats again — full frame height minus 12dp
     // margins on every side, so it touches no screen edge, and its
@@ -726,71 +775,321 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
     // strip width (rail + both margins), so this Surface is the only
     // thing that draws in the strip. Treatment is otherwise the
     // overlay bar's exactly (frosted surfaceContainerLow at 0.88,
-    // 4dp elevation, Pitlane texture, OLED hairline).
+    // 4dp elevation, Pitlane texture, OLED hairline). r99: in
+    // Meridian mode the fill is Meridian dark instead of the theme
+    // surface, the Pitlane texture is dropped for the photo's clean
+    // dark, and the vertical float grows to 32dp top and bottom, so
+    // the rail never spans the full height.
     Surface(
-        modifier = modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight(),
+        modifier = if (meridian) {
+            modifier.padding(
+                start = NAV_BAR_SIDE_FLOAT,
+                top = MERIDIAN_RAIL_VERTICAL_FLOAT,
+                end = NAV_BAR_SIDE_FLOAT,
+                bottom = MERIDIAN_RAIL_VERTICAL_FLOAT,
+            ).fillMaxHeight()
+        } else {
+            modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight()
+        },
         shape = gsButtonShape(GsKit.CardShape),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
+        color = if (meridian) {
+            Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
+        },
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Column(
-            Modifier.width(NAV_BAR_HEIGHT).fillMaxHeight().pitLanePanelTexture().padding(vertical = 10.dp),
+            Modifier.width(NAV_BAR_HEIGHT).fillMaxHeight()
+                .then(if (meridian) Modifier else Modifier.pitLanePanelTexture())
+                .padding(vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // r99: in Meridian mode the clock rides at the top of the
+            // rail, as in the photo; otherwise it stays pinned to the
+            // bottom, as r87 set it.
+            if (meridian) RailClockBlock(navigator, meridian = true)
             // The icon list scrolls so a long pin/running list can
-            // never push the clock off the frame; the clock below
-            // stays put at the bottom either way.
+            // never push the clock (or, in Meridian mode, the
+            // switcher square) off the frame.
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    NavHomeButton(navigator, entries, running)
-                    NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
-                    NavAssistantIcon()
-                    if (navigator.current == CarScreen.Home) {
-                        NavWidgetsPopupButton(navigator)
-                    }
+                    RailIconList(
+                        navigator, entries, pinnedIds, running, frame,
+                        meridian = meridian, includeAppsItem = !meridian,
+                    )
+                }
+            }
+            if (meridian) {
+                MeridianSwitcherSquare(navigator)
+            } else {
+                RailClockBlock(navigator, meridian = false)
+            }
+        }
+    }
+}
 
-                    // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
-                    // open stays in its pinned spot, marked with a dot, instead of showing up twice.
-                    // The map app lives on the Home button, so it never gets a second icon here.
-                    val runningEntries = running.keys
-                        .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
-                        .mapNotNull { id -> entries.find { it.componentId == id } }
-                    val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
-                    if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDividerVertical()
-                    shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
-                    if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDividerVertical()
-                    runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame) }
-
-                    // Brightness, one tap to the slider sheet: the phone's brightness does
-                    // not reach the projected display, so this is the only brightness
-                    // control the driver has.
-                    GsIconButton(Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open)
-                    // r70: quick settings, next to brightness — same button as the bar.
-                    GsIconButton(Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open)
-                    if (app.autospace.BuildConfig.DEBUG) {
-                        DebugBuildBadge()
+/**
+ * The bar's clock, stacked so every part always shows in full: the
+ * old 52dp cell cut "9:53 AM" down to "9:53 A…" (titleSmall needs
+ * ~60dp for "12:00 PM"). Digits on one line, the AM/PM marker under
+ * them, battery under that, in any locale. Tapping opens the
+ * dashboard; an unread dot rides on the corner. In Meridian mode
+ * the block never takes the white square the active app gets — it
+ * wears a faint white wash when selected, plain dark otherwise,
+ * with white texts throughout.
+ */
+@Composable
+private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
+    val battery by CarEnvironment.battery.collectAsState()
+    val now by rememberNow()
+    val unread by CarNotifications.unread.collectAsState()
+    val clockSelected = navigator.current == CarScreen.Dashboard ||
+        navigator.current is CarScreen.Notifications
+    val (clockTime, clockPeriod) = railClockParts(
+        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
+    )
+    val dimColor = if (meridian) {
+        Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    GsIconBox(
+        { navigator.dashboard() },
+        Modifier.fillMaxWidth(),
+        colors = if (meridian) {
+            GsColors(
+                if (clockSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+                Color.White,
+            )
+        } else {
+            navColors(clockSelected)
+        },
+        latched = clockSelected,
+    ) {
+        Box {
+            if (unread > 0) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 8.dp, y = (-2).dp)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (meridian) Color.White else MaterialTheme.colorScheme.primary),
+                )
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    clockTime,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                if (clockPeriod != null) {
+                    Text(
+                        clockPeriod,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = dimColor,
+                        maxLines = 1,
+                    )
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    if (battery.percent >= 0) {
+                        Text(
+                            "${battery.percent}%",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = dimColor,
+                            maxLines = 1,
+                        )
+                        if (battery.charging) {
+                            ChargingGlyph(Modifier.size(13.dp), tint = dimColor)
+                        }
                     }
                 }
             }
-            // r87: the clock, pinned to the frame bottom. Stacked, not
-            // squeezed: the old 52dp cell cut "9:53 AM" down to "9:53
-            // A…" (titleSmall needs ~60dp for "12:00 PM"). Digits on
-            // one line, the AM/PM marker under them, battery under
-            // that — every part always fully shown, in any locale.
-            val clockSelected = navigator.current == CarScreen.Dashboard ||
-                navigator.current is CarScreen.Notifications
-            val (clockTime, clockPeriod) = railClockParts(
-                DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
-            )
+        }
+    }
+}
+
+/**
+ * The rail's scrollable icon list, shared by the r87 rail and the
+ * r99 Meridian rail — the two bars never drift apart in what they
+ * show. In Meridian mode the Apps button is left out: the
+ * app-switcher square at the rail's bottom opens the grid instead.
+ */
+@Composable
+private fun RailIconList(
+    navigator: CarNavigator,
+    entries: List<Entry>,
+    pinnedIds: List<String>,
+    running: Map<String, RunningSlot>,
+    frame: CarEnvironment.Frame,
+    meridian: Boolean,
+    includeAppsItem: Boolean,
+) {
+    val (shownPins, runningEntries) = rememberBarAppLists(entries, pinnedIds, running)
+    NavHomeButton(navigator, entries, running, meridian)
+    if (includeAppsItem) {
+        NavItem(MediaIcons.Apps, navigator.current == CarScreen.Apps) { navigator.apps() }
+    }
+    NavAssistantIcon(meridian)
+    if (navigator.current == CarScreen.Home) {
+        NavWidgetsPopupButton(navigator, meridian)
+    }
+
+    // Pinned shortcuts, then whatever else is open right now. A pinned app that's also
+    // open stays in its pinned spot, marked with a dot, instead of showing up twice.
+    // The map app lives on the Home button, so it never gets a second icon here.
+    if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDividerVertical(meridian)
+    shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame, meridian) }
+    if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDividerVertical(meridian)
+    runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame, meridian) }
+
+    // Brightness, one tap to the slider sheet: the phone's brightness does
+    // not reach the projected display, so this is the only brightness
+    // control the driver has.
+    GsIconButton(
+        Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open,
+        colors = meridianBarButtonColors(meridian),
+    )
+    // r70: quick settings, next to brightness — same button as the bar.
+    GsIconButton(
+        Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open,
+        colors = meridianBarButtonColors(meridian),
+    )
+    if (app.autospace.BuildConfig.DEBUG) {
+        DebugBuildBadge()
+    }
+}
+
+/**
+ * The bar's pinned and running app lists, computed once and shared
+ * by the rail and the Meridian pill so the two bars never disagree:
+ * pinned shortcuts first (minus the map app, which lives on the
+ * Home button), then open apps that aren't pinned. Returns the
+ * pinned list first, the running list second.
+ */
+@Composable
+private fun rememberBarAppLists(
+    entries: List<Entry>,
+    pinnedIds: List<String>,
+    running: Map<String, RunningSlot>,
+): Pair<List<Entry>, List<Entry>> {
+    val pinnedEntries = remember(entries, pinnedIds) {
+        pinnedIds.mapNotNull { id -> entries.find { it.componentId == id } }
+    }
+    val runningEntries = running.keys
+        .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
+        .mapNotNull { id -> entries.find { it.componentId == id } }
+    val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
+    return shownPins to runningEntries
+}
+
+/**
+ * r99: a plain Meridian bar button's colors — transparent fill, white
+ * glyph — or the theme default when not Meridian. Used by the
+ * brightness, quick-settings, and widget buttons, which carry no
+ * selection state of their own.
+ */
+@Composable
+private fun meridianBarButtonColors(meridian: Boolean): GsColors =
+    if (meridian) GsColors(Color.Transparent, Color.White) else gsColors(GsTone.Neutral)
+
+/**
+ * r99: the app-switcher square at the bottom of the Meridian bar —
+ * the photo's square-outline icon, opening the app grid. It wears
+ * the bar's selection treatment (white square when the grid is
+ * open, plain dark otherwise); the outline follows the content
+ * color, so it reads white on dark and dark on the white square.
+ */
+@Composable
+private fun MeridianSwitcherSquare(navigator: CarNavigator) {
+    val selected = navigator.current == CarScreen.Apps
+    GsIconBox(
+        { navigator.apps() },
+        colors = navColors(selected, meridian = true),
+        latched = selected,
+    ) {
+        Box(
+            Modifier
+                .padding(NAV_ITEM_PADDING)
+                .size(32.dp)
+                .border(2.dp, LocalContentColor.current, RoundedCornerShape(4.dp)),
+        )
+    }
+}
+
+/** The bar's divider, laid flat for the Meridian pill. */
+@Composable
+private fun NavDividerHorizontal() {
+    Box(
+        Modifier
+            .padding(horizontal = 10.dp)
+            .width(1.dp)
+            .height(28.dp)
+            .background(Color.White.copy(alpha = 0.25f)),
+    )
+}
+
+/**
+ * r99: the Meridian bar's narrow/short-display form — a centered
+ * floating pill at the bottom, the same dark #131429 fill as the
+ * rail, not full-width. The compact clock rides at the pill's
+ * start end, the app icons scroll horizontally if there are more
+ * than fit, and the app-switcher square closes the trailing end.
+ * The scaffold pads content by the pill strip (pill height plus
+ * a 12dp float on each side), so the pill never covers content.
+ * When the icons fit, the row centers them; when they don't, the
+ * pill caps at the frame minus its side floats and scrolls.
+ */
+@Composable
+private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifier) {
+    val entries = rememberAllEntries()
+    val pinnedIds by CarSettings.pinnedApps.collectAsState()
+    val frame by CarEnvironment.frame.collectAsState()
+    val running = rememberRunningApps()
+    val battery by CarEnvironment.battery.collectAsState()
+    val now by rememberNow()
+    val unread by CarNotifications.unread.collectAsState()
+    val (shownPins, runningEntries) = rememberBarAppLists(entries, pinnedIds, running)
+    val clockSelected = navigator.current == CarScreen.Dashboard ||
+        navigator.current is CarScreen.Notifications
+    val (clockTime, clockPeriod) = railClockParts(
+        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
+    )
+    val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
+    Surface(
+        modifier = modifier,
+        shape = gsButtonShape(GsKit.CardShape),
+        color = Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha),
+        shadowElevation = NAV_BAR_FLOAT_ELEVATION,
+        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+    ) {
+        Row(
+            Modifier
+                .height(NAV_BAR_HEIGHT)
+                .widthIn(max = with(LocalDensity.current) { frame.width.toDp() } - NAV_BAR_SIDE_FLOAT * 2)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+        ) {
+            // Compact clock: time and marker on one line, battery
+            // beside them, unread dot on the corner.
             GsIconBox(
                 { navigator.dashboard() },
-                Modifier.fillMaxWidth(),
-                colors = navColors(clockSelected),
+                colors = GsColors(
+                    if (clockSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+                    Color.White,
+                ),
                 latched = clockSelected,
             ) {
                 Box {
@@ -801,10 +1100,13 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                                 .offset(x = 8.dp, y = (-2).dp)
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary),
+                                .background(Color.White),
                         )
                     }
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         Text(
                             clockTime,
                             style = MaterialTheme.typography.titleSmall,
@@ -815,42 +1117,64 @@ private fun CarSideBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                             Text(
                                 clockPeriod,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = dimColor,
                                 maxLines = 1,
                             )
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            if (battery.percent >= 0) {
-                                Text(
-                                    "${battery.percent}%",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                )
-                                if (battery.charging) {
-                                    ChargingGlyph(Modifier.size(13.dp))
-                                }
+                        if (battery.percent >= 0) {
+                            Text(
+                                "${battery.percent}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = dimColor,
+                                maxLines = 1,
+                            )
+                            if (battery.charging) {
+                                ChargingGlyph(Modifier.size(13.dp), tint = dimColor)
                             }
                         }
                     }
                 }
             }
+            NavDividerHorizontal()
+            NavHomeButton(navigator, entries, running, meridian = true)
+            NavAssistantIcon(meridian = true)
+            if (navigator.current == CarScreen.Home) {
+                NavWidgetsPopupButton(navigator, meridian = true)
+            }
+            if (shownPins.isNotEmpty() || runningEntries.isNotEmpty()) NavDividerHorizontal()
+            shownPins.forEach { entry -> NavEntryIcon(entry, running, navigator, frame, meridian = true) }
+            if (shownPins.isNotEmpty() && runningEntries.isNotEmpty()) NavDividerHorizontal()
+            runningEntries.forEach { entry -> NavEntryIcon(entry, running, navigator, frame, meridian = true) }
+            NavDividerHorizontal()
+            GsIconButton(
+                Icons.Filled.BrightnessMedium, "Brightness", BrightnessSheetVisibility::open,
+                colors = meridianBarButtonColors(true),
+            )
+            GsIconButton(
+                Icons.Filled.Tune, "Quick settings", QuickTilesVisibility::open,
+                colors = meridianBarButtonColors(true),
+            )
+            if (app.autospace.BuildConfig.DEBUG) {
+                DebugBuildBadge()
+            }
+            NavDividerHorizontal()
+            MeridianSwitcherSquare(navigator)
         }
     }
 }
 
 /** The bar's divider, stood on its side for the rail. */
 @Composable
-private fun NavDividerVertical() {
+private fun NavDividerVertical(meridian: Boolean = false) {
     Box(
         Modifier
             .padding(vertical = 10.dp)
             .height(1.dp)
             .width(28.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant),
+            .background(
+                if (meridian) Color.White.copy(alpha = 0.25f)
+                else MaterialTheme.colorScheme.outlineVariant,
+            ),
     )
 }
 
@@ -863,7 +1187,7 @@ private fun NavDividerVertical() {
  * recalls the column for a glance instead.
  */
 @Composable
-private fun NavWidgetsPopupButton(navigator: CarNavigator) {
+private fun NavWidgetsPopupButton(navigator: CarNavigator, meridian: Boolean = false) {
     // CarMotion.moving is a plain value, not a flow — poll it like
     // CarHome does (1 s).
     val movingBar by produceState(CarMotion.moving) {
@@ -872,6 +1196,7 @@ private fun NavWidgetsPopupButton(navigator: CarNavigator) {
     val dismissedBar by CarSettings.widgetsDismissed.collectAsState()
     GsIconButton(
         Icons.Filled.Widgets, "Widgets",
+        colors = meridianBarButtonColors(meridian),
         onClick = {
             val drivingHidden = shouldHideWhileDriving(movingBar, WidgetDrivingGlance.recalled)
             when (widgetPopupPress(dismissedBar, drivingHidden)) {
@@ -892,13 +1217,13 @@ private fun NavWidgetsPopupButton(navigator: CarNavigator) {
  * app's icon and a long press offers to close it, so the app needs no icon of its own on the bar.
  */
 @Composable
-private fun NavHomeButton(navigator: CarNavigator, entries: List<Entry>, running: Map<String, RunningSlot>) {
+private fun NavHomeButton(navigator: CarNavigator, entries: List<Entry>, running: Map<String, RunningSlot>, meridian: Boolean = false) {
     val selected = navigator.current == CarScreen.Home
     val navId = running.entries.firstOrNull { it.value == RunningSlot.NAV }?.key
     val navEntry = navId?.let { id -> entries.find { it.componentId == id } }
     GsIconBox(
         { navigator.home() },
-        colors = navColors(selected),
+        colors = navColors(selected, meridian),
         latched = selected,
         onLongClick = navId?.let { id -> { navigator.showAppMenu(id) } },
     ) {
@@ -926,6 +1251,7 @@ private fun NavEntryIcon(
     running: Map<String, RunningSlot>,
     navigator: CarNavigator,
     frame: CarEnvironment.Frame,
+    meridian: Boolean = false,
 ) {
     val id = entry.componentId ?: return
     val slot = running[id]
@@ -934,6 +1260,7 @@ private fun NavEntryIcon(
             entry,
             open = slot != null,
             showing = slot != null && slot.isShowing(navigator.current),
+            meridian = meridian,
             onLongClick = { navigator.showAppMenu(id) },
         ) { openApp(entry, slot, navigator, frame) }
     }
@@ -945,6 +1272,7 @@ private fun NavAppIcon(
     entry: Entry,
     open: Boolean,
     showing: Boolean,
+    meridian: Boolean = false,
     onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
@@ -952,7 +1280,14 @@ private fun NavAppIcon(
     GsIconBox(
         onClick,
         Modifier.size(52.dp),
-        colors = if (showing) GsColors(scheme.primary.copy(alpha = NavBarItemAlpha), scheme.onPrimary)
+        colors = if (meridian) {
+            // r99: the photo's white rounded square behind the
+            // active app, dark glyph on it; inactive apps sit on
+            // plain dark with a white glyph, in their own colors
+            // where they carry a bitmap icon.
+            if (showing) GsColors(Color.White.copy(alpha = NavBarItemAlpha), Color(MapChromeColors.MERIDIAN_ETA))
+            else GsColors(Color.Transparent, Color.White)
+        } else if (showing) GsColors(scheme.primary.copy(alpha = NavBarItemAlpha), scheme.onPrimary)
         else GsColors(scheme.surfaceVariant.copy(alpha = NavBarItemAlpha), scheme.onSurfaceVariant),
         latched = showing,
         onLongClick = onLongClick,
@@ -967,7 +1302,7 @@ private fun NavAppIcon(
                     .padding(bottom = 2.dp)
                     .size(width = 12.dp, height = 3.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(scheme.primary),
+                    .background(if (meridian) Color.White else scheme.primary),
             )
         }
     }
@@ -975,11 +1310,18 @@ private fun NavAppIcon(
 
 /** Every nav bar item is raised, so it reads as pressable; the current screen's takes the accent colour. r29: the selected item takes the scheme primary itself (was secondaryContainer) — the active tab is the one thing on the bar that should carry the accent. */
 @Composable
-private fun navColors(selected: Boolean): GsColors {
+private fun navColors(selected: Boolean, meridian: Boolean = false): GsColors {
     val s = MaterialTheme.colorScheme
     // r56: item fills sit one fixed offset above the bar's frost level, so buttons and
     // tiles always read slightly less transparent than the bar beneath them, at any
     // future float level. Content colors stay full-strength; only fills go translucent.
+    if (meridian) {
+        // r99: on the Meridian bar the selected item is the photo's
+        // white square with a dark glyph; an unselected item is
+        // plain dark with a white glyph.
+        return if (selected) GsColors(Color.White.copy(alpha = NavBarItemAlpha), Color(MapChromeColors.MERIDIAN_ETA))
+        else GsColors(Color.Transparent, Color.White)
+    }
     return if (selected) GsColors(s.primary.copy(alpha = NavBarItemAlpha), s.onPrimary)
     else GsColors(s.surfaceContainerHighest.copy(alpha = NavBarItemAlpha), s.onSurface)
 }
@@ -990,10 +1332,10 @@ private fun navColors(selected: Boolean): GsColors {
  * two buttons beside it.
  */
 @Composable
-private fun NavAssistantIcon() {
+private fun NavAssistantIcon(meridian: Boolean = false) {
     val state by CarAssistant.state.collectAsState()
     val active = state.phase != CarAssistant.Phase.IDLE
-    GsIconBox({ CarAssistant.start() }, colors = navColors(active), latched = active) {
+    GsIconBox({ CarAssistant.start() }, colors = navColors(active, meridian), latched = active) {
         MicGlyph(Modifier.padding(NAV_ITEM_PADDING).size(32.dp))
     }
 }

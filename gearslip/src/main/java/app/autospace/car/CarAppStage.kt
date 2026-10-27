@@ -73,6 +73,15 @@ fun CarAppStage(
      * surface must NOT extend under the rail.
      */
     surfaceStartInset: Dp = 0.dp,
+    /**
+     * r99: the bottom analog of [surfaceStartInset] — the strip
+     * the Meridian bottom pill occupies. The lent surface extends
+     * under the pill's strip the same way, and the visible area
+     * ([visibleAreaFor] with the matching coveredBottomPx) is the
+     * uncovered remainder. Only Home's map pane passes a non-zero
+     * value; the two strips are never both nonzero.
+     */
+    surfaceBottomInset: Dp = 0.dp,
     onDisconnect: () -> Unit,
 ) {
     val template by connection.template.collectAsStateWithLifecycle()
@@ -83,8 +92,9 @@ fun CarAppStage(
         if (status.surfaceRequested) {
             AppSurface(
                 connection, frame, template,
-                Modifier.fillMaxSize().extendSurfaceStart(surfaceStartInset),
+                Modifier.fillMaxSize().extendSurfaceStart(surfaceStartInset).extendSurfaceBottom(surfaceBottomInset),
                 surfaceStartInset,
+                surfaceBottomInset,
             )
         }
         TemplateChrome(
@@ -132,6 +142,31 @@ internal fun Modifier.extendSurfaceStart(inset: Dp): Modifier = this.then(
 )
 
 /**
+ * r99: the bottom analog of [extendSurfaceStart] — the lent
+ * surface extends under the Meridian bottom pill's strip, so the
+ * map fills the strip instead of the scaffold's background showing
+ * through as a band behind the floating pill. The surface is
+ * measured taller and placed at the same top, so it grows
+ * downward under the pill; the layout box keeps the inset height.
+ */
+internal fun Modifier.extendSurfaceBottom(inset: Dp): Modifier = this.then(
+    Modifier.layout { measurable, constraints ->
+        if (inset <= 0.dp || constraints.maxHeight == Constraints.Infinity) {
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+        } else {
+            val extra = inset.roundToPx()
+            val placeable = measurable.measure(
+                constraints.copy(maxHeight = constraints.maxHeight + extra),
+            )
+            layout(placeable.width, placeable.height - extra) {
+                placeable.place(0, 0)
+            }
+        }
+    },
+)
+
+/**
  * A SurfaceView lent to the app for as long as it is on screen.
  *
  * The app writes into this from its own process, so the surface must outlive the handoff;
@@ -148,6 +183,7 @@ private fun AppSurface(
     template: Template?,
     modifier: Modifier = Modifier,
     surfaceStartInset: Dp = 0.dp,
+    surfaceBottomInset: Dp = 0.dp,
 ) {
     var size by remember { mutableStateOf(0 to 0) }
 
@@ -157,10 +193,11 @@ private fun AppSurface(
     // so the app centers in the uncovered remainder exactly as when
     // the surface itself was inset.
     val coveredStartPx = with(LocalDensity.current) { surfaceStartInset.roundToPx() }
-    LaunchedEffect(template, size, coveredStartPx) {
+    val coveredBottomPx = with(LocalDensity.current) { surfaceBottomInset.roundToPx() }
+    LaunchedEffect(template, size, coveredStartPx, coveredBottomPx) {
         val (width, height) = size
         if (width > 0 && height > 0) {
-            val visible = visibleAreaFor(template, width, height, coveredStartPx)
+            val visible = visibleAreaFor(template, width, height, coveredStartPx, coveredBottomPx)
             connection.reportAreas(visible = visible, stable = visible)
         }
     }

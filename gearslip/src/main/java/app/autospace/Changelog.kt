@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            66, "0.4.55-alpha",
+            listOf(
+                "In Meridian mode the app bar now floats as a slim side rail on wide displays and a bottom pill on narrow or short ones, with the clock on top and the active app on a white square.",
+            ),
+        ),
+        Release(
             65, "0.4.54-alpha",
             listOf(
                 "Voice navigation no longer waits out the listen window: once the confirmation finishes, guidance starts at once, and car noise can no longer cancel it.",

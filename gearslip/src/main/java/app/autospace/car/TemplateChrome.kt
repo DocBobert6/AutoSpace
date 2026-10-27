@@ -110,14 +110,30 @@ fun TemplateChrome(
  * covers when the lent surface extends under it (see CarAppStage) —
  * the visible area is the uncovered remainder, so the app keeps
  * centering in it exactly as when the surface itself was inset.
+ * r99: [coveredBottomPx] is the bottom analog — the strip the
+ * Meridian bottom pill covers when the lent surface extends under
+ * it (see CarAppStage). The visible area ends where the first
+ * bottom obstruction begins.
  */
-fun visibleAreaFor(template: Template?, width: Int, height: Int, coveredStartPx: Int = 0): Rect = when (template) {
-    is NavigationTemplate -> Rect(coveredStartPx, 0, width, (height * (1f - ESTIMATE_FRACTION)).toInt())
-    is MapWithContentTemplate, is MapTemplate, is PlaceListNavigationTemplate,
-    is RoutePreviewNavigationTemplate, is PlaceListMapTemplate,
-    -> Rect(((width * CONTENT_PANE_FRACTION) + (1f - CONTENT_PANE_FRACTION) * coveredStartPx).toInt(), 0, width, height)
-    null -> Rect(coveredStartPx, 0, width, height)
-    else -> Rect(0, 0, 0, 0)
+fun visibleAreaFor(template: Template?, width: Int, height: Int, coveredStartPx: Int = 0, coveredBottomPx: Int = 0): Rect {
+    val visible = when (template) {
+        is NavigationTemplate -> Rect(coveredStartPx, 0, width, (height * (1f - ESTIMATE_FRACTION)).toInt())
+        is MapWithContentTemplate, is MapTemplate, is PlaceListNavigationTemplate,
+        is RoutePreviewNavigationTemplate, is PlaceListMapTemplate,
+        -> Rect(((width * CONTENT_PANE_FRACTION) + (1f - CONTENT_PANE_FRACTION) * coveredStartPx).toInt(), 0, width, height)
+        null -> Rect(coveredStartPx, 0, width, height)
+        else -> Rect(0, 0, 0, 0)
+    }
+    // r99: the bottom strip the Meridian pill covers when the lent
+    // surface extends under it (see CarAppStage) — the visible area
+    // ends where the first bottom obstruction begins, so the app
+    // keeps centering in the uncovered remainder. Empty areas stay
+    // empty, and the rect can never invert.
+    if (coveredBottomPx <= 0 || visible.height() <= 0) return visible
+    return Rect(
+        visible.left, visible.top, visible.right,
+        maxOf(visible.top, minOf(visible.bottom, height - coveredBottomPx)),
+    )
 }
 
 // --- navigation ------------------------------------------------------------------------------

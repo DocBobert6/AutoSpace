@@ -73,8 +73,10 @@ import kotlinx.coroutines.launch
  * r97: [mapSurfaceStrip] is the start-side strip the steering-side
  * rail occupies, else 0.dp — the scaffold passes it so Home's map
  * surface can extend under the rail while the chrome stays inset.
+ * r99: [mapSurfaceBottomStrip] is the same for the Meridian bottom
+ * pill's strip, else 0.dp — the two strips are never both nonzero.
  */
-fun CarHome(mapSurfaceStrip: Dp) {
+fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     val frame by CarEnvironment.frame.collectAsStateWithLifecycle()
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
@@ -236,7 +238,7 @@ fun CarHome(mapSurfaceStrip: Dp) {
             // card clears with bottom padding of 24dp alone — and can
             // never cover the turn zone.
             Box(Modifier.fillMaxSize()) {
-                MapPane(navStatus, frame, mapSurfaceStrip)
+                MapPane(navStatus, frame, mapSurfaceStrip, mapSurfaceBottomStrip)
             }
             if (showFloatingCard) {
                 // r77: the slot reads its frame here (not on the padded
@@ -374,7 +376,7 @@ fun CarHome(mapSurfaceStrip: Dp) {
                     .weight(if (splitScreen) 1.75f else 1f)
                     .fillMaxHeight(),
             ) {
-                MapPane(navStatus, frame, mapSurfaceStrip)
+                MapPane(navStatus, frame, mapSurfaceStrip, mapSurfaceBottomStrip)
             }
             if (splitScreen) {
                 val side = Modifier.weight(1f).fillMaxHeight()
@@ -500,6 +502,7 @@ private fun MapPane(
     status: CarAppConnection.Status,
     frame: CarEnvironment.Frame,
     surfaceStartInset: Dp = 0.dp,
+    surfaceBottomInset: Dp = 0.dp,
 ) {
     val navigator = LocalCarNavigator.current
     if (status.phase == CarAppConnection.Phase.RUNNING) {
@@ -516,6 +519,7 @@ private fun MapPane(
             CarAppStage(
                 CarServices.nav, status, frame, embedded = true,
                 surfaceStartInset = surfaceStartInset,
+                surfaceBottomInset = surfaceBottomInset,
             ) { CarServices.stopNav() }
         }
         return

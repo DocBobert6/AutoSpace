@@ -82,3 +82,27 @@ fun railClockParts(formatted: String): Pair<String, String?> {
     return trimmed.substring(0, split) to marker.ifEmpty { null }
 }
 
+/**
+ * r99: which floating bar form the Meridian nav bar takes. The form
+ * is exclusive: a display gets the side rail or the bottom pill,
+ * never both. A display is "wide" only when it is landscape with
+ * room for a vertical stack — at least 600dp wide and 400dp tall;
+ * anything narrower, shorter, or portrait gets the bottom pill, so
+ * the bar never crowds a small frame. Frames are pixels, so the
+ * comparison converts through the frame's density; a frame with no
+ * density (densityDpi <= 0) is treated as wide, keeping the rail
+ * rather than dropping to the pill on a bad reading. Pure, so the
+ * unit test pins it.
+ */
+enum class MeridianBarForm { RAIL, PILL }
+
+fun meridianBarForm(widthPx: Int, heightPx: Int, densityDpi: Int): MeridianBarForm {
+    if (densityDpi <= 0) return MeridianBarForm.RAIL
+    val widthDp = widthPx * 160f / densityDpi
+    val heightDp = heightPx * 160f / densityDpi
+    return if (widthDp >= heightDp && widthDp >= 600f && heightDp >= 400f) {
+        MeridianBarForm.RAIL
+    } else {
+        MeridianBarForm.PILL
+    }
+}
