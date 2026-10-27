@@ -69,7 +69,16 @@ import kotlinx.coroutines.launch
  * full-width map once nothing is playing.
  */
 @Composable
-fun CarHome() {
+/**
+ * r83: [navBarStrip] is the strip the floating nav bar occupies at the
+ * frame bottom when it floats, else 0.dp — the
+ * scaffold passes exactly the overlay decision, so Home's strip
+ * clearance can never disagree with the bar's actual treatment. When
+ * the bar floats, floating Home clears the strip exactly as before and
+ * classic Home's row ends above it; when the bar sits in-flow, no
+ * strip is reserved anywhere, so no dead gap is left behind.
+ */
+fun CarHome(navBarStrip: Dp) {
     val frame by CarEnvironment.frame.collectAsStateWithLifecycle()
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
@@ -242,7 +251,7 @@ fun CarHome() {
             // bar with bottom padding of 24dp plus the bar strip — and can
             // never cover the turn zone.
             Box(Modifier.fillMaxSize()) {
-                MapPane(navStatus, frame, NAV_BAR_STRIP_HEIGHT)
+                MapPane(navStatus, frame, navBarStrip)
             }
             if (showFloatingCard) {
                 // r77: the slot reads its frame here (not on the padded
@@ -260,7 +269,7 @@ fun CarHome() {
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            NAV_BAR_STRIP_HEIGHT.value,
+                            navBarStrip.value,
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -272,7 +281,7 @@ fun CarHome() {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                            bottom = 24.dp + navBarStrip,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
@@ -297,7 +306,7 @@ fun CarHome() {
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            NAV_BAR_STRIP_HEIGHT.value,
+                            navBarStrip.value,
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -309,7 +318,7 @@ fun CarHome() {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                            bottom = 24.dp + navBarStrip,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
@@ -366,7 +375,7 @@ fun CarHome() {
             }
         } else {
         Row(
-            Modifier.fillMaxSize().padding(12.dp),
+            Modifier.fillMaxSize().padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 12.dp + navBarStrip),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Audit (second video): the pane's clip is gone. It cannot
@@ -429,7 +438,7 @@ fun CarHome() {
                             maxWidth.value, maxHeight.value,
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
-                            NAV_BAR_STRIP_HEIGHT.value,
+                            navBarStrip.value,
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -441,7 +450,7 @@ fun CarHome() {
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp + NAV_BAR_STRIP_HEIGHT,
+                            bottom = 24.dp + navBarStrip,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {

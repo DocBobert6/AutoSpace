@@ -103,6 +103,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SUB_EDGE = "car_sub_edge"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_FLOATING_MEDIA = "car_floating_media"
+    private const val KEY_FLOATING_NAV_BAR = "car_floating_nav_bar"
     private const val KEY_HOME_WIDGETS = "car_home_widgets"
     private const val KEY_FROSTED_MAP_CHROME = "car_frosted_map_chrome"
     private const val KEY_MAP_CHROME = "car_map_chrome"
@@ -204,6 +205,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val playerSkipSecFlow = MutableStateFlow(10)
     private val carSensorsFlow = MutableStateFlow(false)
     private val floatingMediaFlow = MutableStateFlow(false)
+    private val floatingNavBarFlow = MutableStateFlow(false)
     private val homeWidgetsFlow = MutableStateFlow(false)
     private val frostedMapChromeFlow = MutableStateFlow(false)
     private val meridianChromeFlow = MutableStateFlow(false)
@@ -380,6 +382,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      * graduates only on Robert's drive tests — never on a builder's say-so.
      */
     val floatingMediaEnabled: StateFlow<Boolean> = floatingMediaFlow
+
+    /**
+     * Floating nav bar (r83): the nav bar's own switch, no longer tied
+     * to floating media. ON floats the bar over Home; OFF keeps it
+     * in-flow below Home. Seeded once from the floating-media value at
+     * first load (see init), so no existing install changes appearance
+     * on update; thereafter the two are independent. The master switch
+     * never touches this key.
+     */
+    val floatingNavBarEnabled: StateFlow<Boolean> = floatingNavBarFlow
 
     /**
      * Widget layer (r37): the three-widget Home column, behind the
@@ -628,6 +640,21 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
         carSensorsFlow.value = AppSettings.getString(app, KEY_CAR_SENSORS, "false") == "true"
         floatingMediaFlow.value = AppSettings.getString(app, KEY_FLOATING_MEDIA, "false") == "true"
+        // r83 one-time seeding, same pattern as the r65 Meridian
+        // migration: the floating nav bar's own switch starts from the
+        // floating-media value it used to follow, so no existing
+        // install changes appearance on update; thereafter the two are
+        // independent, and the seed never re-runs to overwrite a later
+        // choice. A fresh install (floating media off by default) lands
+        // with the bar in-flow, which is exactly today's fresh default.
+        val storedNavBar = AppSettings.getString(app, KEY_FLOATING_NAV_BAR, "")
+        floatingNavBarFlow.value = if (storedNavBar.isEmpty()) {
+            floatingMediaFlow.value.also {
+                AppSettings.putString(app, KEY_FLOATING_NAV_BAR, it.toString())
+            }
+        } else {
+            storedNavBar == "true"
+        }
         homeWidgetsFlow.value = AppSettings.getString(app, KEY_HOME_WIDGETS, "false") == "true"
         frostedMapChromeFlow.value = AppSettings.getString(app, KEY_FROSTED_MAP_CHROME, "false") == "true"
         // r65 one-time migration, same pattern as the r35 theme split:
@@ -947,6 +974,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setFloatingMediaEnabled(on: Boolean) {
         floatingMediaFlow.value = on
         AppSettings.putString(app, KEY_FLOATING_MEDIA, on.toString())
+    }
+
+    fun setFloatingNavBarEnabled(on: Boolean) {
+        floatingNavBarFlow.value = on
+        AppSettings.putString(app, KEY_FLOATING_NAV_BAR, on.toString())
     }
 
     fun setHomeWidgetsEnabled(on: Boolean) {

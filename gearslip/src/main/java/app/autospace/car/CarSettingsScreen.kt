@@ -193,6 +193,7 @@ private fun AppearancePage() {
     val uiTheme by CarSettings.uiTheme.collectAsState()
     val night by CarSettings.nightMode.collectAsState()
     val units by CarSettings.units.collectAsState()
+    val floatingNavBar by CarSettings.floatingNavBarEnabled.collectAsState()
 
     // UI size (Phase 10, correcting Phase 9's display): the slider
     // itself runs 0–100, ship default 50 (mid). 0 is a CAPPED
@@ -369,6 +370,20 @@ private fun AppearancePage() {
     // r81 icon packs: after Pairs, before Map day/night — the other
     // appearance choice that changes how apps look.
     IconPackSection()
+
+    // r83: the floating nav bar's own switch — a normal Appearance
+    // setting, not an experimental row. It no longer follows the
+    // floating-media toggle: turning floating media on or off never
+    // moves the bar, and this switch never moves the floating media
+    // card. The steering-side rail still wins when it is on.
+    ExperimentalFeatureRow(
+        title = "Floating nav bar",
+        description = "The nav bar floats over Home — frosted, elevated, " +
+            "with margins — instead of sitting below it in-flow. " +
+            "Floating media on or off never moves the bar, and this " +
+            "switch never moves the floating media card.",
+        checked = floatingNavBar,
+    ) { CarSettings.setFloatingNavBarEnabled(it) }
 
     ChoiceRow(
         "Map day/night",

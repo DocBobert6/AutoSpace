@@ -14,9 +14,9 @@ package app.autospace.car
  *
  * SUITE MEMBERSHIP (Robert, 2026-10-26): the master covers anything that
  * brings the floating Android Auto 17 look. Current members: floating
- * media, home widgets, the r43 map-behind-bar (which has no separate flag
- * — it follows floating media, so setting floating media covers it), and
- * the r46 frosted map chrome.
+ * media, home widgets, and the r46 frosted map chrome. The r43
+ * map-behind-bar is deliberately NOT a member since r83: it has its own
+ * Floating nav bar switch, and neither master action touches it.
  *
  * MASTER ON writes: the experimental-rows visibility flag on (so the rows
  * show), floating media on, home widgets on, the persisted widget-column

@@ -171,14 +171,45 @@ fun shouldResurfaceOnPlayTransition(wasPlaying: Boolean, isPlaying: Boolean): Bo
     !wasPlaying && isPlaying
 
 /**
- * r43: the nav bar overlays the map (instead of sitting below Home
- * in-flow) exactly when the floating Home is showing: on Home, floating
- * media on, and not the lyrics split — lyrics keeps the classic split
- * with the bar in-flow, and other screens keep the classic bar. Pure so
- * it is unit-testable; the scaffold and the card clearance both read it.
+ * r43, re-based in r83: the nav bar overlays the map (instead of
+ * sitting below Home in-flow) exactly when the bar's own switch is on:
+ * on Home, floating nav bar on, and not the lyrics split — lyrics keeps
+ * the classic split with the bar in-flow, and other screens keep the
+ * classic bar. The floating-media flag used to sit in this rule; since
+ * r83 the bar switch decides alone, so toggling floating media never
+ * moves the bar. Pure so it is unit-testable; the scaffold and the card
+ * clearance both read it.
  */
-fun shouldOverlayNavBar(onHome: Boolean, floatingOn: Boolean, panel: SidePanel): Boolean =
-    onHome && floatingOn && panel != SidePanel.LYRICS
+fun shouldOverlayNavBar(onHome: Boolean, barSwitchOn: Boolean, panel: SidePanel): Boolean =
+    onHome && barSwitchOn && panel != SidePanel.LYRICS
+
+/**
+ * r83: the nav bar's treatment, as one pure decision over the bar
+ * switch, the steering-side rail, Home vs other screens, and the
+ * lyrics split. The rail always wins (it IS the app bar while it is
+ * on); otherwise the overlay rule decides floating vs in-flow. The
+ * scaffold reads this for the two bar branches; the overlay rule
+ * itself still drives the content-box layout and the strip padding.
+ * Pure so it is unit-testable.
+ */
+enum class NavBarTreatment {
+    FLOATING,
+    IN_FLOW,
+    RAIL,
+}
+
+fun navBarTreatment(
+    barSwitchOn: Boolean,
+    railVisible: Boolean,
+    onHome: Boolean,
+    panel: SidePanel,
+): NavBarTreatment = if (railVisible) {
+    NavBarTreatment.RAIL
+} else if (shouldOverlayNavBar(onHome, barSwitchOn, panel)) {
+    NavBarTreatment.FLOATING
+} else {
+    NavBarTreatment.IN_FLOW
+}
 
 /**
  * Card width: a glanceable card, not a panel — r42 narrows it to 40% of

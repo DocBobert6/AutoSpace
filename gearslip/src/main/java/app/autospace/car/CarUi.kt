@@ -345,11 +345,17 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 val screen = navigator.current
                 val safetyWarningSeen by CarSettings.hasSeenSafetyWarning.collectAsState()
                 val floatingOn by CarSettings.floatingMediaEnabled.collectAsState()
-                // r43: in floating Home the nav bar overlays the full-height
-                // map instead of sitting below Home in-flow. Classic Home
-                // (floating off, or the lyrics split) keeps the bar in-flow.
+                // r83: the bar's own switch — collected separately from
+                // floatingOn, which the side-bar yield inputs below still
+                // need. Toggling floating media never moves the bar now.
+                val barSwitchOn by CarSettings.floatingNavBarEnabled.collectAsState()
+                // r43, re-based in r83: the nav bar overlays the
+                // full-height map instead of sitting below Home in-flow
+                // exactly when its own switch is on. The switch decides
+                // alone: floating media off, or the lyrics split, keeps
+                // the bar in-flow; other screens keep the classic bar.
                 val overlayNavBar = shouldOverlayNavBar(
-                    screen == CarScreen.Home, floatingOn, navigator.sidePanel,
+                    screen == CarScreen.Home, barSwitchOn, navigator.sidePanel,
                 )
                 // The keyboard takes the nav bar's row instead of squeezing in above it -
                 // nothing on the nav bar is useful mid-type, and the screen is too small to
@@ -435,6 +441,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     sideBarTurnCardShowing, sideBarColumnOnDriverSide, sideBarCardOnDriverSide,
                 )
                 val sideBarVisible = barVisible && sideBarNow(sideBarExperimentalOn, sideBarToggle)
+                // r83: the one pure bar decision — rail wins, else the
+                // overlay rule. Equivalent to the two branch conditions
+                // it replaces, and pinned by NavBarTreatmentTest.
+                val navBarTreatment = navBarTreatment(
+                    barSwitchOn, sideBarVisible, screen == CarScreen.Home, navigator.sidePanel,
+                )
                 Box(Modifier.fillMaxSize().padding(pad)) {
                 Column(Modifier.fillMaxSize()) {
                     if (!safetyWarningSeen) {
@@ -450,7 +462,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         // Home never leaves the composition; other screens cover it. Dropping it
                         // would tear down the map's surface, and coming back would then show black
                         // while the nav app redrew on a new one.
-                        CarHome()
+                        CarHome(if (overlayNavBar) NAV_BAR_STRIP_HEIGHT else 0.dp)
                         if (screen != CarScreen.Home) {
                             Box(
                                 Modifier
@@ -502,15 +514,15 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         // floats over content at all — it lives in the nav
                         // bar (see CarNavBar), where it can cover nothing.
                     }
-                    // r43: classic keeps the bar in-flow here; the
-                    // overlay branch below draws it over the map instead.
-                    if (barVisible && !overlayNavBar && !sideBarVisible) CarNavBar(navigator)
+                    // r83: in-flow branch — the treatment already
+                    // accounts for the rail, so no separate rail check.
+                    if (barVisible && navBarTreatment == NavBarTreatment.IN_FLOW) CarNavBar(navigator)
                 }
                 // r43: the overlay bar draws over the full-height map,
                 // above the Column content but below AppMenu (which stays
                 // over everything, nav bar included) and the brightness
                 // dim (which dims the bar exactly as in classic mode).
-                if (barVisible && overlayNavBar && !sideBarVisible) {
+                if (barVisible && navBarTreatment == NavBarTreatment.FLOATING) {
                     CarNavBar(navigator, overlay = true, Modifier.align(Alignment.BottomCenter))
                 }
                 // r74: the steering-side rail draws over the frame like the

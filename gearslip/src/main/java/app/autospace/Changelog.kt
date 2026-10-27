@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            51, "0.4.40-alpha",
+            listOf(
+                "The nav bar now has its own Floating nav bar switch on the Appearance page — it no longer follows the floating-media toggle, so turning floating media on or off never moves the bar.",
+            ),
+        ),
+        Release(
             50, "0.4.39-alpha",
             listOf(
                 "The car keyboard gets a rework: glides no longer jump on scrollable screens, the keyboard sits flush at the bottom while typing, learned words rank by how often you use them, mistyped words still get a tap-to-accept suggestion, and holding backspace deletes repeatedly.",
