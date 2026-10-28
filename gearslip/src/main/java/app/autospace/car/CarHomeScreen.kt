@@ -178,8 +178,15 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     // Home is untouched; the lyrics split is excluded like the card
     // itself. The widget swaps back the moment the phase returns to
     // IDLE — the follow-up window expiring ends the conversation.
+    // r117: a dismissed live widget stays dismissed only for its
+    // conversation; the flag resets the moment the phase returns
+    // to IDLE, so the next conversation shows the widget again.
+    val liveWidgetDismissed by LiveWidgetState.dismissed.collectAsStateWithLifecycle()
+    LaunchedEffect(assistantState.phase) {
+        if (assistantState.phase == CarAssistant.Phase.IDLE) LiveWidgetState.reset()
+    }
     val showLiveWidget = isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
-        !showMiniVideo
+        !showMiniVideo && !liveWidgetDismissed
     val showFloatingCard = shouldShowFloatingCard(
         phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,

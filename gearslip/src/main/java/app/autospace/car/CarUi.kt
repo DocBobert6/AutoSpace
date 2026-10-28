@@ -272,11 +272,20 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     // a completed AI turn. A superseded
                     // turn never reaches here (its reply is discarded
                     // above), so a barged-in reply's tail can never
-                    // enter the session; a built-in, unmatched, refused,
+                    // enter the session; an unmatched, refused,
                     // or emergency reply is not an AI answer and is not
                     // recorded either.
+                    // r117: a completed AI turn starts or extends the
+                    // session and is marked AI, so the live widget can
+                    // badge it; a built-in turn joins only through
+                    // the multi-turn gate (an existing session), and
+                    // a superseded turn still never reaches here.
                     if (AssistantCommands.lastReplyWasAi) {
-                        ConversationSession.record(AssistantCommands.lastAiUtterance ?: heard, reply)
+                        ConversationSession.record(
+                            AssistantCommands.lastAiUtterance ?: heard, reply, fromAi = true,
+                        )
+                    } else if (AssistantCommands.lastReplyWasBuiltin) {
+                        ConversationSession.recordBuiltin(heard, reply)
                     }
                 } else {
                     GearslipLog.i("assistant: superseded turn discarded")

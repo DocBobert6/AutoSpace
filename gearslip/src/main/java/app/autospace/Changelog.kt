@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            84, "0.4.73-alpha",
+            listOf(
+                "The live conversation widget now has its own dismiss button, marks AI answers with the AI badge, and reads the current reply larger. Built-in answers join the conversation memory when you're already mid-conversation, so a follow-up question remembers the place you already named — and weather answers name the place they're for, including places you ask about by name.",
+            ),
+        ),
+        Release(
             83, "0.4.72-alpha",
             listOf(
                 "The Browser tile in the app grid now shows the Notscape Mariner compass-and-ship circle instead of the magnifier, and the same circle follows it onto the side bar.",

@@ -137,6 +137,47 @@ object Weather {
 
     // --- network --------------------------------------------------------------------------
 
+    /**
+     * r117: a forecast for a NAMED place, not the phone's location. The
+     * name is resolved with the device Geocoder (the same backend the
+     * current-location path already relies on for its place name), then
+     * the identical Open-Meteo fetch runs for those coordinates. Call
+     * off the main thread: geocoding and the fetch both do I/O.
+     * Returns null when the name cannot be resolved or the fetch
+     * fails — the caller answers honestly instead of substituting
+     * the current location, which would mislabel the forecast. The
+     * displayed place is the geocoder's locality when it has one,
+     * else the name as asked, so the answer always announces the
+     * place it is actually for.
+     */
+    fun fetchForPlace(context: Context, place: String): WeatherData? {
+        val address = runCatching {
+            if (!Geocoder.isPresent()) return@runCatching null
+            @Suppress("DEPRECATION")
+            Geocoder(context, Locale.getDefault()).getFromLocationName(place, 1)?.firstOrNull()
+        }.getOrNull() ?: return null
+        val location = Location("geocoder").apply {
+            latitude = address.latitude
+            longitude = address.longitude
+        }
+        val data = runCatching { fetch(context, location) }.getOrNull() ?: return null
+        val display = address.locality ?: address.subAdminArea ?: address.adminArea ?: place
+        return WeatherData(
+            place = display,
+            temp = data.temp,
+            feelsLike = data.feelsLike,
+            code = data.code,
+            isDay = data.isDay,
+            humidity = data.humidity,
+            wind = data.wind,
+            tempUnit = data.tempUnit,
+            windUnit = data.windUnit,
+            hours = data.hours,
+            days = data.days,
+            fetchedAt = data.fetchedAt,
+        )
+    }
+
     private fun fetch(context: Context, location: Location): WeatherData {
         val imperial = CarSettings.imperial()
         val url = URL(

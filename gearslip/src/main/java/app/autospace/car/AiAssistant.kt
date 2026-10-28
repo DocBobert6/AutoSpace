@@ -488,18 +488,40 @@ object AiAssistant {
     }
 
     /**
-     * True when the normalized utterance names a place after a place preposition
-     * ("weather in Dry Ridge", "will it rain in Cincinnati tomorrow"). Trailing time
-     * words are stripped first, so "in Cincinnati tomorrow" still counts and "for
-     * today" does not. No location is ever read here — this only reads the user's
-     * own words, which is the whole point of option 1.
+     * The place phrase named in the normalized utterance after a place
+     * preposition ("weather in Dry Ridge", "will it rain in Cincinnati
+     * tomorrow"), or null when none is named. Trailing time words are
+     * stripped first, so "in Cincinnati tomorrow" still counts and
+     * "for today" does not. No location is ever read here — this only
+     * reads the user's own words, which is the whole point of option 1.
+     * r117: the phrase itself, so the place rule and the weather
+     * command can reuse the exact match [hasPlace] already pins.
      */
-    fun hasPlace(normalized: String): Boolean {
+    fun placePhrase(normalized: String): String? {
         val t = normalized.lowercase()
-        val match = Regex("""\b(in|at|near|around|for)\s+([a-z][a-z ]*)$""").find(t) ?: return false
+        val match = Regex("""\b(in|at|near|around|for)\s+([a-z][a-z ]*)$""").find(t) ?: return null
         val placeTokens = match.groupValues[2].trim().split(Regex("\\s+"))
             .filter { it.isNotEmpty() && it !in TIME_WORDS && it !in PLACE_PREPOSITIONS }
-        return placeTokens.isNotEmpty()
+        if (placeTokens.isEmpty()) return null
+        return placeTokens.joinToString(" ")
+    }
+
+    /** True when the normalized utterance names a place after a place preposition. */
+    fun hasPlace(normalized: String): Boolean = placePhrase(normalized) != null
+
+    /**
+     * r117: the most recent place the USER named in the session, newest
+     * turn first, or null. Only user utterances are mined: model prose
+     * is long, and its place mentions are answers, not the user's
+     * stated place. A place the user named in an earlier turn is what
+     * the next place-dependent question inherits, so the assistant
+     * stops asking "For which place?" for a place already given.
+     */
+    fun placeFromSession(history: List<ConversationTurn>): String? {
+        for (turn in history.asReversed()) {
+            placePhrase(turn.user)?.let { return it }
+        }
+        return null
     }
 
     // --- Log redaction: a Gemini API key must never survive into a log, trace, or report. ---

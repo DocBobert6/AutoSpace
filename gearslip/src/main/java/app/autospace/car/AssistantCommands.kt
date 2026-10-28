@@ -99,12 +99,27 @@ object AssistantCommands {
     var lastReplyProvider: AiAssistant.Provider = AiAssistant.Provider.GEMINI
         private set
 
+    /**
+     * True when the reply [handle] just produced came from the local
+     * dispatch chain (an exact built-in, a keyword, a generic
+     * search/open, or a fuzzy match) — r117, for the CarUi session
+     * record. Reset at the start of every [handle] call; set only
+     * by the local chain below. The pre-chain branches (help text,
+     * the profanity reply, emergency confirmations, AI-proposal
+     * answers) are not built-in replies and never set it, and
+     * neither do the unmatched reply, the AI fallback's refused
+     * and emergency-offer replies, or an AI answer.
+     */
+    var lastReplyWasBuiltin = false
+        private set
+
     /** The one local timer, if any: a main-thread delayed runnable, never a calendar entry. */
     private var timerHandler: Handler? = null
     private var timerRunnable: Runnable? = null
 
     suspend fun handle(context: Context, navigator: CarNavigator, frame: CarEnvironment.Frame, heardRaw: String): String {
         lastReplyWasAi = false
+        lastReplyWasBuiltin = false
         lastAiUtterance = null
         lastReplyGrounded = false
         lastReplySourceCount = 0
@@ -163,34 +178,44 @@ object AssistantCommands {
             }
         }
 
-        cancelCommand(heard)?.let { return it }
-        callControlCommand(context, navigator, heard)?.let { return it }
-        navigateCommand(context, navigator, frame, heard)?.let { return it }
-        playSearchCommand(context, navigator, heard)?.let { return it }
-        replyRepeatCommand(heard)?.let { return it }
-        navExtraCommand(heard)?.let { return it }
-        togglesCommand(context, navigator, heard)?.let { return it }
-        volumeCommand(context, heard)?.let { return it }
-        brightnessCommand(heard)?.let { return it }
-        timerCommand(heard)?.let { return it }
-        mediaCommand(heard)?.let { return it }
-        navCommand(navigator, heard)?.let { return it }
-        infoCommand(heard)?.let { return it }
-        batteryCommand(context, heard)?.let { return it }
-        emergencyCommand(context, heard)?.let { return it }
-        callCommand(context, heard)?.let { return it }
-        messagesCommand(context, heard)?.let { return it }
-        // Custom voice shortcuts (r19) sit here on purpose: every exact built-in above has
-        // already had its chance, so a bare keyword never beats a built-in, and the synonym /
-        // fuzzy matcher below never gets to guess over a keyword. The "open <keyword>" and
-        // "search <keyword>" forms sit before the generic open/search parsers for the same
-        // reason a keyword is more specific than the generic command — but navigation
-        // keywords are substituted inside navigateCommand above instead, so they keep the
-        // full navigate path (nav-app picking, spoken confirmation) unchanged.
-        keywordCommand(context, navigator, frame, heard)?.let { return it }
-        browserSearchCommand(navigator, heard)?.let { return it }
-        openAppCommand(context, navigator, frame, heard)?.let { return it }
-        synonymCommand(context, navigator, heard)?.let { return it }
+        // r117: the local chain as one expression, so the built-in
+        // flag is set in exactly one place. Evaluation order is
+        // unchanged (lazy ?:, left to right), and the chain keeps
+        // its position before the AI fallback: a local command must
+        // never take a network round-trip, and a keyword or built-in
+        // must never lose to an AI guess.
+        val localReply = cancelCommand(heard)
+            ?: callControlCommand(context, navigator, heard)
+            ?: navigateCommand(context, navigator, frame, heard)
+            ?: playSearchCommand(context, navigator, heard)
+            ?: replyRepeatCommand(heard)
+            ?: navExtraCommand(heard)
+            ?: togglesCommand(context, navigator, heard)
+            ?: volumeCommand(context, heard)
+            ?: brightnessCommand(heard)
+            ?: timerCommand(heard)
+            ?: mediaCommand(heard)
+            ?: navCommand(navigator, heard)
+            ?: infoCommand(context, heard)
+            ?: batteryCommand(context, heard)
+            ?: emergencyCommand(context, heard)
+            ?: callCommand(context, heard)
+            ?: messagesCommand(context, heard)
+            // Custom voice shortcuts (r19) sit here on purpose: every exact built-in above has
+            // already had its chance, so a bare keyword never beats a built-in, and the synonym /
+            // fuzzy matcher below never gets to guess over a keyword. The "open <keyword>" and
+            // "search <keyword>" forms sit before the generic open/search parsers for the same
+            // reason a keyword is more specific than the generic command — but navigation
+            // keywords are substituted inside navigateCommand above instead, so they keep the
+            // full navigate path (nav-app picking, spoken confirmation) unchanged.
+            ?: keywordCommand(context, navigator, frame, heard)
+            ?: browserSearchCommand(navigator, heard)
+            ?: openAppCommand(context, navigator, frame, heard)
+            ?: synonymCommand(context, navigator, heard)
+        if (localReply != null) {
+            lastReplyWasBuiltin = true
+            return localReply
+        }
         // AI fallback (r25) sits LAST on purpose, after every exact built-in, keyword, and
         // fuzzy path: a local command must never take a network round-trip, and a keyword
         // or built-in must never lose to an AI guess. When AI is off, keyless, or offline,
@@ -320,9 +345,17 @@ object AssistantCommands {
         // utterance is answered with a question, not a forecast — before any network
         // call, and without reading device location or any stored place. This is a
         // local reply, not an AI answer, so the badge stays off.
+        // r117: the session is consulted first. A place the user already named in
+        // this conversation is inherited: the question proceeds (the session
+        // history rides the request below, so the model sees the place in
+        // context), and only a session with no place at all still asks.
+        // The place itself is never logged — only that one was found.
         if (AiAssistant.isPlaceDependentQuestion(heard) && !AiAssistant.hasPlace(heard)) {
-            GearslipLog.i("assistant: ai place requested")
-            return "For which place?"
+            if (AiAssistant.placeFromSession(ConversationSession.historyForRequest()) == null) {
+                GearslipLog.i("assistant: ai place requested")
+                return "For which place?"
+            }
+            GearslipLog.i("assistant: ai place from session")
         }
         // r40: the active provider picks the client. Both clients return their own
         // Result type with the same shape (Ok text + grounding, or a failure class),
@@ -1202,14 +1235,27 @@ object AssistantCommands {
         else -> null
     }
 
-    private fun infoCommand(heard: String): String? = when {
+    private suspend fun infoCommand(context: Context, heard: String): String? = when {
         "what time" in heard || "what's the time" in heard || heard == "time" || "the time" in heard ->
             "It's ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())}."
         "weather" in heard || "going to rain" in heard || "gonna rain" in heard || "how hot" in heard ||
             "how cold" in heard || "temperature outside" in heard -> {
-            val data = (Weather.state.value as? WeatherState.Ready)?.data
-            if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
-            else "I don't have the weather yet."
+            // r117: weather honors a place — from the utterance first, then from the
+            // session (same lookup as the AI place rule), and always announces the
+            // place it answers for, so a forecast for somewhere else never reads
+            // as the local one. A place the geocoder cannot resolve is answered
+            // honestly, never silently replaced with the current location.
+            val place = AiAssistant.placePhrase(heard)
+                ?: AiAssistant.placeFromSession(ConversationSession.historyForRequest())
+            if (place != null) {
+                val data = withContext(Dispatchers.IO) { Weather.fetchForPlace(context, place) }
+                if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
+                else "I couldn't find weather for $place."
+            } else {
+                val data = (Weather.state.value as? WeatherState.Ready)?.data
+                if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
+                else "I don't have the weather yet."
+            }
         }
         else -> null
     }

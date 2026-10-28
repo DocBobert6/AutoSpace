@@ -73,4 +73,47 @@ class ConversationHistoryTest {
         assertTrue(history.isEmpty())
     }
 
+    // r117: the multi-turn gate for built-in replies.
+
+    @Test fun builtinOnEmptySessionRefused() {
+        val history = ConversationHistory()
+        assertFalse(history.recordBuiltin("pause the music", "Paused.", 1000L))
+        assertTrue(history.isEmpty())
+    }
+
+    @Test fun builtinInsideSessionRecorded() {
+        val history = ConversationHistory()
+        history.record("tell me a joke", "Why did the chicken cross the road?", 1000L, fromAi = true)
+        assertTrue(history.recordBuiltin("what is the weather", "Sunny and warm.", 2000L))
+        val turns = history.snapshot(3000L)
+        assertEquals(2, turns.size)
+        assertTrue(turns[0].fromAi)
+        assertFalse(turns[1].fromAi)
+        assertEquals("what is the weather", turns[1].user)
+    }
+
+    @Test fun builtinAfterTimeoutRefusedAndClears() {
+        val history = ConversationHistory()
+        history.record("tell me a joke", "Why did the chicken cross the road?", 1000L, fromAi = true)
+        assertFalse(
+            history.recordBuiltin(
+                "pause the music", "Paused.",
+                1000L + ConversationHistory.SESSION_TIMEOUT_MS + 1L,
+            ),
+        )
+        assertTrue(history.isEmpty())
+    }
+
+    @Test fun builtinCountsTowardCaps() {
+        val history = ConversationHistory()
+        for (i in 1..8) {
+            history.record("question $i", "answer $i", 1000L + i, fromAi = true)
+        }
+        assertTrue(history.recordBuiltin("one more", "and another", 2000L))
+        val turns = history.snapshot(3000L)
+        assertEquals(ConversationHistory.MAX_TURNS, turns.size)
+        assertEquals("one more", turns.last().user)
+        assertFalse(turns.any { it.user == "question 1" })
+    }
+
 }

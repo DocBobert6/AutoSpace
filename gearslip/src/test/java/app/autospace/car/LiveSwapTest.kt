@@ -149,4 +149,29 @@ class LiveSwapTest {
         assertEquals("new question", turns[1].user)
         assertEquals("current question", turns[2].user)
     }
+
+    // r117: the AI flag rides through the widget's turn mapping.
+
+    @Test
+    fun historyAiFlagCarried() {
+        val history = listOf(
+            ConversationTurn("ai question", "ai answer", fromAi = true),
+            ConversationTurn("builtin question", "builtin answer", fromAi = false),
+        )
+        val turns = liveWidgetTurns(history, "now asking", "now answering", moving = false)
+        assertEquals(true, turns[0].fromAi)
+        assertEquals(false, turns[1].fromAi)
+    }
+
+    @Test
+    fun currentAiFlagCarried() {
+        val turns = liveWidgetTurns(emptyList(), "now asking", "now answering", moving = false, currentFromAi = true)
+        assertEquals(true, turns[0].fromAi)
+    }
+
+    @Test
+    fun currentBuiltinFlagDefaultsFalse() {
+        val turns = liveWidgetTurns(emptyList(), "now asking", "now answering", moving = false)
+        assertEquals(false, turns[0].fromAi)
+    }
 }

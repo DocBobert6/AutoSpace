@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -16,11 +18,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedPanelSurface
+import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsLook
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * r76: A58 Live conversation widget swap. While a live conversation is
@@ -53,14 +59,31 @@ import kotlinx.coroutines.delay
  * Driving: the widget must not become a reading surface while
  * moving, so history shows only when parked. While moving it shows
  * the current turn only — the same class as the overlay's current
- * line, not a new reading surface. The widget has no X and no tap
- * action: it is transient (it swaps back on its own when the
- * conversation ends) and the overlay remains the interactive
- * surface; a dismiss would need widget-dismissed state outliving
- * the turn, which is scope creep for a swap. The nav-bar pill rules
- * are deliberately untouched: the pill stays hidden while the
- * widget shows exactly as while the card shows, and returns with
- * the card when the conversation ends.
+ * line, not a new reading surface.
+ *
+ * r117: the widget owns its surface now, so it has its OWN dismiss:
+ * an X in the header that hides the widget for the rest of this
+ * conversation. Dismiss is widget-scoped, not conversation-ending —
+ * "dismiss" in this codebase hides a surface, it never stops the
+ * thing underneath (the audio card's dismiss hides the card while
+ * playback continues). The conversation itself keeps running in
+ * the overlay, which is the fallback surface, and ends as before
+ * (window expiry or the overlay's Dismiss). The dismissed flag is
+ * conversation-scoped and in-memory: it resets the moment the
+ * phase returns to IDLE, so the next conversation shows the
+ * widget again — no persisted flag, no "don't show again". The
+ * r76 objection (a dismiss would need state outliving the turn)
+ * is answered by scoping the state to the conversation, not the
+ * turn. The nav-bar pill rules are deliberately untouched: the pill
+ * stays hidden while the widget shows exactly as while the card
+ * shows, and returns with the card when the conversation ends.
+ *
+ * r117: AI turns in the widget carry the overlay's AI badge (the
+ * r25/r41 tertiary "AI" mark), so an AI answer reads as AI
+ * wherever it appears, and the current turn's reply steps up to
+ * bodyLarge Semibold — the overlay's reply emphasis — while
+ * history stays bodyMedium. The parked history cap (last two
+ * session turns) is unchanged.
  */
 
 
@@ -86,8 +109,27 @@ fun liveEmptyBody(phase: CarAssistant.Phase, ready: Boolean): String =
         else -> ""
     }
 
-/** r76: one turn as the widget shows it. User lines render dimmer than assistant lines. */
-data class LiveWidgetTurn(val user: String, val assistant: String)
+/** r76: one turn as the widget shows it. User lines render dimmer than assistant lines. r117: [fromAi] marks AI answers for the badge. */
+data class LiveWidgetTurn(val user: String, val assistant: String, val fromAi: Boolean = false)
+
+/**
+ * r117: conversation-scoped widget dismissal. In-memory only, never
+ * persisted: [dismiss] hides the widget for the rest of the current
+ * conversation, [reset] (called when the phase returns to IDLE)
+ * shows it again for the next one.
+ */
+object LiveWidgetState {
+    private val _dismissed = MutableStateFlow(false)
+    val dismissed: StateFlow<Boolean> = _dismissed.asStateFlow()
+
+    fun dismiss() {
+        _dismissed.value = true
+    }
+
+    fun reset() {
+        _dismissed.value = false
+    }
+}
 
 /**
  * r76: which turns the widget shows. Pure, so the unit test pins it.
@@ -105,9 +147,10 @@ fun liveWidgetTurns(
     heard: String,
     reply: String,
     moving: Boolean,
+    currentFromAi: Boolean = false,
 ): List<LiveWidgetTurn> {
-    val shown = if (moving) emptyList() else history.takeLast(2).map { LiveWidgetTurn(it.user, it.assistant) }
-    val current = if (heard.isBlank() && reply.isBlank()) null else LiveWidgetTurn(heard, reply)
+    val shown = if (moving) emptyList() else history.takeLast(2).map { LiveWidgetTurn(it.user, it.assistant, it.fromAi) }
+    val current = if (heard.isBlank() && reply.isBlank()) null else LiveWidgetTurn(heard, reply, currentFromAi)
     return shown + listOfNotNull(current)
 }
 
@@ -137,7 +180,7 @@ fun LiveConversationWidget(state: CarAssistant.State, modifier: Modifier = Modif
         }
     }
     val history = ConversationSession.historyForRequest()
-    val turns = liveWidgetTurns(history, state.heard, state.reply, moving)
+    val turns = liveWidgetTurns(history, state.heard, state.reply, moving, currentFromAi = state.fromAi)
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     FrostedPanelSurface(
         shape = cardShape,
@@ -157,6 +200,8 @@ fun LiveConversationWidget(state: CarAssistant.State, modifier: Modifier = Modif
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // r117: the widget's own dismiss (see the file header).
+                GsIconButton(Icons.Filled.Close, "Dismiss widget", { LiveWidgetState.dismiss() })
             }
             Spacer(Modifier.height(8.dp))
             if (turns.isEmpty()) {
@@ -180,9 +225,24 @@ fun LiveConversationWidget(state: CarAssistant.State, modifier: Modifier = Modif
                         )
                     }
                     if (turn.assistant.isNotBlank()) {
+                        // r117: AI turns carry the overlay's AI badge
+                        // (tertiary, labelSmall), so an AI answer reads
+                        // as AI here too. The current turn — the last
+                        // one shown — steps up to bodyLarge Semibold,
+                        // the overlay's reply emphasis; history stays
+                        // bodyMedium, so the card stays glanceable.
+                        if (turn.fromAi) {
+                            Text(
+                                "AI",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
+                        val isCurrent = index == turns.lastIndex
                         Text(
                             turn.assistant,
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = if (isCurrent) MaterialTheme.typography.bodyLarge else MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isCurrent) FontWeight.SemiBold else null,
                             maxLines = if (moving) 2 else 3,
                             overflow = TextOverflow.Ellipsis,
                         )
