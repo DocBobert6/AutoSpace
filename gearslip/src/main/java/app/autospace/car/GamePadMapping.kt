@@ -149,12 +149,26 @@ object GamePadMapping {
 
     /**
      * Which libretro bit a physical key code drives under this
-     * mapping, or -1 when the code is assigned to nothing. This
-     * is what the playback screen hands the router, so the router
+     * mapping. A stored assignment wins; a candidate code with
+     * no stored assignment falls back to GamepadMap, so the two
+     * shoulder aliases keep working exactly as today (L2 drives
+     * L, R2 drives R) unless the user assigns them elsewhere.
+     * A code GamepadMap does not recognize maps to -1. This is
+     * what the playback screen hands the router, so the router
      * itself stays mapping-agnostic.
+     *
+     * One honest consequence of the fallback, pinned by tests:
+     * assigning an alias-only button (L2 or R2) to a new bit
+     * leaves the button it replaces still driving that bit
+     * through the fallback — the same aliasing today's tree
+     * already has for the shoulders, now generalized. There are
+     * 14 candidate codes and 12 bits, so some aliasing is
+     * unavoidable; the fallback keeps it on the shoulders by
+     * default instead of dropping buttons.
      */
     fun bitForKeyCode(mapping: Map<Int, Int>, code: Int): Int =
-        mapping.entries.firstOrNull { it.value == code }?.key ?: -1
+        mapping.entries.firstOrNull { it.value == code }?.key
+            ?: GamepadMap.bitForKeyCode(code)
 
     /**
      * Assign [code] to [bit], swapping with whatever action held

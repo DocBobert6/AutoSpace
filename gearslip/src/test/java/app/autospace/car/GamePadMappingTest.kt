@@ -70,6 +70,38 @@ class GamePadMappingTest {
     }
 
     @Test
+    fun unassignedShoulderAliasesFallBackToGamepadMap() {
+        // L2 and R2 are candidates but hold no bit in the
+        // default mapping; the fallback keeps them driving L
+        // and R exactly as today, instead of going dead.
+        val mapping = GamePadMapping.defaultMapping()
+        assertEquals(10, GamePadMapping.bitForKeyCode(mapping, KeyEvent.KEYCODE_BUTTON_L2))
+        assertEquals(11, GamePadMapping.bitForKeyCode(mapping, KeyEvent.KEYCODE_BUTTON_R2))
+        // A stored assignment beats the fallback.
+        val assigned = GamePadMapping.withAssignment(
+            mapping, 8, KeyEvent.KEYCODE_BUTTON_L2,
+        )
+        assertEquals(8, GamePadMapping.bitForKeyCode(assigned, KeyEvent.KEYCODE_BUTTON_L2))
+        // And a truly unrecognized code still maps to nothing.
+        assertEquals(-1, GamePadMapping.bitForKeyCode(mapping, KeyEvent.KEYCODE_UNKNOWN))
+    }
+
+    @Test
+    fun assigningAnAliasLeavesTheReplacedButtonOnTheFallback() {
+        // Documented, not accidental: L2 takes A (east), and
+        // Button B, which held A (east), still drives it through
+        // the fallback — the shoulder aliasing today's tree
+        // already has, generalized to a reassigned alias.
+        val assigned = GamePadMapping.withAssignment(
+            GamePadMapping.defaultMapping(),
+            8,
+            KeyEvent.KEYCODE_BUTTON_L2,
+        )
+        assertEquals(8, GamePadMapping.bitForKeyCode(assigned, KeyEvent.KEYCODE_BUTTON_L2))
+        assertEquals(8, GamePadMapping.bitForKeyCode(assigned, KeyEvent.KEYCODE_BUTTON_B))
+    }
+
+    @Test
     fun perConsoleIsolationIsInTheKeyShape() {
         // Isolation lives in the setting key: two consoles never
         // share a stored value, because the console is part of
