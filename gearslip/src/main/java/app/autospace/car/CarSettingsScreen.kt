@@ -125,7 +125,7 @@ fun CarSettingsScreen() {
                 }
             } else {
                 when (page) {
-                    SettingsCategory.APPEARANCE -> AppearancePage()
+                    SettingsCategory.APPEARANCE -> AppearancePage(webPageKeyboardSlot)
                     SettingsCategory.AUDIO_AND_CALLS -> AudioAndCallsPage()
                     SettingsCategory.VOICE -> VoicePage()
                     SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage(webPageKeyboardSlot)
@@ -183,7 +183,7 @@ private enum class SettingsCategory(val title: String, val description: String) 
 }
 
 @Composable
-private fun AppearancePage() {
+private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     val scale by CarSettings.scale.collectAsState()
     val iconSize by CarSettings.iconSize.collectAsState()
     val tileSize by CarSettings.tileSize.collectAsState()
@@ -373,7 +373,7 @@ private fun AppearancePage() {
 
     // r81 icon packs: after Pairs, before Map day/night — the other
     // appearance choice that changes how apps look.
-    IconPackSection()
+    IconPackSection(keyboardSlot)
 
     // r97 graduation: the media card's dock is a regular setting now.
     // ON docks the card to the position below; OFF leaves it free at
@@ -466,18 +466,29 @@ private fun AppearancePage() {
  * settles once it lands.
  */
 @Composable
-private fun IconPackSection() {
+private fun IconPackSection(keyboardSlot: WebPageKeyboardSlot) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val storedPack by CarSettings.iconPack.collectAsState()
+    val storedManual by CarSettings.manualPacks.collectAsState()
     var packs by remember { mutableStateOf<List<IconPackInfo>>(emptyList()) }
+    var manualPacks by remember { mutableStateOf<List<IconPackInfo>>(emptyList()) }
+    var manualInput by remember { mutableStateOf("") }
+    var manualStatus by remember { mutableStateOf<String?>(null) }
+    // r82: leaving this section clears the keyboard request, so the
+    // keyboard never survives onto another settings page.
+    DisposableEffect(Unit) { onDispose { keyboardSlot.request = null } }
     androidx.compose.runtime.LaunchedEffect(Unit) {
         packs = withContext(Dispatchers.IO) { installedIconPacks(context) }
+        manualPacks = withContext(Dispatchers.IO) {
+            storedManual.mapNotNull { loadManualIconPack(context, it) }
+        }
     }
-    val selected = storedPack?.takeIf { pkg -> packs.any { it.packageName == pkg } }
+    val allPacks = mergePackLists(packs, manualPacks)
+    val selected = storedPack?.takeIf { pkg -> allPacks.any { it.packageName == pkg } }
     ChoiceRow(
         "Icon pack",
-        listOf(null to "System icons") + packs.map { it.packageName to it.label },
+        listOf(null to "System icons") + allPacks.map { it.packageName to it.label },
         selected,
     ) { pack ->
         CarSettings.setIconPack(pack)
@@ -493,6 +504,77 @@ private fun IconPackSection() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    // r104: add a pack by package name, for packs discovery misses.
+    // Typing a name cannot make an invisible pack visible (package
+    // visibility filters explicit lookups too), so this only adds a
+    // pack this app can already see — it still passes the same
+    // appfilter + loadable-drawable gate, and a failure is reported
+    // honestly instead of crashing or silently doing nothing. A pack
+    // added this way is selected at once and stays listed, like any
+    // pack, including for per-app Change icon.
+    val editing = keyboardSlot.request != null
+    fun submitManual() {
+        val pkg = manualInput.trim()
+        if (pkg.isEmpty()) {
+            manualStatus = "Enter a package name."
+            return
+        }
+        scope.launch {
+            val info = withContext(Dispatchers.IO) { loadManualIconPack(context, pkg) }
+            if (info == null) {
+                manualStatus = "Couldn't load icons from that package."
+            } else {
+                CarSettings.addManualPack(pkg)
+                manualPacks = (manualPacks + info).distinctBy { it.packageName }
+                CarSettings.setIconPack(pkg)
+                withContext(Dispatchers.IO) { warmLauncherApps(context) }
+                manualStatus = "Added ${info.label}."
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Add a pack by package name", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Surface(
+            onClick = {
+                keyboardSlot.request = if (keyboardSlot.request == null) {
+                    WebPageKeyboardRequest(
+                        text = manualInput,
+                        onTextChange = {
+                            manualInput = it
+                            keyboardSlot.request = keyboardSlot.request?.copy(text = it)
+                        },
+                        onSubmit = { keyboardSlot.request = null; submitManual() },
+                        onDismiss = { keyboardSlot.request = null },
+                    )
+                } else {
+                    null
+                }
+            },
+            shape = gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+            color = MaterialTheme.colorScheme.surfaceBright,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            KeyboardFieldText(
+                manualInput,
+                "com.example.pack — tap to type a package name",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                style = MaterialTheme.typography.bodyLarge,
+                showCaret = editing,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            GsButton(onClick = { submitManual() }) { Text("Add") }
+        }
+        manualStatus?.let {
+            Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Text(
+            "For a pack installed on your phone that doesn't appear above. " +
+                "The package still has to be visible to AutoSpace and carry usable icons.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

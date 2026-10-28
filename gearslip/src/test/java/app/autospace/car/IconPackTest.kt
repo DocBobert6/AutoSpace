@@ -160,6 +160,52 @@ class IconPackTest {
     }
 
     @Test
+    fun isLoadablePackMappingNeedsMappingAndDrawable() {
+        assertEquals(false, isLoadablePackMapping(null) { true })
+        assertEquals(false, isLoadablePackMapping(emptyMap()) { true })
+        val mapping = mapOf("com.a.app/com.a.app.Main" to "a_icon")
+        assertEquals(false, isLoadablePackMapping(mapping) { false })
+        assertEquals(true, isLoadablePackMapping(mapping) { it == "a_icon" })
+    }
+
+    @Test
+    fun mergePackListsDedupesByPackageWithDiscoveredWinning() {
+        val discovered = listOf(IconPackInfo("com.a.pack", "Alpha"))
+        val manual = listOf(
+            IconPackInfo("com.a.pack", "Alpha Manual"),
+            IconPackInfo("com.b.pack", "Beta"),
+        )
+        val merged = mergePackLists(discovered, manual)
+        assertEquals(2, merged.size)
+        assertEquals("Alpha", merged[0].label)
+        assertEquals("Beta", merged[1].label)
+    }
+
+    @Test
+    fun mergePackListsSortsByLabel() {
+        val merged = mergePackLists(
+            listOf(IconPackInfo("com.z.pack", "Zulu")),
+            listOf(IconPackInfo("com.a.pack", "Alpha")),
+        )
+        assertEquals(listOf("Alpha", "Zulu"), merged.map { it.label })
+    }
+
+    @Test
+    fun encodeDecodeManualPacksRoundTrip() {
+        val packages = listOf("com.a.pack", "com.b.pack")
+        assertEquals(packages, decodeManualPacks(encodeManualPacks(packages)))
+    }
+
+    @Test
+    fun decodeManualPacksSkipsBlanks() {
+        assertEquals(
+            listOf("com.a.pack", "com.b.pack"),
+            decodeManualPacks("com.a.pack,, ,com.b.pack,"),
+        )
+        assertEquals(emptyList<String>(), decodeManualPacks(""))
+    }
+
+    @Test
     fun packHasLoadableDrawableNeedsAtLeastOneResolvingDrawable() {
         val mapping = mapOf(
             "com.a.app/com.a.app.Main" to "a_icon",

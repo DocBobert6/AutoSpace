@@ -145,6 +145,41 @@ fun packHasLoadableDrawable(
 ): Boolean = mapping.values.any(drawableExists)
 
 /**
+ * r104: whether a manually entered package is a usable pack: its
+ * appfilter must exist and carry at least one drawable that resolves.
+ * The same gate discovered packs pass — manual entry never weakens
+ * it. A null mapping (no appfilter, or the package is not visible to
+ * this app under package visibility rules) is not loadable.
+ */
+fun isLoadablePackMapping(
+    mapping: Map<String, String>?,
+    drawableExists: (String) -> Boolean,
+): Boolean = mapping != null && packHasLoadableDrawable(mapping, drawableExists)
+
+/**
+ * r104: merge the discovered packs with the manually entered ones for
+ * the picker: one entry per package (a discovered entry wins over a
+ * manual one for the same package), sorted by label like discovery.
+ */
+fun mergePackLists(
+    discovered: List<IconPackInfo>,
+    manual: List<IconPackInfo>,
+): List<IconPackInfo> {
+    val byPackage = LinkedHashMap<String, IconPackInfo>()
+    for (pack in discovered) byPackage[pack.packageName] = pack
+    for (pack in manual) byPackage.putIfAbsent(pack.packageName, pack)
+    return byPackage.values.sortedBy { it.label.lowercase() }
+}
+
+/** Manually entered pack packages on disk: comma-joined package names. */
+fun encodeManualPacks(packages: List<String>): String =
+    packages.filter { it.isNotBlank() }.joinToString(",")
+
+/** The inverse of [encodeManualPacks]; blank segments are skipped. */
+fun decodeManualPacks(stored: String): List<String> =
+    stored.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+
+/**
  * Installed packs: every visible app carrying an appfilter.xml resource
  * with at least one loadable drawable, by label, minus the dead
  * system-theme entries (see [isExcludedPackLabel]). Call off the main
@@ -158,6 +193,9 @@ fun packHasLoadableDrawable(
  * dead) reads as System icons in the picker, which is what is actually
  * showing — the launcher scan falls back the same way — so the
  * highlighted chip never lies, and the stored value needs no rewrite.
+ * r104 adds manually entered packs ([loadManualIconPack]) and two
+ * manifest-named packages; both pass the same gate and merge into the
+ * picker list via [mergePackLists].
  */
 fun installedIconPacks(context: Context): List<IconPackInfo> {
     val pm = context.packageManager
@@ -198,6 +236,36 @@ fun loadIconPackMapping(context: Context, packPkg: String): Map<String, String>?
         val xml = res.openRawResource(id).use { it.readBytes().decodeToString() }
         parseAppFilter(xml)
     }.getOrNull()
+
+/**
+ * r104: validate a manually entered pack package: its label plus the
+ * same appfilter + loadable-drawable gate discovered packs pass. Null
+ * when the package has no appfilter, nothing loadable, or is not
+ * visible to this app at all. Honest limit, stated plainly: Android's
+ * package visibility rules filter explicit lookups too, so typing a
+ * package name cannot make an invisible pack visible — it only adds a
+ * pack this app can already see (for example one whose label kept it
+ * out of discovery). A manually entered package that passes the gate
+ * is listed even if its label is an excluded one: the exclusion is a
+ * heuristic for dead system-theme entries, and a typed package that
+ * loads is by definition not dead. Call off the main thread.
+ */
+fun loadManualIconPack(context: Context, packageName: String): IconPackInfo? {
+    val pkg = packageName.trim()
+    if (pkg.isEmpty()) return null
+    return runCatching {
+        val pm = context.packageManager
+        val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        val mapping = loadIconPackMapping(context, pkg) ?: return null
+        val loadable = packHasLoadableDrawable(mapping) { drawable ->
+            runCatching {
+                pm.getResourcesForApplication(pkg).getIdentifier(drawable, "drawable", pkg) != 0
+            }.getOrDefault(false)
+        }
+        if (!loadable) return null
+        IconPackInfo(pkg, label)
+    }.getOrNull()
+}
 
 /** One pack drawable as a bitmap, or null when it cannot be loaded. */
 fun packIconBitmap(context: Context, packPkg: String, drawable: String, sizePx: Int = 128): ImageBitmap? =

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            71, "0.4.60-alpha",
+            listOf(
+                "Icon packs: a pack that doesn't show up in the picker can now be added by typing its package name, and more packs are found in the first place.",
+            ),
+        ),
+        Release(
             70, "0.4.59-alpha",
             listOf(
                 "The bar's icons are centered in the rail now instead of sitting left, and the clock shows just the digits — 12:00, no AM or PM — in a block the same width as the icons.",

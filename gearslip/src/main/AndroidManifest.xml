@@ -127,9 +127,17 @@
          standard theme declarations: ADW's action and Apex/Go/Nova's
          category (r81), plus Go Launcher EX's action, Nova's own
          category, Smart Launcher's action, and Action Launcher's
-         category (r101). Packs with a launcher activity are already
-         visible through the MAIN/LAUNCHER query above; these entries
-         cover packs that declare only a theme intent. -->
+         category (r101), plus Nova's custom icon picker action (r104,
+         as declared by the CandyBar sample manifest). Packs with a
+         launcher activity are already visible through the MAIN/
+         LAUNCHER query above; these entries cover packs that declare
+         only a theme intent. r104 also names Robert's pack family
+         directly (light + Dark editions — which edition he has was
+         never confirmed), so those packages are visible even if their
+         theme declarations fall outside the intent set above. -->
+    <!-- Named directly: r104, see above. -->
+    <package android:name="com.eatos.onepro" />
+    <package android:name="com.eatos.onedarkpro" />
     <intent>
         <action android:name="org.adw.launcher.THEMES" />
     </intent>
@@ -150,6 +158,10 @@
     <intent>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="com.actionlauncher.playstore.THEME" />
+    </intent>
+    <intent>
+        <action android:name="com.novalauncher.THEME" />
+        <category android:name="com.novalauncher.category.CUSTOM_ICON_PICKER" />
     </intent>
 </queries>
 
