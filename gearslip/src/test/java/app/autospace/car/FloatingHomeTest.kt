@@ -164,11 +164,68 @@ class FloatingHomeTest {
     }
 
     @Test
-    fun sharpCoverEdgeFadeWidthIs24dp() {
-        // r139: the judgment-call width — wide enough to read as
-        // a smooth blend, narrow enough that the cover's middle
-        // stays fully sharp. One word changes it (and this pin).
-        assertEquals(24.dp, SharpCoverEdgeFade)
+    fun sharpCoverEdgeFadeWidthIs10dp() {
+        // r141: the judgment-call width, narrowed from r139's
+        // 24dp — 24dp erased a visible band of art at the top of
+        // a real cover, while 10dp softens the edge without
+        // cutting into the art. One word changes it (and this pin).
+        assertEquals(10.dp, SharpCoverEdgeFade)
+    }
+
+    @Test
+    fun fitCoverRectCentersSquareCoverInWideCard() {
+        // r141: a square cover fitted into a wide card occupies
+        // the full height and is centered horizontally, leaving
+        // equal blurred bands at the sides — exactly the case
+        // r139's card-box strips got wrong.
+        val rect = fitCoverRect(360f, 200f, 1000f, 1000f)
+        assertEquals(80f, rect.left, 0.001f)
+        assertEquals(0f, rect.top, 0.001f)
+        assertEquals(280f, rect.right, 0.001f)
+        assertEquals(200f, rect.bottom, 0.001f)
+    }
+
+    @Test
+    fun fitCoverRectCentersWideCoverInTallCard() {
+        // r141: a wide cover fitted into a tall card occupies the
+        // full width and is centered vertically.
+        val rect = fitCoverRect(200f, 300f, 1000f, 500f)
+        assertEquals(0f, rect.left, 0.001f)
+        assertEquals(100f, rect.top, 0.001f)
+        assertEquals(200f, rect.right, 0.001f)
+        assertEquals(200f, rect.bottom, 0.001f)
+    }
+
+    @Test
+    fun fitCoverRectCentersTallCoverInWideCard() {
+        // r141: a tall cover fitted into a wide card occupies the
+        // full height and is centered horizontally.
+        val rect = fitCoverRect(300f, 200f, 500f, 1000f)
+        assertEquals(100f, rect.left, 0.001f)
+        assertEquals(0f, rect.top, 0.001f)
+        assertEquals(200f, rect.right, 0.001f)
+        assertEquals(200f, rect.bottom, 0.001f)
+    }
+
+    @Test
+    fun fitCoverRectFillsLayerWhenAspectMatches() {
+        // r141: a cover with exactly the layer's aspect fills it.
+        val rect = fitCoverRect(360f, 200f, 1800f, 1000f)
+        assertEquals(0f, rect.left, 0.001f)
+        assertEquals(0f, rect.top, 0.001f)
+        assertEquals(360f, rect.right, 0.001f)
+        assertEquals(200f, rect.bottom, 0.001f)
+    }
+
+    @Test
+    fun fitCoverRectFallsBackToFullLayerForDegenerateBitmap() {
+        // r141: a zero-size bitmap never divides by zero — the
+        // caller falls back to the full layer.
+        val rect = fitCoverRect(360f, 200f, 0f, 1000f)
+        assertEquals(0f, rect.left, 0.001f)
+        assertEquals(0f, rect.top, 0.001f)
+        assertEquals(360f, rect.right, 0.001f)
+        assertEquals(200f, rect.bottom, 0.001f)
     }
 
 

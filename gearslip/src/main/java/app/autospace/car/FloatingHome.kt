@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -162,13 +163,47 @@ fun artCardDrawsPerimeter(hasArt: Boolean): Boolean = !hasArt
 fun cardArtElevation(hasArt: Boolean): Dp = if (hasArt) 0.dp else 4.dp
 
 /**
- * r139: how far the sharp cover's edges fade into its own blurred
- * backdrop. 24dp is the judgment call: wide enough to read as a
- * smooth blend rather than a hard rectangle cut, narrow enough
- * that the middle of the cover stays fully sharp. One word changes
- * it. Pure value so it is unit-testable.
+ * r141: how far the sharp cover's own edges fade into its own
+ * blurred backdrop. r139 used 24dp, and on a real card that read
+ * as a missing strip of art: it faded the top of the cover to
+ * nothing while the cover's side edges stayed hard. 10dp is the
+ * new judgment call: a softening of the edge, not an erasure of
+ * a band of art, narrow enough that the middle of the cover stays
+ * fully sharp. One word changes it. Pure value so it is
+ * unit-testable.
  */
-val SharpCoverEdgeFade: Dp = 24.dp
+val SharpCoverEdgeFade: Dp = 10.dp
+
+/**
+ * r141: the rectangle a ContentScale.Fit image actually occupies
+ * inside its layer, in pixels. Fit scales the bitmap by the
+ * smaller of the two axis ratios and centers the result, so a
+ * square cover in a wide card leaves blurred bands at the sides
+ * and a wide cover in a tall card leaves bands top and bottom.
+ * Degenerate inputs (a zero bitmap or layer side) fall back to
+ * the full layer, so the caller never divides by zero or draws
+ * an empty rect. Pure so it is unit-testable; the perimeter
+ * fade below is built from it, so the drawn fade and this rect
+ * cannot drift apart.
+ */
+fun fitCoverRect(
+    layerWidthPx: Float,
+    layerHeightPx: Float,
+    bitmapWidthPx: Float,
+    bitmapHeightPx: Float,
+): Rect {
+    if (layerWidthPx <= 0f || layerHeightPx <= 0f ||
+        bitmapWidthPx <= 0f || bitmapHeightPx <= 0f
+    ) {
+        return Rect(0f, 0f, layerWidthPx.coerceAtLeast(0f), layerHeightPx.coerceAtLeast(0f))
+    }
+    val scale = minOf(layerWidthPx / bitmapWidthPx, layerHeightPx / bitmapHeightPx)
+    val drawnWidth = bitmapWidthPx * scale
+    val drawnHeight = bitmapHeightPx * scale
+    val left = (layerWidthPx - drawnWidth) / 2f
+    val top = (layerHeightPx - drawnHeight) / 2f
+    return Rect(left, top, left + drawnWidth, top + drawnHeight)
+}
 
 /**
  * r139: the edge-feather alpha profile, as a fraction of full
@@ -200,63 +235,80 @@ private fun featherGradientStops(fadePx: Float, reversed: Boolean): Array<Pair<F
 }
 
 /**
- * r139: fade the sharp cover's perimeter into the blurred backdrop
- * underneath it, instead of letting the Fit rectangle cut against
- * that backdrop. Four DstIn gradients, one per edge, each fading
- * from fully opaque inside to fully transparent at the cover's
- * edge; the blurred backdrop, drawn as a separate layer below,
- * shows through the faded band, so the cover melts into its own
- * background. The center of the cover is untouched: every gradient
- * is fully opaque there. The Offscreen compositing layer is
+ * r141: fade the sharp cover's OWN perimeter into the blurred
+ * backdrop underneath it. r139 faded the card box's edges
+ * instead: its four strips sat at the layer's edges, so for a
+ * square Fit cover in a wide card the side strips fell on the
+ * blurred bands beside the cover and the cover's own side edges
+ * stayed hard, while the top strip erased the top 24dp of the
+ * art. This version first computes the Fit rect the cover
+ * actually occupies ([fitCoverRect]) and fades only that rect's
+ * four edges, so a square cover's side edges get exactly the
+ * same treatment as its top and bottom edges, and the blurred
+ * side bands are untouched. Four DstIn gradients, one per edge
+ * of the Fit rect, each fading from fully opaque inside to
+ * fully transparent at the cover's edge; the blurred backdrop,
+ * drawn as a separate layer below, shows through the faded
+ * band, so the cover melts into its own background. The center
+ * of the cover is untouched: every gradient is fully opaque
+ * there. Where two strips overlap in a corner, DstIn multiplies
+ * their alphas, which rounds the corner fade rather than
+ * cutting it square. The Offscreen compositing layer is
  * required, not decorative: without it DstIn would erase
  * everything drawn underneath the sharp layer, including the
  * blurred backdrop it is meant to blend into (same pattern as
  * IntroScreen's fading list). The fade width is capped at half
- * the layer's smaller side, so a very small layer can never
+ * the Fit rect's smaller side, so a very small cover can never
  * invert a gradient. No-art cards never reach this modifier:
  * the sharp layer is only drawn when art exists.
  */
-fun Modifier.featherSharpCoverEdges(fade: Dp = SharpCoverEdgeFade): Modifier =
+fun Modifier.featherSharpCoverEdges(
+    bitmapWidth: Int,
+    bitmapHeight: Int,
+    fade: Dp = SharpCoverEdgeFade,
+): Modifier =
     graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawWithContent {
             drawContent()
-            val fadePx = fade.toPx().coerceAtMost(minOf(size.width, size.height) / 2f)
+            val rect = fitCoverRect(size.width, size.height, bitmapWidth.toFloat(), bitmapHeight.toFloat())
+            val fadePx = fade.toPx().coerceAtMost(minOf(rect.width, rect.height) / 2f)
             if (fadePx > 0f) {
-                // Each gradient spans exactly its strip, so its
-                // stops run from the strip's inner edge to the
-                // cover's outer edge. Top strip: transparent at the
-                // top, opaque at the strip's inner edge; bottom and
-                // right strips are the reverse; left mirrors top.
+                // Each gradient spans exactly its strip of the
+                // Fit rect, so its stops run from the strip's
+                // inner edge to the cover's outer edge. Top
+                // strip: transparent at the top, opaque at the
+                // strip's inner edge; bottom and right strips
+                // are the reverse; left mirrors top.
                 drawRect(
                     brush = Brush.verticalGradient(
                         *featherGradientStops(fadePx, reversed = false),
                     ),
-                    topLeft = Offset.Zero,
-                    size = Size(size.width, fadePx),
+                    topLeft = Offset(rect.left, rect.top),
+                    size = Size(rect.width, fadePx),
                     blendMode = BlendMode.DstIn,
                 )
                 drawRect(
                     brush = Brush.verticalGradient(
                         *featherGradientStops(fadePx, reversed = true),
                     ),
-                    topLeft = Offset(0f, size.height - fadePx),
-                    size = Size(size.width, fadePx),
+                    topLeft = Offset(rect.left, rect.bottom - fadePx),
+                    size = Size(rect.width, fadePx),
                     blendMode = BlendMode.DstIn,
                 )
                 drawRect(
                     brush = Brush.horizontalGradient(
                         *featherGradientStops(fadePx, reversed = false),
                     ),
-                    topLeft = Offset.Zero,
-                    size = Size(fadePx, size.height),
+                    topLeft = Offset(rect.left, rect.top),
+                    size = Size(fadePx, rect.height),
                     blendMode = BlendMode.DstIn,
                 )
                 drawRect(
                     brush = Brush.horizontalGradient(
                         *featherGradientStops(fadePx, reversed = true),
                     ),
-                    topLeft = Offset(size.width - fadePx, 0f),
-                    size = Size(fadePx, size.height),
+                    topLeft = Offset(rect.right - fadePx, rect.top),
+                    size = Size(fadePx, rect.height),
                     blendMode = BlendMode.DstIn,
                 )
             }
@@ -458,14 +510,17 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
         // r136: sharp fitted cover over the blurred fill (see above).
         // Fit, never Crop or FillBounds: the cover keeps its own
         // proportions and shows whole. Null art draws nothing.
-        // r139: the sharp layer's edges feather into the blurred
-        // fill below (featherSharpCoverEdges), so the cover melts
-        // into its own background instead of cutting against it
-        // as a hard rectangle; the center stays fully sharp.
+        // r141: the sharp layer's own edges feather into the
+        // blurred fill below (featherSharpCoverEdges, built from
+        // the Fit rect the cover actually occupies), so the cover
+        // melts into its own background on all four sides instead
+        // of cutting against it as a hard rectangle; the center
+        // stays fully sharp.
         sharpArt?.let {
             Image(
                 it, null,
-                Modifier.matchParentSize().clip(cardShape).featherSharpCoverEdges(),
+                Modifier.matchParentSize().clip(cardShape)
+                    .featherSharpCoverEdges(it.width, it.height),
                 contentScale = ContentScale.Fit,
                 filterQuality = FilterQuality.Medium,
                 alpha = 1f,

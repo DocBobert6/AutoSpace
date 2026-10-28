@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            99, "0.4.88-alpha",
+            listOf(
+                "The media card's cover now blends into its blurred background along the cover's own edges on all four sides, with a much softer edge than before — so square covers no longer show a hard edge at the sides or lose the top of the cover.",
+            ),
+        ),
+        Release(
             98, "0.4.87-alpha",
             listOf(
                 "When you are talking to the assistant, the conversation now shows in the listening bar over the map, with your earlier turns scrolling above the current one — instead of a separate live conversation card. Dismissing the bar ends the conversation.",
