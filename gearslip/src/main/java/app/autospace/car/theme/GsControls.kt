@@ -251,10 +251,12 @@ fun Modifier.gsSurface(
         // wash over the container, under the content and borders, so a
         // latched control reads selected on any tone. 0.12 keeps it a
         // tint, never a fill change; transparent containers skip it
-        // with the rest of this block.
+        // with the rest of this block. The color is read here, in the
+        // composable body — a draw scope cannot call MaterialTheme.
         if (latched && look.latchedPrimaryTint) {
+            val tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             m = m.drawBehind {
-                drawRect(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                drawRect(tint)
             }
         }
         // r24: the checker strip is gone entirely (Robert disliked it
