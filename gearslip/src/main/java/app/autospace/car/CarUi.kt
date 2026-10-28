@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import app.autospace.R
@@ -1335,8 +1336,15 @@ private fun NavAppIcon(
         latched = showing,
         onLongClick = onLongClick,
     ) {
-        entry.icon?.let { Image(it, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp))) }
-        entry.builtIn?.let { Icon(it.glyph, entry.label, Modifier.size(30.dp)) }
+        // r116: a bitmap icon wins over the glyph — TileIcon's rule, now shared here. The
+        // Browser entry carries the Mariner circle, so the rail (and the Meridian pill, which
+        // shares this path) shows the circle and never the magnifier on top of it. No other
+        // entry carries both a bitmap and a glyph, so nothing else changes. The 8dp
+        // rounded-square clip is a no-op on the circular bitmap: its corners are already
+        // transparent, so the circle stays circular.
+        val icon = entry.icon ?: entry.builtIn?.circleIconRes?.let { imageResource(it) }
+        if (icon != null) Image(icon, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)))
+        else entry.builtIn?.let { Icon(it.glyph, entry.label, Modifier.size(30.dp)) }
         // Only running apps get the line along the bottom edge, the usual taskbar mark for it.
         if (open) {
             Box(

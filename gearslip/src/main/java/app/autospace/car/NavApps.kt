@@ -44,6 +44,7 @@ import app.autospace.car.theme.gsButtonShape
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.CarFocus
+import app.autospace.R
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.foundation.border
@@ -87,10 +88,17 @@ internal class BuiltInApp(
     val glyph: ImageVector,
     val screen: CarScreen?,
     val open: (CarNavigator) -> Unit,
+    /**
+     * r116: a bitmap tile that replaces the glyph where one is set. Only the Browser carries
+     * one — the Notscape Mariner icon as a circle (drawable-nodpi/browser_mariner_circle.png,
+     * composed from Mariner's own icon source). Every other built-in keeps its vector glyph,
+     * and installed apps keep their own icons, so icon packs never touch this tile.
+     */
+    val circleIconRes: Int? = null,
 )
 
 internal object BuiltInApps {
-    val Web = BuiltInApp("web", "Browser", Icons.Filled.Search, CarScreen.App("web")) { it.open("web") }
+    val Web = BuiltInApp("web", "Browser", Icons.Filled.Search, CarScreen.App("web"), circleIconRes = R.drawable.browser_mariner_circle) { it.open("web") }
     val ScreenSharing = BuiltInApp("phone", "Screen sharing", Icons.Filled.Share, CarScreen.App("phone")) { it.open("phone") }
     val Phone = BuiltInApp("dialer", "Phone", Icons.Filled.Call, CarScreen.App("dialer")) { it.open("dialer") }
 

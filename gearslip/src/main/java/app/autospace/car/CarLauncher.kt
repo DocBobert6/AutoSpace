@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -278,13 +279,22 @@ fun CarLauncher() {
     val all = rememberAllEntries()
     val running = rememberRunningApps()
 
+    // r116: the Browser tile's Mariner circle, decoded once here; tileOf hands it to the Web
+    // tile. imageResource remembers by id, so this is one decode, not one per tile.
+    val browserCircle = BuiltInApps.Web.circleIconRes?.let { imageResource(it) }
+
     fun tileOf(entry: Entry): Tile {
         // Only apps that don't work get a mark. The X rates an app's own car screens; a messenger
         // shown on Gearslip's own Messages screen has none, so it never gets one.
         val pkg = entry.packageName?.takeIf { entry.messaging == null }
         val id = entry.componentId
+        // r116: a built-in with a circle bitmap draws the bitmap, not its glyph — TileIcon
+        // prefers the bitmap, so the Web tile shows the Mariner circle and the magnifier
+        // never draws for it. Every other built-in still has a null icon and keeps its glyph,
+        // and installed apps keep their own icons, so icon packs never touch this tile.
+        val icon = entry.icon ?: entry.builtIn?.circleIconRes?.let { browserCircle }
         return Tile(
-            entry.label, entry.icon, entry.builtIn?.glyph,
+            entry.label, icon, entry.builtIn?.glyph,
             broken = pkg != null && (KnownApps.isBroken(context, pkg) || (entry.template != null && KnownApps.screenBroken(pkg))),
             onLongClick = id?.let { { navigator.showAppMenu(it) } },
         ) { openApp(entry, id?.let { running[it] }, navigator, frame) }

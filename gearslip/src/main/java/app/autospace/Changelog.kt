@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            83, "0.4.72-alpha",
+            listOf(
+                "The Browser tile in the app grid now shows the Notscape Mariner compass-and-ship circle instead of the magnifier, and the same circle follows it onto the side bar.",
+            ),
+        ),
+        Release(
             82, "0.4.71-alpha",
             listOf(
                 "Pitlane has been reworked into zones: a clean solid fill, a carbon-weave frame with hex bolts at the corners, and a crisp chamfered edge. Big surfaces get the full frame, small ones shed the weave, then the bolts, then the thick edge — and switches are now rocker paddles.",
