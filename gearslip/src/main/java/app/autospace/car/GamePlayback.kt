@@ -49,6 +49,7 @@ import app.autospace.notify.CarMotion
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 
 /**
@@ -142,11 +143,51 @@ private class GamepadDisconnectMonitor(
     }
 }
 
+/**
+ * r148: games immersive fullscreen, following the browser's
+ * BrowserImmersiveState pattern (WebApp.kt) and the player's
+ * PlayerImmersiveState pattern (VideoPlayerScreen.kt): the
+ * playback screen publishes here, CarUi hides the rail/pill
+ * with it — but only while Games itself is the active screen,
+ * and leaving the game clears it, so a hidden bar can never
+ * outlive the game. Session state only, never persisted.
+ *
+ * Mariner has no games-playback fullscreen to port: its
+ * GamesScreen is menus and options, and its one "immersive"
+ * flag is a settings value, not a playback mode. So this
+ * follows the tree's own immersive pattern instead.
+ */
+object GameImmersiveState {
+    val immersive = MutableStateFlow(false)
+    fun enter() { immersive.value = true }
+    fun exit() { immersive.value = false }
+}
+
+/**
+ * r148: the pure chrome rule CarUi applies — the rail/pill hide
+ * only when Games is the active screen AND the game is
+ * fullscreen. Pinned by GameImmersiveTest: a fullscreen game on
+ * any other screen, or a framed game on the Games screen, hides
+ * nothing.
+ */
+fun gameImmersiveHidesChrome(screenIsGames: Boolean, immersive: Boolean): Boolean =
+    screenIsGames && immersive
+
 @Composable
 fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     val context = LocalContext.current
     var moving by remember { mutableStateOf(CarMotion.moving) }
     var expanded by remember { mutableStateOf(false) }
+    // r148: immersive fullscreen follows expanded exactly —
+    // entering fullscreen publishes, shrinking exits, and the
+    // dispose below exits too, so a hidden rail can never
+    // outlive the game. The pause menu does not touch it:
+    // opening the menu over a fullscreen game keeps the game
+    // fullscreen behind it, and closing the menu returns to
+    // fullscreen.
+    LaunchedEffect(expanded) {
+        if (expanded) GameImmersiveState.enter() else GameImmersiveState.exit()
+    }
     var menuOpen by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var engineNote by remember { mutableStateOf<String?>(null) }
@@ -239,6 +280,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
 
     DisposableEffect(Unit) {
         onDispose {
+            GameImmersiveState.exit()
             engine.stop()
             engine.destroy()
         }
@@ -372,26 +414,51 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 )
                 if (expanded) {
-                    // The expand button, still reachable while expanded:
-                    // it shrinks back to the framed view.
+                    // r148: in fullscreen the touch reachables are
+                    // Shrink and Pause — the same expand/start/pause
+                    // pattern as the framed view, minus the frame.
+                    // Shrink restores the framed view exactly;
+                    // Pause opens the pause menu over the fullscreen
+                    // game (closing it returns to fullscreen, and
+                    // Quit to library inside it leaves the game).
+                    // No virtual gamepad is added: gameplay still
+                    // takes a Bluetooth controller, and the parked
+                    // gate is untouched.
                     Box(
                         Modifier.fillMaxSize().padding(16.dp),
                         contentAlignment = Alignment.TopEnd,
                     ) {
-                        Surface(
-                            onClick = { expanded = false },
-                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            shape = gsButtonShape(MaterialTheme.shapes.large),
-                        ) {
-                            Text(
-                                "Shrink",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(
-                                    horizontal = 16.dp,
-                                    vertical = 12.dp
-                                ),
-                            )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                onClick = { expanded = false },
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = gsButtonShape(MaterialTheme.shapes.large),
+                            ) {
+                                Text(
+                                    "Shrink",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(
+                                        horizontal = 16.dp,
+                                        vertical = 12.dp
+                                    ),
+                                )
+                            }
+                            Surface(
+                                onClick = { menuOpen = true },
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                shape = gsButtonShape(MaterialTheme.shapes.large),
+                            ) {
+                                Text(
+                                    "Pause",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(
+                                        horizontal = 16.dp,
+                                        vertical = 12.dp
+                                    ),
+                                )
+                            }
                         }
                     }
                 }

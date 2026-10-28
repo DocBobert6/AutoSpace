@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -103,6 +105,12 @@ fun GamesScreen() {
     var consoleCoreStatus by remember {
         mutableStateOf<GameCoreDownload.Status?>(null)
     }
+    // r148: when a game goes fullscreen, this section's own
+    // padding goes with the rail — the game surface fills the
+    // whole screen, and shrinking or leaving the game restores
+    // the framed padding exactly, because the published state
+    // exits with the game.
+    val gameImmersive by GameImmersiveState.immersive.collectAsState()
 
     // Parked gate, live: a plain property, not a flow, so it is polled.
     LaunchedEffect(Unit) {
@@ -268,7 +276,12 @@ fun GamesScreen() {
     Box(
         Modifier.fillMaxSize(),
     ) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
+        Column(
+            Modifier.fillMaxSize().padding(
+                if (gameImmersive) PaddingValues()
+                else PaddingValues(horizontal = 24.dp, vertical = 16.dp)
+            )
+        ) {
             if (moving) {
                 ScreenHeader("Games")
                 Spacer(Modifier.height(16.dp))

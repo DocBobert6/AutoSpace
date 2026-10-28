@@ -165,6 +165,10 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
     // with it, but only while the browser itself is the active
     // screen (see browserImmersiveHide below).
     val browserImmersive by BrowserImmersiveState.immersive.collectAsState()
+    // r148: games immersive fullscreen, the same pattern as the
+    // browser line above — the playback screen publishes, CarUi
+    // hides the bar with it (see gameImmersiveHide below).
+    val gameImmersive by GameImmersiveState.immersive.collectAsState()
     // Phase 9 mirror immersive: while mirroring, no AutoSpace chrome
     // may be drawn over the phone video. In a real car this is already
     // the case — showMirror stops the projector and the mirror owns
@@ -412,7 +416,16 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // immersive state is set; leaving the browser
                 // clears that state, so the bar returns.
                 val browserImmersiveHide = screen is CarScreen.App && screen.id == "web" && browserImmersive
-                val barVisible = !keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !mirrorActive
+                // r148: games immersive fullscreen, same hide,
+                // extended, not restructured — the rail/pill go
+                // only while Games itself is the active screen
+                // AND its game is fullscreen; shrinking the game
+                // or leaving it restores the bar, because the
+                // published state exits with it. The pure rule
+                // lives in gameImmersiveHidesChrome (pinned by
+                // GameImmersiveTest); this line applies it.
+                val gameImmersiveHide = gameImmersiveHidesChrome(screen is CarScreen.App && screen.id == "games", gameImmersive)
+                val barVisible = !keyboardVisible && !playerImmersiveHide && !browserImmersiveHide && !gameImmersiveHide && !mirrorActive
                 // r87: the steering-side rail no longer yields — it owns
                 // a reserved strip at the frame edge (see
                 // NAV_BAR_SIDE_STRIP_WIDTH), so it can never overlap the

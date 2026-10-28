@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            106, "0.4.95-alpha",
+            listOf(
+                "Games can now go fully fullscreen: expand a game and it fills the whole screen with the car bar hidden, with Shrink and Pause reachable over the game. Shrinking brings the framed view back exactly, and quitting from the pause menu leaves the game as before.",
+            ),
+        ),
+        Release(
             105, "0.4.94-alpha",
             listOf(
                 "Each console now has its own controller mapping in the Games section: pick a console, remap its buttons from a list, and that mapping is the one used when you launch its games. Buttons you don't remap keep working exactly as before.",
