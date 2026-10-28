@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            76, "0.4.65-alpha",
+            listOf(
+                "The floating media card now moves on a press-and-hold drag: hold the card, then drag it to any spot while parked. That also fixes a bug where the card could stop dragging after the first move.",
+            ),
+        ),
+        Release(
             75, "0.4.64-alpha",
             listOf(
                 "Heritage has a button style of its own now: Heirloom, with soft edges and a stitched leather trim in warm cream, plus a Heritage + Heirloom pair that sets both at once.",

@@ -11,27 +11,37 @@ import androidx.compose.ui.geometry.Offset
  * only the decisions, so the unit test pins them exactly.
  *
  * The three rules, and how they compose:
- * - Draggable BY DEFAULT in free placement: the drag gesture is
- *   active whenever the dock toggle is off and the car is parked
- *   ([mediaCardDragApplies]). Dock on means the card sits exactly at
- *   its dock position; the stored drag offset is ignored, not
- *   cleared, so undocking restores the dragged spot.
+ * - Press-and-hold to drag (r109): a press-and-hold anywhere on the
+ *   card arms dragging; while armed, drags move the card; release
+ *   ends the drag, and the next press-and-hold arms it again. The
+ *   detector is attached unconditionally and the gate is enforced
+ *   inside the gesture callbacks, never by removing the detector —
+ *   the r106 conditional chain removed the detector node whenever
+ *   the gate closed, which is the one-and-done death: one drag with
+ *   the gate open, then nothing from any grab point once the gate
+ *   closed. Dock on means the card sits exactly at its dock
+ *   position; the stored drag offset is ignored, not cleared, so
+ *   undocking restores the dragged spot.
  * - Parked-only: the gate reads the same 1 s CarMotion poll the
- *   widget column and MiniVideo use. A drag in flight is cancelled
- *   the moment motion starts (the gesture detector restarts on the
- *   gate value), so a card can never be dragged while moving.
+ *   widget column and MiniVideo use. It is enforced at arm time and
+ *   re-checked on every move, so a drag in flight is cancelled the
+ *   moment motion starts — but the detector itself never leaves
+ *   the chain, so it works again the moment the gate reopens.
  * - Session-only: the offset lives in a CarHome remember, never in
  *   CarSettings, so a dragged position resets when Home leaves
  *   composition (process death / Home disposal) and survives card
  *   hide/show, mini video, and live-widget swaps.
  *
  * Gesture coexistence, stated plainly: the drag detector sits on
- * the card's own modifier, OUTSIDE the card's Box, so the card's
- * children win their areas — pointer dispatch runs innermost-first,
- * so a horizontal drag on the waveform seeks and a horizontal drag
- * on the info row swipes sessions, and the card drag only moves on
- * drags those detectors do not claim. A tap (no movement past slop)
- * still taps exactly as today.
+ * the card's own modifier, OUTSIDE the card's Box. Ordinary
+ * (non-long-press) gestures are untouched: a quick horizontal drag
+ * on the waveform seeks and on the info row swipes sessions, because
+ * movement before the long-press timeout cancels the arm wait before
+ * the card detector can claim the gesture. A long-press anywhere on
+ * the card — including on the waveform and info row — arms the card
+ * drag instead, since neither child consumes the down event. A tap
+ * (no movement past slop) still taps exactly as today, and a
+ * long-press released without movement moves nothing.
  *
  * Navigation-low pair: during navigation the card sits low ONLY
  * when docked ([mediaCardDragNavLow] — a free card keeps its dragged

@@ -24,10 +24,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -295,6 +296,16 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     // the locals.
                     val clearanceFrameWidth = maxWidth.value
                     val clearanceFrameHeight = maxHeight.value
+                    // r109: the press-and-hold detector below is attached
+                    // once (pointerInput(Unit)) and lives for the whole
+                    // slot, so the geometry it reads must stay live
+                    // across recompositions — the alignment and frame
+                    // size are refreshed here on every composition
+                    // instead of being captured once when the detector
+                    // first starts.
+                    val dragAlignment by rememberUpdatedState(clearanceAlignment)
+                    val dragFrameWidth by rememberUpdatedState(clearanceFrameWidth)
+                    val dragFrameHeight by rememberUpdatedState(clearanceFrameHeight)
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = MediaCardSlotPadDp.dp, top = MediaCardSlotPadDp.dp,
@@ -311,45 +322,74 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                                         Offset(it.width.toDp().value, it.height.toDp().value)
                                     }
                                 }
-                                // r106: free drag, parked-only and
-                                // session-only. The gesture lives on
-                                // the card's own modifier, outside the
-                                // card's Box, so the children's own
-                                // drag detectors win their areas (see
-                                // MediaCardDrag): a horizontal drag
-                                // on the waveform seeks, a horizontal
-                                // drag on the info row swipes
-                                // sessions, and the card drag only
-                                // moves on drags those detectors do
-                                // not claim. When docked the card
+                                // r109: press-and-hold to drag. The card
+                                // drags only after a press-and-hold arms
+                                // it; a release ends the drag, and the
+                                // next press-and-hold arms it again.
+                                // Taps still tap exactly as today, and
+                                // ordinary (non-long-press) gestures on
+                                // the children are untouched: a quick
+                                // horizontal drag on the waveform still
+                                // seeks and on the info row still swipes
+                                // sessions, because movement before the
+                                // long-press timeout cancels the arm
+                                // wait before the card detector can claim
+                                // the gesture. A long-press anywhere on
+                                // the card — including on the waveform
+                                // and info row — arms the card drag
+                                // instead, since neither child consumes
+                                // the down event. When docked the card
                                 // sits exactly at its dock position
                                 // (low during navigation, like every
                                 // docked placement) and the stored
                                 // offset is ignored, not cleared, so
                                 // undocking restores it.
-                                .then(
-                                    if (mediaCardDragApplies(dockEnabled, cardDragMoving))
-                                        Modifier.pointerInput(dockEnabled, cardDragMoving) {
-                                            detectDragGestures { change, dragAmount ->
-                                                change.consume()
-                                                val dx = dragAmount.x / density
-                                                val dy = dragAmount.y / density
-                                                mediaCardDragOffsetDp = clampMediaCardDragOffset(
-                                                    mediaCardDragOffsetDp.x + dx,
-                                                    mediaCardDragOffsetDp.y + dy,
-                                                    mediaCardAlignedLeftDp(
-                                                        clearanceAlignment,
-                                                        clearanceFrameWidth, mediaCardDragSizeDp.x, MediaCardSlotPadDp,
-                                                    ),
-                                                    clearanceFrameHeight - MediaCardSlotPadDp - mediaCardDragSizeDp.y,
-                                                    clearanceFrameWidth, clearanceFrameHeight,
-                                                    mediaCardDragSizeDp.x, mediaCardDragSizeDp.y,
-                                                    MediaCardDragMinVisibleDp,
-                                                )
-                                            }
+                                //
+                                // Why the detector is attached
+                                // unconditionally (r106 root cause): the
+                                // r106 detector lived inside a
+                                // conditional modifier — when the parked
+                                // gate closed, the detector node left
+                                // the chain entirely, so no grab point
+                                // could drag until the gate reopened.
+                                // The gate is now enforced inside the
+                                // callbacks instead, so the detector
+                                // survives a gate closure and works
+                                // again the moment the gate reopens.
+                                .pointerInput(Unit) {
+                                    var armed = false
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = {
+                                            armed = mediaCardDragApplies(dockEnabled, cardDragMoving)
+                                        },
+                                        onDragEnd = { armed = false },
+                                        onDragCancel = { armed = false },
+                                    ) { change, dragAmount ->
+                                        if (!armed) return@detectDragGesturesAfterLongPress
+                                        // Re-check every move: a drag in
+                                        // flight is cancelled the moment
+                                        // motion starts (r106 rule).
+                                        if (!mediaCardDragApplies(dockEnabled, cardDragMoving)) {
+                                            armed = false
+                                            return@detectDragGesturesAfterLongPress
                                         }
-                                    else Modifier
-                                )
+                                        change.consume()
+                                        val dx = dragAmount.x / density
+                                        val dy = dragAmount.y / density
+                                        mediaCardDragOffsetDp = clampMediaCardDragOffset(
+                                            mediaCardDragOffsetDp.x + dx,
+                                            mediaCardDragOffsetDp.y + dy,
+                                            mediaCardAlignedLeftDp(
+                                                dragAlignment,
+                                                dragFrameWidth, mediaCardDragSizeDp.x, MediaCardSlotPadDp,
+                                            ),
+                                            dragFrameHeight - MediaCardSlotPadDp - mediaCardDragSizeDp.y,
+                                            dragFrameWidth, dragFrameHeight,
+                                            mediaCardDragSizeDp.x, mediaCardDragSizeDp.y,
+                                            MediaCardDragMinVisibleDp,
+                                        )
+                                    }
+                                }
                                 .offset {
                                     if (dockEnabled) IntOffset.Zero
                                     else IntOffset(
