@@ -154,10 +154,11 @@ internal fun WaveformSeekBar(
 }
 
 /**
- * The album-adaptive accent for the progress tint + play/pause button (r51 hybrid), or null
- * when the art gives nothing usable — null means "scheme primary", exactly as before, never a
- * near-grey wash. A tint counts as usable only at saturation 0.30+, so muted/duotone covers
- * fall back instead of tinting the player grey.
+ * The album-adaptive accent for the progress tint (r51 hybrid; since r132 the play/pause
+ * button no longer takes it — it uses the normal player treatment, scheme fill, circle like
+ * prev/next), or null when the art gives nothing usable — null means "scheme primary",
+ * exactly as before, never a near-grey wash. A tint counts as usable only at saturation
+ * 0.30+, so muted/duotone covers fall back instead of tinting the player grey.
  */
 internal fun playerAccentColor(tint: ArtColor.Tint?, dark: Boolean): Color? {
     if (tint == null || tint.saturation < 0.3f) return null
@@ -262,8 +263,10 @@ internal val DefaultTransportShape: Shape = CircleShape
  * mid-animation moving flip does not retroactively re-spec, the r48 edge. [accent] tints
  * the play button (null = scheme primary, exactly as before). Seek buttons hide when there
  * is no duration (live/radio) and grey out when seeking is unsupported; every other button
- * stays in place greyed when unavailable, so the row never shifts. The floating card passes
- * neither flag, so its compact 3-button row is byte-for-byte today's.
+ * stays in place greyed when unavailable, so the row never shifts. Since r132 no caller
+ * passes either flag: the full and compact players use the normal treatment (scheme fill,
+ * circle like prev/next), and the floating card's compact 3-button row is byte-for-byte
+ * today's.
  */
 @Composable
 internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: Modifier = Modifier, shape: Shape = DefaultTransportShape, showSeek: Boolean = false, morphPlay: Boolean = false, accent: Color? = null) {

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            90, "0.4.79-alpha",
+            listOf(
+                "The play button in the music player now matches the other player buttons — the same color and round shape as previous and next — instead of taking its color and shape from the album cover. The progress bars still take their color from the cover.",
+            ),
+        ),
+        Release(
             89, "0.4.78-alpha",
             listOf(
                 "When you're talking to the assistant on Home, the conversation now shows in just one place instead of two: the live conversation card owns it, and the listening bar steps aside until the card is dismissed — so there's one dismiss button instead of two, and the bar no longer covers the map's corner labels.",

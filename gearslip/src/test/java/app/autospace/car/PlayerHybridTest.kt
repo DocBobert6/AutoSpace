@@ -1,5 +1,6 @@
 package app.autospace.car
 
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.autospace.media.ArtColor
@@ -17,6 +18,12 @@ import org.junit.Test
  * in the player composables — the only drag handler is the scrubber's, and [seekFractionForX]
  * below proves it can only ever produce a seek fraction, never a source change. Verified by
  * inspection of PlayerParts.kt at push time, not by a test that would only restate itself.
+ *
+ * r132: the play/pause wiring (neither NowPlayingControls nor CompactPlayer passes an accent
+ * or morphPlay to TransportRow, so play/pause takes the default circle shape and scheme fill
+ * like prev/next) is likewise structural — those composables are private and the wiring is
+ * not visible to JVM tests. Verified by inspection of MediaScreen.kt at push time; the test
+ * below pins the shape half that IS visible: the default transport shape is a circle.
  */
 class PlayerHybridTest {
 
@@ -81,5 +88,12 @@ class PlayerHybridTest {
         assertEquals(48.dp, playMorphCorner(true, 6.dp, 96.dp))
         assertEquals(6.dp, playMorphCorner(false, 6.dp, 96.dp))
         assertEquals(24.dp, playMorphCorner(false, 24.dp, 96.dp))
+    }
+
+    @Test
+    fun defaultTransportShapeIsCircle() {
+        // r132: play/pause takes no shape override and no morph, so it draws in the default
+        // transport shape — the same circle prev/next use.
+        assertEquals(CircleShape, DefaultTransportShape)
     }
 }

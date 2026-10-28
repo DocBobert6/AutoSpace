@@ -556,7 +556,7 @@ private fun NowPlayingControls(now: NowPlaying, media: CarMedia, modifier: Modif
             )
             now.error?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, maxLines = 2) }
         }
-        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true, morphPlay = true, accent = accent)
+        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true)
         PlayModeRow(now, media, size = 56.dp, modifier = Modifier.fillMaxWidth(), maxOther = 2)
         PlayerProgress(now, media, Modifier.fillMaxWidth(), waveform = true, accent = accent)
     }
@@ -586,7 +586,7 @@ private fun CompactPlayer(now: NowPlaying, media: CarMedia, modifier: Modifier) 
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
-        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true, morphPlay = true, accent = accent)
+        TransportRow(now, media, skip = 60.dp, modifier = Modifier.fillMaxWidth(), showSeek = true)
         PlayModeRow(now, media, size = 56.dp, modifier = Modifier.fillMaxWidth())
         PlayerProgress(now, media, Modifier.fillMaxWidth(), waveform = true, accent = accent)
     }
