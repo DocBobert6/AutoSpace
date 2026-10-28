@@ -31,7 +31,6 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.Shape
@@ -303,10 +302,13 @@ fun Modifier.foundryCardGradient(containerColor: Color, enabled: Boolean = true)
     val look = gsLook()
     if (!enabled || !look.machinedRim) return this
     return this.drawBehind {
+        // Plain arithmetic: graphics lerp has no Float overload
+        // (Color/Shadow only), so the 10% lift toward white is
+        // written out channel by channel.
         val top = containerColor.copy(
-            red = lerp(containerColor.red, 1f, 0.10f),
-            green = lerp(containerColor.green, 1f, 0.10f),
-            blue = lerp(containerColor.blue, 1f, 0.10f),
+            red = containerColor.red + (1f - containerColor.red) * 0.10f,
+            green = containerColor.green + (1f - containerColor.green) * 0.10f,
+            blue = containerColor.blue + (1f - containerColor.blue) * 0.10f,
         )
         drawRect(
             Brush.verticalGradient(0f to top, 1f to containerColor),
