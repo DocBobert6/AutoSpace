@@ -138,6 +138,169 @@
     <!-- Named directly: r104, see above. -->
     <package android:name="com.eatos.onepro" />
     <package android:name="com.eatos.onedarkpro" />
+    <!-- Named directly: r146 — One 8.5 by Eatos (com.eatos.onexyz), the pack
+         Robert actually has; NOT OnePro 8 (com.eatos.onepro, already above). -->
+    <!-- One 8.5 - Icon Pack -->
+    <package android:name="com.eatos.onexyz" />
+    <!-- Named directly: r146 — 17 top packs (visibility only; each pack must
+         still pass the appfilter + loadable-drawable gate to appear). -->
+    <!-- Delta -->
+    <package android:name="website.leifs.delta" />
+    <!-- Moonshine free -->
+    <package android:name="nexbit.icons.moonshine" />
+    <!-- Zwart -->
+    <package android:name="com.blackiconpack.zwart" />
+    <!-- Rondo -->
+    <package android:name="com.benx9.cactus" />
+    <!-- LineX -->
+    <package android:name="com.jndapp.line.x.iconpack" />
+    <!-- Crayon -->
+    <package android:name="com.jndapp.cartoon.crayon.iconpack" />
+    <!-- PixBit -->
+    <package android:name="pixbit.prime" />
+    <!-- Linebit -->
+    <package android:name="com.edzondm.linebit" />
+    <!-- Arcticons -->
+    <package android:name="com.donnnno.arcticons" />
+    <!-- CandyCons -->
+    <package android:name="com.zavukodlak.candycons" />
+    <!-- ENIX -->
+    <package android:name="com.lknninex.enix" />
+    <!-- Flight Lite -->
+    <package android:name="com.natewren.flightlite" />
+    <!-- Lines free -->
+    <package android:name="com.natewren.linesfree" />
+    <!-- Minma -->
+    <package android:name="com.minma.icon.free" />
+    <!-- Reev Pro -->
+    <package android:name="com.reevpro.grabsterstudios" />
+    <!-- Viral -->
+    <package android:name="vintage.icon.pack.ddt" />
+    <!-- Whicons -->
+    <package android:name="com.whicons.iconpack" />
+    <!-- Named directly: r146 — 60 further Eatos packs (visibility only;
+         same appfilter + drawable gate applies; legacy com.dtaf.alonso.* ids
+         kept as-is, not "corrected" to com.eatos.*). -->
+    <!-- Anpu Round -->
+    <package android:name="com.eatos.anpx" />
+    <!-- Anubis -->
+    <package android:name="com.eatos.anux" />
+    <!-- Bastet Round -->
+    <package android:name="com.eatos.anpx.black" />
+    <!-- Bastis Black -->
+    <package android:name="com.eatos.anux.black" />
+    <!-- Blaux Round -->
+    <package android:name="com.eatos.uxpx.black" />
+    <!-- Blaux Black -->
+    <package android:name="com.eatos.uxux.black" />
+    <!-- Delux -->
+    <package android:name="com.eatos.uxux" />
+    <!-- Delux Round -->
+    <package android:name="com.eatos.uxpx" />
+    <!-- Eurux White -->
+    <package android:name="com.eatos.eurux.white" />
+    <!-- Grace UX -->
+    <package android:name="com.dtaf.alonso.icon5" />
+    <!-- GraceUX Round -->
+    <package android:name="com.dtaf.alonso.icon7" />
+    <!-- Horux Round -->
+    <package android:name="com.eatos.uxpx.black.colors" />
+    <!-- Horux Black -->
+    <package android:name="com.eatos.uxux.black.colors" />
+    <!-- HuxOne Dark -->
+    <package android:name="com.eatos.huxone.black" />
+    <!-- HyperDark -->
+    <package android:name="com.eatos.hyper.dark" />
+    <!-- HyperUX -->
+    <package android:name="com.eatos.hyperux" />
+    <!-- iDarkOS 18 -->
+    <package android:name="com.eatos.idarkos" />
+    <!-- iGlassOS Dark -->
+    <package android:name="com.eatos.iliquid.glassdark" />
+    <!-- iLightOS 18 -->
+    <package android:name="com.eatos.idroid" />
+    <!-- iLiquid -->
+    <package android:name="com.eatos.iliquidos" />
+    <!-- iLiquid Dark -->
+    <package android:name="com.eatos.iliquid.dark" />
+    <!-- iLiquidGlassOS -->
+    <package android:name="com.eatos.iliquidos.glass" />
+    <!-- iPeach Black -->
+    <package android:name="com.eatos.icux" />
+    <!-- iPear 18 -->
+    <package android:name="com.eatos.ipux" />
+    <!-- iPear Pro Round -->
+    <package android:name="com.eatos.ippx" />
+    <!-- iPlum Round -->
+    <package android:name="com.eatos.icpx" />
+    <!-- iPrismOS Dark -->
+    <package android:name="com.eatos.iliquidcolor.darkglass" />
+    <!-- iPrismOS 26 -->
+    <package android:name="com.eatos.iliquidcolor.glass" />
+    <!-- iTinted -->
+    <package android:name="com.eatos.itinted" />
+    <!-- Maahes White -->
+    <package android:name="com.eatos.anux.white" />
+    <!-- Mi15 -->
+    <package android:name="com.eatos.miux" />
+    <!-- MiDark -->
+    <package android:name="com.eatos.mpux.black" />
+    <!-- MiDark Round -->
+    <package android:name="com.eatos.mppx.black" />
+    <!-- MiLight Round -->
+    <package android:name="com.eatos.mppx.white" />
+    <!-- MiLight White -->
+    <package android:name="com.eatos.mpux.white" />
+    <!-- MiPlus -->
+    <package android:name="com.eatos.mpux" />
+    <!-- MiPlus Round -->
+    <package android:name="com.eatos.mppx" />
+    <!-- MiRound -->
+    <package android:name="com.eatos.mipx" />
+    <!-- Miysis Round -->
+    <package android:name="com.eatos.anpx.white" />
+    <!-- One3D -->
+    <package android:name="com.eatos.one3d" />
+    <!-- OneBlack -->
+    <package android:name="com.eatos.sxux.black.colors" />
+    <!-- OneColor GlassDark -->
+    <package android:name="com.eatos.onecolor.glassdark" />
+    <!-- OneDark 3D -->
+    <package android:name="com.eatos.onedark3d" />
+    <!-- OneGlass Dark -->
+    <package android:name="com.eatos.onedarkglass" />
+    <!-- OneGlass 8 -->
+    <package android:name="com.eatos.oneglass" />
+    <!-- OneGlass 8 Color -->
+    <package android:name="com.eatos.oneglass.colors" />
+    <!-- OneLight 8 -->
+    <package android:name="com.eatos.onelightpro" />
+    <!-- OneLiquid -->
+    <package android:name="com.eatos.oneliquidpro" />
+    <!-- OneMax -->
+    <package android:name="com.eatos.onux" />
+    <!-- OneMax You -->
+    <package android:name="com.eatos.onemax.you" />
+    <!-- OneMax 6 Round -->
+    <package android:name="com.eatos.onpx" />
+    <!-- OneNeo -->
+    <package android:name="com.eatos.sxux" />
+    <!-- OneNeo 4 Round -->
+    <package android:name="com.eatos.sxpx" />
+    <!-- OnePro You -->
+    <package android:name="com.eatos.oneyoupro" />
+    <!-- OneRound 7 -->
+    <package android:name="com.eatos.oneroundpro" />
+    <!-- OneWhite -->
+    <package android:name="com.eatos.uxone.white" />
+    <!-- TouchWiz -->
+    <package android:name="com.dtaf.alonso.icon6" />
+    <!-- TouchWiz Round -->
+    <package android:name="com.eatos.twpx" />
+    <!-- Whiux Round -->
+    <package android:name="com.eatos.uxpx.white" />
+    <!-- Whiux White -->
+    <package android:name="com.eatos.uxux.white" />
     <intent>
         <action android:name="org.adw.launcher.THEMES" />
     </intent>

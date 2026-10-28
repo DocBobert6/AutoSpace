@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            104, "0.4.93-alpha",
+            listOf(
+                "More icon packs can be found now — One 8.5, 17 top packs, and 60 more from Eatos are all named, so packs that declare only a theme intent show up in the picker when installed.",
+            ),
+        ),
+        Release(
             103, "0.4.92-alpha",
             listOf(
                 "Workshop + Foundry reworked: dark mode is charcoal linen instead of espresso brown, light mode is cool off-white linen instead of cream, the accents stay brass, copper, and olive, and the metal buttons are stronger — a brighter gradient, a deeper shadow, and a bright inner line along the top edge.",
