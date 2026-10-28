@@ -29,9 +29,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import app.autospace.car.theme.GsIconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -309,12 +308,10 @@ private fun Fullscreen(
 
         // The frame swallows every touch inside it, so leaving needs either the back gesture or
         // a button of its own. This one sits in the corner the car UI leaves emptiest.
-        FilledTonalIconButton(
-            onClick = onBack,
+        GsIconButton(
+            Icons.Filled.Close, "Leave the car preview", onBack,
             modifier = Modifier.align(Alignment.BottomStart).padding(8.dp),
-        ) {
-            Icon(Icons.Filled.Close, contentDescription = "Leave the car preview")
-        }
+        )
     }
 }
 

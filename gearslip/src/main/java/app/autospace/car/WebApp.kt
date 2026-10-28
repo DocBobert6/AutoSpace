@@ -1107,7 +1107,6 @@ fun WebApp(content: String) {
                                 Icons.Filled.Close, "Clear address",
                                 { addressText = ""; addressSelected = false },
                                 size = 32.dp, iconSize = 18.dp,
-                                shape = androidx.compose.foundation.shape.CircleShape,
                             )
                         }
                     }
@@ -1845,9 +1844,7 @@ fun WebApp(content: String) {
                         Box(Modifier.size(44.dp).clickable { web?.findNext(true) }, contentAlignment = Alignment.Center) {
                             androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowDown, "Next match", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
                         }
-                        Box(Modifier.size(44.dp).clickable { findOpen = false; web?.clearMatches() }, contentAlignment = Alignment.Center) {
-                            androidx.compose.material3.Icon(Icons.Filled.Close, "Close find", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
-                        }
+                        GsIconButton(Icons.Filled.Close, "Close find", { findOpen = false; web?.clearMatches() }, size = 44.dp, iconSize = 24.dp)
                     }
                 }
             }
@@ -2372,7 +2369,7 @@ private fun BrowserStartPage(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                        GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp)
                     }
                 }
             }
@@ -2818,7 +2815,7 @@ private fun TabSwitcherSheet(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp, shape = androidx.compose.foundation.shape.CircleShape)
+                        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

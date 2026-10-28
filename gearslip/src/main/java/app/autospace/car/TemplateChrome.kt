@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -461,7 +460,6 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                 colors = if (meridian) GsColors(Color(MapChromeColors.MERIDIAN_STOP_BACKGROUND), Color(MapChromeColors.MERIDIAN_STOP_CONTENT)) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
                 size = 40.dp,
                 iconSize = 20.dp,
-                shape = CircleShape,
             )
             Spacer(Modifier.width(10.dp))
             Column {

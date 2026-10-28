@@ -334,7 +334,6 @@ internal fun SearchField(
                     colors = GsColors(androidx.compose.ui.graphics.Color.Transparent, muted),
                     size = 42.dp,
                     iconSize = 22.dp,
-                    shape = androidx.compose.foundation.shape.CircleShape,
                 )
             }
         }

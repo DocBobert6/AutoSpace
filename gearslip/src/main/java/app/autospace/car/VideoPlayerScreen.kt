@@ -57,7 +57,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -96,6 +95,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import app.autospace.R
+import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Job
@@ -1693,9 +1693,7 @@ private fun PlayerScreenHeader(title: String, onClose: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        IconButton(onClick = onClose, modifier = Modifier.size(56.dp)) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
-        }
+        GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onClose, size = 56.dp, iconSize = 28.dp)
         Text(
             title,
             style = MaterialTheme.typography.headlineSmall,
@@ -1704,9 +1702,7 @@ private fun PlayerScreenHeader(title: String, onClose: () -> Unit) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onClose, modifier = Modifier.size(56.dp)) {
-            Icon(Icons.Filled.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(28.dp))
-        }
+        GsIconButton(Icons.Filled.Close, "Close", onClose, size = 56.dp, iconSize = 28.dp)
     }
 }
 

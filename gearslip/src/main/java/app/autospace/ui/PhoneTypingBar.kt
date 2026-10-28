@@ -9,9 +9,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import app.autospace.car.theme.GsIconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -48,9 +47,7 @@ fun PhoneTypingBar(modifier: Modifier = Modifier) {
 
     Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = modifier.fillMaxWidth().imePadding()) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = PhoneTyping::dismiss) {
-                Icon(Icons.Filled.Close, contentDescription = "Close the car keyboard")
-            }
+            GsIconButton(Icons.Filled.Close, "Close the car keyboard", PhoneTyping::dismiss)
             OutlinedTextField(
                 value = value,
                 onValueChange = {
@@ -63,9 +60,7 @@ fun PhoneTypingBar(modifier: Modifier = Modifier) {
                 keyboardActions = KeyboardActions(onSearch = { PhoneTyping.submit() }),
                 modifier = Modifier.weight(1f).focusRequester(focus),
             )
-            IconButton(onClick = PhoneTyping::submit) {
-                Icon(Icons.Filled.Search, contentDescription = "Search on the car screen")
-            }
+            GsIconButton(Icons.Filled.Search, "Search on the car screen", PhoneTyping::submit)
         }
     }
 }

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            93, "0.4.82-alpha",
+            listOf(
+                "Every close button in the app now matches the other buttons — the same shape and colors as the rest of the interface — instead of the older plain circles and bare icons.",
+            ),
+        ),
+        Release(
             92, "0.4.81-alpha",
             listOf(
                 "The side rail's icons now spread out to fit the screen instead of bunching at the top, so the spacing looks the same on any display, and the app-grid button at the bottom of the rail is now the same size as the other rail buttons.",
