@@ -929,7 +929,7 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
 private fun RailIconList(
     navigator: CarNavigator,
     entries: List<Entry>,
-    pinnedIds: List<String>,
+    pinnedIds: Set<String>,
     running: Map<String, RunningSlot>,
     frame: CarEnvironment.Frame,
     meridian: Boolean,
@@ -980,7 +980,7 @@ private fun RailIconList(
 @Composable
 private fun rememberBarAppLists(
     entries: List<Entry>,
-    pinnedIds: List<String>,
+    pinnedIds: Set<String>,
     running: Map<String, RunningSlot>,
 ): Pair<List<Entry>, List<Entry>> {
     val pinnedEntries = remember(entries, pinnedIds) {
