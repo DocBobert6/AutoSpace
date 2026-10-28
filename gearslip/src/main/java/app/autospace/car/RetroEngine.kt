@@ -109,6 +109,70 @@ object RetroEngine : GameEngine {
         return RetroNative.nativeDiskSwap(index)
     }
 
+    override fun setTopInset(px: Int) {
+        if (!created) return
+        RetroNative.nativeSetTopInset(px)
+    }
+
+    override fun setShader(on: Boolean, scan: Float, grid: Float, blur: Float) {
+        if (!created) return
+        RetroNative.nativeSetShader(on, scan, grid, blur)
+    }
+
+    override fun setLcdShader(on: Boolean, brightScan: Float, brightLcd: Float) {
+        if (!created) return
+        RetroNative.nativeSetLcdShader(on, brightScan, brightLcd)
+    }
+
+    override fun setCrtShader(on: Boolean) {
+        if (!created) return
+        RetroNative.nativeSetCrtShader(on)
+    }
+
+    override fun setColorProfile(
+        saturation: Float,
+        warm: Float,
+        gamma: Float,
+        bright: Float,
+        black: Float,
+        segaFix: Boolean
+    ) {
+        if (!created) return
+        RetroNative.nativeSetColorProfile(
+            saturation, warm, gamma, bright, black, segaFix
+        )
+    }
+
+    override fun setCurve(k: Float) {
+        if (!created) return
+        RetroNative.nativeSetCurve(k)
+    }
+
+    override fun setRound(strength: Float) {
+        if (!created) return
+        RetroNative.nativeSetRound(strength)
+    }
+
+    override fun setSpeed(mul: Int) {
+        if (!created) return
+        RetroNative.nativeSetSpeed(mul)
+    }
+
+    override fun setIntegerScale(on: Boolean) {
+        if (!created) return
+        RetroNative.nativeSetIntegerScale(on)
+    }
+
+    override fun frameGrab(): ByteArray? {
+        if (!created || !RetroNative.loadOk) return null
+        return runCatching { RetroNative.nativeFrameGrab() }.getOrNull()
+    }
+
+    override fun presentedFrames(): Long {
+        if (!created || !RetroNative.loadOk) return 0
+        return runCatching { RetroNative.nativeGetPresentedFrames() }.getOrDefault(0)
+    }
+
     override fun destroy() {
         if (!RetroNative.loadOk) return
         created = false

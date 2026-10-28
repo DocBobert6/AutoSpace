@@ -1,7 +1,10 @@
 package app.autospace.car
 
 import android.content.Context
+import android.graphics.Bitmap
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /**
  * r92: save states, memory cards, and disc swapping, ported from
@@ -116,14 +119,18 @@ object GameSaves {
 
     /**
      * Save through the engine into a temp file, then rename over the
-     * slot, so a failed save never clobbers a good one. Thumbnails
-     * arrive with the engine's frame grab; until then a slot's
-     * thumbnail is simply absent.
+     * slot, so a failed save never clobbers a good one. r149:
+     * when [grabFrame] is supplied, the engine's latest frame
+     * grab is saved alongside as the slot's thumbnail (Mariner's
+     * SaveStates.saveThumb shape); without a grab - no frame
+     * yet, or an engine without one - the thumbnail is simply
+     * absent, as before.
      */
     fun saveVia(
         context: Context,
         gameId: String,
         slot: Int,
+        grabFrame: (() -> ByteArray?)? = null,
         writeState: (File) -> Boolean
     ): Boolean {
         val dir = dirFor(context.filesDir, gameId).apply { mkdirs() }
@@ -134,11 +141,45 @@ object GameSaves {
             return false
         }
         if (target.exists()) target.delete()
-        return if (tmp.renameTo(target)) {
+        val saved = if (tmp.renameTo(target)) {
             true
         } else {
             tmp.copyTo(target, overwrite = true).also { tmp.delete() }
             true
+        }
+        if (saved && grabFrame != null) {
+            saveThumb(context, gameId, slot, grabFrame())
+        }
+        return saved
+    }
+
+    private fun saveThumb(
+        context: Context,
+        gameId: String,
+        slot: Int,
+        grab: ByteArray?
+    ) {
+        if (grab == null || grab.size < 8) return
+        val buf = ByteBuffer.wrap(grab).order(ByteOrder.LITTLE_ENDIAN)
+        val w = buf.int
+        val h = buf.int
+        if (w <= 0 || h <= 0 || grab.size < 8 + w * h * 4) return
+        val pixels = IntArray(w * h)
+        var i = 8
+        for (p in pixels.indices) {
+            val r = grab[i].toInt() and 0xFF
+            val g = grab[i + 1].toInt() and 0xFF
+            val b = grab[i + 2].toInt() and 0xFF
+            pixels[p] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            i += 4
+        }
+        val bmp = Bitmap.createBitmap(
+            pixels, w, h, Bitmap.Config.ARGB_8888
+        )
+        runCatching {
+            thumbFile(context, gameId, slot).outputStream().use {
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
         }
     }
 

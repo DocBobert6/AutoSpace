@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            107, "0.4.96-alpha",
+            listOf(
+                "Games get picture options: each console page now has a Display section with CRT shaders (one named look per console), display curvature, rounded corners, an FPS readout, fast-forward, and integer scaling. Shaders stay off until you switch them on, so the picture is unchanged unless you opt in; fast-forward gets its own row in the pause menu, and save states now carry a thumbnail of the game frame.",
+            ),
+        ),
+        Release(
             106, "0.4.95-alpha",
             listOf(
                 "Games can now go fully fullscreen: expand a game and it fills the whole screen with the car bar hidden, with Shrink and Pause reachable over the game. Shrinking brings the framed view back exactly, and quitting from the pause menu leaves the game as before.",

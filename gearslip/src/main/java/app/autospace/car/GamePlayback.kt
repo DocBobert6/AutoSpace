@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import android.content.Context
+import android.content.res.Configuration
 import android.hardware.input.InputManager
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -12,6 +13,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,7 +40,9 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -95,6 +99,32 @@ interface GameEngine {
     fun diskIndex(): Int
     fun diskSwap(index: Int): Boolean
     fun destroy()
+
+    /** r149: presenter options (see RetroNative). The setters
+     * are session-start except setSpeed, which is live. */
+    fun setTopInset(px: Int)
+    fun setShader(on: Boolean, scan: Float, grid: Float, blur: Float)
+    fun setLcdShader(on: Boolean, brightScan: Float, brightLcd: Float)
+    fun setCrtShader(on: Boolean)
+    fun setColorProfile(
+        saturation: Float,
+        warm: Float,
+        gamma: Float,
+        bright: Float,
+        black: Float,
+        segaFix: Boolean
+    )
+    fun setCurve(k: Float)
+    fun setRound(strength: Float)
+    fun setSpeed(mul: Int)
+    fun setIntegerScale(on: Boolean)
+
+    /** Latest RGBA frame grab (8-byte header + pixels), or null
+     * before the first frame. Feeds state thumbnails. */
+    fun frameGrab(): ByteArray?
+
+    /** Fresh frames the presenter has consumed this session. */
+    fun presentedFrames(): Long
 }
 
 /**
@@ -219,6 +249,56 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     }
     router.onAnalog = { lx, ly, rx, ry -> engine.setAnalog(lx, ly, rx, ry) }
 
+    // r149: portrait top inset, ported from Mariner (J7): in
+    // portrait the picture is top-anchored just below the camera
+    // cutout (the native side reads this inset); in landscape
+    // it stays centred and the inset is zero. The car screen is
+    // landscape in practice, so this is usually zero - but the
+    // plumbing is ported, not assumed away.
+    val configuration = LocalConfiguration.current
+    val portrait =
+        configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    val density = LocalDensity.current
+    val topInsetPx = if (portrait) {
+        WindowInsets.displayCutout.getTop(density) +
+            with(density) { 8.dp.toPx().toInt() }
+    } else {
+        0
+    }
+    LaunchedEffect(topInsetPx) {
+        engine.setTopInset(topInsetPx)
+    }
+
+    // r149: FPS readout, ported from Mariner: per-console
+    // setting, off by default; in-game the number is its own
+    // overlay. The readout diffs fresh-frame counts twice a
+    // second, so it shows the game's real output rate, not
+    // redraws. Top-start here, not Mariner's top-right: the
+    // fullscreen Shrink/Pause row already owns the top end.
+    val fpsOn = remember { GamePresenterOptions.fpsOn(context, game.system) }
+    var fpsText by remember { mutableStateOf("--") }
+    LaunchedEffect(fpsOn) {
+        if (!fpsOn) return@LaunchedEffect
+        var prev = engine.presentedFrames()
+        while (true) {
+            delay(500)
+            val cur = engine.presentedFrames()
+            fpsText = ((cur - prev) * 2).toString()
+            prev = cur
+        }
+    }
+
+    // r149: fast-forward, ported from Mariner (J9): per-console
+    // setting, off by default; the pause-menu row below toggles
+    // it live, and audio silences while it runs.
+    val ffEnabled = remember {
+        GamePresenterOptions.fastForwardEnabled(context, game.system)
+    }
+    var ffOn by remember { mutableStateOf(false) }
+    LaunchedEffect(ffOn) {
+        engine.setSpeed(if (ffOn) 4 else 1)
+    }
+
     // Parked gate, live, like the menus: driving swaps the whole
     // screen for the blocked notice. There is no passenger bypass.
     LaunchedEffect(Unit) {
@@ -315,6 +395,10 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
         engineNote = error
         if (error == null) {
             engine.setControllerDevice(GameInput.controllerDeviceFor(game.system))
+            // r149: session-start presentation, like core options
+            // and the r147 mapping - read once at launch.
+            GamePresenterOptions.applyToEngine(engine, context, game.system)
+            engine.setTopInset(topInsetPx)
             engine.start()
         }
     }
@@ -413,6 +497,26 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
+                if (fpsOn) {
+                    Box(
+                        Modifier.fillMaxSize().padding(12.dp),
+                        contentAlignment = Alignment.TopStart,
+                    ) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            shape = gsButtonShape(MaterialTheme.shapes.large),
+                        ) {
+                            Text(
+                                "$fpsText FPS",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(
+                                    horizontal = 12.dp,
+                                    vertical = 8.dp
+                                ),
+                            )
+                        }
+                    }
+                }
                 if (expanded) {
                     // r148: in fullscreen the touch reachables are
                     // Shrink and Pause — the same expand/start/pause
@@ -517,6 +621,20 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                         menuOpen = false
                     }
                 }
+                if (ffEnabled) {
+                    item(key = "fast-forward") {
+                        GamePlaybackRow(
+                            "Fast-forward",
+                            if (ffOn) {
+                                "On — running at 4x speed, audio silenced"
+                            } else {
+                                "Off — tap to run at 4x speed"
+                            },
+                        ) {
+                            ffOn = !ffOn
+                        }
+                    }
+                }
                 if (menuNote != null) {
                     item(key = "menu-note") {
                         Text(
@@ -553,7 +671,10 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                                 engine.loadState(file.absolutePath)
                             }
                         } else {
-                            GameSaves.saveVia(context, gameId, slot) { file ->
+                            GameSaves.saveVia(
+                                context, gameId, slot,
+                                grabFrame = { engine.frameGrab() },
+                            ) { file ->
                                 engine.saveState(file.absolutePath)
                             }
                         }

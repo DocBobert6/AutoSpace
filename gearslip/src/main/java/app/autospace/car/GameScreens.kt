@@ -563,6 +563,10 @@ private fun ConsolePage(
     // assignment or reset.
     var mappingVersion by remember { mutableStateOf(0) }
     var expandedAction by remember { mutableStateOf<Int?>(null) }
+    // r149: display state lives here too, in the @Composable
+    // body - the tick remounts the rows below with the fresh
+    // stored values after a toggle, reset, or amount step.
+    var displayVersion by remember { mutableStateOf(0) }
     val padMapping = remember(consoleKey, mappingVersion) {
         GamePadMapping.storedMapping(context, consoleKey)
     }
@@ -655,6 +659,120 @@ private fun ConsolePage(
                 GamePadMapping.resetConsole(context, consoleKey)
                 mappingVersion++
                 expandedAction = null
+            }
+        }
+        item(key = "display-header") {
+            Text(
+                "Display",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        item(key = "display-note") {
+            Text(
+                "Shaders and picture options for this console only. " +
+                    "They apply the next time you launch one of its " +
+                    "games. Curve strength and corner radius apply " +
+                    "when their toggles are on.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item(key = "display-shaders-$displayVersion") {
+            val on = GamePresenterOptions.shadersOn(context, consoleKey)
+            GameMenuRow(
+                "CRT shaders",
+                "Preset: " + GamePresenterOptions.presetFor(consoleKey).name +
+                    if (on) " · On" else " · Off",
+            ) {
+                GamePresenterOptions.setShaders(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-curve-$displayVersion") {
+            val on = GamePresenterOptions.curveOn(context, consoleKey)
+            GameMenuRow(
+                "Display curvature",
+                if (on) "On" else "Off",
+            ) {
+                GamePresenterOptions.setCurveOn(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-curve-amount-$displayVersion") {
+            val amount =
+                GamePresenterOptions.curveAmount(context, consoleKey)
+            GameMenuRow(
+                "Curve strength",
+                "$amount%",
+            ) {
+                GamePresenterOptions.setCurveAmount(
+                    context, consoleKey, (amount + 10) % 110
+                )
+                displayVersion++
+            }
+        }
+        item(key = "display-round-$displayVersion") {
+            val on = GamePresenterOptions.roundOn(context, consoleKey)
+            GameMenuRow(
+                "Rounded corners",
+                if (on) "On" else "Off",
+            ) {
+                GamePresenterOptions.setRoundOn(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-round-amount-$displayVersion") {
+            val amount =
+                GamePresenterOptions.roundAmount(context, consoleKey)
+            GameMenuRow(
+                "Corner radius",
+                "$amount%",
+            ) {
+                GamePresenterOptions.setRoundAmount(
+                    context, consoleKey, (amount + 10) % 110
+                )
+                displayVersion++
+            }
+        }
+        item(key = "display-fps-$displayVersion") {
+            val on = GamePresenterOptions.fpsOn(context, consoleKey)
+            GameMenuRow(
+                "Show FPS",
+                if (on) "On" else "Off",
+            ) {
+                GamePresenterOptions.setFps(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-ff-$displayVersion") {
+            val on =
+                GamePresenterOptions.fastForwardEnabled(context, consoleKey)
+            GameMenuRow(
+                "Fast-forward",
+                if (on) "On" else "Off",
+            ) {
+                GamePresenterOptions.setFastForward(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-integer-$displayVersion") {
+            val on = GamePresenterOptions.integerScale(context, consoleKey)
+            GameMenuRow(
+                "Integer scaling",
+                if (on) "On" else "Off",
+            ) {
+                GamePresenterOptions.setIntegerScale(context, consoleKey, !on)
+                displayVersion++
+            }
+        }
+        item(key = "display-reset-$displayVersion") {
+            GameMenuRow(
+                "Reset display to defaults",
+                "Restores this console's picture options",
+            ) {
+                GamePresenterOptions.resetConsole(context, consoleKey)
+                displayVersion++
             }
         }
         item(key = "bios-header") {

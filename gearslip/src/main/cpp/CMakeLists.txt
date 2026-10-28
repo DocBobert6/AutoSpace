@@ -15,7 +15,7 @@ add_subdirectory(${OBOE_DIR} oboe-build)
 # The libretro frontend shim: hosts a core .so loaded by
 # path at runtime (cores are separate libraries, downloaded
 # and hash-verified by the app, never linked here).
-add_library(autospace_retro SHARED retro_shim.cpp)
+add_library(autospace_retro SHARED retro_shim.cpp crt_chain.cpp)
 target_compile_features(autospace_retro PRIVATE cxx_std_17)
 target_include_directories(autospace_retro PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(autospace_retro

@@ -72,4 +72,70 @@ object RetroNative {
     external fun nativeDiskSwap(index: Int): Boolean
 
     external fun nativeDestroy()
+
+    /** r149: presenter options, ported from Mariner's JNI
+     * bridge. All are session-start setters except speed
+     * (live fast-forward) and the frame/presented counters. */
+    external fun nativeSetTopInset(px: Int)
+
+    /** Legacy shader pass: on/off plus this console's preset
+     * values. Read at session start. */
+    external fun nativeSetShader(
+        on: Boolean,
+        scan: Float,
+        grid: Float,
+        blur: Float
+    )
+
+    /** LCD pass: on/off plus the sine-grid strengths. */
+    external fun nativeSetLcdShader(
+        on: Boolean,
+        brightScan: Float,
+        brightLcd: Float
+    )
+
+    /** CRT chain: on/off. Read at session start; the chain
+     * falls back to the legacy pass if it cannot run. */
+    external fun nativeSetCrtShader(on: Boolean)
+
+    /** Per-console color profile: saturation, white point
+     * warmth (-100 cool .. 100 warm), gamma lift, brightness,
+     * black level, and the Genesis DAC range fix. Read at
+     * session start; every shader path grades with it. */
+    external fun nativeSetColorProfile(
+        saturation: Float,
+        warm: Float,
+        gamma: Float,
+        bright: Float,
+        black: Float,
+        segaFix: Boolean
+    )
+
+    /** Display curvature: mesh pull-in factor, 0 = the flat
+     * quad. Read at session start; applies whatever the
+     * shader toggle is. */
+    external fun nativeSetCurve(k: Float)
+
+    /** Rounded corners: corner-arc strength, 0 = square
+     * corners. Same mesh path as the curve; read at session
+     * start. */
+    external fun nativeSetRound(strength: Float)
+
+    /** Fast-forward: run-loop speed multiple (1 = normal,
+     * 4 = fast-forward). Live; audio silences while it runs. */
+    external fun nativeSetSpeed(mul: Int)
+
+    /** Integer scaling: snap the presenter's fit scale down
+     * to a whole number. Read at session start. */
+    external fun nativeSetIntegerScale(on: Boolean)
+
+    /** Frame grab for state thumbnails: an 8-byte
+     * little-endian width/height header followed by the
+     * latest RGBA frame, or null before the first frame. */
+    external fun nativeFrameGrab(): ByteArray?
+
+    /** Fresh game frames the presenter has consumed since
+     * the session started (the FPS counter reads this twice
+     * a second and diffs it). */
+    external fun nativeGetPresentedFrames(): Long
 }

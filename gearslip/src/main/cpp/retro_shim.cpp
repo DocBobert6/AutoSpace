@@ -8,12 +8,13 @@
 // letterboxes the frame to the core's aspect ratio, and an oboe
 // output stream fed from a lock-free ring.
 //
-// Deliberately NOT carried over from Mariner: the DS dual-screen
-// presenter and pointer device (no DS console here), the CRT
-// chain and shader passes, display curvature and rounded corners,
-// the portrait top inset, frame grabs, and fast-forward. The car
-// screen is landscape and the playback screen wants a plain,
-// legible picture; those looks are Mariner's, not this app's.
+// r149: Mariner's presenter IS carried over now - the CRT chain
+// and shader passes, display curvature and rounded corners, the
+// portrait top inset, frame grabs, and fast-forward - all behind
+// per-console settings that default to the plain picture this
+// presenter drew before. Deliberately NOT carried over: the DS
+// dual-screen presenter and pointer device (no DS console here,
+// and the DS presenter is excluded from this round).
 //
 // Two deliberate deviations from Mariner's create path, both for
 // disc games: a cue/m3u/chd loads by PATH ONLY (Mariner handed the
@@ -38,6 +39,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cmath>
 #include <map>
 #include <mutex>
 #include <string>
@@ -46,6 +48,7 @@
 
 #include <oboe/Oboe.h>
 #include "libretro.h"
+#include "crt_chain.h"
 
 #define LOG_TAG "AutospaceRetro"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -120,6 +123,12 @@ std::atomic<bool> g_shutdownRequested{false};
 // Pause: the emu loop idles instead of running frames, and the
 // audio callback plays silence.
 std::atomic<bool> g_paused{false};
+// Fast-forward runs the loop at a multiple of the core rate
+// (audio silenced too - fast audio would be garbled). Integer
+// scaling snaps the presenter's fit scale down to a whole
+// number so pixels stay uniform.
+std::atomic<bool> g_integerScale{false};
+std::atomic<int> g_speedMul{1};
 std::thread g_emuThread;
 
 // ---------------------------------------------------------------- frame
@@ -179,7 +188,7 @@ public:
             oboe::AudioStream* stream, void* audioData,
             int32_t numFrames) override {
         auto* out = static_cast<int16_t*>(audioData);
-        if (g_paused.load()) {
+        if (g_paused.load() || g_speedMul.load() > 1) {
             // Drain the ring but play silence.
             g_audioRing.pull(out, static_cast<size_t>(numFrames));
             memset(out, 0, numFrames * 2 * sizeof(int16_t));
@@ -429,6 +438,23 @@ int16_t inputStateCb(unsigned port, unsigned device, unsigned index,
 }
 
 // ---------------------------------------------------------------- GL presenter
+//
+// r149: Mariner's presenter, ported from Notscape Mariner's
+// retro_shim.cpp (Phase J/L, beta.4-7, beta.22) and trimmed for
+// the car: the plain pass, the legacy shader pass (scanlines /
+// grid / horizontal blend), the sine-modulated LCD pass, the
+// multi-pass CRT chain (crt_chain.h, guest(r) fast preset), the
+// per-console color profile, the 48x48 curve/round mesh,
+// integer scaling, the portrait top inset, the presented-frame
+// counter, and frame grabs. Deliberately NOT carried over: the
+// DS dual-screen presenter and pointer device (no DS console
+// here, and the DS presenter is excluded from this round).
+// Shader passes align to GAME pixels (vUv * texture size, not
+// window pixels), so upscaling never turns them into moire.
+// The color profile grades first in every shader path, so it
+// shapes the picture before scanlines or grille do; the plain
+// program does not grade, so shaders-off stays exactly the
+// picture this presenter drew before.
 
 const char* kVertSrc =
     "#version 300 es\n"
@@ -447,6 +473,108 @@ const char* kFragSrc =
     "out vec4 oColor;\n"
     "void main() {\n"
     "  oColor = texture(uTex, vUv);\n"
+    "}\n";
+// Legacy pass: scanlines + a gentle horizontal blend, or a
+// true LCD grid - thin dark lines between every game pixel -
+// plus a slight blend. No column pattern anywhere: the earlier
+// every-third-column mask read as large squares at phone scale,
+// and a true grille cannot resolve cleanly there (three stripes
+// per game pixel would be sub-pixel mush). The per-console
+// values arrive as uniforms; the UI names the look and nothing
+// more.
+const char* kFragSrcShader =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 vUv;\n"
+    "uniform sampler2D uTex;\n"
+    "uniform float uScan;\n"
+    "uniform float uGrid;\n"
+    "uniform float uBlur;\n"
+    "uniform float uTexelX;\n"
+    "uniform float uTexW;\n"
+    "uniform float uTexH;\n"
+    "uniform float uColSat;\n"
+    "uniform float uColWarm;\n"
+    "uniform float uColGamma;\n"
+    "uniform float uColBright;\n"
+    "uniform float uColBlack;\n"
+    "const mat3 D65_TO_D55 = mat3(\n"
+    " 0.4850339153, 0.2500956126, 0.0227359648,\n"
+    " 0.3488957224, 0.6977914447, 0.1162985741,\n"
+    " 0.1302823568, 0.0521129427, 0.6861537456);\n"
+    "const mat3 D65_TO_D93 = mat3(\n"
+    " 0.3412754080, 0.1759701322, 0.0159972847,\n"
+    " 0.3646170520, 0.7292341040, 0.1215390173,\n"
+    " 0.2369894093, 0.0947957637, 1.2481442225);\n"
+    "out vec4 oColor;\n"
+    "void main() {\n"
+    "  vec3 c = texture(uTex, vUv).rgb;\n"
+    "  if (uBlur > 0.0) {\n"
+    "    vec3 l = texture(uTex, vUv - vec2(uTexelX, 0.0)).rgb;\n"
+    "    vec3 r = texture(uTex, vUv + vec2(uTexelX, 0.0)).rgb;\n"
+    "    c = mix(c, (l + c + r) / 3.0, uBlur);\n"
+    "  }\n"
+    "  float gradeLuma = dot(c, vec3(0.299, 0.587, 0.114));\n"
+    "  c = mix(vec3(gradeLuma), c, uColSat);\n"
+    "  float gradeWarm = abs(uColWarm) / 100.0;\n"
+    "  c = mix(c, uColWarm < 0.0 ? D65_TO_D93 * c : D65_TO_D55 * c, gradeWarm);\n"
+    "  c = pow(max(c, 0.0), vec3(1.0 / uColGamma));\n"
+    "  c = clamp(c * uColBright + uColBlack / 255.0, 0.0, 1.0);\n"
+    "  float gy = vUv.y * uTexH;\n"
+    "  float scan = 1.0 - uScan * (0.5 - 0.5 * sin(gy * 3.14159265));\n"
+    "  float fx = fract(vUv.x * uTexW);\n"
+    "  float fy = fract(vUv.y * uTexH);\n"
+    "  float gx = smoothstep(0.0, 0.12, min(fx, 1.0 - fx));\n"
+    "  float gy2 = smoothstep(0.0, 0.12, min(fy, 1.0 - fy));\n"
+    "  float grid = 1.0 - uGrid * (1.0 - min(gx, gy2));\n"
+    "  oColor = vec4(c * scan * grid, 1.0);\n"
+    "}\n";
+// LCD pass: a sine-modulated LCD grid - one sine cycle per
+// source texel on each axis, with the R, G, B channels
+// phase-shifted a third of a texel apart - plus a vertical
+// scanline factor. The texture is NEAREST-filtered at the
+// core's exact size and vUv spans the displayed quad, so the
+// modulation stays locked to source texels at any display
+// scale.
+const char* kFragSrcLcd =
+    "#version 300 es\n"
+    "precision highp float;\n"
+    "in vec2 vUv;\n"
+    "uniform sampler2D uTex;\n"
+    "uniform float uTexW;\n"
+    "uniform float uTexH;\n"
+    "uniform float uBrightScan;\n"
+    "uniform float uBrightLcd;\n"
+    "uniform float uColSat;\n"
+    "uniform float uColWarm;\n"
+    "uniform float uColGamma;\n"
+    "uniform float uColBright;\n"
+    "uniform float uColBlack;\n"
+    "const mat3 D65_TO_D55 = mat3(\n"
+    " 0.4850339153, 0.2500956126, 0.0227359648,\n"
+    " 0.3488957224, 0.6977914447, 0.1162985741,\n"
+    " 0.1302823568, 0.0521129427, 0.6861537456);\n"
+    "const mat3 D65_TO_D93 = mat3(\n"
+    " 0.3412754080, 0.1759701322, 0.0159972847,\n"
+    " 0.3646170520, 0.7292341040, 0.1215390173,\n"
+    " 0.2369894093, 0.0947957637, 1.2481442225);\n"
+    "out vec4 oColor;\n"
+    "void main() {\n"
+    "  vec3 res = texture(uTex, vUv).rgb;\n"
+    "  float gradeLuma = dot(res, vec3(0.299, 0.587, 0.114));\n"
+    "  res = mix(vec3(gradeLuma), res, uColSat);\n"
+    "  float gradeWarm = abs(uColWarm) / 100.0;\n"
+    "  res = mix(res, uColWarm < 0.0 ? D65_TO_D93 * res : D65_TO_D55 * res, gradeWarm);\n"
+    "  res = pow(max(res, 0.0), vec3(1.0 / uColGamma));\n"
+    "  res = clamp(res * uColBright + uColBlack / 255.0, 0.0, 1.0);\n"
+    "  vec2 omega = vec2(6.2831853) * vec2(uTexW, uTexH);\n"
+    "  vec2 angle = vUv * omega;\n"
+    "  float yfactor = (uBrightScan + sin(angle.y)) / (uBrightScan + 1.0);\n"
+    "  vec3 offsets = vec3(3.14159265) *\n"
+    "      vec3(0.5, 0.5 - 2.0 / 3.0, 0.5 - 4.0 / 3.0);\n"
+    "  vec3 xfactors = (uBrightLcd + sin(angle.x + offsets)) /\n"
+    "      (uBrightLcd + 1.0);\n"
+    "  oColor = vec4(yfactor * xfactors * res, 1.0);\n"
     "}\n";
 
 GLuint compileShader(GLenum type, const char* src) {
@@ -468,7 +596,175 @@ GLuint compileShader(GLenum type, const char* src) {
 std::mutex g_windowMutex;
 ANativeWindow* g_window = nullptr;
 std::atomic<bool> g_renderRunning{false};
+// Portrait top inset in pixels, set from Kotlin whenever the
+// cutout value changes.
+std::atomic<int> g_topInsetPx{0};
+// New game frames consumed by the presenter (the FPS counter
+// reads this; it counts fresh core frames, not repeated draws
+// of the same texture).
+std::atomic<long long> g_newFrames{0};
+// Shader mode: 0 = plain, 1 = legacy pass, 2 = LCD pass,
+// 3 = CRT chain. Set at session start.
+std::atomic<int> g_shaderMode{0};
+std::atomic<float> g_scan{0.f}, g_grid{0.f}, g_blur{0.f};
+std::atomic<float> g_brightScan{16.f}, g_brightLcd{4.f};
+// Per-console color profile: neutral defaults, so a frame
+// graded before any JNI call still matches the pre-profile
+// output.
+std::atomic<float> g_colSat{1.f}, g_colWarm{0.f}, g_colGamma{1.f};
+std::atomic<float> g_colBright{1.f}, g_colBlack{0.f};
+// Display curvature / rounded corners: mesh pull-in factor
+// and corner-arc strength, 0 = the flat quad / square corners.
+// Set at session start.
+std::atomic<float> g_curveK{0.f};
+std::atomic<float> g_roundK{0.f};
 std::thread g_renderThread;
+
+// The curve/round mesh, shared by the single-quad path (only
+// the centre, half-extents, UV sub-rect, corner pixels and
+// pixel size differ per draw). The mesh is built once into GL
+// buffers and redrawn from them; only a layout, curve, round
+// or window-size change rebuilds it.
+struct CurveMeshKey {
+    float cx, cy, hx, hy;
+    float u0, v0, u1, v1;
+    float pxL, pxR, pyT, pyB;
+    float qw, qh;
+    float curveK, roundK;
+    int winW, winH;
+    bool operator==(const CurveMeshKey& o) const {
+        return cx == o.cx && cy == o.cy && hx == o.hx &&
+            hy == o.hy && u0 == o.u0 && v0 == o.v0 &&
+            u1 == o.u1 && v1 == o.v1 && pxL == o.pxL &&
+            pxR == o.pxR && pyT == o.pyT && pyB == o.pyB &&
+            qw == o.qw && qh == o.qh &&
+            curveK == o.curveK && roundK == o.roundK &&
+            winW == o.winW && winH == o.winH;
+    }
+};
+
+struct CurveMeshCache {
+    GLuint vbo = 0, ibo = 0;
+    GLsizei count = 0;
+    CurveMeshKey key{};
+    bool valid = false;
+};
+
+void buildCurveMesh(const CurveMeshKey& k,
+                    std::vector<float>& verts,
+                    std::vector<unsigned short>& idx) {
+    const int N = 48;
+    float rad = k.roundK * 0.25f * (k.qw < k.qh ? k.qw : k.qh);
+    verts.reserve((N + 1) * (N + 1) * 4);
+    for (int iy = 0; iy <= N; ++iy) {
+        float ny = static_cast<float>(iy) / N * 2.f - 1.f;
+        for (int ix = 0; ix <= N; ++ix) {
+            float nx = static_cast<float>(ix) / N * 2.f - 1.f;
+            float f = 1.f - k.curveK * (nx * nx + ny * ny);
+            float vx = k.cx + nx * k.hx * f;
+            float vy = k.cy + ny * k.hy * f;
+            if (k.roundK > 0.f) {
+                float px = (vx + 1.f) * 0.5f *
+                    static_cast<float>(k.winW);
+                float py = (1.f - vy) * 0.5f *
+                    static_cast<float>(k.winH);
+                const float corners[4][2] = {
+                    {k.pxL + rad, k.pyT + rad},
+                    {k.pxR - rad, k.pyT + rad},
+                    {k.pxL + rad, k.pyB - rad},
+                    {k.pxR - rad, k.pyB - rad}
+                };
+                for (int ci = 0; ci < 4; ++ci) {
+                    float ccx = corners[ci][0];
+                    float ccy = corners[ci][1];
+                    bool inZone =
+                        ((ci % 2 == 0) ? (px < ccx)
+                                       : (px > ccx)) &&
+                        ((ci < 2) ? (py < ccy)
+                                  : (py > ccy));
+                    if (!inZone) continue;
+                    float dx = px - ccx;
+                    float dy = py - ccy;
+                    float d = sqrtf(dx * dx + dy * dy);
+                    if (d > rad && d > 0.f) {
+                        px = ccx + rad * dx / d;
+                        py = ccy + rad * dy / d;
+                    }
+                }
+                vx = px * 2.f /
+                    static_cast<float>(k.winW) - 1.f;
+                vy = 1.f - py * 2.f /
+                    static_cast<float>(k.winH);
+            }
+            verts.push_back(vx);
+            verts.push_back(vy);
+            verts.push_back(k.u0 + (nx + 1.f) * 0.5f *
+                            (k.u1 - k.u0));
+            verts.push_back(k.v0 + (1.f - ny) * 0.5f *
+                            (k.v1 - k.v0));
+        }
+    }
+    for (int iy = 0; iy < N; ++iy) {
+        for (int ix = 0; ix < N; ++ix) {
+            unsigned short a =
+                static_cast<unsigned short>(iy * (N + 1) + ix);
+            unsigned short b =
+                static_cast<unsigned short>(a + 1);
+            unsigned short c =
+                static_cast<unsigned short>(a + (N + 1));
+            unsigned short d =
+                static_cast<unsigned short>(c + 1);
+            idx.push_back(a);
+            idx.push_back(b);
+            idx.push_back(c);
+            idx.push_back(b);
+            idx.push_back(d);
+            idx.push_back(c);
+        }
+    }
+}
+
+void drawCurveMesh(CurveMeshCache& cache,
+                   const CurveMeshKey& key,
+                   GLint ap, GLint au) {
+    if (!cache.valid || !(cache.key == key)) {
+        std::vector<float> verts;
+        std::vector<unsigned short> idx;
+        buildCurveMesh(key, verts, idx);
+        if (cache.vbo == 0) glGenBuffers(1, &cache.vbo);
+        if (cache.ibo == 0) glGenBuffers(1, &cache.ibo);
+        glBindBuffer(GL_ARRAY_BUFFER, cache.vbo);
+        glBufferData(GL_ARRAY_BUFFER,
+                     verts.size() * sizeof(float),
+                     verts.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cache.ibo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     idx.size() * sizeof(unsigned short),
+                     idx.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        cache.key = key;
+        cache.count = static_cast<GLsizei>(idx.size());
+        cache.valid = true;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, cache.vbo);
+    glVertexAttribPointer(ap, 2, GL_FLOAT, GL_FALSE,
+                          4 * sizeof(float),
+                          reinterpret_cast<void*>(0));
+    glEnableVertexAttribArray(ap);
+    glVertexAttribPointer(au, 2, GL_FLOAT, GL_FALSE,
+                          4 * sizeof(float),
+                          reinterpret_cast<void*>(2 * sizeof(float)));
+    glEnableVertexAttribArray(au);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cache.ibo);
+    glDrawElements(GL_TRIANGLES, cache.count,
+                   GL_UNSIGNED_SHORT,
+                   reinterpret_cast<void*>(0));
+    // Unbind so the flat paths' client-side pointers
+    // below are read as client memory, not VBO offsets.
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+}
 
 void renderLoop() {
     ANativeWindow* window;
@@ -504,8 +800,46 @@ void renderLoop() {
     glLinkProgram(program);
     GLint aPos = glGetAttribLocation(program, "aPos");
     GLint aUv = glGetAttribLocation(program, "aUv");
+    GLuint fs2 = compileShader(GL_FRAGMENT_SHADER, kFragSrcShader);
+    GLuint program2 = glCreateProgram();
+    glAttachShader(program2, vs);
+    glAttachShader(program2, fs2);
+    glLinkProgram(program2);
+    GLint aPos2 = glGetAttribLocation(program2, "aPos");
+    GLint aUv2 = glGetAttribLocation(program2, "aUv");
+    GLint uScan = glGetUniformLocation(program2, "uScan");
+    GLint uGrid = glGetUniformLocation(program2, "uGrid");
+    GLint uBlur = glGetUniformLocation(program2, "uBlur");
+    GLint uTexelX = glGetUniformLocation(program2, "uTexelX");
+    GLint uTexW = glGetUniformLocation(program2, "uTexW");
+    GLint uTexH = glGetUniformLocation(program2, "uTexH");
+    GLint uColSat = glGetUniformLocation(program2, "uColSat");
+    GLint uColWarm = glGetUniformLocation(program2, "uColWarm");
+    GLint uColGamma = glGetUniformLocation(program2, "uColGamma");
+    GLint uColBright = glGetUniformLocation(program2, "uColBright");
+    GLint uColBlack = glGetUniformLocation(program2, "uColBlack");
+    GLuint fs3 = compileShader(GL_FRAGMENT_SHADER, kFragSrcLcd);
+    GLuint program3 = glCreateProgram();
+    glAttachShader(program3, vs);
+    glAttachShader(program3, fs3);
+    glLinkProgram(program3);
+    GLint aPos3 = glGetAttribLocation(program3, "aPos");
+    GLint aUv3 = glGetAttribLocation(program3, "aUv");
+    GLint uLcdTexW = glGetUniformLocation(program3, "uTexW");
+    GLint uLcdTexH = glGetUniformLocation(program3, "uTexH");
+    GLint uBrightScan = glGetUniformLocation(program3, "uBrightScan");
+    GLint uBrightLcd = glGetUniformLocation(program3, "uBrightLcd");
+    GLint uLcdColSat = glGetUniformLocation(program3, "uColSat");
+    GLint uLcdColWarm = glGetUniformLocation(program3, "uColWarm");
+    GLint uLcdColGamma = glGetUniformLocation(program3, "uColGamma");
+    GLint uLcdColBright = glGetUniformLocation(program3, "uColBright");
+    GLint uLcdColBlack = glGetUniformLocation(program3, "uColBlack");
     glUseProgram(program);
     glUniform1i(glGetUniformLocation(program, "uTex"), 0);
+    glUseProgram(program2);
+    glUniform1i(glGetUniformLocation(program2, "uTex"), 0);
+    glUseProgram(program3);
+    glUniform1i(glGetUniformLocation(program3, "uTex"), 0);
     GLuint tex = 0;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
@@ -516,12 +850,21 @@ void renderLoop() {
     glClearColor(0.f, 0.f, 0.f, 1.f);
 
     unsigned texW = 0, texH = 0;
+    CurveMeshCache singleMesh;
     std::vector<uint8_t> upload;
     unsigned uploadW = 0, uploadH = 0;
     bool haveFrame = false;
 
     const float uvs[8] = {0.f, 1.f, 1.f, 1.f, 0.f, 0.f, 1.f, 0.f};
     while (g_renderRunning.load()) {
+        // A paused game must not keep presenting at display
+        // rate - idle here and leave the last frame on screen;
+        // the first iteration after resume draws normally,
+        // which is the redraw.
+        if (g_paused.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
         EGLint winW = 0, winH = 0;
         eglQuerySurface(display, surface, EGL_WIDTH, &winW);
         eglQuerySurface(display, surface, EGL_HEIGHT, &winH);
@@ -532,6 +875,7 @@ void renderLoop() {
                 uploadW = g_frameW;
                 uploadH = g_frameH;
                 g_frameDirty = false;
+                g_newFrames.fetch_add(1);
                 haveFrame = true;
             }
         }
@@ -577,45 +921,168 @@ void renderLoop() {
         }
         glViewport(0, 0, winW, winH);
         glClear(GL_COLOR_BUFFER_BIT);
-        if (haveFrame && texW > 0 && winW > 0 && winH > 0) {
-            // Letterbox to the core's display aspect (or the buffer
-            // shape when the core reports none), centred. A 0 aspect
-            // falls back to the buffer shape, the pre-aspect
-            // behaviour; oversampled buffers (NTSC filters) must
-            // never stretch the picture super-wide.
-            float dispAspect = g_aspect.load();
-            if (dispAspect <= 0.f) {
-                dispAspect = static_cast<float>(texW) /
-                    static_cast<float>(texH);
+        int mode = g_shaderMode.load();
+        // Portrait: the picture is top-anchored just below the
+        // camera cutout, so it can never hide under the notch.
+        // Landscape stays centred as before.
+        float availH = static_cast<float>(winH);
+        float top = 0.f;
+        if (winH > winW) {
+            int inset = g_topInsetPx.load();
+            if (inset > 0 && inset < winH) {
+                availH = static_cast<float>(winH - inset);
+                top = 1.f - 2.f *
+                    static_cast<float>(inset) /
+                    static_cast<float>(winH);
             }
-            float dispH = std::min(static_cast<float>(winH),
-                static_cast<float>(winW) / dispAspect);
-            float dispW = dispH * dispAspect;
+        }
+        // Display size: the core's aspect ratio, not the buffer
+        // shape. Blargg NTSC filters output oversampled buffers
+        // (SNES ~602px wide) whose pixel aspect is not the
+        // display aspect; showing them at buffer aspect stretched
+        // the picture super-wide. A 0 aspect (or none reported)
+        // falls back to the buffer shape, the old behavior.
+        float fitTex = (haveFrame && texW > 0 && winH > 0)
+            ? std::min(static_cast<float>(winW) / static_cast<float>(texW),
+                       availH / static_cast<float>(texH))
+            : 1.f;
+        float dispAspect = g_aspect.load();
+        if (dispAspect <= 0.f && texW > 0 && texH > 0) {
+            dispAspect = static_cast<float>(texW) /
+                static_cast<float>(texH);
+        }
+        float dispW = 0.f, dispH = 0.f;
+        if (haveFrame && texW > 0 && texH > 0 &&
+            dispAspect > 0.f) {
+            if (g_integerScale.load()) {
+                // Integer vertically, then stretch
+                // horizontally to the core aspect.
+                float base = std::max(1.f, floorf(fitTex));
+                dispH = static_cast<float>(texH) * base;
+                dispW = dispH * dispAspect;
+            } else {
+                dispH = std::min(availH,
+                    static_cast<float>(winW) / dispAspect);
+                dispW = dispH * dispAspect;
+            }
             if (dispW > static_cast<float>(winW)) {
                 dispW = static_cast<float>(winW);
                 dispH = dispW / dispAspect;
             }
+            if (dispH > availH) {
+                dispH = availH;
+                dispW = dispH * dispAspect;
+            }
+        }
+        // CRT mode (3): run the pass chain at the displayed
+        // image size; its output texture is then drawn by the
+        // plain program. A chain failure falls back to the
+        // legacy pass, never a black screen.
+        GLuint drawTex = tex;
+        int drawMode = mode;
+        if (mode == 3 && haveFrame && texW > 0 && texH > 0) {
+            int qW = std::max(1, static_cast<int>(dispW + 0.5f));
+            int qH = std::max(1, static_cast<int>(dispH + 0.5f));
+            GLuint out = crtRun(tex, texW, texH, qW, qH,
+                                static_cast<unsigned>(g_newFrames.load()));
+            if (out != 0) {
+                drawTex = out;
+                drawMode = 0;
+            } else {
+                drawMode = 1;
+            }
+        }
+        // The CRT chain leaves the viewport at the game's own
+        // size; restore the full surface before drawing the
+        // final quad, or the picture lands in a small viewport
+        // at the bottom of the screen.
+        glViewport(0, 0, winW, winH);
+        glUseProgram(drawMode == 2 ? program3 : (drawMode == 1 ? program2 : program));
+        if (drawMode == 1) {
+            glUniform1f(uScan, g_scan.load());
+            glUniform1f(uGrid, g_grid.load());
+            glUniform1f(uBlur, g_blur.load());
+            glUniform1f(uTexelX, texW > 0 ? 1.0f / texW : 0.0f);
+            glUniform1f(uTexW, static_cast<float>(texW));
+            glUniform1f(uTexH, static_cast<float>(texH));
+            glUniform1f(uColSat, g_colSat.load());
+            glUniform1f(uColWarm, g_colWarm.load());
+            glUniform1f(uColGamma, g_colGamma.load());
+            glUniform1f(uColBright, g_colBright.load());
+            glUniform1f(uColBlack, g_colBlack.load());
+        } else if (drawMode == 2) {
+            glUniform1f(uLcdTexW, static_cast<float>(texW));
+            glUniform1f(uLcdTexH, static_cast<float>(texH));
+            glUniform1f(uBrightScan, g_brightScan.load());
+            glUniform1f(uBrightLcd, g_brightLcd.load());
+            glUniform1f(uLcdColSat, g_colSat.load());
+            glUniform1f(uLcdColWarm, g_colWarm.load());
+            glUniform1f(uLcdColGamma, g_colGamma.load());
+            glUniform1f(uLcdColBright, g_colBright.load());
+            glUniform1f(uLcdColBlack, g_colBlack.load());
+        }
+        if (haveFrame && texW > 0 && winW > 0 && winH > 0) {
             float sx = dispW / static_cast<float>(winW);
             float sy = dispH / static_cast<float>(winH);
-            // The flat quad's corners: v = 1 at the BOTTOM, so the
-            // bottom vertices carry v = 1 (the strip's uv mapping,
-            // verified against Mariner's quad, not its comment).
-            const float pos[8] = {
-                -sx, -sy, sx, -sy, -sx, sy, sx, sy
-            };
-            glVertexAttribPointer(aPos, 2, GL_FLOAT, GL_FALSE, 0, pos);
-            glEnableVertexAttribArray(aPos);
-            glVertexAttribPointer(aUv, 2, GL_FLOAT, GL_FALSE, 0, uvs);
-            glEnableVertexAttribArray(aUv);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            if (top == 0.f) top = sy;
+            GLint ap = drawMode == 2 ? aPos3 : (drawMode == 1 ? aPos2 : aPos);
+            GLint au = drawMode == 2 ? aUv3 : (drawMode == 1 ? aUv2 : aUv);
+            glBindTexture(GL_TEXTURE_2D, drawTex);
+            float curveK = g_curveK.load();
+            float roundK = g_roundK.load();
+            if (curveK > 0.f || roundK > 0.f) {
+                // Display curvature + rounded corners: a 48x48
+                // grid whose vertices are pulled toward the
+                // quad centre by f = 1 - k*(nx^2+ny^2), so the
+                // corners tuck in most, then any vertex past
+                // a corner arc is projected back onto it. The
+                // uv mapping matches the flat quad's corners
+                // exactly: the flat strip has v = 1 at the
+                // BOTTOM, so with ny = -1 at the bottom,
+                // v = (1 - ny) / 2.
+                float cy = top - sy;
+                CurveMeshKey singleKey{
+                    0.f, cy, sx, sy,
+                    0.f, 0.f, 1.f, 1.f,
+                    (1.f - sx) * 0.5f *
+                        static_cast<float>(winW),
+                    (1.f + sx) * 0.5f *
+                        static_cast<float>(winW),
+                    (1.f - top) * 0.5f *
+                        static_cast<float>(winH),
+                    (1.f - (top - 2.f * sy)) * 0.5f *
+                        static_cast<float>(winH),
+                    sx * static_cast<float>(winW),
+                    sy * static_cast<float>(winH),
+                    curveK, roundK, winW, winH
+                };
+                drawCurveMesh(singleMesh, singleKey, ap, au);
+            } else {
+                const float pos[8] = {
+                    -sx, top - 2.f * sy, sx, top - 2.f * sy,
+                    -sx, top, sx, top
+                };
+                glVertexAttribPointer(ap, 2, GL_FLOAT, GL_FALSE, 0, pos);
+                glEnableVertexAttribArray(ap);
+                glVertexAttribPointer(au, 2, GL_FLOAT, GL_FALSE, 0, uvs);
+                glEnableVertexAttribArray(au);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
         }
         eglSwapBuffers(display, surface);
         std::this_thread::sleep_for(std::chrono::milliseconds(3));
     }
+    if (singleMesh.vbo) glDeleteBuffers(1, &singleMesh.vbo);
+    if (singleMesh.ibo) glDeleteBuffers(1, &singleMesh.ibo);
+    crtDestroy();
     glDeleteTextures(1, &tex);
     glDeleteProgram(program);
+    glDeleteProgram(program2);
+    glDeleteProgram(program3);
     glDeleteShader(vs);
     glDeleteShader(fs);
+    glDeleteShader(fs2);
+    glDeleteShader(fs3);
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     eglDestroySurface(display, surface);
     eglDestroyContext(display, context);
@@ -664,6 +1131,7 @@ void emuLoop() {
             g_core.run();
         }
         double targetMs = 1000.0 / (g_fps > 0 ? g_fps : 60.0);
+        targetMs /= g_speedMul.load();
         auto elapsed = duration_cast<microseconds>(steady_clock::now() - start).count() / 1000.0;
         if (elapsed < targetMs) {
             std::this_thread::sleep_for(duration<double, std::milli>(targetMs - elapsed));
@@ -724,6 +1192,8 @@ Java_app_autospace_car_RetroNative_nativeCreate(
     g_saveDir = jstr(env, saveDir);
     g_coreOptions.clear();
     g_paused.store(false);
+    g_newFrames.store(0);
+    g_speedMul.store(1);
     g_shutdownRequested.store(false);
     if (options) {
         jsize count = env->GetArrayLength(options);
@@ -1040,6 +1510,114 @@ Java_app_autospace_car_RetroNative_nativeDestroy(JNIEnv*, jclass) {
         ANativeWindow_release(g_window);
         g_window = nullptr;
     }
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetTopInset(
+        JNIEnv*, jclass, jint px) {
+    g_topInsetPx.store(static_cast<int>(px));
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetShader(
+        JNIEnv*, jclass, jboolean on, jfloat scan, jfloat grid,
+        jfloat blur) {
+    g_shaderMode.store(on != 0 ? 1 : 0);
+    g_scan.store(scan);
+    g_grid.store(grid);
+    g_blur.store(blur);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetLcdShader(
+        JNIEnv*, jclass, jboolean on, jfloat brightScan,
+        jfloat brightLcd) {
+    g_shaderMode.store(on != 0 ? 2 : 0);
+    g_brightScan.store(brightScan);
+    g_brightLcd.store(brightLcd);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetCrtShader(
+        JNIEnv*, jclass, jboolean on) {
+    g_shaderMode.store(on != 0 ? 3 : 0);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetColorProfile(
+        JNIEnv*, jclass, jfloat sat, jfloat warm, jfloat gamma,
+        jfloat bright, jfloat black, jboolean segaFix) {
+    g_colSat.store(sat);
+    g_colWarm.store(warm);
+    g_colGamma.store(gamma);
+    g_colBright.store(bright);
+    g_colBlack.store(black);
+    crtSetColorProfile(sat, warm, gamma, bright, black, segaFix != 0);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetCurve(
+        JNIEnv*, jclass, jfloat k) {
+    g_curveK.store(k < 0.f ? 0.f : k);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetRound(
+        JNIEnv*, jclass, jfloat strength) {
+    float s = strength < 0.f ? 0.f : strength;
+    g_roundK.store(s > 1.f ? 1.f : s);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetSpeed(
+        JNIEnv*, jclass, jint mul) {
+    g_speedMul.store(mul < 1 ? 1 : mul);
+}
+
+JNIEXPORT void JNICALL
+Java_app_autospace_car_RetroNative_nativeSetIntegerScale(
+        JNIEnv*, jclass, jboolean on) {
+    g_integerScale.store(on != 0);
+}
+
+// Frame grab for state thumbnails: an 8-byte little-endian
+// width/height header followed by the latest RGBA frame.
+JNIEXPORT jbyteArray JNICALL
+Java_app_autospace_car_RetroNative_nativeFrameGrab(
+        JNIEnv* env, jclass) {
+    std::vector<uint8_t> frame;
+    unsigned w = 0, h = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_frameMutex);
+        if (g_frameRgba.empty()) return nullptr;
+        frame = g_frameRgba;
+        w = g_frameW;
+        h = g_frameH;
+    }
+    jbyteArray out = env->NewByteArray(
+        static_cast<jsize>(8 + frame.size()));
+    if (!out) return nullptr;
+    uint8_t header[8];
+    header[0] = static_cast<uint8_t>(w & 0xFF);
+    header[1] = static_cast<uint8_t>((w >> 8) & 0xFF);
+    header[2] = static_cast<uint8_t>((w >> 16) & 0xFF);
+    header[3] = static_cast<uint8_t>((w >> 24) & 0xFF);
+    header[4] = static_cast<uint8_t>(h & 0xFF);
+    header[5] = static_cast<uint8_t>((h >> 8) & 0xFF);
+    header[6] = static_cast<uint8_t>((h >> 16) & 0xFF);
+    header[7] = static_cast<uint8_t>((h >> 24) & 0xFF);
+    env->SetByteArrayRegion(out, 0, 8,
+        reinterpret_cast<const jbyte*>(header));
+    env->SetByteArrayRegion(out, 8,
+        static_cast<jsize>(frame.size()),
+        reinterpret_cast<const jbyte*>(frame.data()));
+    return out;
+}
+
+JNIEXPORT jlong JNICALL
+Java_app_autospace_car_RetroNative_nativeGetPresentedFrames(
+        JNIEnv*, jclass) {
+    return static_cast<jlong>(g_newFrames.load());
 }
 
 } // extern "C"
