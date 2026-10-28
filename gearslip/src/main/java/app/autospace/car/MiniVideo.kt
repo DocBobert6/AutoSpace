@@ -219,12 +219,16 @@ fun miniVideoDragApplies(moving: Boolean): Boolean = !moving
 fun miniVideoDisplayTitle(title: String?, url: String): String {
     title?.takeIf { it.isNotBlank() }?.let { return it }
     val path = url.substringBefore('?').substringBefore('#')
+    val host = path.substringAfter("://", "").substringBefore('/')
     val last = path.substringAfterLast('/')
+    // A bare host URL has no path segment: its last segment IS the
+    // host, and stripping ".com" as an extension would mangle it
+    // to "example". Return the host whole in that case.
+    if (last == host && host.isNotBlank()) return host
     val stem = runCatching { java.net.URLDecoder.decode(last, "UTF-8") }.getOrNull() ?: last
     val withoutExt = if ('.' in stem) stem.substringBeforeLast('.') else stem
     val spaced = withoutExt.replace(Regex("[_\\-+.]+"), " ").trim()
     if (spaced.isNotBlank()) return spaced
-    val host = url.substringAfter("://", "").substringBefore('/')
     if (host.isNotBlank()) return host
     return "Video"
 }
