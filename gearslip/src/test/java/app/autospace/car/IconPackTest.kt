@@ -129,4 +129,44 @@ class IconPackTest {
         assertEquals(emptyMap<String, String>(), decodeOverrides(""))
         assertEquals(emptyMap<String, String>(), decodeOverrides("   "))
     }
+
+    @Test
+    fun excludedPackLabelMatchesSamsungCaseAndSpaceInsensitively() {
+        assertEquals(true, isExcludedPackLabel("Samsung"))
+        assertEquals(true, isExcludedPackLabel("SAMSUNG"))
+        assertEquals(true, isExcludedPackLabel("  samsung  "))
+    }
+
+    @Test
+    fun excludedPackLabelMatchesOneUiWithOrWithoutSpace() {
+        assertEquals(true, isExcludedPackLabel("One UI"))
+        assertEquals(true, isExcludedPackLabel("ONE UI"))
+        assertEquals(true, isExcludedPackLabel("OneUI"))
+        assertEquals(true, isExcludedPackLabel("oneui"))
+    }
+
+    @Test
+    fun excludedPackLabelLeavesRealPackNamesAlone() {
+        assertEquals(false, isExcludedPackLabel("System icons"))
+        assertEquals(false, isExcludedPackLabel("Samsung Icons"))
+        assertEquals(false, isExcludedPackLabel("One UI Pack"))
+        assertEquals(false, isExcludedPackLabel("My Pack"))
+        assertEquals(false, isExcludedPackLabel(""))
+    }
+
+    @Test
+    fun packHasLoadableDrawableRejectsEmptyMapping() {
+        assertEquals(false, packHasLoadableDrawable(emptyMap()) { true })
+    }
+
+    @Test
+    fun packHasLoadableDrawableNeedsAtLeastOneResolvingDrawable() {
+        val mapping = mapOf(
+            "com.a.app/com.a.app.Main" to "a_icon",
+            "com.b.app/com.b.app.Main" to "b_icon",
+        )
+        assertEquals(false, packHasLoadableDrawable(mapping) { false })
+        assertEquals(true, packHasLoadableDrawable(mapping) { it == "b_icon" })
+        assertEquals(true, packHasLoadableDrawable(mapping) { true })
+    }
 }

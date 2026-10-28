@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            68, "0.4.57-alpha",
+            listOf(
+                "Icon packs: the picker no longer lists dead entries — Samsung and One UI are gone, and so is any pack with no usable icons — and more of your phone's icon packs now show up.",
+            ),
+        ),
+        Release(
             67, "0.4.56-alpha",
             listOf(
                 "Verve's button style is refined: the same 24dp corner now runs across cards, sheets, and the app bar, the press spring settles without overshoot, and selected controls carry a faint primary tint.",

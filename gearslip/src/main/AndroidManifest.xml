@@ -121,16 +121,35 @@
     <intent>
         <action android:name="android.intent.action.TTS_SERVICE" />
     </intent>
-    <!-- r81 icon packs: without these, packs that declare only a theme
-         intent are invisible under package visibility rules, so the
-         Appearance picker could never list them. The two standard
-         theme declarations (ADW's action, Apex/Go/Nova's category). -->
+    <!-- Icon packs: without theme-intent queries, packs that declare
+         only a theme intent are invisible under package visibility
+         rules, so the Appearance picker could never list them. The
+         standard theme declarations: ADW's action and Apex/Go/Nova's
+         category (r81), plus Go Launcher EX's action, Nova's own
+         category, Smart Launcher's action, and Action Launcher's
+         category (r101). Packs with a launcher activity are already
+         visible through the MAIN/LAUNCHER query above; these entries
+         cover packs that declare only a theme intent. -->
     <intent>
         <action android:name="org.adw.launcher.THEMES" />
     </intent>
     <intent>
         <action android:name="android.intent.action.MAIN" />
         <category android:name="com.anddoes.launcher.THEME" />
+    </intent>
+    <intent>
+        <action android:name="com.gau.go.launcherex.theme" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.teslacoilsw.launcher.THEME" />
+    </intent>
+    <intent>
+        <action android:name="ginlemon.smartlauncher.THEME" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="com.actionlauncher.playstore.THEME" />
     </intent>
 </queries>
 

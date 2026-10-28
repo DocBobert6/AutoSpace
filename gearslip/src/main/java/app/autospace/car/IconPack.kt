@@ -1,7 +1,6 @@
 package app.autospace.car
 
 import android.content.Context
-import android.content.pm.PackageManager
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
@@ -115,27 +114,76 @@ fun decodeOverrides(stored: String): Map<String, String> {
 }
 
 /**
- * Installed packs: every visible app carrying an appfilter.xml resource,
- * by label. Call off the main thread. A pack with neither a launcher
- * activity nor a theme intent declaration stays invisible under package
- * visibility rules — the same limit any launcher without
- * QUERY_ALL_PACKAGES has; the manifest declares the two standard theme
- * intents so packs that declare them are visible.
+ * r101: labels that are never real icon packs. Some apps on the phone
+ * carry an appfilter resource but are system theme entries, not packs a
+ * driver can use — on the reporter's phone these showed up as "Samsung"
+ * and "One UI" picker entries that did nothing. Those labels come from
+ * apps on the phone, not from anything shipped in code, so the fix
+ * excludes them by label here, at the single choke point every picker
+ * list flows through. Only exact labels match (whitespace- and
+ * case-insensitive, so "OneUI" counts): a real pack that merely mentions
+ * Samsung in a longer name is untouched.
+ */
+fun isExcludedPackLabel(label: String): Boolean {
+    val normalized = label.trim().lowercase().replace(Regex("\\s+"), "")
+    return normalized == "samsung" || normalized == "oneui"
+}
+
+/**
+ * r101: whether a pack's mapping has at least one drawable that resolves
+ * in the pack's resources. A pack whose appfilter exists but maps nothing,
+ * or whose drawables all fail to resolve, is a dead entry: it must not
+ * appear in the picker at all. This generalizes the Samsung / One UI
+ * exclusion above — dead entries vanish whatever their label. The
+ * [drawableExists] check is a resource-id lookup, not a bitmap decode,
+ * so the scan stays cheap; [packIconBitmap] still does the real decode
+ * (and its own fallback) when an icon is actually drawn.
+ */
+fun packHasLoadableDrawable(
+    mapping: Map<String, String>,
+    drawableExists: (String) -> Boolean,
+): Boolean = mapping.values.any(drawableExists)
+
+/**
+ * Installed packs: every visible app carrying an appfilter.xml resource
+ * with at least one loadable drawable, by label, minus the dead
+ * system-theme entries (see [isExcludedPackLabel]). Call off the main
+ * thread. A pack with neither a launcher activity nor a theme intent
+ * declaration stays invisible under package visibility rules — the same
+ * limit any launcher without QUERY_ALL_PACKAGES has; the manifest
+ * declares the standard theme intents so packs that declare them are
+ * visible.
+ *
+ * A stored pack that no longer appears here (uninstalled, excluded, or
+ * dead) reads as System icons in the picker, which is what is actually
+ * showing — the launcher scan falls back the same way — so the
+ * highlighted chip never lies, and the stored value needs no rewrite.
  */
 fun installedIconPacks(context: Context): List<IconPackInfo> {
     val pm = context.packageManager
     return runCatching {
         pm.getInstalledApplications(0)
-            .filter { app -> packHasAppFilter(pm, app.packageName) }
-            .map { app -> IconPackInfo(app.packageName, pm.getApplicationLabel(app).toString()) }
+            .mapNotNull { app ->
+                val label = pm.getApplicationLabel(app).toString()
+                if (isExcludedPackLabel(label)) return@mapNotNull null
+                val res = runCatching { pm.getResourcesForApplication(app.packageName) }.getOrNull()
+                    ?: return@mapNotNull null
+                val filterId = res.getIdentifier("appfilter", "xml", app.packageName)
+                if (filterId == 0) return@mapNotNull null
+                val xml = runCatching {
+                    res.openRawResource(filterId).use { it.readBytes().decodeToString() }
+                }.getOrNull() ?: return@mapNotNull null
+                val mapping = parseAppFilter(xml)
+                val loadable = packHasLoadableDrawable(mapping) { drawable ->
+                    runCatching { res.getIdentifier(drawable, "drawable", app.packageName) != 0 }
+                        .getOrDefault(false)
+                }
+                if (!loadable) return@mapNotNull null
+                IconPackInfo(app.packageName, label)
+            }
             .sortedBy { it.label.lowercase() }
     }.getOrDefault(emptyList())
 }
-
-private fun packHasAppFilter(pm: PackageManager, pkg: String): Boolean =
-    runCatching {
-        pm.getResourcesForApplication(pkg).getIdentifier("appfilter", "xml", pkg) != 0
-    }.getOrDefault(false)
 
 /**
  * A pack's full component -> drawable mapping. Null when the pack is
