@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            82, "0.4.71-alpha",
+            listOf(
+                "Pitlane has been reworked into zones: a clean solid fill, a carbon-weave frame with hex bolts at the corners, and a crisp chamfered edge. Big surfaces get the full frame, small ones shed the weave, then the bolts, then the thick edge — and switches are now rocker paddles.",
+            ),
+        ),
+        Release(
             81, "0.4.70-alpha",
             listOf(
                 "The Material You color scheme has a button style of its own: Morph, with a soft primary wash over buttons that deepens when pressed and opens up when selected, plus a Material You + Morph pair that sets both at once.",

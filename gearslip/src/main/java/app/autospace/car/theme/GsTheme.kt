@@ -116,6 +116,25 @@ data class ControlLook(
     val haloAlpha: Float = 0f,
     /** Falloff of the halo — how far the glow reaches past the edge; 0 for none. A few dp, tight, so the glow hugs the surface instead of blooming. */
     val haloFalloff: Dp = 0.dp,
+    /**
+     * r115 (Pitlane only): the zoned rework — the corner is cut, not
+     * rounded. When > 0.dp, the look's shape is a chamfered rectangle
+     * (flat diagonal cuts at the four corners, cut depth = this value)
+     * instead of a rounded rectangle: see [ChamferShape],
+     * [buttonShapeForLook], [gsButtonShape] and [cardShapeForLook].
+     * The chamfer + corner NEVER leave, at any frame tier (see
+     * [pitlaneFrameTier]); 0 for every other style, which keeps
+     * its existing rounded shape exactly.
+     */
+    val chamferCut: Dp = 0.dp,
+    /**
+     * r115 (Pitlane only): switches render as rocker paddles
+     * (GsSwitch) instead of the r26 bat levers: frame + chamfer kept,
+     * fill split light top / dark bottom, on = top half faint primary
+     * tint + bolts primary. Replaces [batToggle], which reads false
+     * on every built-in look from r115 on.
+     */
+    val rockerToggle: Boolean = false,
     /** How far the face drops while pressed; 0 for none. */
     val sink: Dp = 0.dp,
     /**
@@ -192,13 +211,27 @@ data class ControlLook(
      * drawn with Canvas at low alpha under content and borders. 0 for none.
      * Panel cards (GsGroupedCard/GsPanelCard/GsSheetSurface) draw the same
      * weave stronger (see pitLanePanel) — panels are where the weave reads.
+     * r115 (zoned rework): the weave lives ONLY in the frame band, never
+     * in the fill (see gsSurface / pitLanePanelTexture); the value here
+     * is now the frame-band weave alpha.
      */
     val weaveAlpha: Float = 0f,
-    /** r26 (Pit Lane only): brushed-metal horizontal grain streak alpha. 0 for none. */
+    /**
+     * r26 (Pit Lane only): brushed-metal horizontal grain streak alpha. 0 for none.
+     * r115 (zoned rework): 0 on every built-in look — the fill zone is clean
+     * solid blocking and the frame zone carries weave + bolts only, so
+     * grain has no zone left to live in. The field stays so the
+     * retirement is assertable, like checkerStrip.
+     */
     val grainAlpha: Float = 0f,
     /**
      * r26 (Pit Lane only): corner screw dots on panel cards and sheets
      * (pitLanePanel), never on buttons/tiles — corners only, never scattered.
+     * r115 (zoned rework): the corner fasteners are hex bolts, not screw
+     * dots — 8dp at the L tier, 6dp at M, none at S — set into the frame
+     * band at the four corners on a strict grid (see pitlaneBoltCenters);
+     * panels keep them, controls gain them. The flag still gates the
+     * whole fastener treatment.
      */
     val rivets: Boolean = false,
     /**
@@ -211,6 +244,9 @@ data class ControlLook(
      * r26 (Pit Lane only): switches render as metal bat-lever toggles
      * (GsSwitch) instead of the squared track-and-knob. Travel and hit
      * area unchanged; only the drawing changes.
+     * r115: SUPERSEDED by [rockerToggle] — the bat lever is gone from
+     * every built-in look; the drawing code stays (like checkerStrip)
+     * but no look selects it.
      */
     val batToggle: Boolean = false,
     /**
@@ -351,12 +387,27 @@ object GsThemes {
      * light surfaces (the style never forces carbon-black surfaces —
      * colors come from the color scheme, so Pit Lane-on-light reads
      * squared and thick-edged over the light scheme's surfaces).
+     * r115 (zoned rework, Robert ~19:02 "solved zoned blend"): three
+     * zones, each carrying exactly one job. FILL = clean solid blocking
+     * only, no weave, no grain. FRAME = a border band carrying the
+     * carbon weave + hex bolts at the four corners on a strict grid.
+     * EDGE = a chamfer — a flat cut, crisp — so the corner is a 4dp
+     * cut, not a 6dp round. Shedding order as controls shrink, FIXED:
+     * (1) weave leaves the frame, (2) bolts drop, (3) the border
+     * thins to standard; chamfer + 4dp corner NEVER leave. Tiers by
+     * the smaller dimension (see pitlaneFrameTier): L = thick frame +
+     * weave + 8dp bolts, M = medium frame + finer weave + 6dp bolts,
+     * S = standard border, solid frame, no bolts, chamfer + corner
+     * only. Latched: bolts light the scheme primary, chamfer holds;
+     * the smallest tier gets a faint primary tint in the fill instead
+     * (no bolts to light there). Switches become rocker paddles
+     * (see rockerToggle); the bat lever and the grain are gone.
      */
     val Pitlane = GsTheme(
         id = "pitlane",
         name = "Pitlane",
         control = ControlLook(
-            corner = 6.dp,
+            corner = 4.dp,
             topLight = 0f,
             hairlineAlpha = 1f,
             bevelTop = 0.50f,
@@ -366,15 +417,16 @@ object GsThemes {
             containerAlpha = 1f,
             holdMarker = HoldMarkerStyle.DOT,
             rectangularButtons = true,
+            chamferCut = 4.dp,
+            rockerToggle = true,
             weaveAlpha = 0.05f,
-            grainAlpha = 0.03f,
+            grainAlpha = 0f,
             rivets = true,
             ledDot = true,
-            batToggle = true,
             engravedHeader = true,
             bevelOnLatched = true,
             light = ControlLook(
-                corner = 6.dp,
+                corner = 4.dp,
                 topLight = 0f,
                 hairlineAlpha = 0.90f,
                 bevelTop = 0.45f,
@@ -384,11 +436,12 @@ object GsThemes {
                 containerAlpha = 1f,
                 holdMarker = HoldMarkerStyle.DOT,
                 rectangularButtons = true,
+                chamferCut = 4.dp,
+                rockerToggle = true,
                 weaveAlpha = 0.04f,
-                grainAlpha = 0.025f,
+                grainAlpha = 0f,
                 rivets = true,
                 ledDot = true,
-                batToggle = true,
                 engravedHeader = true,
                 bevelOnLatched = true,
             ),

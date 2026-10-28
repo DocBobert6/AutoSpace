@@ -17,8 +17,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -27,6 +33,8 @@ import androidx.compose.ui.graphics.drawscope.translate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -91,13 +99,48 @@ fun gsColors(tone: GsTone): GsColors {
 }
 
 /**
+ * r115 (Pitlane only): a chamfered rectangle — flat diagonal cuts at
+ * the four corners instead of rounded arcs. The cut is coerced to at
+ * most half the smaller dimension, so a tiny surface degrades to a
+ * narrow octagon rather than an inverted shape. A data class so tests
+ * can pin the shape by equality.
+ */
+data class ChamferShape(val cut: Dp) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        // density is a parameter here, not a receiver — toPx() needs
+        // the with() scope (unlike draw scopes, where Density IS the
+        // receiver and bare toPx() resolves).
+        val cutPx = with(density) {
+            minOf(cut.toPx(), minOf(size.width, size.height) / 2f).coerceAtLeast(0f)
+        }
+        val path = Path().apply {
+            moveTo(cutPx, 0f)
+            lineTo(size.width - cutPx, 0f)
+            lineTo(size.width, cutPx)
+            lineTo(size.width, size.height - cutPx)
+            lineTo(size.width - cutPx, size.height)
+            lineTo(cutPx, size.height)
+            lineTo(0f, size.height - cutPx)
+            lineTo(0f, cutPx)
+            close()
+        }
+        return Outline.Generic(path)
+    }
+}
+
+/**
  * r79: the pure button-shape rule behind [gsShape], kept free of
  * Composition so it is unit-testable: a pillButtons style (Horizon
  * only) takes the full pill; every other style takes the style's
  * corner exactly, as before.
+ * r115: a chamferCut style (Pitlane only) takes the chamfer instead
+ * of its corner — the cut IS the corner treatment under the zoned
+ * rework, so buttons, tiles and keys render cut-cornered, never
+ * rounded, under Pitlane.
  */
 fun buttonShapeForLook(look: ControlLook): Shape =
-    if (look.pillButtons) GsKit.PillShape else RoundedCornerShape(look.corner)
+    if (look.chamferCut > 0.dp) ChamferShape(look.chamferCut)
+    else if (look.pillButtons) GsKit.PillShape else RoundedCornerShape(look.corner)
 
 @Composable
 fun gsShape(): Shape = buttonShapeForLook(gsLook())
@@ -113,11 +156,15 @@ fun gsShape(): Shape = buttonShapeForLook(gsLook())
  * and the nav media pill under Pit Lane (see the r29 spec); the
  * non-Pit Lane styles still keep their fallback exactly, which is what
  * keeps their look unchanged in this round.
+ * r115: under a chamferCut style (Pitlane only) the container takes
+ * the chamfer (4dp cut) instead of the corner — the r24 squaring rule
+ * with the corner treatment replaced by the cut.
  */
 @Composable
 fun gsButtonShape(fallback: Shape): Shape {
     val look = gsLook()
-    return cardShapeForLook(look.rectangularButtons, look.corner, fallback)
+    return if (look.chamferCut > 0.dp) ChamferShape(look.chamferCut)
+    else cardShapeForLook(look.rectangularButtons, look.corner, fallback)
 }
 
 /**
@@ -136,9 +183,92 @@ fun cardShapeForLook(rectangularButtons: Boolean, corner: Dp, fallback: Shape): 
  * cardsUseStyleCorner style (Verve) takes its own corner; every other
  * style keeps the fallback exactly. The 3-arg form above is unchanged
  * (existing tests pin it); card call sites use this form.
+ * r115: a chamferCut style (Pitlane only) takes the chamfer instead of
+ * the corner — cards and sheets render cut-cornered under Pitlane.
  */
 fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
-    if (look.rectangularButtons || look.cardsUseStyleCorner) RoundedCornerShape(look.corner) else fallback
+    if (look.chamferCut > 0.dp) ChamferShape(look.chamferCut)
+    else if (look.rectangularButtons || look.cardsUseStyleCorner) RoundedCornerShape(look.corner) else fallback
+
+/**
+ * r115 (Pitlane only): the zoned frame tier, driven by the surface's
+ * smaller dimension. The thresholds are the kit's own size facts: keys
+ * bottom out at a 44dp floor (CarKeyboard) while standard buttons sit
+ * at 48dp and up, so 48dp is the S/M boundary; cards and sheets sit
+ * at 96dp and up, so 96dp is the M/L boundary. A surface exactly on a
+ * boundary takes the larger tier. Pure so it is unit-testable.
+ */
+enum class PitlaneFrameTier { S, M, L }
+
+fun pitlaneFrameTier(minDim: Dp): PitlaneFrameTier = when {
+    minDim < 48.dp -> PitlaneFrameTier.S
+    minDim < 96.dp -> PitlaneFrameTier.M
+    else -> PitlaneFrameTier.L
+}
+
+/**
+ * r115: the frame band width per tier. L keeps a thick 12dp band;
+ * M a medium 8dp band; S has no band at all — the border thins to
+ * the standard hairline-only edge (shedding step 3). Pure so it is
+ * unit-testable.
+ */
+fun pitlaneFrameBand(tier: PitlaneFrameTier): Dp = when (tier) {
+    PitlaneFrameTier.L -> 12.dp
+    PitlaneFrameTier.M -> 8.dp
+    PitlaneFrameTier.S -> 0.dp
+}
+
+/**
+ * r115: the twill cell per tier. L keeps the kit's 8dp cell; M takes
+ * a finer 6dp cell so the weave reads denser on the narrower band;
+ * S draws no weave (shedding step 1). Pure so it is unit-testable.
+ */
+fun pitlaneWeaveCell(tier: PitlaneFrameTier): Dp = when (tier) {
+    PitlaneFrameTier.L -> 8.dp
+    PitlaneFrameTier.M -> 6.dp
+    PitlaneFrameTier.S -> 0.dp
+}
+
+/**
+ * r115: the hex bolt size per tier — ~8dp at L (the pick), 6dp at M,
+ * none at S (shedding step 2). Pure so it is unit-testable.
+ */
+fun pitlaneBoltSize(tier: PitlaneFrameTier): Dp = when (tier) {
+    PitlaneFrameTier.L -> 8.dp
+    PitlaneFrameTier.M -> 6.dp
+    PitlaneFrameTier.S -> 0.dp
+}
+
+/**
+ * r115: the four bolt centers for a surface, set INTO the frame on a
+ * strict grid: each center sits half a band in from its corner, so an
+ * 8dp bolt in a 12dp band spans 2..10dp and a 6dp bolt in an 8dp band
+ * spans 1..7dp — inside the band on every side, never on the edge.
+ * Pure floats so it is unit-testable.
+ */
+fun pitlaneBoltCenters(widthPx: Float, heightPx: Float, bandPx: Float): List<Offset> {
+    val c = bandPx / 2f
+    return listOf(
+        Offset(c, c),
+        Offset(widthPx - c, c),
+        Offset(c, heightPx - c),
+        Offset(widthPx - c, heightPx - c),
+    )
+}
+
+/**
+ * r115: the six vertices of a flat-top hexagon centered at [center]
+ * with circumradius [radiusPx] — a bolt head reads as a nut with flat
+ * top and bottom edges (vertices at 0°, 60°, 120°, 180°, 240°, 300°).
+ * Pure so it is unit-testable.
+ */
+fun pitlaneBoltHexPoints(center: Offset, radiusPx: Float): List<Offset> {
+    val angles = listOf(0f, 60f, 120f, 180f, 240f, 300f)
+    return angles.map { deg ->
+        val rad = Math.toRadians(deg.toDouble()).toFloat()
+        Offset(center.x + radiusPx * cos(rad), center.y + radiusPx * sin(rad))
+    }
+}
 
 /**
  * r48 (Verve motion): the state-change animation spec, pure so it is
@@ -249,9 +379,15 @@ fun morphCornerTarget(base: Dp, look: ControlLook, pressed: Boolean, latched: Bo
  * into a busy moiré on the audited Appearance page. Bevel, hairline, LED
  * and rim still draw; only the material pattern is suppressed. Pure so it
  * is unit-testable; [gsSurface] feeds it the current look + panel flag.
+ * r115: the zoned frame is exempt — band-confined weave cannot moiré,
+ * because bands are disjoint by construction (the control's band sits
+ * at the control's edge, the panel's at the panel's, separated by
+ * padding), so a zoned control on a panel still draws its own frame.
+ * A non-zoned weave (no built-in look carries one from r115 on) keeps
+ * the old suppression.
  */
 fun shouldDrawControlTexture(look: ControlLook, onTexturedPanel: Boolean): Boolean =
-    !onTexturedPanel && (look.weaveAlpha > 0f || look.grainAlpha > 0f)
+    (look.weaveAlpha > 0f || look.grainAlpha > 0f) && (!onTexturedPanel || look.chamferCut > 0.dp)
 
 /** The current theme's control look, swapped for its light-mode variant on a light UI. */
 @Composable
@@ -470,6 +606,20 @@ fun Modifier.gsSurface(
                 drawRect(tint)
             }
         }
+        // r115 (Pitlane only): the smallest tier's latched read — no
+        // bolts to light, so the fill takes the faint primary tint
+        // instead (same 0.12 strength as Verve's latched tint).
+        // Tier needs the size, so this lives in a drawBehind, not
+        // the body.
+        if (latched && look.chamferCut > 0.dp) {
+            val tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            m = m.drawBehind {
+                val minDimDp = (minOf(size.width, size.height) / density).dp
+                if (pitlaneFrameTier(minDimDp) == PitlaneFrameTier.S) {
+                    drawRect(tint)
+                }
+            }
+        }
         // r114 (Morph only): the latched tint-only fallback —
         // when the full-strength wash would leave latched text
         // below 4.5:1 (the guard in GsIconBox sets
@@ -505,7 +655,106 @@ fun Modifier.gsSurface(
         // texture this surface (see shouldDrawControlTexture) — a control
         // drawing its own second grid on top is what made the audited page
         // read busy instead of subtle.
-        if (shouldDrawControlTexture(look, LocalOnPitlanePanel.current)) {
+        // r115 (Pitlane only): the zoned frame. The weave is confined
+        // to the frame band by an EvenOdd clip (outer outline minus
+        // the inset inner rect), so the fill stays clean solid
+        // blocking; hex bolts sit INTO the band at the four corners
+        // on a strict grid (see pitlaneBoltCenters). No grain: the
+        // fill zone is clean and the frame zone carries weave +
+        // bolts only, so grain has no zone left. Tier comes from the
+        // size at draw time, so the shedding order is size-driven:
+        // S draws nothing here (clean fill, standard border, chamfer
+        // + corner only — the tint for latched S controls is drawn
+        // separately below). The twill construction is the r26 one
+        // (one diagonal per cell, direction alternating by parity,
+        // even cells full alpha, odd cells 60% — the over-under read),
+        // with the tier's cell size. Drawn under content and borders,
+        // like the old full-face weave. Latched: the bolts light the
+        // scheme primary; unlatched they are steel by container
+        // luminance. The primary is read in the composable body — a
+        // draw scope cannot call MaterialTheme. The gate is the
+        // zoned exemption itself (see shouldDrawControlTexture): a
+        // chamfered look draws its frame whether or not it sits on a
+        // panel, and it draws when it carries weave OR bolts — the
+        // bolts must not vanish just because the weave value is 0.
+        if (look.chamferCut > 0.dp && (look.weaveAlpha > 0f || look.rivets)) {
+            val weave = look.weaveAlpha
+            val thread = if (effContainer.luminance() > 0.5f) Color.Black else Color.White
+            val boltPrimary = MaterialTheme.colorScheme.primary
+            m = m.drawWithCache {
+                val minDimDp = (minOf(size.width, size.height) / density).dp
+                val tier = pitlaneFrameTier(minDimDp)
+                val bandPx = pitlaneFrameBand(tier).toPx()
+                val cell = pitlaneWeaveCell(tier).toPx()
+                val boltPx = pitlaneBoltSize(tier).toPx()
+                val even = Path()
+                val odd = Path()
+                if (tier != PitlaneFrameTier.S) {
+                    var row = 0
+                    var y = 0f
+                    while (y < size.height + cell) {
+                        var col = 0
+                        var x = 0f
+                        while (x < size.width + cell) {
+                            if ((row + col) % 2 == 0) {
+                                even.moveTo(x, y + cell)
+                                even.lineTo(x + cell, y)
+                            } else {
+                                odd.moveTo(x, y)
+                                odd.lineTo(x + cell, y + cell)
+                            }
+                            col++
+                            x += cell
+                        }
+                        row++
+                        y += cell
+                    }
+                }
+                val outerOutline = drawShape.createOutline(size, layoutDirection, this)
+                // toPx() needs a Density receiver: compute here, in the
+                // cache scope, not inside the Path.apply below (whose
+                // receiver is the Path, not the scope).
+                val innerCornerPx = (look.corner - pitlaneFrameBand(tier)).coerceAtLeast(0.dp).toPx()
+                val bandPath = Path().apply {
+                    fillType = PathFillType.EvenOdd
+                    when (val o = outerOutline) {
+                        is Outline.Generic -> addPath(o.path)
+                        is Outline.Rounded -> addRoundRect(RoundRect(o.rect, o.radius))
+                        is Outline.Rectangle -> addRect(o.rect)
+                    }
+                    addRoundRect(
+                        RoundRect(
+                            Rect(bandPx, bandPx, size.width - bandPx, size.height - bandPx),
+                            CornerRadius(innerCornerPx, innerCornerPx),
+                        ),
+                    )
+                }
+                val weaveStroke = Stroke(width = 1.dp.toPx())
+                onDrawBehind {
+                    if (tier != PitlaneFrameTier.S && weave > 0f) {
+                        clipPath(bandPath) {
+                            drawPath(even, thread.copy(alpha = weave), style = weaveStroke)
+                            drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
+                        }
+                    }
+                    if (tier != PitlaneFrameTier.S && boltPx > 0f) {
+                        val boltFill = if (latched) boltPrimary else thread.copy(alpha = 0.50f)
+                        val boltStroke = if (latched) boltPrimary else thread.copy(alpha = 0.85f)
+                        val hexStroke = Stroke(width = 1.dp.toPx())
+                        for (c in pitlaneBoltCenters(size.width, size.height, bandPx)) {
+                            val hex = Path().apply {
+                                val pts = pitlaneBoltHexPoints(c, boltPx / 2f)
+                                moveTo(pts[0].x, pts[0].y)
+                                for (i in 1..5) lineTo(pts[i].x, pts[i].y)
+                                close()
+                            }
+                            drawPath(hex, boltFill)
+                            drawPath(hex, boltStroke, style = hexStroke)
+                        }
+                    }
+                }
+            }
+        } else if (shouldDrawControlTexture(look, LocalOnPitlanePanel.current)) {
             val weave = look.weaveAlpha
             val grain = look.grainAlpha
             val thread = if (effContainer.luminance() > 0.5f) Color.Black else Color.White
@@ -623,6 +872,30 @@ fun Modifier.gsSurface(
                     ),
                     drawShape,
                 )
+            } else if (look.chamferCut > 0.dp) {
+                // r115: the zoned frame's edge — the bevel draws as an
+                // outline stroke in a drawBehind (not a border) so the
+                // tier, known only at draw time from the size, can thin
+                // it: M/L keep the thick bevel, S thins to the standard
+                // hairline-only edge (the hairline block above already
+                // drew it). Drawn under content, unlike the border it
+                // replaces — a 1dp edge stroke with inset content, so
+                // the difference is invisible in practice.
+                m.drawBehind {
+                    val minDimDp = (minOf(size.width, size.height) / density).dp
+                    if (pitlaneFrameTier(minDimDp) != PitlaneFrameTier.S) {
+                        drawOutline(
+                            drawShape.createOutline(size, layoutDirection, this),
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = look.bevelTop),
+                                0.3f to Color.Transparent,
+                                0.7f to Color.Transparent,
+                                1f to Color.Black.copy(alpha = look.bevelBottom),
+                            ),
+                            style = Stroke(width = 1.dp.toPx()),
+                        )
+                    }
+                }
             } else {
                 m.border(
                     1.dp,

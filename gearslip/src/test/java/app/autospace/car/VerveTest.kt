@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.ChamferShape
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.stateChangeMotionSpec
@@ -129,7 +130,7 @@ class VerveTest {
         val fallback = RoundedCornerShape(20.dp)
         assertEquals(RoundedCornerShape(24.dp), cardShapeForLook(GsThemes.Verve.control, fallback))
         assertEquals(RoundedCornerShape(24.dp), cardShapeForLook(GsThemes.Verve.control, RoundedCornerShape(0.dp)))
-        assertEquals(RoundedCornerShape(6.dp), cardShapeForLook(GsThemes.Pitlane.control, fallback))
+        assertEquals(ChamferShape(4.dp), cardShapeForLook(GsThemes.Pitlane.control, fallback))
         assertEquals(fallback, cardShapeForLook(GsThemes.Frost.control, fallback))
         assertEquals(fallback, cardShapeForLook(GsThemes.Flat.control, fallback))
         assertEquals(fallback, cardShapeForLook(GsThemes.Edge.control, fallback))

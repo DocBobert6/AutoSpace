@@ -25,14 +25,18 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
@@ -144,6 +148,9 @@ val LocalOledDark = compositionLocalOf { false }
  * surface instead of two misaligned grids compounding into a moiré. The
  * provider value is the panel's own texture gate, so under any other style
  * it is false and nothing changes.
+ * r115: a zoned control (chamferCut) on a panel is exempt from the skip
+ * (see shouldDrawControlTexture) — band-confined weave cannot moiré,
+ * because bands are disjoint by construction.
  */
 val LocalOnPitlanePanel = compositionLocalOf { false }
 
@@ -444,6 +451,15 @@ fun FrostedPanelSurface(
  * buttons and tiles never get them, so they never read as scattered
  * decoration. Browser sheets are chrome, not pages: they follow the panel
  * treatment like every other sheet, while WebView page content is untouched.
+ * r115 (zoned rework): the panel texture follows the same zones as
+ * controls — weave confined to the frame band (same tier table: L 12dp
+ * band / 8dp cell / 8dp bolts, M 8dp band / 6dp cell / 6dp bolts, S
+ * nothing), corner fasteners as hex bolts (not screw dots), no grain
+ * (the fill zone is clean, the frame zone carries weave + bolts only).
+ * The old 64×40 screw floor is superseded by the tier rule: a panel
+ * under 48dp on its smaller side is S and gets no bolts. The border half
+ * is unchanged (see pitLanePanelBorder) — it cannot know the size, so
+ * small panels keep the thick bevel edge; panels are L/M in practice.
  */
 /**
  * r32: the panel bevel, aligned to the control bevel. r26 set panels weaker
@@ -479,67 +495,71 @@ fun Modifier.pitLanePanelTexture(): Modifier {
     if (look.weaveAlpha <= 0f && !look.rivets) return this
     val dark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
     val weave = if (dark) 0.08f else 0.06f
-    val grain = if (dark) 0.04f else 0.03f
     val thread = if (dark) Color.White else Color.Black
-    val screws = look.rivets
     return this.drawWithCache {
-        val cell = 8.dp.toPx()
+        // r115: same zones as gsSurface, same tier table. The panel's
+        // band is a rectangular ring (the texture Column itself is
+        // rectangular; the card's own outer clip trims the corners to
+        // the chamfer). Panels are never latched, so bolts are steel.
+        val minDimDp = (minOf(size.width, size.height) / density).dp
+        val tier = pitlaneFrameTier(minDimDp)
+        val bandPx = pitlaneFrameBand(tier).toPx()
+        val cell = pitlaneWeaveCell(tier).toPx()
+        val boltPx = pitlaneBoltSize(tier).toPx()
         val even = Path()
         val odd = Path()
-        var row = 0
-        var y = 0f
-        while (y < size.height + cell) {
-            var col = 0
-            var x = 0f
-            while (x < size.width + cell) {
-                if ((row + col) % 2 == 0) {
-                    even.moveTo(x, y + cell)
-                    even.lineTo(x + cell, y)
-                } else {
-                    odd.moveTo(x, y)
-                    odd.lineTo(x + cell, y + cell)
+        if (tier != PitlaneFrameTier.S) {
+            var row = 0
+            var y = 0f
+            while (y < size.height + cell) {
+                var col = 0
+                var x = 0f
+                while (x < size.width + cell) {
+                    if ((row + col) % 2 == 0) {
+                        even.moveTo(x, y + cell)
+                        even.lineTo(x + cell, y)
+                    } else {
+                        odd.moveTo(x, y)
+                        odd.lineTo(x + cell, y + cell)
+                    }
+                    col++
+                    x += cell
                 }
-                col++
-                x += cell
+                row++
+                y += cell
             }
-            row++
-            y += cell
         }
-        val streaks = Path()
-        val step = 3.dp.toPx()
-        var sy = 0f
-        while (sy < size.height + step) {
-            streaks.moveTo(0f, sy)
-            streaks.lineTo(size.width, sy)
-            sy += step
+        val bandPath = Path().apply {
+            fillType = PathFillType.EvenOdd
+            addRect(Rect(0f, 0f, size.width, size.height))
+            addRoundRect(
+                RoundRect(
+                    Rect(bandPx, bandPx, size.width - bandPx, size.height - bandPx),
+                    CornerRadius(0f, 0f),
+                ),
+            )
         }
         val weaveStroke = Stroke(width = 1.dp.toPx())
         onDrawBehind {
-            drawPath(even, thread.copy(alpha = weave), style = weaveStroke)
-            drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
-            // r32: grain was a 1px stroke while weave is 1dp — on a
-            // high-density car display grain rendered ~3x thinner than
-            // weave and fell below visibility. Same 1dp stroke now;
-            // alphas unchanged.
-            drawPath(streaks, thread.copy(alpha = grain), style = Stroke(width = 1.dp.toPx()))
-            if (screws && size.width >= 64.dp.toPx() && size.height >= 40.dp.toPx()) {
-                val r = 2.5.dp.toPx()
-                val inset = 6.dp.toPx()
-                val corners = listOf(
-                    Offset(inset + r, inset + r),
-                    Offset(size.width - inset - r, inset + r),
-                    Offset(inset + r, size.height - inset - r),
-                    Offset(size.width - inset - r, size.height - inset - r),
-                )
-                for (c in corners) {
-                    drawCircle(Color.Black.copy(alpha = 0.50f), r, c)
-                    drawLine(
-                        Color.Black.copy(alpha = 0.65f),
-                        start = Offset(c.x - r * 0.7f, c.y + r * 0.7f),
-                        end = Offset(c.x + r * 0.7f, c.y - r * 0.7f),
-                        strokeWidth = 1.dp.toPx(),
-                    )
-                    drawCircle(Color.White.copy(alpha = 0.30f), 1.dp.toPx(), Offset(c.x - r * 0.35f, c.y - r * 0.35f))
+            if (tier != PitlaneFrameTier.S && weave > 0f) {
+                clipPath(bandPath) {
+                    drawPath(even, thread.copy(alpha = weave), style = weaveStroke)
+                    drawPath(odd, thread.copy(alpha = weave * 0.6f), style = weaveStroke)
+                }
+            }
+            if (tier != PitlaneFrameTier.S && boltPx > 0f) {
+                val boltFill = thread.copy(alpha = 0.50f)
+                val boltStroke = thread.copy(alpha = 0.85f)
+                val hexStroke = Stroke(width = 1.dp.toPx())
+                for (c in pitlaneBoltCenters(size.width, size.height, bandPx)) {
+                    val hex = Path().apply {
+                        val pts = pitlaneBoltHexPoints(c, boltPx / 2f)
+                        moveTo(pts[0].x, pts[0].y)
+                        for (i in 1..5) lineTo(pts[i].x, pts[i].y)
+                        close()
+                    }
+                    drawPath(hex, boltFill)
+                    drawPath(hex, boltStroke, style = hexStroke)
                 }
             }
         }

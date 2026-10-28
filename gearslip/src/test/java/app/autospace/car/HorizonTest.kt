@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.ChamferShape
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.buttonShapeForLook
@@ -149,7 +150,7 @@ class HorizonTest {
         assertEquals(GsKit.PillShape, buttonShapeForLook(checkNotNull(GsThemes.Horizon.control.light)))
         assertEquals(RoundedCornerShape(24.dp), buttonShapeForLook(GsThemes.Verve.control))
         assertEquals(RoundedCornerShape(20.dp), buttonShapeForLook(GsThemes.Frost.control))
-        assertEquals(RoundedCornerShape(6.dp), buttonShapeForLook(GsThemes.Pitlane.control))
+        assertEquals(ChamferShape(4.dp), buttonShapeForLook(GsThemes.Pitlane.control))
     }
 
     @Test

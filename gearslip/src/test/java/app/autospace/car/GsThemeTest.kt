@@ -1,5 +1,6 @@
 package app.autospace.car
 
+import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.haloBrightnessFactor
 import org.junit.Assert.assertEquals
@@ -58,7 +59,10 @@ class GsThemeTest {
         assertTrue(GsThemes.builtIn.any { it.id == "pitlane" && it.name == "Pitlane" })
         assertEquals("pitlane", GsThemes.byId("pitlane").id)
         val look = GsThemes.Pitlane.control
-        assertEquals(6, look.corner.value.toInt())
+        // r115: the zoned rework cuts the corner (4dp chamfer) instead
+        // of rounding it (6dp round).
+        assertEquals(4, look.corner.value.toInt())
+        assertEquals(4, look.chamferCut.value.toInt())
         assertEquals(0f, look.topLight, 0.001f)
         assertEquals(1f, look.hairlineAlpha, 0.001f)
         assertEquals(0.50f, look.bevelTop, 0.001f)
@@ -72,7 +76,8 @@ class GsThemeTest {
         assertFalse(look.checkerStrip)
         assertEquals(0f, look.insetAlpha, 0.001f)
         val light = checkNotNull(look.light)
-        assertEquals(6, light.corner.value.toInt())
+        assertEquals(4, light.corner.value.toInt())
+        assertEquals(4, light.chamferCut.value.toInt())
         assertTrue(light.rectangularButtons)
         assertFalse(light.checkerStrip)
         assertFalse(GsThemes.builtIn.any { it.control.checkerStrip })
@@ -80,6 +85,9 @@ class GsThemeTest {
         // Rectangular buttons are Pitlane-only: every other built-in
         // style keeps its existing shapes exactly.
         assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.rectangularButtons })
+        // The chamfer is Pitlane-only too.
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.chamferCut > 0.dp })
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { (it.control.light?.chamferCut ?: 0.dp) > 0.dp })
     }
 
     @Test
@@ -88,20 +96,26 @@ class GsThemeTest {
         // engraved headers, bevel on latched) exists ONLY on Pit Lane, dark +
         // light. Every other built-in look carries none of it, so no other
         // style's appearance changes by construction.
+        // r115: grain is gone (the fill zone is clean, the frame zone
+        // carries weave + bolts only) and the bat toggle is superseded by
+        // the rocker toggle; weave, rivets (now hex bolts), LED, engraved
+        // headers and bevel-on-latched stay Pitlane-only.
         val pitlane = GsThemes.Pitlane.control
         assertEquals(0.05f, pitlane.weaveAlpha, 0.001f)
-        assertEquals(0.03f, pitlane.grainAlpha, 0.001f)
+        assertEquals(0f, pitlane.grainAlpha, 0.001f)
         assertTrue(pitlane.rivets)
         assertTrue(pitlane.ledDot)
-        assertTrue(pitlane.batToggle)
+        assertFalse(pitlane.batToggle)
+        assertTrue(pitlane.rockerToggle)
         assertTrue(pitlane.engravedHeader)
         assertTrue(pitlane.bevelOnLatched)
         val light = checkNotNull(pitlane.light)
         assertEquals(0.04f, light.weaveAlpha, 0.001f)
-        assertEquals(0.025f, light.grainAlpha, 0.001f)
+        assertEquals(0f, light.grainAlpha, 0.001f)
         assertTrue(light.rivets)
         assertTrue(light.ledDot)
-        assertTrue(light.batToggle)
+        assertFalse(light.batToggle)
+        assertTrue(light.rockerToggle)
         assertTrue(light.engravedHeader)
         assertTrue(light.bevelOnLatched)
         // The hard bevel values themselves are unchanged from r23/r24 —
@@ -119,6 +133,8 @@ class GsThemeTest {
             assertFalse(other.control.rivets)
             assertFalse(other.control.ledDot)
             assertFalse(other.control.batToggle)
+            assertFalse(other.control.rockerToggle)
+            assertEquals(0, other.control.chamferCut.value.toInt())
             assertFalse(other.control.engravedHeader)
             assertFalse(other.control.bevelOnLatched)
             val otherLight = other.control.light
@@ -128,6 +144,8 @@ class GsThemeTest {
                 assertFalse(otherLight.rivets)
                 assertFalse(otherLight.ledDot)
                 assertFalse(otherLight.batToggle)
+                assertFalse(otherLight.rockerToggle)
+                assertEquals(0, otherLight.chamferCut.value.toInt())
                 assertFalse(otherLight.engravedHeader)
                 assertFalse(otherLight.bevelOnLatched)
             }
