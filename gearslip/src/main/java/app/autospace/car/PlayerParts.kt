@@ -113,11 +113,15 @@ internal fun WaveformSeekBar(
     accent: Color,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    // r136: the unfilled-bar color. Null keeps exactly today's scheme
+    // track, so only callers that pass one (the floating card's art
+    // palette) change anything.
+    trackColor: Color? = null,
 ) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     val shown = (dragging ?: fraction).coerceIn(0f, 1f)
     val filled = filledWaveformBars(shown)
-    val track = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+    val track = trackColor ?: MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
     // A taller touch area than the bars themselves, so it's easy to hit on a car screen.
     Box(
         modifier
@@ -195,9 +199,12 @@ internal fun playMorphCorner(playing: Boolean, styleCorner: Dp, playSize: Dp): D
  * The seek bar, with elapsed and total time under it when [showTimes]. [waveform] swaps the
  * capsule bar for waveform bars (full player, and since r88 the floating media card too);
  * [accent] tints the waveform fill, defaulting to the scheme primary.
+ * r136: [waveformTrack] tints the unfilled waveform bars and [timeColor]
+ * recolors the times; both null keep exactly today's scheme treatment,
+ * so only callers that pass them (the floating card) change anything.
  */
 @Composable
-internal fun PlayerProgress(now: NowPlaying, media: CarMedia, modifier: Modifier = Modifier, showTimes: Boolean = true, waveform: Boolean = false, accent: Color? = null) {
+internal fun PlayerProgress(now: NowPlaying, media: CarMedia, modifier: Modifier = Modifier, showTimes: Boolean = true, waveform: Boolean = false, accent: Color? = null, waveformTrack: Color? = null, timeColor: Color? = null) {
     if (now.durationMs <= 0) return
     var position by remember { mutableLongStateOf(now.currentPosition()) }
     LaunchedEffect(now) {
@@ -221,6 +228,7 @@ internal fun PlayerProgress(now: NowPlaying, media: CarMedia, modifier: Modifier
                 onSeek = seekTo,
                 accent = accent ?: MaterialTheme.colorScheme.primary,
                 enabled = enabled,
+                trackColor = waveformTrack,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             )
         } else {
@@ -233,8 +241,8 @@ internal fun PlayerProgress(now: NowPlaying, media: CarMedia, modifier: Modifier
         }
         if (showTimes) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(formatDuration(position), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(formatDuration(now.durationMs), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(formatDuration(position), style = MaterialTheme.typography.labelMedium, color = timeColor ?: MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(formatDuration(now.durationMs), style = MaterialTheme.typography.labelMedium, color = timeColor ?: MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -265,11 +273,15 @@ internal val DefaultTransportShape: Shape = CircleShape
  * is no duration (live/radio) and grey out when seeking is unsupported; every other button
  * stays in place greyed when unavailable, so the row never shifts. Since r132 no caller
  * passes either flag: the full and compact players use the normal treatment (scheme fill,
- * circle like prev/next), and the floating card's compact 3-button row is byte-for-byte
- * today's.
+ * circle like prev/next), and the floating card's row keeps today's
+ * treatment whenever the art gives no usable tint.
+ * r136: [accentContent] overrides the play button's glyph color and
+ * [secondaryColors] overrides previous/next fills; both null keep
+ * exactly today's treatment, so only callers that pass them (the
+ * floating card's art palette) change anything.
  */
 @Composable
-internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: Modifier = Modifier, shape: Shape = DefaultTransportShape, showSeek: Boolean = false, morphPlay: Boolean = false, accent: Color? = null) {
+internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: Modifier = Modifier, shape: Shape = DefaultTransportShape, showSeek: Boolean = false, morphPlay: Boolean = false, accent: Color? = null, accentContent: Color? = null, secondaryColors: GsColors? = null) {
     val play = if (showSeek) skip * 1.6f else skip * 1.25f
     val seekSize = skip * 1.2f
     val arrangement = if (showSeek) Arrangement.spacedBy(18.dp, Alignment.CenterHorizontally) else Arrangement.SpaceEvenly
@@ -284,6 +296,7 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
     Row(modifier, horizontalArrangement = arrangement, verticalAlignment = Alignment.CenterVertically) {
         GsIconButton(
             MediaIcons.Previous, "Previous", media::previous,
+            colors = secondaryColors ?: gsColors(GsTone.Neutral),
             enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS), size = skip, iconSize = skip * 0.58f, shape = shape,
         )
         if (showSeek && now.durationMs > 0) {
@@ -301,7 +314,7 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
             if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
             if (now.playing) "Pause" else "Play",
             { CarServices.userTogglePlay() },
-            colors = if (accent != null) GsColors(accent, accentContentColor(accent)) else gsColors(GsTone.Primary),
+            colors = if (accent != null) GsColors(accent, accentContent ?: accentContentColor(accent)) else gsColors(GsTone.Primary),
             size = play, iconSize = play * 0.58f, shape = playShape,
         )
         if (showSeek && now.durationMs > 0) {
@@ -317,6 +330,7 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
         }
         GsIconButton(
             MediaIcons.Next, "Next", media::next,
+            colors = secondaryColors ?: gsColors(GsTone.Neutral),
             enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT), size = skip, iconSize = skip * 0.58f, shape = shape,
         )
     }

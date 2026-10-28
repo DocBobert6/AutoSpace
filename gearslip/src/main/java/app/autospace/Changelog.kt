@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            94, "0.4.83-alpha",
+            listOf(
+                "The media card's cover now shows whole and undistorted on its own softly blurred background, the card's buttons and progress bars take their colors from the cover, and the card no longer casts a shadow over the cover.",
+            ),
+        ),
+        Release(
             93, "0.4.82-alpha",
             listOf(
                 "Every close button in the app now matches the other buttons — the same shape and colors as the rest of the interface — instead of the older plain circles and bare icons.",

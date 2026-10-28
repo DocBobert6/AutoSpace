@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -39,13 +40,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.FrostedPanelSurface
-import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.GsKit
+import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.gsColors
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.gsShape
 import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import app.autospace.media.ArtBlur
+import app.autospace.media.ArtColor
 import app.autospace.media.MediaArt
 import app.autospace.media.NowPlaying
 import app.autospace.media.SwipeSession
@@ -136,6 +144,84 @@ fun floatingCardWidth(frameWidth: Dp): Dp =
 fun artCardDrawsPerimeter(hasArt: Boolean): Boolean = !hasArt
 
 /**
+ * r136: the art-backed card casts no shadow. r133 removed every kit
+ * edge stroke behind the perimeter flag (Blueprint ring, Silhouette
+ * halo, Pitlane panel border, OLED hairline), and the 4dp Surface
+ * shadow was the one perimeter effect left: a soft outline around
+ * the card over the map. With art the art IS the face, so the card
+ * draws nothing at its edge; without art the card keeps exactly
+ * today's 4dp shadow. Pure so it is unit-testable.
+ */
+fun cardArtElevation(hasArt: Boolean): Dp = if (hasArt) 0.dp else 4.dp
+
+/**
+ * r136: whether an album-art tint is strong enough to color the
+ * floating player's controls — the same 0.30 saturation bar the
+ * progress accent uses, so muted and duotone covers fall back to
+ * today's scheme treatment instead of tinting the card grey. Pure
+ * so it is unit-testable.
+ */
+fun floatingArtUsable(tint: ArtColor.Tint?): Boolean =
+    tint != null && tint.saturation >= 0.3f
+
+/** The floating player's art-derived palette: fills plus the glyph on each fill. */
+class FloatingArtPalette(
+    val primary: Color,
+    val primaryGlyph: Color,
+    val secondary: Color,
+    val secondaryGlyph: Color,
+    val waveformTrack: Color,
+)
+
+/**
+ * r136: the floating player's colors, taken from the playing track's
+ * album art and from nothing else — no scheme token feeds them. The
+ * play fill and waveform fill take the art's hue at a vivid fixed
+ * lightness; previous, next, and the X take the same hue muted and
+ * darker, so the row keeps its play-loudest hierarchy. The lightness
+ * is fixed rather than theme-derived on purpose: the card no longer
+ * reads the device theme at all. Null when the art gives no usable
+ * tint — the caller then keeps exactly today's scheme treatment.
+ * Pure so it is unit-testable.
+ */
+fun floatingArtPalette(tint: ArtColor.Tint?): FloatingArtPalette? {
+    if (!floatingArtUsable(tint)) return null
+    val usable = tint ?: return null
+    val primary = Color.hsl(usable.hue, usable.saturation.coerceIn(0.4f, 0.7f), 0.55f)
+    val secondary = Color.hsl(usable.hue, usable.saturation.coerceIn(0.3f, 0.5f), 0.32f)
+    return FloatingArtPalette(
+        primary = primary,
+        primaryGlyph = floatingArtGlyph(primary),
+        secondary = secondary,
+        secondaryGlyph = floatingArtGlyph(secondary),
+        waveformTrack = primary.copy(alpha = 0.30f),
+    )
+}
+
+/**
+ * Opaque ARGB for a Compose color, from its own channels — no Android
+ * dependency, so unit tests can feed it to [contrastRatio].
+ */
+fun floatingColorArgb(color: Color): Int {
+    fun ch(v: Float): Int = (v * 255f).roundToInt().coerceIn(0, 255)
+    return (0xFF shl 24) or (ch(color.red) shl 16) or (ch(color.green) shl 8) or ch(color.blue)
+}
+
+/**
+ * Glyph color on an art fill: black or white, whichever contrasts
+ * more against the fill by WCAG ratio. One of the two always reaches
+ * 4.58:1 or better (the two ratios meet at luminance 0.179), so the
+ * glyph never sits dark-on-dark or light-on-light. Pure so it is
+ * unit-testable.
+ */
+fun floatingArtGlyph(fill: Color): Color {
+    val fillArgb = floatingColorArgb(fill)
+    val whiteRatio = contrastRatio(floatingColorArgb(Color.White), fillArgb)
+    val blackRatio = contrastRatio(floatingColorArgb(Color.Black), fillArgb)
+    return if (whiteRatio >= blackRatio) Color.White else Color.Black
+}
+
+/**
  * r42: dismiss button sizing — the glyph and drawn box shrink, the touch
  * target does not. Pure values so the floor is unit-testable: the drawn
  * box (36dp) stays centered in the 44dp touch target, and the glyph
@@ -206,6 +292,19 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // ArtBlur's own 256px working size — the 64px copy upscaled 6–12x
     // was the wash, not the radius.
     val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX) } }
+    // r136: the sharp cover, whole and undistorted, plus the palette
+    // derived from the same art. The blurred layer below is drawn
+    // cropped to the card's wide aspect, so a square cover lost its
+    // top and bottom and read as squished; the sharp layer is fitted
+    // inside the card bounds instead, so the cover looks like itself,
+    // sitting on its own blurred fill (no map gaps at the sides, no
+    // scrim). The palette is null when the art gives no usable tint —
+    // the card then keeps exactly today's scheme treatment.
+    val sharpArt = remember(art) { art?.asImageBitmap() }
+    val artTint by produceState<ArtColor.Tint?>(null, art) {
+        value = art?.let { withContext(Dispatchers.Default) { runCatching { ArtColor.of(it) }.getOrNull() } }
+    }
+    val artPalette = floatingArtPalette(artTint)
     // r48: the card takes the style corner under Verve (24dp) via the
     // look-fed card rule; every other style keeps its exact shape.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
@@ -229,7 +328,9 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
         // The art is drawn at the card's size (matchParentSize) and
         // cropped, then upscaled with bilinear filtering; the working
         // copy is 256px, so the ~2–3x upscale keeps the art readable.
-        // Null art (or a failed blur) draws nothing.
+        // Null art (or a failed blur) draws nothing. r136 adds a sharp
+        // fitted layer over this backdrop (see above) — the backdrop
+        // stays cropped, the cover itself is fitted.
         blurredArt?.let {
             Image(
                 it, null,
@@ -239,9 +340,21 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                 alpha = 1f,
             )
         }
+        // r136: sharp fitted cover over the blurred fill (see above).
+        // Fit, never Crop or FillBounds: the cover keeps its own
+        // proportions and shows whole. Null art draws nothing.
+        sharpArt?.let {
+            Image(
+                it, null,
+                Modifier.matchParentSize().clip(cardShape),
+                contentScale = ContentScale.Fit,
+                filterQuality = FilterQuality.Medium,
+                alpha = 1f,
+            )
+        }
         FrostedPanelSurface(
             shape = cardShape,
-            elevation = 4.dp,
+            elevation = cardArtElevation(blurredArt != null),
             fillAlpha = if (blurredArt != null) 0f else FrostedChromeAlpha,
             // r133: with art, the art IS the card face — no kit edge
             // (ring, halo, panel border, OLED hairline) may stroke
@@ -303,18 +416,26 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                             // height that makes the narrower card slightly
                             // taller. Artist and source stay single-line.
                             // Very long titles still truncate at two lines.
+                            // r136: on the art-backed card the text is
+                            // white, never scheme-derived and never
+                            // art-tinted — the art face is busy enough
+                            // without the text joining it. Without art
+                            // the card keeps exactly today's scheme text.
                             Text(
                                 now.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+                                color = if (blurredArt != null) Color.White else scheme.onSurface,
                                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                now.artist, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
+                                now.artist, style = MaterialTheme.typography.bodyMedium,
+                                color = if (blurredArt != null) Color.White.copy(alpha = 0.8f) else scheme.onSurfaceVariant,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                             )
                             val source = media.appLabel?.takeIf { it.isNotEmpty() } ?: now.album
                             if (source.isNotEmpty()) {
                                 Text(
-                                    source, style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant,
+                                    source, style = MaterialTheme.typography.labelMedium,
+                                    color = if (blurredArt != null) Color.White.copy(alpha = 0.65f) else scheme.onSurfaceVariant,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
@@ -330,21 +451,44 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                         Modifier.size(FloatingCardDismissTouchSize).clickable { FloatingHomeState.dismiss() },
                         contentAlignment = Alignment.Center,
                     ) {
+                        // r136: the X takes the art palette's secondary
+                        // fill and its contrasting glyph when the art
+                        // gives a usable tint; otherwise it keeps
+                        // exactly today's neutral treatment.
                         GsIconButton(
                             Icons.Filled.Close, "Hide media card", FloatingHomeState::dismiss,
+                            colors = artPalette?.let { GsColors(it.secondary, it.secondaryGlyph) } ?: gsColors(GsTone.Neutral),
                             size = FloatingCardDismissDrawnSize, iconSize = FloatingCardDismissGlyphSize,
                         )
                     }
                 }
                 if (now.durationMs > 0) {
-                    PlayerProgress(now, media, Modifier.fillMaxWidth(), showTimes = true, waveform = true)
+                    // r136: waveform and times on the art palette when
+                    // the art gives a usable tint; times stay white on
+                    // the art-backed card, never art-tinted. Without a
+                    // usable tint the progress keeps exactly today's
+                    // scheme treatment.
+                    PlayerProgress(
+                        now, media, Modifier.fillMaxWidth(), showTimes = true, waveform = true,
+                        accent = artPalette?.primary, waveformTrack = artPalette?.waveformTrack,
+                        timeColor = if (blurredArt != null) Color.White else null,
+                    )
                 } else {
                     Spacer(Modifier.height(6.dp))
                 }
                 // r42: card transport follows the nav-bar button shape
                 // (gsShape()), not circles — the full player and CompactPlayer
                 // pass nothing and keep their circles.
-                TransportRow(now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth(), shape = gsShape())
+                // r136: the card's transport takes the art palette when
+                // the art gives a usable tint — play the vivid fill,
+                // previous/next the muted fill, each with its
+                // contrasting glyph. Otherwise it keeps exactly today's
+                // scheme treatment.
+                TransportRow(
+                    now, media, skip = 48.dp, modifier = Modifier.fillMaxWidth(), shape = gsShape(),
+                    accent = artPalette?.primary, accentContent = artPalette?.primaryGlyph,
+                    secondaryColors = artPalette?.let { GsColors(it.secondary, it.secondaryGlyph) },
+                )
             }
         }
     }

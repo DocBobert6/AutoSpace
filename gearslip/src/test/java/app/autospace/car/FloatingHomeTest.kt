@@ -1,10 +1,14 @@
 package app.autospace.car
 
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedChromeAlpha
+import app.autospace.media.ArtColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,6 +80,65 @@ class FloatingHomeTest {
         // over it; without art the card keeps exactly today's edge.
         assertFalse(artCardDrawsPerimeter(true))
         assertTrue(artCardDrawsPerimeter(false))
+    }
+
+    @Test
+    fun artCardCastsNoShadowButPlainCardKeepsItsShadow() {
+        // r136: r133's perimeter flag killed every kit edge stroke,
+        // and the 4dp Surface shadow was the one perimeter effect
+        // left — a soft outline around the card over the map. With
+        // art the card draws nothing at its edge; without art it
+        // keeps exactly today's 4dp shadow.
+        assertEquals(0.dp, cardArtElevation(true))
+        assertEquals(4.dp, cardArtElevation(false))
+    }
+
+    @Test
+    fun artPaletteFallsBackOnMissingOrMutedTint() {
+        // r136: no tint, or a tint below the 0.30 saturation bar the
+        // progress accent uses, means today's scheme treatment — the
+        // card never tints grey from a muted cover.
+        assertNull(floatingArtPalette(null))
+        assertNull(floatingArtPalette(ArtColor.Tint(0f, 0.29f)))
+        assertFalse(floatingArtUsable(ArtColor.Tint(0f, 0.29f)))
+        assertTrue(floatingArtUsable(ArtColor.Tint(0f, 0.30f)))
+        assertNotNull(floatingArtPalette(ArtColor.Tint(0f, 0.30f)))
+    }
+
+    @Test
+    fun artPaletteKeepsHueFamilyAndDarkensTheSecondary() {
+        // r136: both fills come from the art's hue — a red tint gives
+        // red-dominant fills — and the secondary (previous, next, X)
+        // is darker than the vivid primary (play, waveform).
+        val palette = floatingArtPalette(ArtColor.Tint(0f, 0.8f))!!
+        fun channels(color: Color): Triple<Int, Int, Int> {
+            val argb = floatingColorArgb(color)
+            return Triple((argb shr 16) and 0xFF, (argb shr 8) and 0xFF, argb and 0xFF)
+        }
+        val (pr, pg, pb) = channels(palette.primary)
+        assertTrue(pr > pg && pr > pb)
+        val (sr, sg, sb) = channels(palette.secondary)
+        assertTrue(sr > sg && sr > sb)
+        val primarySum = pr + pg + pb
+        val secondarySum = sr + sg + sb
+        assertTrue(secondarySum < primarySum)
+    }
+
+    @Test
+    fun artGlyphAlwaysContrastsAtLeastFourPointFiveToOne() {
+        // r136: the glyph is whichever of black/white contrasts more
+        // against its fill, and one of the two always reaches 4.58:1
+        // or better — swept across hues and lightnesses, the chosen
+        // glyph never sits dark-on-dark or light-on-light.
+        for (hue in listOf(0f, 60f, 120f, 200f, 280f)) {
+            for (lightness in listOf(0.15f, 0.32f, 0.55f, 0.8f)) {
+                val fill = Color.hsl(hue, 0.6f, lightness)
+                val glyph = floatingArtGlyph(fill)
+                assertTrue(glyph == Color.White || glyph == Color.Black)
+                val ratio = contrastRatio(floatingColorArgb(glyph), floatingColorArgb(fill))
+                assertTrue("hue $hue lightness $lightness ratio $ratio", ratio >= 4.5)
+            }
+        }
     }
 
     @Test
