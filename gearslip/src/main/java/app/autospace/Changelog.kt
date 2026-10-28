@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            86, "0.4.75-alpha",
+            listOf(
+                "Browse rows now show a folder for lists and a music note for songs when the app gives no cover art, and the compact player beside a list is centred like the full player.",
+            ),
+        ),
+        Release(
             85, "0.4.74-alpha",
             listOf(
                 "The mini video card now shows the video's title instead of its web address, grows from small to large on its size button before going fullscreen, and can be dragged by its body while parked. Switching between the mini card and the full player now keeps your exact place both ways — no more starting over, and the full player only asks about resuming when you reopen after the app was closed. The full player also has a button to shrink back down to the mini card.",

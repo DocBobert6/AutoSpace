@@ -28,6 +28,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -570,7 +572,7 @@ private fun CompactPlayer(now: NowPlaying, media: CarMedia, modifier: Modifier) 
     val accent = rememberPlayerAccent(now)
     Column(
         modifier.verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
     ) {
         Column {
             Text(
@@ -682,12 +684,24 @@ private fun QueueRow(track: QueueTrack, media: CarMedia) {
     }
 }
 
+/**
+ * The Browse row's fallback glyph when a node has no art: a browsable node is a container
+ * first, so it gets the folder even when it is also playable (it already carries a Play
+ * button for that half); a playable-only node gets the music note; a node that is neither
+ * keeps the empty box it has today.
+ */
+internal enum class BrowseFallbackGlyph { FOLDER, MUSIC_NOTE }
+
+internal fun browseFallbackGlyph(browsable: Boolean, playable: Boolean): BrowseFallbackGlyph? =
+    if (browsable) BrowseFallbackGlyph.FOLDER else if (playable) BrowseFallbackGlyph.MUSIC_NOTE else null
+
 @Composable
 private fun EntryRow(entry: MediaEntry, media: CarMedia, onClick: () -> Unit = { media.select(entry) }) {
     val context = LocalContext.current
     val icon by produceState(entry.iconBitmap, entry.iconUri) {
         value = entry.iconBitmap ?: MediaArt.load(context, entry.iconUri)
     }
+    val bitmap = icon
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.large,
@@ -696,7 +710,21 @@ private fun EntryRow(entry: MediaEntry, media: CarMedia, onClick: () -> Unit = {
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(62.dp).clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.surface)) {
-                icon?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                if (bitmap != null) {
+                    Image(bitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                } else when (browseFallbackGlyph(entry.browsable, entry.playable)) {
+                    BrowseFallbackGlyph.FOLDER -> Icon(
+                        Icons.Filled.Folder, null,
+                        Modifier.align(Alignment.Center).size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    BrowseFallbackGlyph.MUSIC_NOTE -> Icon(
+                        Icons.Filled.MusicNote, null,
+                        Modifier.align(Alignment.Center).size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    null -> Unit
+                }
             }
             Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(entry.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
