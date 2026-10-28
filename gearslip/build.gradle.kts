@@ -47,9 +47,9 @@ android {
         applicationId = "app.autospace"
         minSdk = 31
         targetSdk = 37
-        versionCode = 81
+        versionCode = 82
         // -PgearslipVersionName=0.1.99-test makes a build that thinks it's older, to try the updater.
-        versionName = project.findProperty("gearslipVersionName")?.toString() ?: "0.4.70-alpha"
+        versionName = project.findProperty("gearslipVersionName")?.toString() ?: "0.4.71-alpha"
         manifestPlaceholders["appLabel"] = "AutoSpace"
         // Where opted-in phones send their daily usage note: the stats-worker/ Worker's address,
         // set as gearslipStatsUrl in gradle.properties. Left empty, nothing is ever sent.
