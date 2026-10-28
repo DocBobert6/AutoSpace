@@ -1,7 +1,7 @@
 package app.autospace.car
 
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -42,25 +42,19 @@ class RailLayoutTest {
     }
 
     @Test
-    fun distributedArrangementCentersStackInArea() {
-        val out = IntArray(3)
-        with(Density(1f)) {
-            RailDistributedArrangement.arrange(352, intArrayOf(100, 100, 100), out)
-        }
+    fun distributedPositionsCenterStackInArea() {
         // Leading edge 10, gaps 16: 10, 126, 242, trailing 10.
-        assertEquals(10, out[0])
-        assertEquals(126, out[1])
-        assertEquals(242, out[2])
+        assertArrayEquals(
+            intArrayOf(10, 126, 242),
+            railDistributedPositions(352, intArrayOf(100, 100, 100), 6),
+        )
     }
 
     @Test
-    fun distributedArrangementNeverShrinksBelowFloor() {
-        val out = IntArray(3)
-        with(Density(1f)) {
-            RailDistributedArrangement.arrange(312, intArrayOf(100, 100, 100), out)
-        }
-        assertEquals(0, out[0])
-        assertEquals(106, out[1])
-        assertEquals(212, out[2])
+    fun distributedPositionsNeverShrinkBelowFloor() {
+        assertArrayEquals(
+            intArrayOf(0, 106, 212),
+            railDistributedPositions(312, intArrayOf(100, 100, 100), 6),
+        )
     }
 }

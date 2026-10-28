@@ -162,6 +162,25 @@ internal fun railDistributedGapPx(totalSizePx: Int, sizesPx: IntArray, minGapPx:
 }
 
 /**
+ * r134: the positions a distributed rail column places its items
+ * at — the shared surplus as the leading edge, then each item
+ * followed by the distributed gap, so the stack sits centered
+ * rather than flush to the top. Pure, so the unit test pins it;
+ * the arrangement below is a thin adapter over this function.
+ */
+internal fun railDistributedPositions(totalSizePx: Int, sizesPx: IntArray, minGapPx: Int): IntArray {
+    val out = IntArray(sizesPx.size)
+    if (sizesPx.isEmpty()) return out
+    val gap = railDistributedGapPx(totalSizePx, sizesPx, minGapPx)
+    var y = gap - minGapPx
+    for (i in sizesPx.indices) {
+        out[i] = y
+        y += sizesPx[i] + gap
+    }
+    return out
+}
+
+/**
  * r134: the distributed rail column's arrangement — the floor
  * gap plus the evenly shared surplus (see railDistributedGapPx),
  * with the same surplus as the leading edge so the list sits
@@ -170,14 +189,7 @@ internal fun railDistributedGapPx(totalSizePx: Int, sizesPx: IntArray, minGapPx:
  */
 internal object RailDistributedArrangement : Arrangement.Vertical {
     override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
-        if (sizes.isEmpty()) return
-        val minGap = RAIL_ICON_MIN_GAP.roundToPx()
-        val gap = railDistributedGapPx(totalSize, sizes, minGap)
-        val extra = gap - minGap
-        var y = extra
-        for (i in sizes.indices) {
-            outPositions[i] = y
-            y += sizes[i] + gap
-        }
+        railDistributedPositions(totalSize, sizes, RAIL_ICON_MIN_GAP.roundToPx())
+            .copyInto(outPositions)
     }
 }
