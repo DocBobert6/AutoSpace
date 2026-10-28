@@ -306,6 +306,19 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     val dragAlignment by rememberUpdatedState(clearanceAlignment)
                     val dragFrameWidth by rememberUpdatedState(clearanceFrameWidth)
                     val dragFrameHeight by rememberUpdatedState(clearanceFrameHeight)
+                    // r111: the parked-gate inputs are read live the
+                    // same way — dockEnabled and cardDragMoving are
+                    // refreshed here on every composition, so the gate
+                    // the detector enforces at arm time and on every
+                    // move is always the current one, for the whole
+                    // life of the once-attached detector node, and a
+                    // gate closure can never strand a stale value in
+                    // the detector. (Both inputs are delegated State
+                    // reads, which already re-read live; this makes
+                    // the liveness explicit instead of relying on
+                    // delegate semantics — see MediaCardDrag.)
+                    val dragDockEnabled by rememberUpdatedState(dockEnabled)
+                    val dragMoving by rememberUpdatedState(cardDragMoving)
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = MediaCardSlotPadDp.dp, top = MediaCardSlotPadDp.dp,
@@ -356,11 +369,22 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                                 // callbacks instead, so the detector
                                 // survives a gate closure and works
                                 // again the moment the gate reopens.
+                                // r111: the gate inputs themselves are
+                                // live (rememberUpdatedState above),
+                                // read at arm time and on every move,
+                                // so no stale gate value can ever live
+                                // in the detector — and a lifecycle
+                                // audit of the whole drag path (arm
+                                // coverage, cancellation, slot
+                                // composition, clamp, offset identity,
+                                // children, ancestors) found no other
+                                // one-and-done mechanism; see
+                                // MediaCardDrag for the walk-through.
                                 .pointerInput(Unit) {
                                     var armed = false
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
-                                            armed = mediaCardDragApplies(dockEnabled, cardDragMoving)
+                                            armed = mediaCardDragApplies(dragDockEnabled, dragMoving)
                                         },
                                         onDragEnd = { armed = false },
                                         onDragCancel = { armed = false },
@@ -369,7 +393,11 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                                         // Re-check every move: a drag in
                                         // flight is cancelled the moment
                                         // motion starts (r106 rule).
-                                        if (!mediaCardDragApplies(dockEnabled, cardDragMoving)) {
+                                        // The gate reads are live
+                                        // (r111 rememberUpdatedState),
+                                        // so this tracks reality for
+                                        // the whole detector lifetime.
+                                        if (!mediaCardDragApplies(dragDockEnabled, dragMoving)) {
                                             armed = false
                                             return@detectDragGesturesAfterLongPress
                                         }

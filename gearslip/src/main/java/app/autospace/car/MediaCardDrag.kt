@@ -22,6 +22,37 @@ import androidx.compose.ui.geometry.Offset
  *   closed. Dock on means the card sits exactly at its dock
  *   position; the stored drag offset is ignored, not cleared, so
  *   undocking restores the dragged spot.
+ * - r111 live gate + lifecycle audit: the gate inputs the detector
+ *   enforces (dock toggle, motion poll) are refreshed with
+ *   rememberUpdatedState on every composition and read at arm time
+ *   and on every move, so no stale gate value can live in the
+ *   once-attached detector. (Both inputs are delegated State reads,
+ *   which already re-read live; r111 makes the liveness explicit
+ *   rather than relying on delegate semantics.) The audit of the
+ *   whole drag path at the r110 base found no other one-and-done
+ *   mechanism, path by path: arm is set only in onDragStart and
+ *   cleared in onDragEnd, onDragCancel, and before the early return
+ *   on a mid-drag gate closure, and a pre-arm cancellation never
+ *   sets it; node disposal kills the arm flag with the block, so
+ *   re-entry starts unarmed; the audio slot is the only slot with
+ *   a detector (the live-widget and mini-video slots have none and
+ *   do not share the offset), and slot disposal only re-creates a
+ *   fresh detector; the clamp is pure with ordered bounds, so a
+ *   card at a bound still moves in the opposite direction; the
+ *   offset state has exactly one writer (the detector) and one
+ *   reader (the .offset modifier) and is never reset; the file's
+ *   only pointerInput is the card drag, the frame overlay takes
+ *   none, and the rail sits outside the inset content area so the
+ *   card cannot slide under it; the info-row swipe is info-row-only
+ *   and horizontal-only and the waveform detectors never consume
+ *   the down event, so a long-press anywhere arms the card drag.
+ *   What the audit cannot rule out from code alone: a repeat
+ *   attempt without the hold (a quick drag moves nothing by r109
+ *   design), or a transient gate closure (a single noisy GPS speed
+ *   sample over 2 m/s closes the gate for that poll second — the
+ *   gate is deliberately single-sample with no hysteresis, and
+ *   softening a parked-only safety gate is not done silently).
+ *   The device retest discriminates both.
  * - Parked-only: the gate reads the same 1 s CarMotion poll the
  *   widget column and MiniVideo use. It is enforced at arm time and
  *   re-checked on every move, so a drag in flight is cancelled the
