@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            92, "0.4.81-alpha",
+            listOf(
+                "The side rail's icons now spread out to fit the screen instead of bunching at the top, so the spacing looks the same on any display, and the app-grid button at the bottom of the rail is now the same size as the other rail buttons.",
+            ),
+        ),
+        Release(
             91, "0.4.80-alpha",
             listOf(
                 "The media card's cover art now stays sharp instead of blurring into a wash, and the faint outline around the card is gone — the art itself is the card's face now. Cards without art look exactly as before.",

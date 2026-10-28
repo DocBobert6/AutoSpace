@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -862,20 +863,60 @@ private fun CarSideBar(
             // The icon list scrolls so a long pin/running list can
             // never push the clock (or, in Meridian mode, the
             // switcher square) off the frame.
+            // r134: the icon list fits the screen it is on. The car
+            // preview runs this same composition at the preview
+            // frame (800x480 by default) while the head unit runs it
+            // at its own frame, and the old top-packed column left a
+            // void between the last icon and the bottom-pinned
+            // switcher that grew with the frame — the spacing read
+            // differently on every screen. Now the list measures
+            // itself: when the stack fits, it distributes across
+            // the whole area (6dp floor, surplus shared evenly, so
+            // gaps never shrink below the scroll mode's); when it
+            // overflows, it keeps scrolling with fixed 6dp gaps.
+            // The measurement resets whenever the frame or the item
+            // set changes, so a new pin or a frame change
+            // re-measures instead of clipping.
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                // r103: the scrolling column takes the full box width
-                // so its centered children actually center in the rail —
-                // without it the wrapped column lands at the box's
-                // top-start and every icon sits left.
-                Column(
-                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    RailIconList(
-                        navigator, entries, pinnedIds, running, frame,
-                        meridian = meridian, includeAppsItem = !meridian,
-                    )
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val areaHeight = maxHeight
+                    val density = LocalDensity.current
+                    // One composite key (a list compares structurally),
+                    // so the measurement resets on any frame or item
+                    // change without depending on a multi-key overload.
+                    var distribute by remember(
+                        listOf(areaHeight, entries, pinnedIds, running, navigator.current, meridian),
+                    ) { mutableStateOf<Boolean?>(null) }
+                    if (distribute == true) {
+                        Column(
+                            Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = RailDistributedArrangement,
+                        ) {
+                            RailIconList(
+                                navigator, entries, pinnedIds, running, frame,
+                                meridian = meridian, includeAppsItem = !meridian,
+                            )
+                        }
+                    } else {
+                        // r103: the scrolling column takes the full box width
+                        // so its centered children actually center in the rail —
+                        // without it the wrapped column lands at the box's
+                        // top-start and every icon sits left.
+                        Column(
+                            Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                                .onSizeChanged { size ->
+                                    distribute = size.height <= with(density) { areaHeight.roundToPx() }
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(RAIL_ICON_MIN_GAP),
+                        ) {
+                            RailIconList(
+                                navigator, entries, pinnedIds, running, frame,
+                                meridian = meridian, includeAppsItem = !meridian,
+                            )
+                        }
+                    }
                 }
             }
             if (meridian) {
@@ -1069,15 +1110,25 @@ private fun MeridianSwitcherSquare(navigator: CarNavigator) {
         colors = navColors(selected, meridian = true),
         latched = selected,
     ) {
+        // r134: the grid shrank to the rail's standard button-glyph
+        // size (24dp, the GsIconButton icon size): the old 32dp
+        // footprint of solid squares read far bigger than the 24dp
+        // gear/tune/widgets glyphs beside it, because solid squares
+        // fill most of their box while vector glyphs are thin
+        // strokes. The button itself stays 48dp — the grid centers
+        // inside the same 32dp content box, so the hit area and
+        // the button rhythm do not change. Shared with the
+        // Meridian pill, so the pill's switcher shrinks too.
         Column(
             Modifier.padding(NAV_ITEM_PADDING).size(32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(SWITCHER_GRID_GAP, Alignment.CenterVertically),
         ) {
             repeat(2) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(SWITCHER_GRID_GAP)) {
                     repeat(2) {
                         Box(
-                            Modifier.size(14.dp)
+                            Modifier.size(SWITCHER_SQUARE)
                                 .background(
                                     LocalContentColor.current,
                                     RoundedCornerShape(2.dp),

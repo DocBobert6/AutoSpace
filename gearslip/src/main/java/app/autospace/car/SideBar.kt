@@ -1,6 +1,10 @@
 package app.autospace.car
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -113,5 +117,67 @@ fun meridianBarForm(widthPx: Int, heightPx: Int, densityDpi: Int): MeridianBarFo
         MeridianBarForm.RAIL
     } else {
         MeridianBarForm.PILL
+    }
+}
+
+/**
+ * r134: the rail icon list's minimum gap — the old scrolling
+ * column's fixed 6dp, kept as the floor in both modes so switching
+ * between scrolling and distributing can never shrink a gap.
+ */
+internal val RAIL_ICON_MIN_GAP: Dp = 6.dp
+
+/**
+ * r134: the app-switcher grid's geometry. The old grid was 14dp
+ * squares with 4dp gaps — a 32dp footprint of solid squares that
+ * read far bigger than the rail's 24dp button glyphs (gear, tune,
+ * widgets), because solid squares fill most of their box while
+ * vector glyphs are thin strokes. The grid is now 10dp squares
+ * with the same 4dp gaps: a 24dp footprint, the GsIconButton icon
+ * size, centered in the same 32dp content box so the button
+ * itself stays 48dp and the hit area does not change. Pure
+ * values, so the unit test pins the footprint.
+ */
+internal val SWITCHER_SQUARE: Dp = 10.dp
+internal val SWITCHER_GRID_GAP: Dp = 4.dp
+internal val SWITCHER_GRID_FOOTPRINT: Dp = SWITCHER_SQUARE * 2 + SWITCHER_GRID_GAP
+
+/**
+ * r134: the gap a distributed rail column uses, in pixels. The
+ * floor always holds; any surplus (area minus content minus
+ * floor gaps) is shared evenly across the leading edge and every
+ * inter-icon gap, so the list spreads to fit whatever screen it
+ * is on instead of top-packing and leaving a void that grows
+ * with the frame. When the stack overflows the area the surplus
+ * is zero and the caller keeps the scrolling column instead —
+ * this function never shrinks a gap below the floor. Pure, so
+ * the unit test pins it.
+ */
+internal fun railDistributedGapPx(totalSizePx: Int, sizesPx: IntArray, minGapPx: Int): Int {
+    if (sizesPx.isEmpty()) return minGapPx
+    val content = sizesPx.sum()
+    val floorTotal = minGapPx * (sizesPx.size - 1)
+    val surplus = (totalSizePx - content - floorTotal).coerceAtLeast(0)
+    return minGapPx + surplus / (sizesPx.size + 1)
+}
+
+/**
+ * r134: the distributed rail column's arrangement — the floor
+ * gap plus the evenly shared surplus (see railDistributedGapPx),
+ * with the same surplus as the leading edge so the list sits
+ * centered in its area rather than flush to the top. Used only
+ * when the stack fits; overflowing stacks keep scrolling.
+ */
+internal object RailDistributedArrangement : Arrangement.Vertical {
+    override fun Density.arrange(totalSize: Int, sizes: IntArray, outPositions: IntArray) {
+        if (sizes.isEmpty()) return
+        val minGap = RAIL_ICON_MIN_GAP.roundToPx()
+        val gap = railDistributedGapPx(totalSize, sizes, minGap)
+        val extra = gap - minGap
+        var y = extra
+        for (i in sizes.indices) {
+            outPositions[i] = y
+            y += sizes[i] + gap
+        }
     }
 }
