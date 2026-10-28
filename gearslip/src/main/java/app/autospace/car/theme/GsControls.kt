@@ -719,7 +719,7 @@ fun Modifier.gsSurface(
                     fillType = PathFillType.EvenOdd
                     when (val o = outerOutline) {
                         is Outline.Generic -> addPath(o.path)
-                        is Outline.Rounded -> addRoundRect(RoundRect(o.rect, o.radius))
+                        is Outline.Rounded -> addRoundRect(o.roundRect)
                         is Outline.Rectangle -> addRect(o.rect)
                     }
                     addRoundRect(
