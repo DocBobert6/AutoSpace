@@ -3,6 +3,7 @@ package app.autospace.car
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.haloBrightnessFactor
+import app.autospace.car.theme.foundryGlossAlpha
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -202,7 +203,7 @@ class GsThemeTest {
         // r114: Morph appends after Silhouette, so Heirloom sits
         // fifth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 5])
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 6])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -256,7 +257,7 @@ class GsThemeTest {
         // r114: Morph appends after Silhouette, so Blueprint sits
         // fourth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
-        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 4])
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 5])
         assertEquals("blueprint", GsThemes.byId("blueprint").id)
         assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
         val look = GsThemes.Blueprint.control
@@ -300,7 +301,7 @@ class GsThemeTest {
         // r114: Morph appends after Silhouette, so Sector sits
         // third from last.
         assertTrue(GsThemes.builtIn.any { it.id == "sector" && it.name == "Sector" })
-        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 4])
         assertEquals("sector", GsThemes.byId("sector").id)
         val look = GsThemes.Sector.control
         assertEquals(14, look.corner.value.toInt())
@@ -359,7 +360,7 @@ class GsThemeTest {
         assertTrue(GsThemes.builtIn.any { it.id == "silhouette" && it.name == "Silhouette" })
         // r114: Morph appends after it, so Silhouette sits
         // second from last, not last.
-        assertEquals(GsThemes.Silhouette, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        assertEquals(GsThemes.Silhouette, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("silhouette", GsThemes.byId("silhouette").id)
         assertEquals("Nocturne", ColorScheme.NIGHT.displayName)
         val look = GsThemes.Silhouette.control
@@ -417,7 +418,9 @@ class GsThemeTest {
         // in a field). No other style gains the wash or the
         // morph — the loop below is the guard.
         assertTrue(GsThemes.builtIn.any { it.id == "morph" && it.name == "Morph" })
-        assertEquals(GsThemes.Morph, GsThemes.builtIn.last())
+        // r142: Foundry appends after it, so Morph sits second
+        // from last, not last.
+        assertEquals(GsThemes.Morph, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("morph", GsThemes.byId("morph").id)
         assertEquals("Material You", ColorScheme.MATERIAL_YOU.displayName)
         val look = GsThemes.Morph.control
@@ -470,5 +473,83 @@ class GsThemeTest {
             assertEquals(0f, other.control.light?.washAlpha ?: 0f, 0.001f)
             assertFalse(other.control.light?.morphCorners == true)
         }
+    }
+
+    @Test
+    fun foundryIsBuiltInLastWithGlossBandAndMachinedRim() {
+        // r142: Foundry appends last (pinned here); Morph sits
+        // second from last, and nothing else moved. The
+        // Skeuomorphic style: 10dp corner, brushed-metal
+        // gradient (topLight 0.10, bottomShade 0.08, 0.12 on
+        // light fills), 6dp shadow at 0.35, white gloss band
+        // 0.30 fading to 0 over the top 35% (pressed 0.12),
+        // machined rim (1dp, white 0.35 top / black 0.30
+        // bottom), pressed shadow 2dp, face down 1dp (sink),
+        // DOT hold marker. Cards take the gradient + rim, not
+        // the corner and not the gloss band
+        // (cardsUseStyleCorner is false; the gloss band lives
+        // only in gsSurface, which cards never call).
+        assertTrue(GsThemes.builtIn.any { it.id == "foundry" && it.name == "Foundry" })
+        assertEquals(GsThemes.Foundry, GsThemes.builtIn.last())
+        assertEquals("foundry", GsThemes.byId("foundry").id)
+        assertEquals("Workshop", ColorScheme.WORKSHOP.displayName)
+        val look = GsThemes.Foundry.control
+        assertEquals(10, look.corner.value.toInt())
+        assertEquals(0.10f, look.topLight, 0.001f)
+        assertEquals(0.08f, look.bottomShade, 0.001f)
+        assertEquals(0.12f, look.bottomShadeOnLight, 0.001f)
+        assertEquals(6, look.shadow.value.toInt())
+        assertEquals(0.35f, look.shadowAlpha, 0.001f)
+        assertEquals(0.30f, look.glossAlpha, 0.001f)
+        assertEquals(0.12f, look.glossPressedAlpha, 0.001f)
+        assertEquals(0.35f, look.glossFraction, 0.001f)
+        assertTrue(look.machinedRim)
+        assertEquals(0.35f, look.machinedRimTopAlpha, 0.001f)
+        assertEquals(0.30f, look.machinedRimBottomAlpha, 0.001f)
+        assertEquals(2, look.pressedShadow.value.toInt())
+        assertEquals(1, look.sink.value.toInt())
+        assertEquals(0.22f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        assertEquals(1f, look.containerAlpha, 0.001f)
+        assertFalse(look.cardsUseStyleCorner)
+        assertFalse(look.springMotion)
+        assertFalse(look.latchedPrimaryTint)
+        assertEquals(0f, look.ringAlpha, 0.001f)
+        assertEquals(0f, look.stitchAlpha, 0.001f)
+        assertEquals(0f, look.segmentAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        val light = checkNotNull(look.light)
+        assertEquals(10, light.corner.value.toInt())
+        assertEquals(0.30f, light.shadowAlpha, 0.001f)
+        assertEquals(0.30f, light.glossAlpha, 0.001f)
+        assertEquals(0.12f, light.glossPressedAlpha, 0.001f)
+        assertEquals(0.35f, light.glossFraction, 0.001f)
+        assertTrue(light.machinedRim)
+        assertEquals(2, light.pressedShadow.value.toInt())
+        assertEquals(1, light.sink.value.toInt())
+        // The gloss band, machined rim, and pressed shadow are
+        // Foundry-only: no other built-in style carries them.
+        for (other in GsThemes.builtIn.filter { it.id != "foundry" }) {
+            assertEquals(0f, other.control.glossAlpha, 0.001f)
+            assertEquals(0f, other.control.glossPressedAlpha, 0.001f)
+            assertEquals(0f, other.control.glossFraction, 0.001f)
+            assertFalse(other.control.machinedRim)
+            assertEquals(0, other.control.pressedShadow.value.toInt())
+            assertEquals(0f, other.control.light?.glossAlpha ?: 0f, 0.001f)
+            assertFalse(other.control.light?.machinedRim == true)
+        }
+    }
+
+    @Test
+    fun foundryGlossAlphaScalesDownOnLightFills() {
+        // r142: the gloss-lightness rule — dark fills keep the
+        // full band, light fills (luminance > 0.5) scale to 60%.
+        assertEquals(0.30f, foundryGlossAlpha(0.30f, 0.10f), 0.001f)
+        assertEquals(0.12f, foundryGlossAlpha(0.12f, 0.10f), 0.001f)
+        assertEquals(0.18f, foundryGlossAlpha(0.30f, 0.85f), 0.001f)
+        assertEquals(0.072f, foundryGlossAlpha(0.12f, 0.85f), 0.001f)
+        assertEquals(0.30f, foundryGlossAlpha(0.30f, 0.5f), 0.001f)
     }
 }

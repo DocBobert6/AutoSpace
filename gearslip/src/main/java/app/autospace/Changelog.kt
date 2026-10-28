@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            100, "0.4.89-alpha",
+            listOf(
+                "New look: Workshop + Foundry — deep espresso and parchment colors with brass, copper, and olive accents, and brushed-metal buttons with a gloss band and a machined rim.",
+            ),
+        ),
+        Release(
             99, "0.4.88-alpha",
             listOf(
                 "The media card's cover now blends into its blurred background along the cover's own edges on all four sides, with a much softer edge than before — so square covers no longer show a hard edge at the sides or lose the top of the cover.",

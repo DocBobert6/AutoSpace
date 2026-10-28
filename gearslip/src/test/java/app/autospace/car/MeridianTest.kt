@@ -15,13 +15,14 @@ import org.junit.Test
 class MeridianTest {
 
     @Test
-    fun meridianSchemeIsAppendedLastAndNamedMeridian() {
+    fun meridianSchemeIsNamedMeridianAndSecondFromLast() {
         assertEquals(ColorScheme.MERIDIAN, ColorScheme.valueOf("MERIDIAN"))
         assertEquals("Meridian", ColorScheme.MERIDIAN.displayName)
-        assertEquals(ColorScheme.MERIDIAN, colorSchemes.last())
+        // r142 appends Workshop last (pinned by WorkshopTest), so
+        // Meridian sits second from last, and nothing else moved.
+        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.MERIDIAN))
-        // Horizon is no longer last, but nothing else moved.
-        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 2])
+        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 3])
         // No legacy install migrates onto Meridian by accident.
         assertFalse(isLegacyThemeName("MERIDIAN"))
     }

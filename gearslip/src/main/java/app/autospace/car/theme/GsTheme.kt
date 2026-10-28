@@ -304,6 +304,38 @@ data class ControlLook(
     val pressedCorner: Dp = 0.dp,
     val latchedCorner: Dp = 0.dp,
     /**
+     * r142 (Foundry only): the white gloss band over the top of
+     * the face — white at [glossAlpha] at the top edge, fading
+     * to 0 over the top [glossFraction] of the surface (see
+     * gsSurface). Pressed, the band drops to
+     * [glossPressedAlpha]; latched, it stays at its rest alpha.
+     * On light fills the band scales down (see
+     * foundryGlossAlpha), so it sheens instead of bleaching.
+     * 0 for none — every other style draws no gloss band, and
+     * cards never draw one (see foundryCardTreatment).
+     */
+    val glossAlpha: Float = 0f,
+    val glossPressedAlpha: Float = 0f,
+    val glossFraction: Float = 0f,
+    /**
+     * r142 (Foundry only): the machined rim — a 1dp border whose
+     * top edge is white at [machinedRimTopAlpha] and whose
+     * bottom edge is black at [machinedRimBottomAlpha], fading
+     * through transparent in between (see gsSurface). Latched,
+     * the rim takes the scheme primary instead. False for none.
+     */
+    val machinedRim: Boolean = false,
+    val machinedRimTopAlpha: Float = 0f,
+    val machinedRimBottomAlpha: Float = 0f,
+    /**
+     * r142 (Foundry only): the shadow while pressed or latched.
+     * gsSurface interpolates the shadow elevation from [shadow]
+     * at rest to this value as the face goes down (see the
+     * shadow block); 0 means the existing collapse-to-nothing
+     * behavior every other style keeps.
+     */
+    val pressedShadow: Dp = 0.dp,
+    /**
      * RETIRED in r24: formerly drew a small black-and-white checker strip
      * along the top edge of latched controls under Pitlane. Robert
      * disliked the checker under Pitlane and under Circuit, so r24 removes
@@ -1038,6 +1070,80 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Foundry (2026-10-28, r142; the Skeuomorphic style
+     * picked as matching old iOS best):
+     * the Workshop scheme's own button style. A machined-metal
+     * look: a 10dp corner, a vertical brushed-metal gradient
+     * (scheme-tinted — topLight 0.10 toward white, bottomShade
+     * 0.08 toward black, 0.12 on light fills where the top lift
+     * barely shows), and the ONE new draw routine: a white gloss
+     * band, alpha 0.30 at the top edge fading to 0 over the top
+     * 35% of the face (see ControlLook.glossAlpha /
+     * glossFraction and the gloss block in gsSurface). The rim
+     * is machined: a 1dp border, white at 0.35 alpha on top,
+     * black at 0.30 alpha on the bottom, fading through
+     * transparent between. Shadow 6dp at 0.35 alpha. Pressed:
+     * the gloss drops to 0.12, the shadow shrinks to 2dp (see
+     * pressedShadow), the face drops 1dp (sink). Latched: the
+     * rim takes the scheme primary, the gloss stays at rest
+     * alpha. The face is flat enough that the hold marker is
+     * the DOT. Cards get the gradient + rim, NO gloss band
+     * (see foundryCardTreatment in GsKit) — the band would
+     * wash card text at card scale. Cards keep their fallback
+     * corners (cardsUseStyleCorner is false — the pick covers
+     * buttons, not cards). Gloss-lightness rule, stated
+     * honestly: white gloss over a light fill would bleach the
+     * face, so on light fills (container luminance > 0.5) the
+     * band scales to 60% of its base alpha — rest 0.30 reads
+     * 0.18, pressed 0.12 reads 0.072 — while dark fills keep the
+     * full band (see foundryGlossAlpha, pinned in tests).
+     */
+    val Foundry = GsTheme(
+        id = "foundry",
+        name = "Foundry",
+        control = ControlLook(
+            corner = 10.dp,
+            topLight = 0.10f,
+            bottomShade = 0.08f,
+            bottomShadeOnLight = 0.12f,
+            shadow = 6.dp,
+            shadowAlpha = 0.35f,
+            glossAlpha = 0.30f,
+            glossPressedAlpha = 0.12f,
+            glossFraction = 0.35f,
+            machinedRim = true,
+            machinedRimTopAlpha = 0.35f,
+            machinedRimBottomAlpha = 0.30f,
+            pressedShadow = 2.dp,
+            sink = 1.dp,
+            pressedDim = 0.22f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                corner = 10.dp,
+                topLight = 0.08f,
+                bottomShade = 0.08f,
+                bottomShadeOnLight = 0.12f,
+                shadow = 6.dp,
+                shadowAlpha = 0.30f,
+                glossAlpha = 0.30f,
+                glossPressedAlpha = 0.12f,
+                glossFraction = 0.35f,
+                machinedRim = true,
+                machinedRimTopAlpha = 0.35f,
+                machinedRimBottomAlpha = 0.30f,
+                pressedShadow = 2.dp,
+                sink = 1.dp,
+                pressedDim = 0.22f,
+                pressedScale = 0.98f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -1065,7 +1171,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r114: Morph appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph)
+    // r142: Foundry appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

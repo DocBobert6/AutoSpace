@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheNineApprovedInOrder() {
+    fun pairsAreExactlyTheTenApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry"),
             themePairs.map { it.label },
         )
     }
@@ -83,6 +83,13 @@ class ThemePairsTest {
     }
 
     @Test
+    fun workshopPairSetsFoundryStyleAndWorkshopScheme() {
+        val pair = themePairs[9]
+        assertEquals("foundry", pair.styleId)
+        assertEquals(ColorScheme.WORKSHOP, pair.scheme)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -93,6 +100,7 @@ class ThemePairsTest {
         assertEquals(themePairs[6], themePairFor("sector", ColorScheme.CIRCUIT))
         assertEquals(themePairs[7], themePairFor("silhouette", ColorScheme.NIGHT))
         assertEquals(themePairs[8], themePairFor("morph", ColorScheme.MATERIAL_YOU))
+        assertEquals(themePairs[9], themePairFor("foundry", ColorScheme.WORKSHOP))
     }
 
     @Test

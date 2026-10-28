@@ -420,6 +420,17 @@ fun haloBrightnessFactor(brightness: Float): Float =
     ((brightness - HaloBrightnessMin) / (1f - HaloBrightnessMin)).coerceIn(0f, 1f)
 
 /**
+ * r142 (Foundry only): the gloss band's effective alpha for a
+ * container of the given luminance. White gloss over a light
+ * fill would bleach the face, so on light fills (luminance >
+ * 0.5) the band scales to 60% of its base alpha — rest 0.30
+ * reads 0.18, pressed 0.12 reads 0.072 — while dark fills keep
+ * the full band. Pure so it is unit-testable.
+ */
+fun foundryGlossAlpha(baseAlpha: Float, containerLuminance: Float): Float =
+    if (containerLuminance > 0.5f) baseAlpha * 0.6f else baseAlpha
+
+/**
  * r46: the pure container-alpha rule behind [gsSurface], kept free of
  * Composition so it is unit-testable. Frosted fills pin their alpha
  * (see [FrostedChromeAlpha]) — the style's containerAlpha must not
@@ -519,7 +530,19 @@ fun Modifier.gsSurface(
     val drawShape: Shape = if (morphBase != null) RoundedCornerShape(cornerNow) else shape
     var m = this
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
-        m = m.drawBehind { drawSoftShadow(drawShape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
+        m = m.drawBehind {
+            if (look.pressedShadow > 0.dp) {
+                // r142 (Foundry only): the shadow shrinks from
+                // the rest elevation to the pressed elevation as
+                // the face goes down (lift animates 1 -> 0),
+                // instead of collapsing to nothing like every
+                // other style.
+                val elevationNow = look.pressedShadow.toPx() + (look.shadow.toPx() - look.pressedShadow.toPx()) * lift
+                drawSoftShadow(drawShape, elevationNow, look.shadowAlpha, 1f)
+            } else {
+                drawSoftShadow(drawShape, look.shadow.toPx(), look.shadowAlpha * lift, lift)
+            }
+        }
     }
     // r113 (Silhouette only): the faint halo, buttons at half
     // strength — neutral white, never primary, top + sides only.
@@ -587,6 +610,54 @@ fun Modifier.gsSurface(
             )
         } else {
             m.background(effContainer)
+        }
+        // r142 (Foundry only): the white gloss band — white at
+        // the top edge fading to transparent over the top
+        // glossFraction of the face. Pressed, the band drops to
+        // glossPressedAlpha; latched, it stays at rest alpha.
+        // On light fills the band scales down (see
+        // foundryGlossAlpha) so it sheens instead of bleaching.
+        // Cards never reach gsSurface, so they never draw the
+        // band — see foundryCardTreatment for the card rule.
+        if (look.glossAlpha > 0f && look.glossFraction > 0f) {
+            val glossBase = if (pressed) look.glossPressedAlpha else look.glossAlpha
+            val gloss = foundryGlossAlpha(glossBase, effContainer.luminance())
+            val fraction = look.glossFraction
+            m = m.drawBehind {
+                val bandHeight = size.height * fraction
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = gloss),
+                        1f to Color.White.copy(alpha = 0f),
+                        startY = 0f,
+                        endY = bandHeight,
+                    ),
+                    size = Size(size.width, bandHeight),
+                )
+            }
+        }
+        // r142 (Foundry only): the machined rim — a 1dp border,
+        // white at the top edge, black at the bottom, fading
+        // through transparent between. Latched, the rim takes
+        // the scheme primary instead; the gloss stays. Pressed,
+        // the dim at the end of gsSurface overlays everything,
+        // so a pressed control dims its rim with the face but
+        // never drops it.
+        if (look.machinedRim) {
+            val rimBrush = if (latched) {
+                Brush.verticalGradient(
+                    0f to MaterialTheme.colorScheme.primary,
+                    1f to MaterialTheme.colorScheme.primary,
+                )
+            } else {
+                Brush.verticalGradient(
+                    0f to Color.White.copy(alpha = look.machinedRimTopAlpha),
+                    0.3f to Color.Transparent,
+                    0.7f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = look.machinedRimBottomAlpha),
+                )
+            }
+            m = m.border(1.dp, rimBrush, drawShape)
         }
         if (latched && look.insetAlpha > 0f) {
             val inset = look.insetAlpha
@@ -848,7 +919,7 @@ fun Modifier.gsSurface(
         // hairline, which is visually a no-op.
         // r110: under a ring style the ring IS the edge, so the forced
         // hairline would double it — skipped when the ring draws.
-        if (LocalOledDark.current && look.ringAlpha <= 0f) {
+        if (LocalOledDark.current && look.ringAlpha <= 0f && !look.machinedRim) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), drawShape)
         }
         // r26: the bevel is the panel edge. Raised (default): light top,

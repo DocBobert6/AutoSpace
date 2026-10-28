@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.Shape
@@ -266,6 +267,53 @@ fun morphCardColor(color: Color): Color {
     return morphWashBlend(color, MaterialTheme.colorScheme.primary, look.washCardAlpha)
 }
 
+/**
+ * r142 (Foundry only): the card treatment — the brushed-metal
+ * gradient + the machined rim, NO gloss band. [foundryCardRim]
+ * is the same 1dp machined rim gsSurface draws on controls
+ * (white top, black bottom), applied at the same four call
+ * sites as [blueprintCardRing]; [foundryCardGradient] is the
+ * vertical gradient over the card's own container color
+ * (top lightened 10% toward white, bottom the container
+ * itself), drawn behind the card's content like
+ * pitLanePanelTexture — so it tints the fill, never the
+ * text. The gradient preserves the container's alpha, so
+ * the frosted chrome pin (0.88) holds on frosted surfaces.
+ * No-op under every other style. Cards never draw the gloss
+ * band: at card scale the band would wash card text.
+ */
+@Composable
+fun Modifier.foundryCardRim(shape: Shape): Modifier {
+    val look = gsLook()
+    if (!look.machinedRim) return this
+    return this.border(
+        1.dp,
+        Brush.verticalGradient(
+            0f to Color.White.copy(alpha = look.machinedRimTopAlpha),
+            0.3f to Color.Transparent,
+            0.7f to Color.Transparent,
+            1f to Color.Black.copy(alpha = look.machinedRimBottomAlpha),
+        ),
+        shape,
+    )
+}
+
+@Composable
+fun Modifier.foundryCardGradient(containerColor: Color, enabled: Boolean = true): Modifier {
+    val look = gsLook()
+    if (!enabled || !look.machinedRim) return this
+    return this.drawBehind {
+        val top = containerColor.copy(
+            red = lerp(containerColor.red, 1f, 0.10f),
+            green = lerp(containerColor.green, 1f, 0.10f),
+            blue = lerp(containerColor.blue, 1f, 0.10f),
+        )
+        drawRect(
+            Brush.verticalGradient(0f to top, 1f to containerColor),
+        )
+    }
+}
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -280,14 +328,14 @@ fun GsGroupedCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = morphCardColor(GsKit.cardColor())),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
-                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture().foundryCardGradient(GsKit.cardColor())) { content() }
             }
         }
     )
@@ -308,14 +356,14 @@ fun GsPanelCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
-                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture().foundryCardGradient(MaterialTheme.colorScheme.surfaceContainerLow)) { content() }
             }
         }
     )
@@ -333,13 +381,13 @@ fun GsSheetSurface(
     val sheetShape = cardShapeForLook(look, GsKit.SheetShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
-        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape),
+        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape).foundryCardRim(sheetShape),
         color = morphCardColor(GsKit.sheetColor()),
         shape = sheetShape,
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
-                Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
+                Column(Modifier.fillMaxWidth().pitLanePanelTexture().foundryCardGradient(GsKit.sheetColor())) { content() }
             }
         }
     )
@@ -433,13 +481,13 @@ fun FrostedPanelSurface(
 ) {
     val look = gsLook()
     Surface(
-        modifier = if (perimeter) modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape) else modifier,
+        modifier = if (perimeter) modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape).foundryCardRim(shape) else modifier,
         shape = shape,
         color = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha)),
         shadowElevation = elevation,
         border = if (perimeter && LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
-        Box(Modifier.pitLanePanelTexture()) { content() }
+        Box(Modifier.pitLanePanelTexture().foundryCardGradient(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha), enabled = perimeter)) { content() }
     }
 }
 

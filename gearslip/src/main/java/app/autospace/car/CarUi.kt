@@ -202,6 +202,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.VERVE -> verveScheme(dark)
         ColorScheme.HORIZON -> horizonScheme(dark)
         ColorScheme.MERIDIAN -> meridianScheme()
+        ColorScheme.WORKSHOP -> workshopScheme(dark)
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -1842,6 +1843,96 @@ private fun meridianScheme(): androidx.compose.material3.ColorScheme {
         inverseOnSurface = androidx.compose.ui.graphics.Color(MeridianPalette.inverseOnSurface),
         inversePrimary = androidx.compose.ui.graphics.Color(MeridianPalette.inversePrimary),
         scrim = androidx.compose.ui.graphics.Color(MeridianPalette.scrim),
+    )
+}
+
+/**
+ * Workshop (r142, the Skeuomorphic scheme): deep espresso dark
+ * (#2B1D16 bg, parchment text, brass primary with espresso text
+ * at 6.73:1, copper secondary with black text at 5.54:1, olive
+ * tertiary with white text at 4.59:1) and parchment light
+ * (#F5EEDD bg, espresso text, the same three accents — brass
+ * on parchment is only 2.09:1, so brass stays on fills and
+ * accents in light mode, never small text on parchment; the
+ * onPrimary pair, espresso on brass at 6.73:1, carries
+ * primary-fill text). Cards dark #3A2A1E, light #EFE6CF.
+ * Workshop does NOT force dark (see schemeForcesDark): it
+ * follows the mode control like Verve and Horizon, so both
+ * variants ship; Auto night still overrides to NIGHT like
+ * every scheme. Accents are for icons, selection and
+ * controls, never body text except via the paired on* colors.
+ */
+private fun workshopScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+    return if (!dark) androidx.compose.material3.lightColorScheme(
+        primary = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryLight),
+        onPrimary = androidx.compose.ui.graphics.Color(WorkshopPalette.onPrimaryLight),
+        primaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryContainerLight),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onPrimaryContainerLight),
+        secondary = androidx.compose.ui.graphics.Color(WorkshopPalette.secondaryLight),
+        onSecondary = androidx.compose.ui.graphics.Color(WorkshopPalette.onSecondaryLight),
+        secondaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.secondaryContainerLight),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onSecondaryContainerLight),
+        tertiary = androidx.compose.ui.graphics.Color(WorkshopPalette.tertiaryLight),
+        onTertiary = androidx.compose.ui.graphics.Color(WorkshopPalette.onTertiaryLight),
+        tertiaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.tertiaryContainerLight),
+        onTertiaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onTertiaryContainerLight),
+        error = androidx.compose.ui.graphics.Color(0xFFBA1A1A),
+        onError = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+        background = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
+        onBackground = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
+        surface = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
+        onSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
+        surfaceVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantLight),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceVariantLight),
+        outline = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineLight),
+        outlineVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineVariantLight),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFFF1EAD8),
+        surfaceContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantLight),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFFE6DCC2),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFFD8C9A8),
+        surfaceDim = androidx.compose.ui.graphics.Color(0xFFD8C9A8),
+        surfaceBright = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
+        surfaceTint = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryLight),
+        inverseSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceDark),
+        inversePrimary = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryDark),
+        scrim = androidx.compose.ui.graphics.Color(0xFF000000),
+    ) else androidx.compose.material3.darkColorScheme(
+        primary = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryDark),
+        onPrimary = androidx.compose.ui.graphics.Color(WorkshopPalette.onPrimaryDark),
+        primaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryContainerDark),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onPrimaryContainerDark),
+        secondary = androidx.compose.ui.graphics.Color(WorkshopPalette.secondaryDark),
+        onSecondary = androidx.compose.ui.graphics.Color(WorkshopPalette.onSecondaryDark),
+        secondaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.secondaryContainerDark),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onSecondaryContainerDark),
+        tertiary = androidx.compose.ui.graphics.Color(WorkshopPalette.tertiaryDark),
+        onTertiary = androidx.compose.ui.graphics.Color(WorkshopPalette.onTertiaryDark),
+        tertiaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.tertiaryContainerDark),
+        onTertiaryContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.onTertiaryContainerDark),
+        error = androidx.compose.ui.graphics.Color(0xFFFF453A),
+        onError = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+        background = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
+        onBackground = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceDark),
+        surface = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
+        onSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceDark),
+        surfaceVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantDark),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceVariantDark),
+        outline = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineDark),
+        outlineVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineVariantDark),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF33241B),
+        surfaceContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantDark),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF453522),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF54402E),
+        surfaceDim = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF54402E),
+        surfaceTint = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryDark),
+        inverseSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceDark),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
+        inversePrimary = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryLight),
+        scrim = androidx.compose.ui.graphics.Color(0xFF000000),
     )
 }
 
