@@ -113,6 +113,16 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     var mediaCardDragSizeDp by remember { mutableStateOf(Offset.Zero) }
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
     val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
+    // r118: mini card size + free-drag offset and measured size.
+    // Session-only, like the media card's: remember in CarHome,
+    // never written to CarSettings, so a dragged position resets
+    // when the item changes (the next video starts in its slot)
+    // and survives card hide/show. Both are in dp, matching the
+    // slot's dp-space geometry (see MediaCardDrag).
+    val miniVideoSize by MiniVideoState.size.collectAsStateWithLifecycle()
+    var miniVideoDragOffsetDp by remember { mutableStateOf(Offset.Zero) }
+    var miniVideoDragSizeDp by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(miniVideoItem?.url) { miniVideoDragOffsetDp = Offset.Zero }
     val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
     // r97: the rail is the only app bar; a non-zero strip means it is showing.
     val railVisible = mapSurfaceStrip > 0.dp
@@ -572,6 +582,13 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                 // mini card never disposes it — alignment is a layout parameter, not
                 // a composition key — so playback continues across the step-aside.
                 BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // r118: the mini card's width follows its size now,
+                    // and the clearance math uses that same width, so a
+                    // grown card clears chrome exactly like the audio
+                    // card does at its width.
+                    val miniCardWidth = miniVideoCardWidthDp(miniVideoSize, maxWidth.value).dp
+                    val miniFrameWidth = maxWidth.value
+                    val miniFrameHeight = maxHeight.value
                     val clearanceAlignment = mediaCardDockAlignment(
                         clearanceDock(
                             cardDock,
@@ -579,7 +596,7 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                             CardClearanceState.controls,
                             clearanceStartAllowed,
                             maxWidth.value, maxHeight.value,
-                            floatingCardWidth(maxWidth).value,
+                            miniCardWidth.value,
                             CardClearanceState.cardHeightDp ?: 0f,
                             0f, // r97: no bottom bar strip anymore.
                         ),
@@ -588,7 +605,6 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     // scope — the inner Box content has neither the scope
                     // receiver (maxWidth) nor a composable context
                     // (LocalDensity.current) for the size callback.
-                    val clearanceCardWidth = floatingCardWidth(maxWidth)
                     val clearanceDensity = LocalDensity.current
                     Box(
                         Modifier.fillMaxSize().padding(
@@ -599,8 +615,40 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     ) {
                         MiniVideoCard(
                             miniItem,
-                            Modifier.width(clearanceCardWidth).onSizeChanged {
+                            // r118: the drag clamp, mirroring the media
+                            // card's exactly — same pure function, same
+                            // 48dp minimum-visible strip, same 24dp
+                            // slot pad (the slot's literal padding
+                            // above is that same 24dp). The offset
+                            // state is read live (a delegated State
+                            // read) and the alignment/frame/size are
+                            // fresh each composition, because the
+                            // card reads this callback through
+                            // rememberUpdatedState — the r111 lesson.
+                            onMiniVideoDragDelta = { dx, dy ->
+                                miniVideoDragOffsetDp = clampMediaCardDragOffset(
+                                    miniVideoDragOffsetDp.x + dx,
+                                    miniVideoDragOffsetDp.y + dy,
+                                    mediaCardAlignedLeftDp(
+                                        clearanceAlignment,
+                                        miniFrameWidth, miniVideoDragSizeDp.x, MediaCardSlotPadDp,
+                                    ),
+                                    miniFrameHeight - MediaCardSlotPadDp - miniVideoDragSizeDp.y,
+                                    miniFrameWidth, miniFrameHeight,
+                                    miniVideoDragSizeDp.x, miniVideoDragSizeDp.y,
+                                    MediaCardDragMinVisibleDp,
+                                )
+                            },
+                            modifier = Modifier.width(miniCardWidth).onSizeChanged {
                                 CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
+                                miniVideoDragSizeDp = with(clearanceDensity) {
+                                    Offset(it.width.toDp().value, it.height.toDp().value)
+                                }
+                            }.offset {
+                                IntOffset(
+                                    miniVideoDragOffsetDp.x.dp.roundToPx(),
+                                    miniVideoDragOffsetDp.y.dp.roundToPx(),
+                                )
                             },
                         )
                     }

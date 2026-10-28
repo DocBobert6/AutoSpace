@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            85, "0.4.74-alpha",
+            listOf(
+                "The mini video card now shows the video's title instead of its web address, grows from small to large on its size button before going fullscreen, and can be dragged by its body while parked. Switching between the mini card and the full player now keeps your exact place both ways — no more starting over, and the full player only asks about resuming when you reopen after the app was closed. The full player also has a button to shrink back down to the mini card.",
+            ),
+        ),
+        Release(
             84, "0.4.73-alpha",
             listOf(
                 "The live conversation widget now has its own dismiss button, marks AI answers with the AI badge, and reads the current reply larger. Built-in answers join the conversation memory when you're already mid-conversation, so a follow-up question remembers the place you already named — and weather answers name the place they're for, including places you ask about by name.",

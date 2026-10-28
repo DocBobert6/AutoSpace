@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Replay10
@@ -141,6 +142,16 @@ import kotlinx.coroutines.withContext
  * cover it; scrubber + skip buttons cover Restart); the driving branch
  * shows transport only, not the options capsule; the error screen's Close
  * is the car's Back (both return to the browser).
+ *
+ * r118: the mini video card and this player share one live position
+ * (see VideoPositionSync). Expanding from the mini card and
+ * minimizing from here (the top capsule's mini-card button) both
+ * seek automatically to the shared position — no Resume prompt on a
+ * switch. The prompt now appears only for a fresh open after the
+ * app was closed, when no live position exists. The minimize button
+ * lives in the parked top capsule only; the driving branch keeps
+ * transport only, and the mini card has its own passenger gate on
+ * Home for anything minimized while driving.
  */
 
 /**
@@ -178,6 +189,7 @@ object PlayerBrightnessOverride {
 @Composable
 fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int, onClose: () -> Unit) {
     val context = LocalContext.current
+    val navigator = LocalCarNavigator.current
     var retryKey by remember { mutableIntStateOf(0) }
     var error by remember { mutableStateOf<String?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -198,9 +210,25 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // only, when it falls in the meaningful window (10s in to 95% of
     // duration). Non-null means the player starts PAUSED behind the
     // Resume/Restart prompt below instead of playing from the start.
+    // r118: the shared-position open runs first. A pending switch
+    // (an explicit mini expand or full-player minimize) is consumed
+    // exactly once and wins; else the last live position for the
+    // opening URL in this process; either one seeks silently, with
+    // no Resume prompt. Only when neither exists does the r22 prompt
+    // appear — i.e. only for a fresh open after the app was closed,
+    // when the in-memory holder is empty.
+    val switchMs = remember(urls, startIndex) {
+        urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))?.let { VideoPositionSync.consumeSwitch(it) }
+    }
+    val liveMs = remember(urls, startIndex) {
+        if (switchMs != null) null
+        else urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))?.let { VideoPositionSync.livePositionFor(it) }
+    }
+    val initialSeekMs = switchMs ?: liveMs ?: 0L
     var resumePromptMs by remember(urls, startIndex) {
         mutableStateOf(
-            urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))?.let { url ->
+            if (switchMs != null || liveMs != null) null
+            else urls.getOrNull(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0)))?.let { url ->
                 PlayerResume.loadPosition(context, url)
                     ?.takeIf { PlayerResume.isMeaningful(it.positionMs, it.durationMs) }
                     ?.positionMs
@@ -293,7 +321,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             .build()
             .apply {
                 setPlaybackSpeed(speed)
-                setMediaItems(buildItems(), currentIndex, 0L)
+                setMediaItems(buildItems(), currentIndex, initialSeekMs)
                 prepare()
                 // A pending resume prompt holds playback until the user
                 // picks Resume or Restart; otherwise play straight away.
@@ -310,6 +338,9 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         val pos = player.currentPosition.coerceAtLeast(0L)
         val dur = player.duration.let { if (it == C.TIME_UNSET) 0L else it.coerceAtLeast(0L) }
         PlayerResume.save(context, urls[idx], pos, dur)
+        // r118: the same save feeds the shared live position, under
+        // the same three-way rule (see VideoPositionSync).
+        VideoPositionSync.saveLikeResume(urls[idx], pos, dur)
     }
     fun refreshTracks(p: Player) {
         val groups = p.currentTracks.groups
@@ -509,6 +540,13 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         }
     }
     val (pos, dur) = position
+    // r118: the live write half of the shared position, mirroring
+    // the mini card's poll — whichever player is alive keeps the
+    // holder fresh. Switches themselves are written synchronously
+    // in expand()/minimize, never left to this poll.
+    LaunchedEffect(pos) {
+        urls.getOrNull(currentIndex)?.let { VideoPositionSync.update(it, pos.coerceAtLeast(0L)) }
+    }
     val isLive = dur == C.TIME_UNSET || player.isCurrentMediaItemLive
     val currentTitle = titles.getOrNull(currentIndex) ?: urls.getOrNull(currentIndex) ?: "Video"
     val currentUrl = urls.getOrNull(currentIndex) ?: ""
@@ -1062,6 +1100,27 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                         // position to 0, so the dispose save would be a
                         // no-op and the pre-stop position would be lost.
                         { saveCurrentPosition(); player.stop(); onClose },
+                        size = 56.dp, iconSize = 28.dp,
+                    )
+                    PlayerIconButton(
+                        Icons.Filled.PictureInPictureAlt, "Minimize to mini card",
+                        // r118: the reverse of the mini card's expand,
+                        // position-preserving. Pause FIRST, so the mini
+                        // player's creation can never overlap audible
+                        // playback even if this screen's release lands
+                        // a frame later in the same recomposition;
+                        // then the switch position, then Home, where
+                        // the mini card seeks to it. (popOut preserves
+                        // a pending switch by design, so the order
+                        // here — switch, then popOut — is safe.)
+                        {
+                            player.pause()
+                            urls.getOrNull(currentIndex)?.let { url ->
+                                VideoPositionSync.setSwitch(url, player.currentPosition.coerceAtLeast(0L))
+                                MiniVideoState.popOut(url, titles.getOrNull(currentIndex))
+                                navigator.home()
+                            }
+                        },
                         size = 56.dp, iconSize = 28.dp,
                     )
                 }
