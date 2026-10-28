@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -23,14 +24,17 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import app.autospace.media.MediaArt
 import androidx.compose.ui.geometry.Offset
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.navigation.model.RoutingInfo
@@ -88,6 +93,23 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsStateWithLifecycle()
     val dockEnabled by CarSettings.mediaCardDockEnabled.collectAsStateWithLifecycle()
+    // r106: motion poll for the media-card drag gate, plus the
+    // free-drag offset and the card's measured size. CarMotion.moving
+    // is a plain value, not a flow — poll it 1 s like MiniVideo and
+    // the widget column do (GPS only updates every 2 s). This poll
+    // lives here, not in the widget column's block, because the card
+    // slot sits outside that block; its name differs from that
+    // block's scoped `moving` on purpose, so nothing shadows.
+    // The offset and size are session-only: remember in CarHome,
+    // never written to CarSettings, so a dragged position resets
+    // when Home leaves composition and survives card hide/show,
+    // mini video, and live-widget swaps. Both are in dp, matching
+    // the slot's dp-space geometry (see MediaCardDrag).
+    val cardDragMoving by produceState(CarMotion.moving) {
+        while (true) { value = CarMotion.moving; delay(1_000) }
+    }
+    var mediaCardDragOffsetDp by remember { mutableStateOf(Offset.Zero) }
+    var mediaCardDragSizeDp by remember { mutableStateOf(Offset.Zero) }
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
     val miniVideoGateOpen by MiniVideoState.gateOpen.collectAsStateWithLifecycle()
     val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
@@ -267,16 +289,66 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     val clearanceDensity = LocalDensity.current
                     Box(
                         Modifier.fillMaxSize().padding(
-                            start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp,
+                            start = MediaCardSlotPadDp.dp, top = MediaCardSlotPadDp.dp,
+                            end = MediaCardSlotPadDp.dp, bottom = MediaCardSlotPadDp.dp,
                         ),
                         contentAlignment = clearanceAlignment,
                     ) {
                         FloatingMediaCard(
                             now,
-                            Modifier.width(clearanceCardWidth).onSizeChanged {
-                                CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
-                            },
+                            Modifier.width(clearanceCardWidth)
+                                .onSizeChanged {
+                                    CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
+                                    mediaCardDragSizeDp = with(clearanceDensity) {
+                                        Offset(it.width.toDp().value, it.height.toDp().value)
+                                    }
+                                }
+                                // r106: free drag, parked-only and
+                                // session-only. The gesture lives on
+                                // the card's own modifier, outside the
+                                // card's Box, so the children's own
+                                // drag detectors win their areas (see
+                                // MediaCardDrag): a horizontal drag
+                                // on the waveform seeks, a horizontal
+                                // drag on the info row swipes
+                                // sessions, and the card drag only
+                                // moves on drags those detectors do
+                                // not claim. When docked the card
+                                // sits exactly at its dock position
+                                // (low during navigation, like every
+                                // docked placement) and the stored
+                                // offset is ignored, not cleared, so
+                                // undocking restores it.
+                                .then(
+                                    if (mediaCardDragApplies(dockEnabled, cardDragMoving))
+                                        Modifier.pointerInput(dockEnabled, cardDragMoving) {
+                                            detectDragGestures { change, dragAmount ->
+                                                change.consume()
+                                                val dx = dragAmount.x / density
+                                                val dy = dragAmount.y / density
+                                                mediaCardDragOffsetDp = clampMediaCardDragOffset(
+                                                    mediaCardDragOffsetDp.x + dx,
+                                                    mediaCardDragOffsetDp.y + dy,
+                                                    mediaCardAlignedLeftDp(
+                                                        clearanceAlignment,
+                                                        maxWidth.value, mediaCardDragSizeDp.x, MediaCardSlotPadDp,
+                                                    ),
+                                                    maxHeight.value - MediaCardSlotPadDp - mediaCardDragSizeDp.y,
+                                                    maxWidth.value, maxHeight.value,
+                                                    mediaCardDragSizeDp.x, mediaCardDragSizeDp.y,
+                                                    MediaCardDragMinVisibleDp,
+                                                )
+                                            }
+                                        }
+                                    else Modifier
+                                )
+                                .offset {
+                                    if (dockEnabled) IntOffset.Zero
+                                    else IntOffset(
+                                        mediaCardDragOffsetDp.x.dp.roundToPx(),
+                                        mediaCardDragOffsetDp.y.dp.roundToPx(),
+                                    )
+                                },
                         )
                     }
                 }
