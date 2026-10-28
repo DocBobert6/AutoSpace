@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            102, "0.4.91-alpha",
+            listOf(
+                "The floating media card's waveform track is clearer now — the unplayed bars show more strongly over album art.",
+            ),
+        ),
+        Release(
             101, "0.4.90-alpha",
             listOf(
                 "New look: Aurora Field + Aurora — deep ocean and pale aqua colors with a spring-green primary, and translucent buttons with a diagonal sheen, a white rim, and a softly green-tinted shadow.",

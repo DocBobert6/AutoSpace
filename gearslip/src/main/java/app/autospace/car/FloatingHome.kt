@@ -354,7 +354,10 @@ fun floatingArtPalette(tint: ArtColor.Tint?): FloatingArtPalette? {
         primaryGlyph = floatingArtGlyph(primary),
         secondary = secondary,
         secondaryGlyph = floatingArtGlyph(secondary),
-        waveformTrack = primary.copy(alpha = 0.30f),
+        // r144: unfilled bars at 0.55 alpha (was 0.30) so the track
+        // reads over busy art; filled bars stay the opaque primary,
+        // and bar thickness is unchanged.
+        waveformTrack = primary.copy(alpha = 0.55f),
     )
 }
 

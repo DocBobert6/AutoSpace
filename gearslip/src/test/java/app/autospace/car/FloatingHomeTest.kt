@@ -125,6 +125,20 @@ class FloatingHomeTest {
     }
 
     @Test
+    fun artPaletteWaveformTrackIsPrimaryAtPointFiveFiveAlpha() {
+        // r144: the card's unfilled waveform bars sit at 0.55 alpha
+        // (was 0.30) so the track reads over busy art; the filled
+        // bars stay the opaque art primary, and bar thickness is
+        // unchanged — only the track alpha moves.
+        val palette = floatingArtPalette(ArtColor.Tint(0f, 0.8f))!!
+        assertEquals(1f, palette.primary.alpha, 0.001f)
+        assertEquals(0.55f, palette.waveformTrack.alpha, 0.001f)
+        assertEquals(palette.primary.red, palette.waveformTrack.red, 0.001f)
+        assertEquals(palette.primary.green, palette.waveformTrack.green, 0.001f)
+        assertEquals(palette.primary.blue, palette.waveformTrack.blue, 0.001f)
+    }
+
+    @Test
     fun artGlyphAlwaysContrastsAtLeastFourPointFiveToOne() {
         // r136: the glyph is whichever of black/white contrasts more
         // against its fill, and one of the two always reaches 4.58:1
