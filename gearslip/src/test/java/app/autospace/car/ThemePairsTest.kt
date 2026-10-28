@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheEightApprovedInOrder() {
+    fun pairsAreExactlyTheNineApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph"),
             themePairs.map { it.label },
         )
     }
@@ -72,6 +72,17 @@ class ThemePairsTest {
     }
 
     @Test
+    fun materialYouPairSetsMorphStyleAndScheme() {
+        // r114: the pair label is "Material You + Morph" —
+        // pattern-consistent with every other pair (scheme +
+        // style); the blend's name, Chroma, lives in the
+        // style's own documentation, not in the pair label.
+        val pair = themePairs[8]
+        assertEquals("morph", pair.styleId)
+        assertEquals(ColorScheme.MATERIAL_YOU, pair.scheme)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -81,6 +92,7 @@ class ThemePairsTest {
         assertEquals(themePairs[5], themePairFor("blueprint", ColorScheme.NEUTRAL))
         assertEquals(themePairs[6], themePairFor("sector", ColorScheme.CIRCUIT))
         assertEquals(themePairs[7], themePairFor("silhouette", ColorScheme.NIGHT))
+        assertEquals(themePairs[8], themePairFor("morph", ColorScheme.MATERIAL_YOU))
     }
 
     @Test
@@ -92,5 +104,6 @@ class ThemePairsTest {
         assertNull(themePairFor("blueprint", ColorScheme.HERITAGE))
         assertNull(themePairFor("sector", ColorScheme.NEUTRAL))
         assertNull(themePairFor("silhouette", ColorScheme.NEUTRAL))
+        assertNull(themePairFor("morph", ColorScheme.NEUTRAL))
     }
 }

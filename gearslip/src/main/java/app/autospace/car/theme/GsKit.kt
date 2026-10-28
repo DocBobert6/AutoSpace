@@ -243,6 +243,22 @@ fun Modifier.silhouetteCardHalo(shape: Shape): Modifier {
     }
 }
 
+/**
+ * r114 (Morph only): the card/sheet wash — the same Chroma
+ * blend at half strength, applied to the card's container
+ * color (not an overlay: a Card/Surface draws its own
+ * background, so an overlay would tint the text too).
+ * No-op under every other style. Alpha preserved, so
+ * frosted fills keep their pinned alpha and the art-backed
+ * media card (fill alpha 0) stays unwashd.
+ */
+@Composable
+fun morphCardColor(color: Color): Color {
+    val look = gsLook()
+    if (look.washCardAlpha <= 0f) return color
+    return morphWashBlend(color, MaterialTheme.colorScheme.primary, look.washCardAlpha)
+}
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -259,7 +275,7 @@ fun GsGroupedCard(
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
         shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
+        colors = CardDefaults.cardColors(containerColor = morphCardColor(GsKit.cardColor())),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
@@ -287,7 +303,7 @@ fun GsPanelCard(
     Card(
         modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
         shape = cardShape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(containerColor = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
@@ -311,7 +327,7 @@ fun GsSheetSurface(
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
         modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape),
-        color = GsKit.sheetColor(),
+        color = morphCardColor(GsKit.sheetColor()),
         shape = sheetShape,
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
@@ -404,7 +420,7 @@ fun FrostedPanelSurface(
     Surface(
         modifier = modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape),
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha),
+        color = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha)),
         shadowElevation = elevation,
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {

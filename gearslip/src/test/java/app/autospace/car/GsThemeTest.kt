@@ -181,8 +181,10 @@ class GsThemeTest {
         // third from last.
         // r113: Silhouette appends after Sector, so Heirloom sits
         // fourth from last.
+        // r114: Morph appends after Silhouette, so Heirloom sits
+        // fifth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 4])
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 5])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -233,8 +235,10 @@ class GsThemeTest {
         // from last, not last.
         // r113: Silhouette appends after Sector, so Blueprint sits
         // third from last.
+        // r114: Morph appends after Silhouette, so Blueprint sits
+        // fourth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
-        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 4])
         assertEquals("blueprint", GsThemes.byId("blueprint").id)
         assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
         val look = GsThemes.Blueprint.control
@@ -275,8 +279,10 @@ class GsThemeTest {
         // rejected in the pick, so no field carries it.
         // r113: Silhouette appends after it, so Sector sits second
         // from last, not last.
+        // r114: Morph appends after Silhouette, so Sector sits
+        // third from last.
         assertTrue(GsThemes.builtIn.any { it.id == "sector" && it.name == "Sector" })
-        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("sector", GsThemes.byId("sector").id)
         val look = GsThemes.Sector.control
         assertEquals(14, look.corner.value.toInt())
@@ -333,7 +339,9 @@ class GsThemeTest {
         // name stays NIGHT, so existing Night users keep
         // their scheme.
         assertTrue(GsThemes.builtIn.any { it.id == "silhouette" && it.name == "Silhouette" })
-        assertEquals(GsThemes.Silhouette, GsThemes.builtIn.last())
+        // r114: Morph appends after it, so Silhouette sits
+        // second from last, not last.
+        assertEquals(GsThemes.Silhouette, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("silhouette", GsThemes.byId("silhouette").id)
         assertEquals("Nocturne", ColorScheme.NIGHT.displayName)
         val look = GsThemes.Silhouette.control
@@ -372,5 +380,77 @@ class GsThemeTest {
         assertEquals(0f, haloBrightnessFactor(0.05f), 0.001f)
         assertEquals(0f, haloBrightnessFactor(0f), 0.001f)
         assertEquals(0.5f, haloBrightnessFactor(0.525f), 0.001f)
+    }
+
+    @Test
+    fun morphIsBuiltInLastWithChromaWashAndMorphingCorner() {
+        // r114: Morph appends last (pinned here); Silhouette
+        // sits second from last, and nothing else moved. The
+        // Chroma wash: rest 0.09 (the pick's 8–10%), pressed
+        // 0.18, latched full strength 0.30, cards/sheets half
+        // strength 0.045. The morph: rest 20dp, pressed 16dp,
+        // latched 24dp, on the shared state-change spring
+        // (parked) / snap (moving) — springMotion with the
+        // shared 0.7 damping, deliberately not retuned.
+        // Cards take the static 20dp corner
+        // (cardsUseStyleCorner); latched carries no faint
+        // tint of its own (the latched wash IS the tint, and
+        // the tint-only fallback lives in the draw code, not
+        // in a field). No other style gains the wash or the
+        // morph — the loop below is the guard.
+        assertTrue(GsThemes.builtIn.any { it.id == "morph" && it.name == "Morph" })
+        assertEquals(GsThemes.Morph, GsThemes.builtIn.last())
+        assertEquals("morph", GsThemes.byId("morph").id)
+        assertEquals("Material You", ColorScheme.MATERIAL_YOU.displayName)
+        val look = GsThemes.Morph.control
+        assertEquals(20, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0f, look.hairlineAlpha, 0.001f)
+        assertEquals(0f, look.bevelTop, 0.001f)
+        assertEquals(0f, look.bevelBottom, 0.001f)
+        assertEquals(4, look.shadow.value.toInt())
+        assertEquals(0.28f, look.shadowAlpha, 0.001f)
+        assertEquals(0.09f, look.washAlpha, 0.001f)
+        assertEquals(0.18f, look.washPressedAlpha, 0.001f)
+        assertEquals(0.30f, look.washLatchedAlpha, 0.001f)
+        assertEquals(0.045f, look.washCardAlpha, 0.001f)
+        assertTrue(look.morphCorners)
+        assertEquals(16, look.pressedCorner.value.toInt())
+        assertEquals(24, look.latchedCorner.value.toInt())
+        assertTrue(look.springMotion)
+        assertEquals(0.7f, look.springDamping, 0.001f)
+        assertTrue(look.cardsUseStyleCorner)
+        assertFalse(look.latchedPrimaryTint)
+        assertFalse(look.pillButtons)
+        assertFalse(look.rectangularButtons)
+        assertEquals(0.14f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        assertEquals(0f, look.ringAlpha, 0.001f)
+        assertEquals(0f, look.stitchAlpha, 0.001f)
+        assertEquals(0f, look.segmentAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        val light = checkNotNull(look.light)
+        assertEquals(20, light.corner.value.toInt())
+        assertEquals(0.22f, light.shadowAlpha, 0.001f)
+        assertEquals(0.09f, light.washAlpha, 0.001f)
+        assertEquals(0.18f, light.washPressedAlpha, 0.001f)
+        assertEquals(0.30f, light.washLatchedAlpha, 0.001f)
+        assertEquals(0.045f, light.washCardAlpha, 0.001f)
+        assertTrue(light.morphCorners)
+        assertEquals(16, light.pressedCorner.value.toInt())
+        assertEquals(24, light.latchedCorner.value.toInt())
+        assertTrue(light.springMotion)
+        assertTrue(light.cardsUseStyleCorner)
+        for (other in GsThemes.builtIn.filter { it.id != "morph" }) {
+            assertEquals(0f, other.control.washAlpha, 0.001f)
+            assertEquals(0f, other.control.washPressedAlpha, 0.001f)
+            assertEquals(0f, other.control.washLatchedAlpha, 0.001f)
+            assertEquals(0f, other.control.washCardAlpha, 0.001f)
+            assertFalse(other.control.morphCorners)
+            assertEquals(0f, other.control.light?.washAlpha ?: 0f, 0.001f)
+            assertFalse(other.control.light?.morphCorners == true)
+        }
     }
 }

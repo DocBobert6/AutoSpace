@@ -42,6 +42,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.morphCardColor
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelBorder
 import app.autospace.car.theme.pitLanePanelTexture
@@ -468,7 +469,7 @@ private fun WidgetCard(onClick: (() -> Unit)?, content: @Composable () -> Unit) 
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = cardShape,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha),
+            containerColor = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,

@@ -94,6 +94,7 @@ import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.gsShape
 import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.morphCardColor
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.car.theme.LocalGsTheme
@@ -824,7 +825,11 @@ private fun CarSideBar(
         color = if (meridian) {
             Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha)
         } else {
-            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
+            // r114: the rail surface takes the card half-wash
+            // under Morph (same frosted surfaceContainerLow
+            // family as FrostedPanelSurface); the Meridian
+            // branch above keeps its photo fill untouched.
+            morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha))
         },
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            81, "0.4.70-alpha",
+            listOf(
+                "The Material You color scheme has a button style of its own: Morph, with a soft primary wash over buttons that deepens when pressed and opens up when selected, plus a Material You + Morph pair that sets both at once.",
+            ),
+        ),
+        Release(
             80, "0.4.69-alpha",
             listOf(
                 "The Night color scheme is now called Nocturne, and it has a button style of its own: Silhouette, with a soft light line along the bottom edge of buttons and a faint halo on cards that fades out at minimum brightness, plus a Nocturne + Silhouette pair that sets both at once.",

@@ -236,6 +236,38 @@ data class ControlLook(
      */
     val latchedPrimaryTint: Boolean = false,
     /**
+     * r114 (Morph only): the Chroma blend — a permanent primary
+     * wash over the surface tone, so the button's fill IS the
+     * wash (it follows the morphing corner — it is not a
+     * separate overlay that lags the shape). Rest wash
+     * [washAlpha] (0.09, the pick's 8–10%); pressed deepens
+     * to [washPressedAlpha] (0.18); latched goes to full
+     * strength [washLatchedAlpha] (0.30) unless the latched
+     * contrast guard in GsIconBox falls back to the tint
+     * (see gsSurface). Cards/sheets take the half-strength
+     * wash [washCardAlpha] (0.045). 0 for none — every other
+     * style's fills are untouched.
+     */
+    val washAlpha: Float = 0f,
+    val washPressedAlpha: Float = 0f,
+    val washLatchedAlpha: Float = 0f,
+    val washCardAlpha: Float = 0f,
+    /**
+     * r114 (Morph only): the morphing corner. Rest is
+     * [corner] (20dp); pressed tightens to [pressedCorner]
+     * (16dp) on the shared state-change spring (parked) /
+     * snap (moving); latched opens to [latchedCorner]
+     * (24dp). Only read when [morphCorners] is true. Other
+     * rounded shapes (keys' 12dp fallback, tabs' explicit
+     * corners) morph by a smaller range instead (see
+     * gsSurface): pressed −2dp, latched +2dp. Full-pill
+     * and circle shapes never morph (pills are wash-only,
+     * per the pick).
+     */
+    val morphCorners: Boolean = false,
+    val pressedCorner: Dp = 0.dp,
+    val latchedCorner: Dp = 0.dp,
+    /**
      * RETIRED in r24: formerly drew a small black-and-white checker strip
      * along the top edge of latched controls under Pitlane. Robert
      * disliked the checker under Pitlane and under Circuit, so r24 removes
@@ -856,6 +888,103 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Morph (2026-10-28, r114; picked by Robert 2026-10-27 ~20:06
+     * as "Morph with Chroma blend"): the Material You scheme's
+     * own button style. The Chroma blend is a permanent
+     * primary wash over the surface tone — the fill IS the
+     * wash (see ControlLook.washAlpha and the wash block in
+     * gsSurface), so it follows the morphing corner instead
+     * of lagging it as an overlay: rest 20dp corner + 0.09
+     * wash (the pick's 8–10%); pressed tightens to 16dp on
+     * the shared state-change spring (parked) / snap
+     * (moving) and the wash deepens to 0.18; latched opens
+     * to 24dp and the wash goes to full strength 0.30 —
+     * unless the latched contrast guard in GsIconBox falls
+     * back to the 0.12 tint (see gsSurface), which is what
+     * keeps latched text readable on every dynamic seed:
+     * at 0.30 the M3 baseline dark palette fails 4.5:1 on
+     * Neutral (3.66), Tonal (4.00) and primaryContainer
+     * tabs (4.05), while the 0.12 tint passes everywhere
+     * (5.53+) — the guard, not a fixed table, decides per
+     * device, since Material You colors are wallpaper-
+     * derived and no fixed hex can promise a ratio. No
+     * bevel, no texture, no ring, no hairline of its own.
+     * Small soft shadow (4dp, Verve's value). Cards and
+     * sheets take the static 20dp corner (cardsUseStyleCorner)
+     * + the half-strength 0.045 wash (see morphCardColor);
+     * sheets move from their 28dp fallback to 20dp under
+     * Morph, and the themed turn/ETA cards move from 16dp
+     * to 20dp — the same whole-app corner agreement Verve
+     * (24dp) and Meridian (16dp) already have. Nav bar and
+     * rail buttons get the full morph + wash through
+     * gsSurface; the rail surface itself takes the card
+     * half-wash (see CarUi). Pills are wash-only: full
+     * pill shapes and circles never morph (see gsSurface).
+     * Keys morph by a smaller range (their 12dp fallback
+     * tightens to 10dp pressed, opens to 14dp latched) +
+     * wash; the shedding order is FIXED — if the keyboard
+     * ever looks busy, the wash drops FIRST (it is the
+     * independently gated layer; zeroing it leaves every
+     * corner exactly as picked), never the corner range.
+     * Pressed feedback precedence, stated plainly:
+     * pressing a latched button tightens it (pressed wins
+     * the corner), while the wash keeps the latched
+     * strength under the press dim. The face is flat, so
+     * the hold marker is the DOT. Spring damping is the
+     * shared 0.7 default, deliberately not retuned.
+     */
+    val Morph = GsTheme(
+        id = "morph",
+        name = "Morph",
+        control = ControlLook(
+            corner = 20.dp,
+            topLight = 0f,
+            hairlineAlpha = 0f,
+            bevelTop = 0f,
+            bevelBottom = 0f,
+            shadow = 4.dp,
+            shadowAlpha = 0.28f,
+            washAlpha = 0.09f,
+            washPressedAlpha = 0.18f,
+            washLatchedAlpha = 0.30f,
+            washCardAlpha = 0.045f,
+            morphCorners = true,
+            pressedCorner = 16.dp,
+            latchedCorner = 24.dp,
+            springMotion = true,
+            springDamping = 0.7f,
+            cardsUseStyleCorner = true,
+            pressedDim = 0.14f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                corner = 20.dp,
+                topLight = 0f,
+                hairlineAlpha = 0f,
+                bevelTop = 0f,
+                bevelBottom = 0f,
+                shadow = 4.dp,
+                shadowAlpha = 0.22f,
+                washAlpha = 0.09f,
+                washPressedAlpha = 0.18f,
+                washLatchedAlpha = 0.30f,
+                washCardAlpha = 0.045f,
+                morphCorners = true,
+                pressedCorner = 16.dp,
+                latchedCorner = 24.dp,
+                springMotion = true,
+                springDamping = 0.7f,
+                cardsUseStyleCorner = true,
+                pressedDim = 0.14f,
+                pressedScale = 0.98f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -881,7 +1010,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r113: Silhouette appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette)
+    // r114: Morph appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

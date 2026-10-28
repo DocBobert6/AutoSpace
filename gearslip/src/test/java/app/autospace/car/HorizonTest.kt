@@ -94,10 +94,10 @@ class HorizonTest {
         assertTrue(GsThemes.builtIn.any { it.id == "horizon" && it.name == "Horizon" })
         // r107 appends Meridian last (pinned by MeridianTest), r108
         // appends Heirloom last, r110 appends Blueprint last,
-        // r112 appends Sector last, and r113 appends Silhouette
-        // last; Horizon keeps its slot, sixth from last, and
-        // nothing else moved.
-        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 6])
+        // r112 appends Sector last, r113 appends Silhouette
+        // last, and r114 appends Morph last; Horizon keeps its
+        // slot, seventh from last, and nothing else moved.
+        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 7])
         assertEquals("horizon", GsThemes.byId("horizon").id)
         val look = GsThemes.Horizon.control
         assertEquals(28, look.corner.value.toInt())

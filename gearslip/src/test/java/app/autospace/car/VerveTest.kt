@@ -86,10 +86,10 @@ class VerveTest {
         // r79 appends Horizon last (pinned by HorizonTest), r107
         // appends Meridian last (pinned by MeridianTest), r108
         // appends Heirloom last, r110 appends Blueprint last,
-        // r112 appends Sector last, and r113 appends Silhouette
-        // last; Verve keeps its order before all six, and
-        // nothing else moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 7])
+        // r112 appends Sector last, r113 appends Silhouette
+        // last, and r114 appends Morph last; Verve keeps its
+        // order before all seven, and nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 8])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())
@@ -109,12 +109,14 @@ class VerveTest {
         assertTrue(light.springMotion)
         assertTrue(light.cardsUseStyleCorner)
         // Frost is still the default; besides Horizon (r79, Verve's
-        // sibling, which shares the spring flags deliberately) and Meridian
-        // (r107, whose critically damped pressed spring and 16dp
-        // cardsUseStyleCorner are deliberate), no other style carries
-        // Verve's spring flags.
+        // sibling, which shares the spring flags deliberately),
+        // Meridian (r107, whose critically damped pressed spring
+        // and 16dp cardsUseStyleCorner are deliberate), and
+        // Morph (r114, whose morphing corner rides the same
+        // spring spec with the style corner on cards), no
+        // other style carries Verve's spring flags.
         assertEquals("frost", GsThemes.default.id)
-        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "horizon" && it.id != "meridian" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "horizon" && it.id != "meridian" && it.id != "morph" }) {
             assertFalse(other.control.springMotion)
             assertFalse(other.control.cardsUseStyleCorner)
             assertFalse(other.control.light?.springMotion == true)

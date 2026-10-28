@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.DpCornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -154,6 +155,85 @@ fun <T> stateChangeMotionSpec(moving: Boolean, dampingRatio: Float = 0.7f): Anim
     if (moving) snap() else spring(dampingRatio = dampingRatio, stiffness = Spring.StiffnessMedium)
 
 /**
+ * r114 (Morph only): the Chroma wash blend — the fill IS the
+ * wash: the container lerped toward the scheme primary at
+ * [wash], alpha preserved (a plain lerp would pull the
+ * alpha toward the primary's 1.0, which would un-pin
+ * frosted fills). Pure so it is unit-testable.
+ */
+fun morphWashBlend(container: Color, primary: Color, wash: Float): Color =
+    lerp(container, primary, wash).copy(alpha = container.alpha)
+
+/** r114: the WCAG contrast ratio between two colors (opaque RGB; translucent fills are judged on their RGB, the standard approximation over an unknown backdrop). Pure so it is unit-testable. */
+fun morphContrastRatio(a: Color, b: Color): Float {
+    val la = a.luminance()
+    val lb = b.luminance()
+    val hi = maxOf(la, lb)
+    val lo = minOf(la, lb)
+    return (hi + 0.05f) / (lo + 0.05f)
+}
+
+/** r114: the latched text-contrast bar (WCAG AA for normal text). */
+const val MorphLatchedContrastMin = 4.5f
+
+/**
+ * r114 (Morph only): whether latched text stays readable over
+ * the full-strength wash — the guard GsIconBox applies before
+ * handing a latched control to gsSurface. False means the
+ * tint-only fallback (a faint 0.12 primary overlay on the
+ * unwashed fill, the same strength as Verve's latched tint)
+ * instead of the full wash. Pure so it is unit-testable;
+ * the runtime colors are whatever the device's dynamic
+ * scheme yields, so the guard — not a fixed table — is
+ * what keeps text readable on every seed, in both modes.
+ */
+fun morphLatchedWashPasses(content: Color, container: Color, primary: Color, wash: Float): Boolean =
+    morphContrastRatio(content, morphWashBlend(container, primary, wash)) >= MorphLatchedContrastMin
+
+/**
+ * r114 (Morph only): the uniform Dp corner of a rounded
+ * shape, or null for percent corners (pills), mixed
+ * corners, and non-rounded shapes — those never morph.
+ * Pure so it is unit-testable.
+ */
+fun roundedCornerDp(shape: Shape): Dp? {
+    val r = shape as? RoundedCornerShape ?: return null
+    val tl = r.topStart as? DpCornerSize ?: return null
+    val tr = r.topEnd as? DpCornerSize ?: return null
+    val be = r.bottomEnd as? DpCornerSize ?: return null
+    val bl = r.bottomStart as? DpCornerSize ?: return null
+    if (tl.size != tr.size || tl.size != be.size || tl.size != bl.size) return null
+    return tl.size
+}
+
+/**
+ * r114 (Morph only): the corner a morphing control animates
+ * toward. [base] is the shape's own corner: the style
+ * corner on the default path, the explicit fallback on
+ * keys/tabs. Full range on the style corner (rest →
+ * pressedCorner pressed, latchedCorner latched); a smaller
+ * ±2dp range on any other rounded shape (keys' 12dp
+ * fallback, tabs' explicit corners). Pressed wins the
+ * corner over latched: pressing a latched button tightens
+ * it, and releasing returns it to the latched corner.
+ * Pure so it is unit-testable.
+ */
+fun morphCornerTarget(base: Dp, look: ControlLook, pressed: Boolean, latched: Boolean): Dp =
+    if (base == look.corner) {
+        when {
+            pressed -> look.pressedCorner
+            latched -> look.latchedCorner
+            else -> base
+        }
+    } else {
+        when {
+            pressed -> (base - 2.dp).coerceAtLeast(0.dp)
+            latched -> base + 2.dp
+            else -> base
+        }
+    }
+
+/**
  * r32: texture reads once per surface. A control sitting on a Pitlane panel
  * (which already draws its own stronger weave + grain) skips its own
  * weave/grain — two independent 8dp grids at different phases compounded
@@ -222,9 +302,32 @@ fun Modifier.gsSurface(
     well: Boolean = false,
     /** r46: keep the container's alpha exactly (frosted fills pin theirs — see [scaledContainerAlpha]). */
     keepAlpha: Boolean = false,
+    /** r114: latched tint-only fallback (see the guard in GsIconBox) — the fill stays unwashed and carries only the faint tint, because the full-strength wash would leave latched text below 4.5:1. */
+    latchedWashFallback: Boolean = false,
 ): Modifier {
     val look = gsLook()
-    val effContainer = container.copy(alpha = scaledContainerAlpha(container.alpha, look.containerAlpha, keepAlpha))
+    // r114 (Morph only): the Chroma wash — the fill IS the
+    // wash, blended here so every downstream read (lip base,
+    // shade choice, weave thread, stitch color, background)
+    // sees the washed fill. Wash precedence, stated plainly:
+    // latched wins over pressed (the persistent state keeps
+    // its strength under the press dim); pressed wins over
+    // rest. Latched + fallback means no wash at all — the
+    // tint-only block below carries the latched read instead.
+    // Transparent containers stay transparent: the wash is
+    // over a surface tone, and a transparent container has
+    // none (Outline buttons keep their transparent fill).
+    val washStrength = when {
+        latched -> if (latchedWashFallback) 0f else look.washLatchedAlpha
+        pressed -> look.washPressedAlpha
+        else -> look.washAlpha
+    }
+    val rawContainer = container.copy(alpha = scaledContainerAlpha(container.alpha, look.containerAlpha, keepAlpha))
+    val effContainer = if (rawContainer.alpha > 0f && washStrength > 0f) {
+        morphWashBlend(rawContainer, MaterialTheme.colorScheme.primary, washStrength)
+    } else {
+        rawContainer
+    }
     val down = pressed || latched
     // The keycap's face sinks onto its base while pressed, and stays down while latched: the base
     // shrinks to nothing and the face moves down by the same amount, so the control's overall size
@@ -244,13 +347,38 @@ fun Modifier.gsSurface(
     // Tactile: the drop shadow collapses and the face drops by [ControlLook.sink].
     val lift by animateFloatAsState(if (down) 0f else 1f, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 140), label = "lift")
     val sinkNow by animateDpAsState(if (down) look.sink else 0.dp, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 140), label = "sink")
+    // r114 (Morph only): the morphing corner. The base is the
+    // style corner on the default path (shape == the look's
+    // own shape) and the shape's own uniform Dp corner
+    // otherwise (keys' 12dp fallback, tabs' explicit
+    // corners); percent corners (pills) and non-rounded
+    // shapes (circles) never morph — pills are wash-only,
+    // per the pick. The animation rides the shared
+    // state-change spec (spring parked, snap moving), so
+    // motion is parked-only exactly as the pick asks.
+    // Called unconditionally (like lip/lift/sink above) so
+    // the hook count never changes with the style; when
+    // morph is off the value is simply unused. Key shedding
+    // order, FIXED per the pick: if the keyboard ever
+    // looks busy, the wash drops FIRST — the wash is the
+    // independently gated layer (zeroing washAlpha leaves
+    // every corner exactly as picked), never the corner
+    // range. No busy condition triggers shedding today:
+    // keys ship with both layers, and the order governs
+    // any future simplification.
+    val morphBase: Dp? = if (!look.morphCorners) null
+        else if (shape == buttonShapeForLook(look)) look.corner
+        else roundedCornerDp(shape)
+    val morphTarget = morphBase?.let { morphCornerTarget(it, look, pressed, latched) } ?: 0.dp
+    val cornerNow by animateDpAsState(morphTarget, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(110), label = "morph")
+    val drawShape: Shape = if (morphBase != null) RoundedCornerShape(cornerNow) else shape
     var m = this
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
-        m = m.drawBehind { drawSoftShadow(shape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
+        m = m.drawBehind { drawSoftShadow(drawShape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
     }
     // r113 (Silhouette only): the faint halo, buttons at half
     // strength — neutral white, never primary, top + sides only.
-    // Drawn here, BEFORE clip(shape), like the soft shadow: the
+    // Drawn here, BEFORE clip(drawShape), like the soft shadow: the
     // glow must reach past the edge, and the clip would cut it.
     // The clipRect cuts everything below the bottom edge, so
     // the bottom stays clean (no drop-shadow read). Cards draw
@@ -277,7 +405,7 @@ fun Modifier.gsSurface(
                 ) {
                     for (i in steps downTo 1) {
                         val grow = falloffPx * i / steps
-                        val outline = shape.createOutline(
+                        val outline = drawShape.createOutline(
                             Size((size.width + grow * 2).coerceAtLeast(0f), (size.height + grow * 2).coerceAtLeast(0f)),
                             layoutDirection,
                             this,
@@ -297,11 +425,11 @@ fun Modifier.gsSurface(
             .padding(top = look.lip - lipNow, bottom = lipNow)
             .drawBehind {
                 translate(top = lipNow.toPx()) {
-                    drawOutline(shape.createOutline(size, layoutDirection, this), base)
+                    drawOutline(drawShape.createOutline(size, layoutDirection, this), base)
                 }
             }
     }
-    m = m.clip(shape)
+    m = m.clip(drawShape)
     if (effContainer.alpha > 0f) {
         val shade = if (effContainer.luminance() > 0.5f) look.bottomShadeOnLight else look.bottomShade
         m = if (look.topLight > 0f || shade > 0f) {
@@ -328,6 +456,21 @@ fun Modifier.gsSurface(
         // with the rest of this block. The color is read here, in the
         // composable body — a draw scope cannot call MaterialTheme.
         if (latched && look.latchedPrimaryTint) {
+            val tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            m = m.drawBehind {
+                drawRect(tint)
+            }
+        }
+        // r114 (Morph only): the latched tint-only fallback —
+        // when the full-strength wash would leave latched text
+        // below 4.5:1 (the guard in GsIconBox sets
+        // latchedWashFallback), the fill stays unwashed and
+        // carries only this faint 0.12 primary overlay, the
+        // same strength as Verve's latched tint — so the text
+        // stays readable on every dynamic seed, in both modes.
+        // Transparent containers skip it with the rest of
+        // this block, like the tint above.
+        if (latched && latchedWashFallback) {
             val tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             m = m.drawBehind {
                 drawRect(tint)
@@ -404,12 +547,12 @@ fun Modifier.gsSurface(
             }
         }
         if (look.rimAlpha > 0f) {
-            m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), shape)
+            m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), drawShape)
         }
         // Notscape FrostKit's hairline: a true 0.5dp outline at 0.45 alpha, on top of the
         // rim fade, so the edge reads on any background — not just on dark ones.
         if (look.hairlineAlpha > 0f) {
-            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = look.hairlineAlpha), shape)
+            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = look.hairlineAlpha), drawShape)
         }
         // r110 (Blueprint only): the crisp 1px ring in
         // onSurfaceVariant around the control, drawn as part of
@@ -432,7 +575,7 @@ fun Modifier.gsSurface(
                 )
                 translate(insetPx, insetPx) {
                     drawOutline(
-                        shape.createOutline(ringSize, layoutDirection, this),
+                        drawShape.createOutline(ringSize, layoutDirection, this),
                         ring.copy(alpha = look.ringAlpha),
                         style = Stroke(width = 1f),
                     )
@@ -448,7 +591,7 @@ fun Modifier.gsSurface(
         // r110: under a ring style the ring IS the edge, so the forced
         // hairline would double it — skipped when the ring draws.
         if (LocalOledDark.current && look.ringAlpha <= 0f) {
-            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
+            m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), drawShape)
         }
         // r26: the bevel is the panel edge. Raised (default): light top,
         // dark bottom. A well (switch track under Pit Lane) inverts it —
@@ -469,7 +612,7 @@ fun Modifier.gsSurface(
                         0.7f to Color.Transparent,
                         1f to Color.White.copy(alpha = look.bevelTop),
                     ),
-                    shape,
+                    drawShape,
                 )
             } else {
                 m.border(
@@ -480,7 +623,7 @@ fun Modifier.gsSurface(
                         0.7f to Color.Transparent,
                         1f to Color.Black.copy(alpha = look.bevelBottom),
                     ),
-                    shape,
+                    drawShape,
                 )
             }
         }
@@ -556,7 +699,7 @@ fun Modifier.gsSurface(
                 )
                 translate(insetPx, insetPx) {
                     drawOutline(
-                        shape.createOutline(insetSize, layoutDirection, this),
+                        drawShape.createOutline(insetSize, layoutDirection, this),
                         stitch.copy(alpha = look.stitchAlpha),
                         style = Stroke(width = 1.dp.toPx(), pathEffect = dash),
                     )
@@ -606,7 +749,7 @@ fun Modifier.gsSurface(
             }
         }
     }
-    if (border.isSpecified) m = m.border(BorderStroke(1.dp, border), shape)
+    if (border.isSpecified) m = m.border(BorderStroke(1.dp, border), drawShape)
     if (pressed) m = m.drawWithContent {
         drawContent()
         if (look.segmentAlpha > 0f && look.segmentThickness > 0.dp && effContainer.alpha > 0f) {
@@ -802,12 +945,26 @@ fun GsIconBox(
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface)
+    val look = gsLook()
+    // r114 (Morph only): the latched contrast guard — before
+    // a latched control reaches gsSurface, check its actual
+    // content color against the full-strength washed fill;
+    // below 4.5:1 the control takes the tint-only fallback
+    // instead (see gsSurface). GsIconBox is the only
+    // latched path into gsSurface (GsButton takes no
+    // latched flag; direct gsSurface callers never pass
+    // latched), so this guard covers every latched surface
+    // — including template actions whose colors come from
+    // the nav app, which no fixed table could promise.
+    // Computed on opaque RGB (see morphContrastRatio).
+    val latchedWashFallback = latched && look.washLatchedAlpha > 0f &&
+        !morphLatchedWashPasses(c.content, c.container, MaterialTheme.colorScheme.primary, look.washLatchedAlpha)
     val source = remember { MutableInteractionSource() }
     val pressed = rememberPressed(source)
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha),
+            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha, latchedWashFallback),
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)
