@@ -2,12 +2,16 @@ package app.autospace.car
 
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r87 steering-side app bar, r94 float, r99 Meridian forms: strip mapping, alignment mapping, clock split, rail/pill form. */
+/** r87 steering-side app bar, r94 float, r99 Meridian forms, r103 centered icons + digits-only clock: strip mapping, alignment mapping, clock text, rail/pill form. */
 class SideBarTest {
 
 
@@ -50,24 +54,47 @@ class SideBarTest {
     }
 
     @Test
-    fun clockPartsSplitAmPm() {
-        assertEquals("9:53" to "AM", railClockParts("9:53 AM"))
+    fun clockDigitsUsNoonIsDigitsOnly() {
+        assertEquals("12:00", railClockDigits(utc(2026, 9, 27, 12, 0), Locale.US, UTC))
     }
 
     @Test
-    fun clockParts24HourHasNoMarker() {
-        assertEquals("23:59" to null, railClockParts("23:59"))
+    fun clockDigitsUsMorningDropsMarker() {
+        assertEquals("9:07", railClockDigits(utc(2026, 9, 27, 9, 7), Locale.US, UTC))
     }
 
     @Test
-    fun clockPartsMultiWordMarker() {
-        assertEquals("12:00" to "p. m.", railClockParts("12:00 p. m."))
+    fun clockDigitsUsEveningConvertsToTwelveHour() {
+        assertEquals("11:59", railClockDigits(utc(2026, 9, 27, 23, 59), Locale.US, UTC))
     }
 
     @Test
-    fun clockPartsNonBreakingSpaceSplits() {
-        assertEquals("9:53" to "AM", railClockParts("9:53\u00A0AM"))
+    fun clockDigitsUsMidnightIsTwelveThirty() {
+        assertEquals("12:30", railClockDigits(utc(2026, 9, 27, 0, 30), Locale.US, UTC))
     }
+
+    @Test
+    fun clockDigitsGermanKeepsTwentyFourHour() {
+        assertEquals("23:59", railClockDigits(utc(2026, 9, 27, 23, 59), Locale.GERMANY, UTC))
+        assertEquals("09:07", railClockDigits(utc(2026, 9, 27, 9, 7), Locale.GERMANY, UTC))
+    }
+
+    @Test
+    fun clockDigitsRespectsPassedTimeZone() {
+        // The same instant reads 12:00 in UTC, 8:00 in New York.
+        val instant = utc(2026, 9, 27, 12, 0)
+        assertEquals("12:00", railClockDigits(instant, Locale.US, TimeZone.getTimeZone("UTC")))
+        assertEquals("8:00", railClockDigits(instant, Locale.US, TimeZone.getTimeZone("America/New_York")))
+    }
+
+    private fun utc(year: Int, month0: Int, day: Int, hour: Int, minute: Int): Date {
+        return Calendar.getInstance(TimeZone.getTimeZone("UTC"), Locale.US).apply {
+            set(year, month0, day, hour, minute, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.time
+    }
+
+    private val UTC: TimeZone = TimeZone.getTimeZone("UTC")
 
     @Test
     fun meridianFormWideLandscapeIsRail() {

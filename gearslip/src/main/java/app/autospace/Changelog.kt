@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            70, "0.4.59-alpha",
+            listOf(
+                "The bar's icons are centered in the rail now instead of sitting left, and the clock shows just the digits — 12:00, no AM or PM — in a block the same width as the icons.",
+            ),
+        ),
+        Release(
             69, "0.4.58-alpha",
             listOf(
                 "In Meridian mode the app-drawer button at the bottom of the bar is now four filled squares instead of an empty outline, so it reads as a real icon next to the others.",

@@ -1,6 +1,11 @@
 package app.autospace.car
 
 import androidx.compose.ui.Alignment
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * r94: the steering-side app bar floats again. The r87 rail filled
@@ -65,21 +70,25 @@ fun sideBarAlignment(side: SideBarSide): Alignment = when (side) {
 fun sideBarStripOnStart(side: SideBarSide): Boolean = side == SideBarSide.DRIVER_SIDE
 
 /**
- * r87: split a formatted short time into its digits and its day
- * marker, for the rail clock's stacked layout. "9:53 AM" becomes
- * ("9:53", "AM"); a 24-hour time like "23:59" becomes ("23:59",
- * null); a multi-word marker like "12:00 p. m." becomes ("12:00",
- * "p. m."). The split is on the first space, including the
- * non-breaking spaces some locales use between time and marker, so
- * a locale's marker can never hide inside the digits line. Pure, so
- * the unit test pins it.
+ * r103: digits-only clock text for the bar: hour:minute, no day
+ * marker. Locales whose SHORT form already has no marker (24-hour
+ * locales, "21:07") render exactly as before; locales whose SHORT
+ * form carries a marker render "h:mm" ("9:07", "12:00") — the
+ * digits come from a real format pattern in both cases, never
+ * from stripping a marker out of a formatted string. A SHORT form
+ * that is not a SimpleDateFormat falls back to the locale SHORT
+ * as-is. Pure, so the unit test pins it.
  */
-fun railClockParts(formatted: String): Pair<String, String?> {
-    val trimmed = formatted.trim()
-    val split = trimmed.indexOfFirst { it == ' ' || it == '\u00A0' || it == '\u202F' }
-    if (split < 0) return trimmed to null
-    val marker = trimmed.substring(split + 1).trim()
-    return trimmed.substring(0, split) to marker.ifEmpty { null }
+fun railClockDigits(
+    date: Date,
+    locale: Locale = Locale.getDefault(),
+    timeZone: TimeZone = TimeZone.getDefault(),
+): String {
+    val short = DateFormat.getTimeInstance(DateFormat.SHORT, locale)
+    val hasMarker = (short as? SimpleDateFormat)?.toPattern()?.contains('a') == true
+    val format = if (hasMarker) SimpleDateFormat("h:mm", locale) else short
+    format.timeZone = timeZone
+    return format.format(date)
 }
 
 /**

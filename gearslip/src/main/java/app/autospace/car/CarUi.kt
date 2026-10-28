@@ -106,7 +106,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.autospace.notify.CarNotifications
 import kotlinx.coroutines.delay
-import java.text.DateFormat
 import java.util.Date
 
 /**
@@ -699,6 +698,15 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
 /** r97: the rail reuses the old bar's 64dp width and 4dp elevation;
  * the bar itself is gone. */
 internal val NAV_BAR_HEIGHT = 64.dp
+
+/**
+ * r103: the rail's icon width — GsIconButton's default size, and the
+ * size NavItem, the mic, the switcher, brightness, and quick settings
+ * all land on (app bitmap icons are 52dp, centered on the same line).
+ * The rail clock block takes this width so it shares the icon
+ * column's centerline instead of spanning the full 64dp rail.
+ */
+internal val NAV_BAR_ITEM_WIDTH = 48.dp
 internal val NAV_BAR_FLOAT_ELEVATION = 4.dp
 
 
@@ -816,8 +824,12 @@ private fun CarSideBar(
             // never push the clock (or, in Meridian mode, the
             // switcher square) off the frame.
             Box(Modifier.weight(1f).fillMaxWidth()) {
+                // r103: the scrolling column takes the full box width
+                // so its centered children actually center in the rail —
+                // without it the wrapped column lands at the box's
+                // top-start and every icon sits left.
                 Column(
-                    Modifier.verticalScroll(rememberScrollState()),
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -837,10 +849,12 @@ private fun CarSideBar(
 }
 
 /**
- * The bar's clock, stacked so every part always shows in full: the
- * old 52dp cell cut "9:53 AM" down to "9:53 A…" (titleSmall needs
- * ~60dp for "12:00 PM"). Digits on one line, the AM/PM marker under
- * them, battery under that, in any locale. Tapping opens the
+ * The bar's clock, digits only by design (r103): in a car the day
+ * marker is nearly always redundant, and digits-only is the
+ * narrowest form, so the block takes the icon width (48dp)
+ * instead of spanning the full rail — clock and icons share the
+ * centerline. Time on one line, battery under it, in any locale;
+ * 24-hour locales render exactly as before. Tapping opens the
  * dashboard; an unread dot rides on the corner. In Meridian mode
  * the block never takes the white square the active app gets — it
  * wears a faint white wash when selected, plain dark otherwise,
@@ -853,9 +867,7 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
     val unread by CarNotifications.unread.collectAsState()
     val clockSelected = navigator.current == CarScreen.Dashboard ||
         navigator.current is CarScreen.Notifications
-    val (clockTime, clockPeriod) = railClockParts(
-        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
-    )
+    val clockTime = railClockDigits(Date(now))
     val dimColor = if (meridian) {
         Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
     } else {
@@ -863,7 +875,7 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
     }
     GsIconBox(
         { navigator.dashboard() },
-        Modifier.fillMaxWidth(),
+        Modifier.width(NAV_BAR_ITEM_WIDTH),
         colors = if (meridian) {
             GsColors(
                 if (clockSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
@@ -876,10 +888,12 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
     ) {
         Box {
             if (unread > 0) {
+                // r103: 4dp, not 8dp — on the narrowed 48dp block
+                // the old offset pushed the dot off the button's edge.
                 Box(
                     Modifier
                         .align(Alignment.TopEnd)
-                        .offset(x = 8.dp, y = (-2).dp)
+                        .offset(x = 4.dp, y = (-2).dp)
                         .size(8.dp)
                         .clip(CircleShape)
                         .background(if (meridian) Color.White else MaterialTheme.colorScheme.primary),
@@ -892,14 +906,6 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                 )
-                if (clockPeriod != null) {
-                    Text(
-                        clockPeriod,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = dimColor,
-                        maxLines = 1,
-                    )
-                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -1080,9 +1086,7 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
     val (shownPins, runningEntries) = rememberBarAppLists(entries, pinnedIds, running)
     val clockSelected = navigator.current == CarScreen.Dashboard ||
         navigator.current is CarScreen.Notifications
-    val (clockTime, clockPeriod) = railClockParts(
-        DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)),
-    )
+    val clockTime = railClockDigits(Date(now))
     val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
     Surface(
         modifier = modifier,
@@ -1100,8 +1104,8 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         ) {
-            // Compact clock: time and marker on one line, battery
-            // beside them, unread dot on the corner.
+            // Compact clock (r103): digits-only time on one line,
+            // battery beside it, unread dot on the corner.
             GsIconBox(
                 { navigator.dashboard() },
                 colors = GsColors(
@@ -1131,14 +1135,6 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                         )
-                        if (clockPeriod != null) {
-                            Text(
-                                clockPeriod,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = dimColor,
-                                maxLines = 1,
-                            )
-                        }
                         if (battery.percent >= 0) {
                             Text(
                                 "${battery.percent}%",
