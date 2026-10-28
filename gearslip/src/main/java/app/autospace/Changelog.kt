@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            95, "0.4.84-alpha",
+            listOf(
+                "The browser's video pop-out button now looks like the other buttons in the browser bar — the same round frosted button — instead of standing out as a dark square.",
+            ),
+        ),
+        Release(
             94, "0.4.83-alpha",
             listOf(
                 "The media card's cover now shows whole and undistorted on its own softly blurred background, the card's buttons and progress bars take their colors from the cover, and the card no longer casts a shadow over the cover.",

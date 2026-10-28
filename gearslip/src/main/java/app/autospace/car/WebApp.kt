@@ -1124,7 +1124,22 @@ fun WebApp(content: String) {
                     // per-row Pop out is the precise
                     // alternative). Sits beside the finder
                     // button, same size, chrome not page.
-                    GsIconButton(Icons.Filled.PictureInPictureAlt, "Pop out video", { popOut(activeTab.foundMedia.first()) }, size = 56.dp, iconSize = 28.dp)
+                    // r137: same 44dp frost circle treatment as the
+                    // finder, tabs, saved, and fullscreen neighbors
+                    // (the old 56dp style-system square stood out
+                    // among the circles). Glyph kept as the
+                    // fullscreen player's PictureInPictureAlt.
+                    Box(
+                        Modifier.size(44.dp)
+                            .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
+                            .clickable { popOut(activeTab.foundMedia.first()) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.PictureInPictureAlt, "Pop out video",
+                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                        )
+                    }
                     Spacer(Modifier.width(8.dp))
                 }
                 if (activeTab.foundMedia.isNotEmpty()) {
