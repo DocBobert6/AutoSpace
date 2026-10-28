@@ -27,7 +27,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
@@ -153,6 +160,107 @@ fun artCardDrawsPerimeter(hasArt: Boolean): Boolean = !hasArt
  * today's 4dp shadow. Pure so it is unit-testable.
  */
 fun cardArtElevation(hasArt: Boolean): Dp = if (hasArt) 0.dp else 4.dp
+
+/**
+ * r139: how far the sharp cover's edges fade into its own blurred
+ * backdrop. 24dp is the judgment call: wide enough to read as a
+ * smooth blend rather than a hard rectangle cut, narrow enough
+ * that the middle of the cover stays fully sharp. One word changes
+ * it. Pure value so it is unit-testable.
+ */
+val SharpCoverEdgeFade: Dp = 24.dp
+
+/**
+ * r139: the edge-feather alpha profile, as a fraction of full
+ * opacity at a given distance from the cover's edge. Linear: 0 at
+ * the edge itself, 1 at (and beyond) the fade width, clamped on
+ * both sides. A non-positive fade width means no fade at all, so
+ * the profile is fully opaque everywhere. Pure so it is
+ * unit-testable; the gradient stops below are built from it, so
+ * the drawn fade and this profile cannot drift apart.
+ */
+fun edgeFeatherAlpha(distancePx: Float, fadePx: Float): Float =
+    if (fadePx <= 0f) 1f else (distancePx / fadePx).coerceIn(0f, 1f)
+
+/**
+ * r139: gradient stops for one feathered edge, from the gradient's
+ * inner end (fully opaque) to its outer end (fully transparent) or
+ * the reverse, following [edgeFeatherAlpha] at five evenly spaced
+ * points. Because the profile is linear, interpolating between
+ * these stops reproduces it exactly. Private: the profile itself,
+ * not the stop list, is the tested seam.
+ */
+private fun featherGradientStops(fadePx: Float, reversed: Boolean): Array<Pair<Float, Color>> {
+    val fractions = listOf(0f, 0.25f, 0.5f, 0.75f, 1f)
+    return fractions.map { fraction ->
+        val alpha = edgeFeatherAlpha(fraction * fadePx, fadePx)
+        fraction to if (reversed) Color.Black.copy(alpha = 1f - alpha)
+        else Color.Black.copy(alpha = alpha)
+    }.toTypedArray()
+}
+
+/**
+ * r139: fade the sharp cover's perimeter into the blurred backdrop
+ * underneath it, instead of letting the Fit rectangle cut against
+ * that backdrop. Four DstIn gradients, one per edge, each fading
+ * from fully opaque inside to fully transparent at the cover's
+ * edge; the blurred backdrop, drawn as a separate layer below,
+ * shows through the faded band, so the cover melts into its own
+ * background. The center of the cover is untouched: every gradient
+ * is fully opaque there. The Offscreen compositing layer is
+ * required, not decorative: without it DstIn would erase
+ * everything drawn underneath the sharp layer, including the
+ * blurred backdrop it is meant to blend into (same pattern as
+ * IntroScreen's fading list). The fade width is capped at half
+ * the layer's smaller side, so a very small layer can never
+ * invert a gradient. No-art cards never reach this modifier:
+ * the sharp layer is only drawn when art exists.
+ */
+fun Modifier.featherSharpCoverEdges(fade: Dp = SharpCoverEdgeFade): Modifier =
+    graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val fadePx = fade.toPx().coerceAtMost(minOf(size.width, size.height) / 2f)
+            if (fadePx > 0f) {
+                // Each gradient spans exactly its strip, so its
+                // stops run from the strip's inner edge to the
+                // cover's outer edge. Top strip: transparent at the
+                // top, opaque at the strip's inner edge; bottom and
+                // right strips are the reverse; left mirrors top.
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        *featherGradientStops(fadePx, reversed = false),
+                    ),
+                    topLeft = Offset.Zero,
+                    size = Size(size.width, fadePx),
+                    blendMode = BlendMode.DstIn,
+                )
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        *featherGradientStops(fadePx, reversed = true),
+                    ),
+                    topLeft = Offset(0f, size.height - fadePx),
+                    size = Size(size.width, fadePx),
+                    blendMode = BlendMode.DstIn,
+                )
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        *featherGradientStops(fadePx, reversed = false),
+                    ),
+                    topLeft = Offset.Zero,
+                    size = Size(fadePx, size.height),
+                    blendMode = BlendMode.DstIn,
+                )
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        *featherGradientStops(fadePx, reversed = true),
+                    ),
+                    topLeft = Offset(size.width - fadePx, 0f),
+                    size = Size(fadePx, size.height),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
 
 /**
  * r136: whether an album-art tint is strong enough to color the
@@ -350,10 +458,14 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
         // r136: sharp fitted cover over the blurred fill (see above).
         // Fit, never Crop or FillBounds: the cover keeps its own
         // proportions and shows whole. Null art draws nothing.
+        // r139: the sharp layer's edges feather into the blurred
+        // fill below (featherSharpCoverEdges), so the cover melts
+        // into its own background instead of cutting against it
+        // as a hard rectangle; the center stays fully sharp.
         sharpArt?.let {
             Image(
                 it, null,
-                Modifier.matchParentSize().clip(cardShape),
+                Modifier.matchParentSize().clip(cardShape).featherSharpCoverEdges(),
                 contentScale = ContentScale.Fit,
                 filterQuality = FilterQuality.Medium,
                 alpha = 1f,

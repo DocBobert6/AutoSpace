@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            97, "0.4.86-alpha",
+            listOf(
+                "The media card's cover now blends softly into its own blurred background at the edges instead of ending in a hard rectangle edge — the middle of the cover stays sharp and whole.",
+            ),
+        ),
+        Release(
             96, "0.4.85-alpha",
             listOf(
                 "The media card's background now follows the song that's playing instead of staying on the previous song's cover — the softly blurred background and the sharp cover always show the same song. Cards without art look exactly as before.",

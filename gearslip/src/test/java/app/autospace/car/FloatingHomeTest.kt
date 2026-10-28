@@ -148,6 +148,29 @@ class FloatingHomeTest {
         assertEquals(CircleShape, DefaultTransportShape)
     }
 
+    @Test
+    fun sharpCoverEdgeFeatherProfileIsLinearAndClamped() {
+        // r139: the fade profile the sharp layer's edge gradients
+        // are built from — 0 at the edge itself, 1 at (and beyond)
+        // the fade width, linear in between, clamped on both sides.
+        assertEquals(0f, edgeFeatherAlpha(0f, 24f), 0f)
+        assertEquals(0.5f, edgeFeatherAlpha(12f, 24f), 0f)
+        assertEquals(1f, edgeFeatherAlpha(24f, 24f), 0f)
+        assertEquals(1f, edgeFeatherAlpha(100f, 24f), 0f)
+        assertEquals(0f, edgeFeatherAlpha(-5f, 24f), 0f)
+        // A non-positive fade width means no fade: fully opaque.
+        assertEquals(1f, edgeFeatherAlpha(10f, 0f), 0f)
+        assertEquals(1f, edgeFeatherAlpha(10f, -3f), 0f)
+    }
+
+    @Test
+    fun sharpCoverEdgeFadeWidthIs24dp() {
+        // r139: the judgment-call width — wide enough to read as
+        // a smooth blend, narrow enough that the cover's middle
+        // stays fully sharp. One word changes it (and this pin).
+        assertEquals(24.dp, SharpCoverEdgeFade)
+    }
+
 
 
 
