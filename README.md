@@ -27,13 +27,19 @@ that mirrors the phone.
 
 ## Features
 
-- **Car interface.** Frost, Flat, Tactile, Edge, and Pitlane control styles,
-  with color schemes Neutral, Material You, Night, Pitlane, Circuit, and
-  Heritage, an independent Light / Dark / System appearance mode, and
-  Regular / Pitch dark surfaces (Pitch is pure black).
+- **Car interface.** Frost, Bare, Tactile, Ink, Pitlane, Verve, Horizon, Heirloom, Blueprint, Sector, Silhouette, and Morph control styles,
+  with color schemes Canvas, Material You, Nocturne, Pitlane, Circuit,
+  Heritage, Verve, and Horizon, an independent Light / Dark / System appearance mode,
+  Regular / Pitch dark surfaces (Pitch is pure black), and one-tap
+  style-and-scheme pairs for Pitlane, Verve, Heritage, Canvas, Circuit, Nocturne, and Material You.
   A flat alphabetical launcher with a pinned row, drag-to-reorder, and
-  sliders for icon, tile, and overall size. Quick brightness is two taps
-  away, from the nav bar or the dashboard, and dims the whole car screen.
+  sliders for icon, tile, and overall size. Icon packs from installed
+  third-party packs apply across the launcher and per app; system icons
+  are the default. Quick brightness is two taps
+  away, from the side rail or the dashboard, and dims the whole car screen.
+  Navigation uses a side rail instead of a bottom bar; with the Meridian
+  map theme the rail floats, and on narrow displays it becomes a floating
+  bottom pill.
 - **Phone calls.** Dial from a keypad, or search your contacts, then confirm
   before the call goes out. When a call comes in, answer or decline it on
   the car screen. An optional call-speaker toggle (off by default) tries
@@ -41,13 +47,21 @@ that mirrors the phone.
   because call routing belongs to the system dialer.
 - **Navigation.** AutoSpace hosts real Car App Library map apps on the car
   screen. Vela Maps is the default navigation app, with rough edges.
+  The Meridian map theme restyles AutoSpace's map chrome in dark teal;
+  the themed chrome matching your style and scheme stays the default.
+  Map panes collapse to a slim bar that expands on tap. During
+  navigation, the ETA pill sits low at the bottom; a docked media card
+  sits low too, stepping aside so it never covers the pill.
 - **Music.** Browse, play, and queue tracks from a car-enabled media app,
   with a Now Playing view, an Up Next queue, and lyrics. Type a search, and
   apps that accept one play the best match. Car skip buttons seek within
-  the video player and skip tracks outside it.
+  the video player and skip tracks outside it. Browse rows show a
+  fallback glyph when a node has no art.
 - **The web.** A browser with a floating frost bar, tabs, saved pages and
-  history, a strict popup blocker, text zoom, find-in-page, and an
-  open-on-phone handoff. The default search is no-AI DuckDuckGo
+  history, a strict popup blocker, reader mode, text zoom, find-in-page,
+  and an open-on-phone handoff. Full ad blocking is built in (EasyList,
+  EasyPrivacy, and the other standard lists, refreshed daily), with
+  per-host allow rules in the browser menu. The default search is no-AI DuckDuckGo
   (`noai.duckduckgo.com`). A media finder lists playable media the page
   exposes (direct files, HLS, DASH) and opens it in AutoSpace's own Media3
   player. Browser pages are never themed: no force-dark, no algorithmic
@@ -55,7 +69,10 @@ that mirrors the phone.
 - **Video player.** Speed, sleep timer, audio tracks, subtitles (with a
   style picker in car Settings), quality choices, pinch zoom and pan, and
   a stall watchdog. While driving, video shows its picture only after you
-  confirm you are a passenger; otherwise you hear the audio.
+  confirm you are a passenger; otherwise you hear the audio. A mini video
+  card shows the video's title (not its address), sizes small, large, or
+  fullscreen, drags while parked per session, and keeps its position when
+  you switch between the mini card and the full player, in both directions.
 - **Passenger gates.** Entering the browser or the video player while the
   car is moving asks "Are you driving?" "I'm a passenger" opens it
   normally; "Yes" closes the browser or drops video to audio-only. The
@@ -92,7 +109,8 @@ that mirrors the phone.
   stated in the replies themselves: ending an active call needs the
   dialer, and a new message can only be sent by replying to a thread that
   already exists. Emergency calls always ask for a spoken confirmation
-  first.
+  first. After a navigation reply, the assistant does not keep listening,
+  so music and talk in the car cannot cancel the trip.
 - **AI assistant (opt-in, bring your own key).** When local commands
   cannot answer, an AI assistant can: Groq is the default provider
   (`openai/gpt-oss-20b`), Gemini stays as an experimental provider.
@@ -103,7 +121,10 @@ that mirrors the phone.
   brightness, toggles, timers, readouts) are confirmed with you before
   they run, and emergency calls never go through the AI. The key is
   stored on the phone in the Android Keystore and never leaves it except
-  to the provider you chose.
+  to the provider you chose. The assistant remembers the conversation:
+  built-in spoken replies join the session context, so a follow-up like
+  "in more detail" keeps the place you already gave, and weather
+  answers honor the place you named.
 - **Messages and notifications.** New messages appear as a small card on
   the car screen. AutoSpace reads each one aloud, and you reply by voice
   or with a quick reply. Only messages, missed calls, alarms, and
@@ -112,11 +133,16 @@ that mirrors the phone.
   from any cloud account) next to the current and coming weather.
 - **Car controls.** Steering wheel buttons, control knobs, and D-pads
   all work.
-- **Experimental (off by default).** A floating media card over the full
-  map (bottom passenger side, dismissible for the session) and a home
-  widget column (weather, notifications digest, next event) on the driver
-  side. The widget column hides while a navigation panel or turn card is
-  showing, and returns on its own when it clears.
+- **Floating card and widgets.** The media card floats over the full map
+  (bottom passenger side, dismissible for the session) and is draggable
+  while parked, per session, or docked to its Start, Center, or End
+  position; during navigation a docked card sits low. A home widget
+  column (weather, notifications digest, next event) restacks around
+  turn cards and full-screen templates. While driving with navigation
+  on, the widget column hides while the car is moving; the rail's
+  widgets button recalls it at a glance. A live conversation widget
+  shows the ongoing exchange, themed to the assistant, with its own
+  dismiss. The Meridian map theme is a map-theme choice in settings.
 - **Car preview and couch testing.** The phone app previews the car UI,
   with its own settings page: screen size, density, preview-only theme,
   touch markers, simulated driving, and a test mode that fakes a car
@@ -154,9 +180,9 @@ that mirrors the phone.
   are active: Stable, Beta, and Alpha channels, with the channel default
   following the build stage (alpha builds default to Alpha; a channel
   you save yourself always wins). Release builds ship as GitHub releases
-  (see below); debug builds still ship only as GitHub Actions artifacts,
-  and the in-app updater never auto-checks a debug build — it checks only
-  when you tap Check now.
+  (see below). Debug builds no longer ship at all: CI runs the unit
+  tests only, and the in-app updater follows the Stable, Beta, and
+  Alpha channels.
 
 ## Verify your download
 
@@ -200,7 +226,7 @@ to `keystore.properties`, fill in your own values, and run
 `./gradlew :gearslip:assembleRelease`. Git ignores both the properties
 file and the keystore. Never commit a release key.
 
-Current line: 0.4.0-alpha, versionCode 11 (release package
+Current line: 0.4.55-alpha, versionCode 66 (release package
 `app.autospace`; debug builds install as `app.autospace.dev`).
 
 ## How AutoSpace talks to cars
