@@ -106,10 +106,12 @@ class VerveTest {
         assertTrue(light.springMotion)
         assertTrue(light.cardsUseStyleCorner)
         // Frost is still the default; besides Horizon (r79, Verve's
-        // sibling, which shares the spring flags deliberately), no other
-        // style carries Verve's spring flags.
+        // sibling, which shares the spring flags deliberately) and Meridian
+        // (r107, whose critically damped pressed spring and 16dp
+        // cardsUseStyleCorner are deliberate), no other style carries
+        // Verve's spring flags.
         assertEquals("frost", GsThemes.default.id)
-        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "horizon" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "horizon" && it.id != "meridian" }) {
             assertFalse(other.control.springMotion)
             assertFalse(other.control.cardsUseStyleCorner)
             assertFalse(other.control.light?.springMotion == true)
