@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            96, "0.4.85-alpha",
+            listOf(
+                "The media card's background now follows the song that's playing instead of staying on the previous song's cover — the softly blurred background and the sharp cover always show the same song. Cards without art look exactly as before.",
+            ),
+        ),
+        Release(
             95, "0.4.84-alpha",
             listOf(
                 "The browser's video pop-out button now looks like the other buttons in the browser bar — the same round frosted button — instead of standing out as a dark square.",

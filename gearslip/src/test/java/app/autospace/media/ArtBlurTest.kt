@@ -1,6 +1,7 @@
 package app.autospace.media
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -90,5 +91,37 @@ class ArtBlurTest {
         assertEquals("content://art/1", ArtBlur.cacheKey("content://art/1"))
         assertNull(ArtBlur.cacheKey(null))
         assertNull(ArtBlur.cacheKey(""))
+    }
+
+    @Test
+    fun cardBlurCacheKeyBindsToBitmapIdentity() {
+        // r138: the bug was a URI-keyed cache hit returning a previous
+        // track's blurred image for a new bitmap when the URI arriving
+        // with the new bitmap still named the previous track. The same
+        // URI with a different bitmap instance must therefore key
+        // differently, and the same URI with the same bitmap must key
+        // identically (no needless recompute for the same art).
+        val first = ArtBlur.cacheKeyFor("content://art/1", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 7)
+        val same = ArtBlur.cacheKeyFor("content://art/1", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 7)
+        val newBitmap = ArtBlur.cacheKeyFor("content://art/1", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 222, 7)
+        assertEquals(first, same)
+        assertNotEquals(first, newBitmap)
+    }
+
+    @Test
+    fun cardBlurCacheKeyBindsToBitmapGeneration() {
+        // r138: a bitmap mutated in place is a new image even though
+        // its instance is unchanged, so a risen generation id must
+        // also change the key.
+        val before = ArtBlur.cacheKeyFor("content://art/1", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 7)
+        val mutated = ArtBlur.cacheKeyFor("content://art/1", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 8)
+        assertNotEquals(before, mutated)
+    }
+
+    @Test
+    fun cardBlurCacheKeyRejectsBlankUriLikeCacheKey() {
+        // r138: URI-less art bypasses the cache, exactly as before.
+        assertNull(ArtBlur.cacheKeyFor(null, ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 7))
+        assertNull(ArtBlur.cacheKeyFor("", ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX, 111, 7))
     }
 }

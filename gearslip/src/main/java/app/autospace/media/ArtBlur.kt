@@ -86,6 +86,21 @@ object ArtBlur {
     fun cacheKey(artUri: String?): String? = artUri?.takeIf { it.isNotEmpty() }
 
     /**
+     * r138: cache key for a blurred image, bound to the bitmap it was
+     * blurred from as well as to its URI, radius, and working size.
+     * [bitmapIdentity] is System.identityHashCode of the source bitmap
+     * (a new track's bitmap is a new instance); [bitmapGeneration] is
+     * the bitmap's generation id (it rises when a bitmap is mutated in
+     * place). Either changing must change the key, so a URI that is
+     * unchanged or lags one track behind can never return a previous
+     * track's blurred image for a new bitmap. Null when the URI is
+     * null or blank, exactly like [cacheKey] — URI-less art bypasses
+     * the cache. Pure so it is unit-testable.
+     */
+    fun cacheKeyFor(artUri: String?, radius: Int, sampleMax: Int, bitmapIdentity: Int, bitmapGeneration: Int): String? =
+        cacheKey(artUri)?.let { "$it#r$radius#s$sampleMax#i$bitmapIdentity#g$bitmapGeneration" }
+
+    /**
      * Separable box blur over ARGB pixels, edges clamped (the border
      * repeats rather than darkening, so a bright cover edge stays bright).
      * Two sliding-window passes, horizontal then vertical, so cost is
@@ -174,8 +189,12 @@ object ArtBlur {
      */
     fun forArt(art: Bitmap?, artUri: Uri?, radius: Int = BLUR_RADIUS, sampleMax: Int = SAMPLE_MAX): ImageBitmap? {
         if (art == null) return null
-        val key = artUri?.toString()?.let { cacheKey(it) }
-        val cacheKeyWithRadius = key?.let { "$it#r$radius#s$sampleMax" }
+        // r138: bind the cache key to the bitmap, not only to its URI.
+        // A URI-keyed hit could return a previous track's blurred image
+        // for a new bitmap when the URI arriving with the new bitmap
+        // still named the previous track — the floating card's backdrop
+        // lagging exactly one track behind its sharp cover on 0.4.83.
+        val cacheKeyWithRadius = cacheKeyFor(artUri?.toString(), radius, sampleMax, System.identityHashCode(art), art.generationId)
         if (cacheKeyWithRadius != null) cache.get(cacheKeyWithRadius)?.let { return it }
         val readable = (if (art.config == Bitmap.Config.HARDWARE) {
             art.copy(Bitmap.Config.ARGB_8888, false)

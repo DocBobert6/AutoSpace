@@ -282,16 +282,23 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
     // r60 (A27): blurred background, computed once per art change —
-    // remember keys on the resolved art and its URI, and URI art is
-    // additionally cached in ArtBlur, so track changes do not jank and
-    // leaving and re-entering composition does not recompute. Null art
-    // (or a failed blur) means no background image: the card keeps
-    // exactly today's background. r129: the card passes ArtBlur's
-    // slight radius, not the heavy default — the art must stay
-    // recognizable, not wash out to a tint. r133: the card also passes
-    // ArtBlur's own 256px working size — the 64px copy upscaled 6–12x
-    // was the wash, not the radius.
-    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX) } }
+    // remember keys on the resolved art, and URI art is additionally
+    // cached in ArtBlur, so track changes do not jank and leaving and
+    // re-entering composition does not recompute. Null art (or a
+    // failed blur) means no background image: the card keeps exactly
+    // today's background. r129: the card passes ArtBlur's slight
+    // radius, not the heavy default — the art must stay recognizable,
+    // not wash out to a tint. r133: the card also passes ArtBlur's
+    // own 256px working size — the 64px copy upscaled 6–12x was the
+    // wash, not the radius. r138: the blurred backdrop follows the
+    // SAME bitmap the sharp layer uses, keyed by that bitmap alone —
+    // the URI is no longer a composition key, and ArtBlur's cache key
+    // is now bound to the bitmap's identity and generation, so a URI
+    // that is unchanged or lags one track behind can never return a
+    // previous track's blurred image for a new bitmap. A track change
+    // that changes the art bitmap changes the backdrop in the same
+    // composition as the sharp cover.
+    val blurredArt = remember(art) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX) } }
     // r136: the sharp cover, whole and undistorted, plus the palette
     // derived from the same art. The blurred layer below is drawn
     // cropped to the card's wide aspect, so a square cover lost its
