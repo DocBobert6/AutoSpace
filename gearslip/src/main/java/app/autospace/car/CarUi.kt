@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
@@ -1007,11 +1006,15 @@ private fun meridianBarButtonColors(meridian: Boolean): GsColors =
     if (meridian) GsColors(Color.Transparent, Color.White) else gsColors(GsTone.Neutral)
 
 /**
- * r99: the app-switcher square at the bottom of the Meridian bar —
- * the photo's square-outline icon, opening the app grid. It wears
- * the bar's selection treatment (white square when the grid is
- * open, plain dark otherwise); the outline follows the content
- * color, so it reads white on dark and dark on the white square.
+ * r102: the app-switcher glyph at the bottom of the Meridian bar
+ * (and the trailing end of the Meridian pill — one component serves
+ * both): a 2x2 grid of four filled squares, opening the app grid.
+ * It wears the bar's selection treatment (white square when the
+ * grid is open, plain dark otherwise); the squares follow the
+ * content color, so they read white on dark and dark on the white
+ * square. Deliberately not a copy of the widgets button above it:
+ * that glyph (Icons.Filled.Widgets) carries a diamond in its
+ * top-right cell, while this grid is four equal squares.
  */
 @Composable
 private fun MeridianSwitcherSquare(navigator: CarNavigator) {
@@ -1021,12 +1024,24 @@ private fun MeridianSwitcherSquare(navigator: CarNavigator) {
         colors = navColors(selected, meridian = true),
         latched = selected,
     ) {
-        Box(
-            Modifier
-                .padding(NAV_ITEM_PADDING)
-                .size(32.dp)
-                .border(2.dp, LocalContentColor.current, RoundedCornerShape(4.dp)),
-        )
+        Column(
+            Modifier.padding(NAV_ITEM_PADDING).size(32.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            repeat(2) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(2) {
+                        Box(
+                            Modifier.size(14.dp)
+                                .background(
+                                    LocalContentColor.current,
+                                    RoundedCornerShape(2.dp),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

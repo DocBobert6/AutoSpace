@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            69, "0.4.58-alpha",
+            listOf(
+                "In Meridian mode the app-drawer button at the bottom of the bar is now four filled squares instead of an empty outline, so it reads as a real icon next to the others.",
+            ),
+        ),
+        Release(
             68, "0.4.57-alpha",
             listOf(
                 "Icon packs: the picker no longer lists dead entries — Samsung and One UI are gone, and so is any pack with no usable icons — and more of your phone's icon packs now show up.",
