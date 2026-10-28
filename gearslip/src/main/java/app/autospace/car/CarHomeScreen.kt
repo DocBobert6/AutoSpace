@@ -287,6 +287,14 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     // (LocalDensity.current) for the size callback.
                     val clearanceCardWidth = floatingCardWidth(maxWidth)
                     val clearanceDensity = LocalDensity.current
+                    // r106 fix: the drag handler below lives in the inner
+                    // Box content, which has neither the scope receiver
+                    // (maxWidth) nor a composable context — same rule as
+                    // the r77 captures above — so the frame size is
+                    // captured here, in the scope, and the handler reads
+                    // the locals.
+                    val clearanceFrameWidth = maxWidth.value
+                    val clearanceFrameHeight = maxHeight.value
                     Box(
                         Modifier.fillMaxSize().padding(
                             start = MediaCardSlotPadDp.dp, top = MediaCardSlotPadDp.dp,
@@ -331,10 +339,10 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                                                     mediaCardDragOffsetDp.y + dy,
                                                     mediaCardAlignedLeftDp(
                                                         clearanceAlignment,
-                                                        maxWidth.value, mediaCardDragSizeDp.x, MediaCardSlotPadDp,
+                                                        clearanceFrameWidth, mediaCardDragSizeDp.x, MediaCardSlotPadDp,
                                                     ),
-                                                    maxHeight.value - MediaCardSlotPadDp - mediaCardDragSizeDp.y,
-                                                    maxWidth.value, maxHeight.value,
+                                                    clearanceFrameHeight - MediaCardSlotPadDp - mediaCardDragSizeDp.y,
+                                                    clearanceFrameWidth, clearanceFrameHeight,
                                                     mediaCardDragSizeDp.x, mediaCardDragSizeDp.y,
                                                     MediaCardDragMinVisibleDp,
                                                 )
