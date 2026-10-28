@@ -83,10 +83,11 @@ class VerveTest {
     @Test
     fun verveStyleIsBuiltInWith24dpCornerAndSpringFlags() {
         assertTrue(GsThemes.builtIn.any { it.id == "verve" && it.name == "Verve" })
-        // r79 appends Horizon last (pinned by HorizonTest) and r107
-        // appends Meridian last (pinned by MeridianTest); Verve keeps
-        // its order before both, and nothing else moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        // r79 appends Horizon last (pinned by HorizonTest), r107
+        // appends Meridian last (pinned by MeridianTest), and r108
+        // appends Heirloom last; Verve keeps its order before all
+        // three, and nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 4])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())

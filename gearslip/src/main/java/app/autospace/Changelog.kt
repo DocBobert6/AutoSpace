@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            75, "0.4.64-alpha",
+            listOf(
+                "Heritage has a button style of its own now: Heirloom, with soft edges and a stitched leather trim in warm cream, plus a Heritage + Heirloom pair that sets both at once.",
+            ),
+        ),
+        Release(
             74, "0.4.63-alpha",
             listOf(
                 "Meridian is now a full theme: a dark color scheme and a flat 16dp button style of its own, plus a Meridian pair that sets both at once. The map look setting is now called Navigation style, and in Meridian mode the bar's icons sit clear of the clock and battery line.",

@@ -51,6 +51,17 @@ data class ControlLook(
      */
     val bevelTop: Float = 0f,
     val bevelBottom: Float = 0f,
+    /**
+     * r108 (Heirloom only): a dashed stitch line inset from the edge,
+     * drawn as part of the button background in gsSurface (under
+     * content, like the weave) — never an overlay widget. Alpha of
+     * the stitch line; 0 for none. The line itself is warm cream on
+     * dark containers and dark brass on light ones (see gsSurface),
+     * so it stays visible on cream fills.
+     */
+    val stitchAlpha: Float = 0f,
+    /** Inset of the stitch line from the control edge; 0 for none. */
+    val stitchInset: Dp = 0.dp,
     /** How far the face drops while pressed; 0 for none. */
     val sink: Dp = 0.dp,
     /**
@@ -531,6 +542,61 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Heirloom (2026-10-28, r108; picked by Robert 2026-10-27 ~17:57
+     * as "Leather stitch", renamed Heirloom in the 2026-10-27 ~19:22
+     * name review — the style ships named Heirloom, and no
+     * "Leather stitch" label ever reached the code): the Heritage
+     * scheme's own button style. A soft, leather-trim look: a
+     * 22dp corner (inside the picked 20–24dp range), a soft
+     * Tactile-class bevel (0.20 top / 0.25 bottom — Tactile itself
+     * is 0.16/0.22 dark, 0.24/0.30 light, so this sits in its
+     * class, not Edge's hard 0.35/0.45 or Pitlane's 0.50/0.60),
+     * a soft-medium 4dp shadow, and the ONE new draw routine: a
+     * dashed stitch hairline inset 2dp from the edge in warm
+     * cream (see ControlLook.stitchAlpha / stitchInset and the
+     * stitch block in gsSurface). No weave, no rivets, no
+     * grain, no LED, no bat toggle — the stitch is the whole
+     * material story. The face is flat (topLight 0), so the hold
+     * marker is the DOT. The light variant steps the bevel up
+     * exactly as Tactile's does (0.24/0.30) and softens the
+     * shadow alpha, so the edge reads on cream without shouting.
+     * Cards keep their fallback shapes (cardsUseStyleCorner is
+     * false — the pick covers buttons, not cards).
+     */
+    val Heirloom = GsTheme(
+        id = "heirloom",
+        name = "Heirloom",
+        control = ControlLook(
+            corner = 22.dp,
+            topLight = 0f,
+            bevelTop = 0.20f,
+            bevelBottom = 0.25f,
+            shadow = 4.dp,
+            shadowAlpha = 0.28f,
+            stitchAlpha = 0.9f,
+            stitchInset = 2.dp,
+            pressedDim = 0.22f,
+            pressedScale = 0.95f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                corner = 22.dp,
+                topLight = 0f,
+                bevelTop = 0.24f,
+                bevelBottom = 0.30f,
+                shadow = 4.dp,
+                shadowAlpha = 0.22f,
+                stitchAlpha = 0.9f,
+                stitchInset = 2.dp,
+                pressedDim = 0.22f,
+                pressedScale = 0.95f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -548,7 +614,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r107: Meridian appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian)
+    // r108: Heirloom appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

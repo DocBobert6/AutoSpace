@@ -168,6 +168,39 @@ class GsThemeTest {
     }
 
     @Test
+    fun heirloomIsBuiltInWithStitchSpec() {
+        // r108: Heritage's own style, appended last, same rule as
+        // Verve/Horizon/Meridian — nobody moves to it automatically.
+        // The working name was "Leather stitch"; the style ships
+        // named Heirloom and no "Leather stitch" label exists in code.
+        assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn.last())
+        assertEquals("heirloom", GsThemes.byId("heirloom").id)
+        val look = GsThemes.Heirloom.control
+        assertEquals(22, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0.20f, look.bevelTop, 0.001f)
+        assertEquals(0.25f, look.bevelBottom, 0.001f)
+        assertEquals(4, look.shadow.value.toInt())
+        assertEquals(0.28f, look.shadowAlpha, 0.001f)
+        assertEquals(0.9f, look.stitchAlpha, 0.001f)
+        assertEquals(2, look.stitchInset.value.toInt())
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        assertFalse(look.rectangularButtons)
+        assertFalse(look.cardsUseStyleCorner)
+        assertFalse(look.springMotion)
+        val light = checkNotNull(look.light)
+        assertEquals(22, light.corner.value.toInt())
+        assertEquals(0.24f, light.bevelTop, 0.001f)
+        assertEquals(0.30f, light.bevelBottom, 0.001f)
+        assertEquals(0.9f, light.stitchAlpha, 0.001f)
+        assertEquals(2, light.stitchInset.value.toInt())
+        assertFalse(light.rivets)
+    }
+
+    @Test
     fun newSchemeSlotsExistAndFrostIsStillDefault() {
         // Stored by these exact names in car_scheme (r35: the palette
         // axis; the mode lives in car_appearance_mode); a rename of the

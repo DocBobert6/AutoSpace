@@ -57,6 +57,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.lerp
@@ -378,6 +379,35 @@ fun Modifier.gsSurface(
                     ),
                     shape,
                 )
+            }
+        }
+        // r108 (Heirloom only): the leather stitch — a dashed
+        // hairline inset from the edge, drawn as part of the button
+        // background (under content, like the weave), never as an
+        // overlay widget. Warm cream on dark containers; on light
+        // containers the same warm family in dark brass (the light
+        // Heritage primary), so the stitch stays visible on cream
+        // fills, where cream-on-cream would vanish — the weave
+        // picks its thread the same way, by container luminance.
+        // The pressed dim overlays everything at the end of
+        // gsSurface, so a pressed control dims its stitch with the
+        // rest of the face but never drops it.
+        if (look.stitchAlpha > 0f && look.stitchInset > 0.dp) {
+            val stitch = if (effContainer.luminance() > 0.5f) Color(0xFF6E5613) else Color(0xFFF5EEDD)
+            m = m.drawBehind {
+                val insetPx = look.stitchInset.toPx()
+                val dash = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 3.dp.toPx()), 0f)
+                val insetSize = Size(
+                    (size.width - insetPx * 2).coerceAtLeast(0f),
+                    (size.height - insetPx * 2).coerceAtLeast(0f),
+                )
+                translate(insetPx, insetPx) {
+                    drawOutline(
+                        shape.createOutline(insetSize, layoutDirection, this),
+                        stitch.copy(alpha = look.stitchAlpha),
+                        style = Stroke(width = 1.dp.toPx(), pathEffect = dash),
+                    )
+                }
             }
         }
         // r26: latched LED — a single lit yellow dot at the top-end

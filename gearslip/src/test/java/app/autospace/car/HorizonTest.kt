@@ -92,9 +92,10 @@ class HorizonTest {
     @Test
     fun horizonStyleIsBuiltInBeforeMeridianWith28dpCornerPillButtonsAnd065Spring() {
         assertTrue(GsThemes.builtIn.any { it.id == "horizon" && it.name == "Horizon" })
-        // r107 appends Meridian last (pinned by MeridianTest); Horizon
-        // keeps the slot immediately before it.
-        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        // r107 appends Meridian last (pinned by MeridianTest) and
+        // r108 appends Heirloom last; Horizon keeps its slot, third
+        // from last, and nothing else moved.
+        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("horizon", GsThemes.byId("horizon").id)
         val look = GsThemes.Horizon.control
         assertEquals(28, look.corner.value.toInt())
