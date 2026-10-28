@@ -122,8 +122,9 @@ class HorizonTest {
             assertFalse(other.control.pillButtons)
             assertFalse(other.control.light?.pillButtons == true)
         }
-        // Verve keeps its own spring damping (the shared default).
-        assertEquals(0.7f, GsThemes.Verve.control.springDamping, 0.001f)
+        // r100 (Verve Refined): Verve passes its own 1.0 damping
+        // (critically damped, no overshoot); the shared default stays 0.7.
+        assertEquals(1.0f, GsThemes.Verve.control.springDamping, 0.001f)
     }
 
     @Test
