@@ -17,13 +17,14 @@ import org.junit.Test
 class WorkshopTest {
 
     @Test
-    fun workshopSchemeIsAppendedLastAndNamedWorkshop() {
+    fun workshopSchemeIsAppendedBeforeAuroraAndNamedWorkshop() {
         assertEquals(ColorScheme.WORKSHOP, ColorScheme.valueOf("WORKSHOP"))
         assertEquals("Workshop", ColorScheme.WORKSHOP.displayName)
-        assertEquals(ColorScheme.WORKSHOP, colorSchemes.last())
+        assertEquals(ColorScheme.WORKSHOP, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.WORKSHOP))
-        // Meridian is no longer last, but nothing else moved.
-        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 2])
+        // r143 appends Aurora Field last (pinned by AuroraTest);
+        // Meridian is third from last, and nothing else moved.
+        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 3])
         // No legacy install migrates onto Workshop by accident.
         assertFalse(isLegacyThemeName("WORKSHOP"))
     }

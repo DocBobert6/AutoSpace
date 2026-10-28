@@ -85,6 +85,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.NavBarItemAlpha
 import app.autospace.car.theme.GsIconBox
+import app.autospace.car.theme.auroraCardRim
 import app.autospace.car.theme.blueprintCardRing
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
@@ -203,6 +204,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.HORIZON -> horizonScheme(dark)
         ColorScheme.MERIDIAN -> meridianScheme()
         ColorScheme.WORKSHOP -> workshopScheme(dark)
+        ColorScheme.AURORA_FIELD -> auroraFieldScheme(dark)
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -823,7 +825,7 @@ private fun CarSideBar(
     // and bottom, so the rail stretches closer to both edges while
     // still floating.
     Surface(
-        modifier = if (meridian) {
+        modifier = (if (meridian) {
             modifier.padding(
                 start = NAV_BAR_SIDE_FLOAT,
                 top = MERIDIAN_RAIL_VERTICAL_FLOAT,
@@ -832,7 +834,7 @@ private fun CarSideBar(
             ).fillMaxHeight()
         } else {
             modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight()
-        },
+        }).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
         shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = if (meridian) {
             Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha)
@@ -1180,7 +1182,7 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
     val clockTime = railClockDigits(Date(now))
     val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
     Surface(
-        modifier = modifier.blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)),
+        modifier = modifier.blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
         shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
@@ -1935,6 +1937,99 @@ private fun workshopScheme(dark: Boolean): androidx.compose.material3.ColorSchem
         scrim = androidx.compose.ui.graphics.Color(0xFF000000),
     )
 }
+/**
+ * Aurora Field (r143, the Frutiger Aero scheme): deep ocean dark
+ * (#0A1F2E bg, pale aqua text, spring-green primary with ocean
+ * text at 7.77:1, sky secondary with ocean text at 7.85:1,
+ * lime tertiary with black text at 13.93:1) and pale aqua
+ * light (#E8F6F3 bg, ocean text, the same three accents —
+ * lime on pale aqua is only 1.36:1, so tertiary stays on
+ * small accents in light mode, never small text on pale
+ * aqua; the onTertiary pair, black on lime at 13.93:1,
+ * carries tertiary-fill text). Cards dark #122E3D, light
+ * #DFF2EC. The container steps are derived, not spec:
+ * each variant steps between its background and its card
+ * color. Aurora Field does NOT force dark (see
+ * schemeForcesDark): it follows the mode control like Verve
+ * and Horizon, so both variants ship; Auto night still
+ * overrides to NIGHT like every scheme. Accents are for
+ * icons, selection and controls, never body text except via
+ * the paired on* colors.
+ */
+private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+    return if (!dark) androidx.compose.material3.lightColorScheme(
+        primary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryLight),
+        onPrimary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onPrimaryLight),
+        primaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryContainerLight),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onPrimaryContainerLight),
+        secondary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.secondaryLight),
+        onSecondary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSecondaryLight),
+        secondaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.secondaryContainerLight),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSecondaryContainerLight),
+        tertiary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.tertiaryLight),
+        onTertiary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onTertiaryLight),
+        tertiaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.tertiaryContainerLight),
+        onTertiaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onTertiaryContainerLight),
+        error = androidx.compose.ui.graphics.Color(0xFFBA1A1A),
+        onError = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+        background = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundLight),
+        onBackground = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceLight),
+        surface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundLight),
+        onSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceLight),
+        surfaceVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.surfaceVariantLight),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceVariantLight),
+        outline = androidx.compose.ui.graphics.Color(AuroraFieldPalette.outlineLight),
+        outlineVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.outlineVariantLight),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundLight),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFFE2F1EA),
+        surfaceContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.surfaceVariantLight),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFFD8EADF),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFFC9DFD2),
+        surfaceDim = androidx.compose.ui.graphics.Color(0xFFC9DFD2),
+        surfaceBright = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundLight),
+        surfaceTint = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryLight),
+        inverseSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceLight),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceDark),
+        inversePrimary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryDark),
+        scrim = androidx.compose.ui.graphics.Color(0xFF000000),
+    ) else androidx.compose.material3.darkColorScheme(
+        primary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryDark),
+        onPrimary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onPrimaryDark),
+        primaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryContainerDark),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onPrimaryContainerDark),
+        secondary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.secondaryDark),
+        onSecondary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSecondaryDark),
+        secondaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.secondaryContainerDark),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSecondaryContainerDark),
+        tertiary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.tertiaryDark),
+        onTertiary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onTertiaryDark),
+        tertiaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.tertiaryContainerDark),
+        onTertiaryContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onTertiaryContainerDark),
+        error = androidx.compose.ui.graphics.Color(0xFFFF453A),
+        onError = androidx.compose.ui.graphics.Color(0xFFFFFFFF),
+        background = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundDark),
+        onBackground = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceDark),
+        surface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundDark),
+        onSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceDark),
+        surfaceVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.surfaceVariantDark),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceVariantDark),
+        outline = androidx.compose.ui.graphics.Color(AuroraFieldPalette.outlineDark),
+        outlineVariant = androidx.compose.ui.graphics.Color(AuroraFieldPalette.outlineVariantDark),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundDark),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF0E2836),
+        surfaceContainer = androidx.compose.ui.graphics.Color(AuroraFieldPalette.surfaceVariantDark),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF16333F),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF1D3E4C),
+        surfaceDim = androidx.compose.ui.graphics.Color(AuroraFieldPalette.backgroundDark),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF1D3E4C),
+        surfaceTint = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryDark),
+        inverseSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceDark),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(AuroraFieldPalette.onSurfaceLight),
+        inversePrimary = androidx.compose.ui.graphics.Color(AuroraFieldPalette.primaryLight),
+        scrim = androidx.compose.ui.graphics.Color(0xFF000000),
+    )
+}
+
 
 /**
  * Circuit (r23, final name decided 2026-10-25): Robert's confirmed palette,

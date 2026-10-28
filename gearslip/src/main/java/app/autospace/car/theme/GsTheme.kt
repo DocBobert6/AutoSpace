@@ -328,6 +328,34 @@ data class ControlLook(
     val machinedRimTopAlpha: Float = 0f,
     val machinedRimBottomAlpha: Float = 0f,
     /**
+     * The diagonal sheen (r143, Aurora only): a white band at
+     * [sheenAngleDegrees] across the face, white at [sheenAlpha]
+     * in the band's middle fading to transparent at its edges
+     * (see the sheen block in gsSurface). Pressed, the band
+     * rises to [sheenPressedAlpha]; latched, it stays at rest
+     * alpha and the glow takes the scheme primary instead (see
+     * latchedPrimaryTint). 0 for none — every other style
+     * draws no sheen.
+     */
+    val sheenAlpha: Float = 0f,
+    val sheenPressedAlpha: Float = 0f,
+    val sheenAngleDegrees: Float = 0f,
+    /**
+     * The uniform white rim (r143, Aurora only): a 1dp border,
+     * white at [whiteRimAlpha] all the way around (see the
+     * white-rim block in gsSurface and auroraCardRim). 0 for
+     * none — every other style draws no white rim.
+     */
+    val whiteRimAlpha: Float = 0f,
+    /**
+     * The shadow's scheme-primary tint strength (r143, Aurora
+     * only): 0 draws the usual black soft shadow; above 0 the
+     * shadow color blends from black toward the scheme primary
+     * by this fraction (see the shadow block in gsSurface).
+     * The first tinted shadow in the tree.
+     */
+    val shadowTintStrength: Float = 0f,
+    /**
      * r142 (Foundry only): the shadow while pressed or latched.
      * gsSurface interpolates the shadow elevation from [shadow]
      * at rest to this value as the face goes down (see the
@@ -1143,6 +1171,69 @@ object GsThemes {
             ),
         ),
     )
+    /**
+     * Aurora (2026-10-28, r143; the Frutiger Aero style
+     * picked for the Aurora Field + Aurora pair): the Aurora
+     * Field scheme's own button style. A translucent, airy
+     * look: a 10dp corner, a translucent scheme fill at 0.75
+     * alpha (see containerAlpha), and the THREE new draw
+     * routines: a diagonal sheen — a white band at 45 degrees,
+     * alpha 0.22, fading to transparent at the band's edges
+     * (see ControlLook.sheenAlpha and the sheen block in
+     * gsSurface); a uniform 1dp white rim at 0.5 alpha; and a
+     * shadow 8dp at 0.25 alpha with a faint scheme-primary
+     * tint (strength 0.25 — the first tinted shadow in the
+     * tree). Pressed: the sheen rises to 0.30 and the face
+     * dims 0.10 (pressedDim); the pressed scale stays the
+     * tree default, since the pick covers dim + sheen, not
+     * scale. Latched: the glow takes the scheme primary, the
+     * sheen stays at rest alpha. The face is flat enough that
+     * the hold marker is the DOT. Cards get translucency +
+     * rim + sheen, NO gloss-style band of their own (see
+     * auroraCardColor / auroraCardRim / auroraCardSheen in GsKit) — the sheen tints the
+     * fill behind the content, never the text. Rail and pill
+     * surfaces get rim + translucency only, NO sheen (see
+     * CarSideBar / CarMeridianPill) — their frosted 0.88 fill
+     * is already translucent, so it keeps its pinned alpha.
+     * Cards keep their fallback corners (cardsUseStyleCorner
+     * is false — the pick covers buttons, not cards).
+     * Watch-out, stated honestly: on bright map areas the
+     * 0.75 fill can read thin — one word from Robert raises
+     * it to 0.85, and it is not changed silently.
+     */
+    val Aurora = GsTheme(
+        id = "aurora",
+        name = "Aurora",
+        control = ControlLook(
+            corner = 10.dp,
+            containerAlpha = 0.75f,
+            shadow = 8.dp,
+            shadowAlpha = 0.25f,
+            shadowTintStrength = 0.25f,
+            sheenAlpha = 0.22f,
+            sheenPressedAlpha = 0.30f,
+            sheenAngleDegrees = 45f,
+            whiteRimAlpha = 0.5f,
+            pressedDim = 0.10f,
+            latchedPrimaryTint = true,
+            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                corner = 10.dp,
+                containerAlpha = 0.75f,
+                shadow = 8.dp,
+                shadowAlpha = 0.25f,
+                shadowTintStrength = 0.25f,
+                sheenAlpha = 0.22f,
+                sheenPressedAlpha = 0.30f,
+                sheenAngleDegrees = 45f,
+                whiteRimAlpha = 0.5f,
+                pressedDim = 0.10f,
+                latchedPrimaryTint = true,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
+        ),
+    )
+
 
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
@@ -1173,7 +1264,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r142: Foundry appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry)
+    // r143: Aurora appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

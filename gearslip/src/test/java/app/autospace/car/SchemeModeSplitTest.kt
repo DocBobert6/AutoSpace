@@ -60,7 +60,7 @@ class SchemeModeSplitTest {
         }
         // Every other scheme: Light forces light, Dark forces dark,
         // System defers to the phone — in both phone states.
-        val following = listOf(ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.CIRCUIT, ColorScheme.HERITAGE, ColorScheme.VERVE, ColorScheme.WORKSHOP)
+        val following = listOf(ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.CIRCUIT, ColorScheme.HERITAGE, ColorScheme.VERVE, ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD)
         for (scheme in following) {
             assertFalse(resolveDark(scheme, AppearanceMode.LIGHT, true))
             assertFalse(resolveDark(scheme, AppearanceMode.LIGHT, false))
@@ -88,14 +88,15 @@ class SchemeModeSplitTest {
     fun pickerContentsArePalettesAndModesOnly() {
         // The scheme picker holds exactly the palettes, in order (r48
         // appends Verve second-to-last; r79 appends Horizon; r107
-        // appends Meridian; r142 appends Workshop last); the mode
+        // appends Meridian; r142 appends Workshop; r143 appends
+        // Aurora Field last); the mode
         // control holds exactly Light / Dark / System.
         assertEquals(
             listOf(
                 ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.NIGHT,
                 ColorScheme.PITLANE, ColorScheme.CIRCUIT, ColorScheme.HERITAGE,
                 ColorScheme.VERVE, ColorScheme.HORIZON, ColorScheme.MERIDIAN,
-                ColorScheme.WORKSHOP,
+                ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD,
             ),
             colorSchemes,
         )
@@ -109,7 +110,7 @@ class SchemeModeSplitTest {
         // r113: the Night scheme's picker label is Nocturne (label
         // only — the stored enum name stays NIGHT).
         assertEquals(
-            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop"),
+            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop", "Aurora Field"),
             colorSchemes.map { it.displayName },
         )
         assertEquals(

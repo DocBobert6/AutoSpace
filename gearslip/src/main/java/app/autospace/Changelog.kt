@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            101, "0.4.90-alpha",
+            listOf(
+                "New look: Aurora Field + Aurora — deep ocean and pale aqua colors with a spring-green primary, and translucent buttons with a diagonal sheen, a white rim, and a softly green-tinted shadow.",
+            ),
+        ),
+        Release(
             100, "0.4.89-alpha",
             listOf(
                 "New look: Workshop + Foundry — deep espresso and parchment colors with brass, copper, and olive accents, and brushed-metal buttons with a gloss band and a machined rim.",

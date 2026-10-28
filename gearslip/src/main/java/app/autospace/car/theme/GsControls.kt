@@ -529,6 +529,16 @@ fun Modifier.gsSurface(
     val cornerNow by animateDpAsState(morphTarget, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(110), label = "morph")
     val drawShape: Shape = if (morphBase != null) RoundedCornerShape(cornerNow) else shape
     var m = this
+    // r143 (Aurora only): the first tinted shadow — the soft
+    // shadow's black blends toward the scheme primary by
+    // shadowTintStrength. Read here, in the composable body:
+    // the drawBehind scope below cannot call MaterialTheme,
+    // so the blended color is captured as a plain value.
+    val shadowColor = if (look.shadowTintStrength > 0f) {
+        lerp(Color.Black, MaterialTheme.colorScheme.primary, look.shadowTintStrength)
+    } else {
+        Color.Black
+    }
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
         m = m.drawBehind {
             if (look.pressedShadow > 0.dp) {
@@ -538,9 +548,9 @@ fun Modifier.gsSurface(
                 // instead of collapsing to nothing like every
                 // other style.
                 val elevationNow = look.pressedShadow.toPx() + (look.shadow.toPx() - look.pressedShadow.toPx()) * lift
-                drawSoftShadow(drawShape, elevationNow, look.shadowAlpha, 1f)
+                drawSoftShadow(drawShape, elevationNow, look.shadowAlpha, 1f, shadowColor)
             } else {
-                drawSoftShadow(drawShape, look.shadow.toPx(), look.shadowAlpha * lift, lift)
+                drawSoftShadow(drawShape, look.shadow.toPx(), look.shadowAlpha * lift, lift, shadowColor)
             }
         }
     }
@@ -636,6 +646,41 @@ fun Modifier.gsSurface(
                 )
             }
         }
+        // Diagonal sheen (r143, Aurora only): a white band at
+        // sheenAngleDegrees across the face, white at the band's
+        // middle fading to transparent at its edges. Pressed,
+        // the band rises to sheenPressedAlpha; latched, it stays
+        // at rest alpha (the latched glow takes the primary
+        // instead, see latchedPrimaryTint). Cards never reach
+        // gsSurface, so they never draw this band — see
+        // auroraCardSheen for the card rule. Rail/pill surfaces
+        // are bar surfaces, not controls, so they never draw it
+        // either. The gradient runs corner to corner through
+        // the face center, so the band reads diagonal at any
+        // control size.
+        if (look.sheenAlpha > 0f) {
+            val sheenBase = if (pressed) look.sheenPressedAlpha else look.sheenAlpha
+            val angleRad = Math.toRadians(look.sheenAngleDegrees.toDouble()).toFloat()
+            val dx = cos(angleRad)
+            val dy = -sin(angleRad)
+            m = m.drawBehind {
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val k = maxOf(size.width, size.height) / 2f
+                drawRect(
+                    Brush.linearGradient(
+                        0f to Color.Transparent,
+                        0.35f to Color.Transparent,
+                        0.5f to Color.White.copy(alpha = sheenBase),
+                        0.65f to Color.Transparent,
+                        1f to Color.Transparent,
+                        start = Offset(cx - dx * k, cy - dy * k),
+                        end = Offset(cx + dx * k, cy + dy * k),
+                    ),
+                    size = Size(size.width, size.height),
+                )
+            }
+        }
         // r142 (Foundry only): the machined rim — a 1dp border,
         // white at the top edge, black at the bottom, fading
         // through transparent between. Latched, the rim takes
@@ -664,6 +709,13 @@ fun Modifier.gsSurface(
             m = m.drawBehind {
                 drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = inset), 0.3f to Color.Transparent))
             }
+        }
+        // Uniform white rim (r143, Aurora only): a 1dp border,
+        // white at whiteRimAlpha all the way around. Latched,
+        // the faint primary tint below still reads; the rim
+        // itself stays white.
+        if (look.whiteRimAlpha > 0f) {
+            m = m.border(1.dp, Color.White.copy(alpha = look.whiteRimAlpha), drawShape)
         }
         // r100 (Verve only): the latched primary tint — a faint primary
         // wash over the container, under the content and borders, so a
@@ -919,7 +971,7 @@ fun Modifier.gsSurface(
         // hairline, which is visually a no-op.
         // r110: under a ring style the ring IS the edge, so the forced
         // hairline would double it — skipped when the ring draws.
-        if (LocalOledDark.current && look.ringAlpha <= 0f && !look.machinedRim) {
+        if (LocalOledDark.current && look.ringAlpha <= 0f && !look.machinedRim && look.whiteRimAlpha <= 0f) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), drawShape)
         }
         // r26: the bevel is the panel edge. Raised (default): light top,
@@ -1146,7 +1198,16 @@ fun Modifier.gsSurface(
  * outlines: cheap, works on every API level, and already soft enough that the car's video
  * compression has nothing crisp to smear.
  */
-private fun DrawScope.drawSoftShadow(shape: Shape, elevation: Float, alpha: Float, lift: Float) {
+private fun DrawScope.drawSoftShadow(
+    shape: Shape,
+    elevation: Float,
+    alpha: Float,
+    lift: Float,
+    // r143 (Aurora only): the shadow color — black for every
+    // style except a tinted-shadow style, which passes its
+    // primary-blended color here.
+    color: Color = Color.Black,
+) {
     if (alpha <= 0f) return
     val blur = elevation * 2f
     val steps = 6
@@ -1158,7 +1219,7 @@ private fun DrawScope.drawSoftShadow(shape: Shape, elevation: Float, alpha: Floa
             this,
         )
         translate(-grow, elevation * lift - grow) {
-            drawOutline(outline, Color.Black.copy(alpha = alpha / steps))
+            drawOutline(outline, color.copy(alpha = alpha / steps))
         }
     }
 }

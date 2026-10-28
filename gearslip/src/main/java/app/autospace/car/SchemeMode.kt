@@ -18,7 +18,7 @@ package app.autospace.car
  * from [colorSchemes] / [appearanceModes] and [displayName], so the lists
  * cannot drift from what the tests pin.
  */
-enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON, MERIDIAN, WORKSHOP }
+enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON, MERIDIAN, WORKSHOP, AURORA_FIELD }
 
 enum class AppearanceMode { LIGHT, DARK, SYSTEM }
 
@@ -40,6 +40,7 @@ val ColorScheme.displayName: String
         ColorScheme.HORIZON -> "Horizon"
         ColorScheme.MERIDIAN -> "Meridian"
         ColorScheme.WORKSHOP -> "Workshop"
+        ColorScheme.AURORA_FIELD -> "Aurora Field"
     }
 
 val AppearanceMode.displayName: String
