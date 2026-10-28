@@ -18,7 +18,7 @@ package app.autospace.car
  * from [colorSchemes] / [appearanceModes] and [displayName], so the lists
  * cannot drift from what the tests pin.
  */
-enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON }
+enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON, MERIDIAN }
 
 enum class AppearanceMode { LIGHT, DARK, SYSTEM }
 
@@ -38,6 +38,7 @@ val ColorScheme.displayName: String
         ColorScheme.HERITAGE -> "Heritage"
         ColorScheme.VERVE -> "Verve"
         ColorScheme.HORIZON -> "Horizon"
+        ColorScheme.MERIDIAN -> "Meridian"
     }
 
 val AppearanceMode.displayName: String
@@ -80,15 +81,15 @@ fun isLegacyThemeName(stored: String): Boolean = stored in setOf(
 
 /**
  * Whether the car UI renders dark for a scheme + mode + the phone's own
- * mode. Night and Pitlane are always dark (as they always were); every
- * other scheme follows the mode control, with SYSTEM deferring to the
- * phone. This is the single place the rule lives — CarUi and the tests
- * both read it, so the rendered dark value cannot drift from the tested
- * one.
+ * mode. Night, Pitlane, and Meridian are always dark (as they always
+ * were); every other scheme follows the mode control, with SYSTEM
+ * deferring to the phone. This is the single place the rule lives —
+ * CarUi and the tests both read it, so the rendered dark value cannot
+ * drift from the tested one.
  */
 fun resolveDark(scheme: ColorScheme, mode: AppearanceMode, phoneDark: Boolean): Boolean =
     when {
-        scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE -> true
+        scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN -> true
         mode == AppearanceMode.LIGHT -> false
         mode == AppearanceMode.DARK -> true
         else -> phoneDark
@@ -105,4 +106,4 @@ fun effectiveScheme(stored: ColorScheme, autoNightActive: Boolean): ColorScheme 
 
 /** True when the stored scheme forces dark regardless of the mode control. */
 fun schemeForcesDark(scheme: ColorScheme): Boolean =
-    scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE
+    scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN

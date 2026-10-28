@@ -55,6 +55,7 @@ class SchemeModeSplitTest {
             for (mode in AppearanceMode.entries) {
                 assertTrue(resolveDark(ColorScheme.NIGHT, mode, phoneDark))
                 assertTrue(resolveDark(ColorScheme.PITLANE, mode, phoneDark))
+                assertTrue(resolveDark(ColorScheme.MERIDIAN, mode, phoneDark))
             }
         }
         // Every other scheme: Light forces light, Dark forces dark,
@@ -86,14 +87,14 @@ class SchemeModeSplitTest {
     @Test
     fun pickerContentsArePalettesAndModesOnly() {
         // The scheme picker holds exactly the palettes, in order (r48
-        // appends Verve second-to-last; r79 appends Horizon last); the
-        // mode control holds exactly
+        // appends Verve second-to-last; r79 appends Horizon; r107
+        // appends Meridian last); the mode control holds exactly
         // Light / Dark / System.
         assertEquals(
             listOf(
                 ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.NIGHT,
                 ColorScheme.PITLANE, ColorScheme.CIRCUIT, ColorScheme.HERITAGE,
-                ColorScheme.VERVE, ColorScheme.HORIZON,
+                ColorScheme.VERVE, ColorScheme.HORIZON, ColorScheme.MERIDIAN,
             ),
             colorSchemes,
         )
@@ -103,7 +104,7 @@ class SchemeModeSplitTest {
         )
         // No scheme row reads as a mode, and no mode row reads as a scheme.
         assertEquals(
-            listOf("Neutral", "Material You", "Night", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon"),
+            listOf("Neutral", "Material You", "Night", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian"),
             colorSchemes.map { it.displayName },
         )
         assertEquals(

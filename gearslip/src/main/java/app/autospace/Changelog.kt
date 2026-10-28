@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            74, "0.4.63-alpha",
+            listOf(
+                "Meridian is now a full theme: a dark color scheme and a flat 16dp button style of its own, plus a Meridian pair that sets both at once. The map look setting is now called Navigation style, and in Meridian mode the bar's icons sit clear of the clock and battery line.",
+            ),
+        ),
+        Release(
             73, "0.4.62-alpha",
             listOf(
                 "The floating media card can now be dragged to any spot while parked; docking it again puts it back at its corner, and during navigation a docked card sits low at the bottom with the trip time.",

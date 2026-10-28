@@ -23,13 +23,14 @@ import org.junit.Test
 class HorizonTest {
 
     @Test
-    fun horizonSchemeIsAppendedLastAndNamedHorizon() {
+    fun horizonSchemeIsNamedHorizonAndImmediatelyBeforeMeridian() {
         assertEquals(ColorScheme.HORIZON, ColorScheme.valueOf("HORIZON"))
         assertEquals("Horizon", ColorScheme.HORIZON.displayName)
-        assertEquals(ColorScheme.HORIZON, colorSchemes.last())
+        // r107 appends Meridian last (pinned by MeridianTest); Horizon
+        // keeps the slot immediately before it, and nothing else moved.
+        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.HORIZON))
-        // Verve is no longer last, but nothing else moved.
-        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 2])
+        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 3])
         // No legacy install migrates onto Horizon by accident.
         assertFalse(isLegacyThemeName("HORIZON"))
     }
@@ -89,9 +90,11 @@ class HorizonTest {
     }
 
     @Test
-    fun horizonStyleIsBuiltInLastWith28dpCornerPillButtonsAnd065Spring() {
+    fun horizonStyleIsBuiltInBeforeMeridianWith28dpCornerPillButtonsAnd065Spring() {
         assertTrue(GsThemes.builtIn.any { it.id == "horizon" && it.name == "Horizon" })
-        assertEquals(GsThemes.Horizon, GsThemes.builtIn.last())
+        // r107 appends Meridian last (pinned by MeridianTest); Horizon
+        // keeps the slot immediately before it.
+        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("horizon", GsThemes.byId("horizon").id)
         val look = GsThemes.Horizon.control
         assertEquals(28, look.corner.value.toInt())

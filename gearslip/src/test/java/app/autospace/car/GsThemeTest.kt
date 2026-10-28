@@ -141,6 +141,33 @@ class GsThemeTest {
     }
 
     @Test
+    fun meridianIsBuiltInWithFlatSixteenDpStyle() {
+        // r107: Meridian appended last, same rule as Verve/Horizon —
+        // nobody moves to it automatically.
+        assertTrue(GsThemes.builtIn.any { it.id == "meridian" && it.name == "Meridian" })
+        assertEquals("meridian", GsThemes.byId("meridian").id)
+        val look = GsThemes.Meridian.control
+        assertEquals(16, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0f, look.hairlineAlpha, 0.001f)
+        assertEquals(0f, look.bevelTop, 0.001f)
+        assertEquals(0f, look.bevelBottom, 0.001f)
+        assertEquals(0, look.shadow.value.toInt())
+        assertEquals(0f, look.shadowAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        assertEquals(0.14f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        assertEquals(1f, look.containerAlpha, 0.001f)
+        assertTrue(look.springMotion)
+        assertEquals(1.0f, look.springDamping, 0.001f)
+        assertTrue(look.cardsUseStyleCorner)
+        assertFalse(look.latchedPrimaryTint)
+        assertEquals(null, look.light)
+    }
+
+    @Test
     fun newSchemeSlotsExistAndFrostIsStillDefault() {
         // Stored by these exact names in car_scheme (r35: the palette
         // axis; the mode lives in car_appearance_mode); a rename of the

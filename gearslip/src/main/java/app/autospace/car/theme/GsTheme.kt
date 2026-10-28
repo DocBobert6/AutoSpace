@@ -484,6 +484,53 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Meridian (2026-10-27, r107; picked by Robert from the style
+     * options): the Meridian chrome's own button style, flat and
+     * dark-navy in spirit. The corner is 16dp EVERYWHERE — the
+     * unifying value: the Meridian turn/ETA cards already use a
+     * fixed 16dp corner in GuidanceSurface, and the rail/pill and
+     * cards/sheets take the style's corner through
+     * cardShapeForLook (cardsUseStyleCorner), so the whole app
+     * agrees with no routing change to GuidanceSurface. Flat
+     * solid fills in the scheme's surface tones: no bevel, no
+     * weave, no grain, no rivets, no hairline, no shadow
+     * (elevation 0). Pressed dims the fill 0.14 and scales 0.98
+     * on a critically damped spring (parked only, instant while
+     * moving, via the shared stateChangeMotionSpec). Latched is
+     * NOT a primary tint: it stays the white selection tile with
+     * dark content that already lives in navColors, outside
+     * ControlLook. Distinct from Frost (drops bevel/shadow/20dp),
+     * Pitlane (drops weave/bolts/chamfer), and Verve (drops
+     * springiness + tint). No light variant: the style's identity
+     * is corner + flatness, colors come from the scheme, and the
+     * Meridian scheme forces dark; on a light scheme the style
+     * keeps its flat 16dp read. Watch-out, stated honestly: flat
+     * + shadowless can look undifferentiated on dense screens;
+     * the design relies on contrast + the white latched tile.
+     */
+    val Meridian = GsTheme(
+        id = "meridian",
+        name = "Meridian",
+        control = ControlLook(
+            corner = 16.dp,
+            topLight = 0f,
+            hairlineAlpha = 0f,
+            bevelTop = 0f,
+            bevelBottom = 0f,
+            shadow = 0.dp,
+            shadowAlpha = 0f,
+            pressedDim = 0.14f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            springMotion = true,
+            springDamping = 1.0f,
+            cardsUseStyleCorner = true,
+            latchedPrimaryTint = false,
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -499,7 +546,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r79: Horizon appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon)
+    // r107: Meridian appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

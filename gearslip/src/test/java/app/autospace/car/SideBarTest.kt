@@ -153,6 +153,14 @@ class SideBarTest {
     }
 
     @Test
+    fun meridianRailClockGapIsTwelveDp() {
+        // r107: the Meridian-only gap between the clock block and the
+        // icon list, so the first icon's highlight clears the
+        // battery line; themed mode has no clock above the list.
+        assertEquals(12.dp, MERIDIAN_RAIL_CLOCK_GAP)
+    }
+
+    @Test
     fun meridianRailFloatMatchesThemedSideFloat() {
         // r105: with the tile at 12dp, the Meridian rail spans the same
         // vertical extent as the themed rail's 12dp margins — the

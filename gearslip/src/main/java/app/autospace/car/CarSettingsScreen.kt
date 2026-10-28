@@ -396,12 +396,12 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
-    // r97 graduation: the map theme. Themed follows the button style
-    // and color scheme and is the default; Meridian wears its fixed
-    // colors. Meridian never replaces themed chrome — it is one
-    // choice beside it.
+    // r97 graduation, renamed r107: the navigation style. Themed
+    // follows the button style and color scheme and is the default;
+    // Meridian wears its fixed colors. Meridian never replaces themed
+    // chrome — it is one choice beside it.
     ChoiceRow(
-        "Map theme",
+        "Navigation style",
         listOf(MapChrome.THEMED to "Themed", MapChrome.MERIDIAN to "Meridian"),
         mapTheme,
     ) { CarSettings.setMapTheme(it) }

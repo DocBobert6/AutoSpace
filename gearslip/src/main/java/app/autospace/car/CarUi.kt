@@ -197,6 +197,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.HERITAGE -> heritageScheme(dark)
         ColorScheme.VERVE -> verveScheme(dark)
         ColorScheme.HORIZON -> horizonScheme(dark)
+        ColorScheme.MERIDIAN -> meridianScheme()
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -742,6 +743,16 @@ internal val NAV_BAR_PILL_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NA
  */
 internal val MERIDIAN_RAIL_VERTICAL_FLOAT = COLLAPSED_PANE_TILE_FLOAT
 
+/**
+ * r107: the gap between the clock block and the icon list in
+ * Meridian mode only. The first icon's white highlight used to sit
+ * flush under the clock block's bottom edge (the battery line),
+ * nearly touching the battery percentage. 12dp matches the rail's
+ * side float, so the separation reads as deliberate, not a rounding
+ * gap. Themed mode (clock pinned bottom) is untouched.
+ */
+internal val MERIDIAN_RAIL_CLOCK_GAP = 12.dp
+
 
 /**
  * r87: the steering-side app bar as an edge dock. The bottom bar's
@@ -827,6 +838,11 @@ private fun CarSideBar(
             // rail, as in the photo; otherwise it stays pinned to the
             // bottom, as r87 set it.
             if (meridian) RailClockBlock(navigator, meridian = true)
+            // r107: Meridian-only gap so the first icon's highlight
+            // clears the clock block's battery line (see
+            // MERIDIAN_RAIL_CLOCK_GAP); themed mode has no clock
+            // above the list, so nothing changes there.
+            if (meridian) Spacer(Modifier.height(MERIDIAN_RAIL_CLOCK_GAP))
             // The icon list scrolls so a long pin/running list can
             // never push the clock (or, in Meridian mode, the
             // switcher square) off the frame.
@@ -1685,6 +1701,67 @@ private fun horizonScheme(dark: Boolean): androidx.compose.material3.ColorScheme
         inverseOnSurface = androidx.compose.ui.graphics.Color(HorizonPalette.onSurfaceLight),
         inversePrimary = androidx.compose.ui.graphics.Color(HorizonPalette.primaryLight),
         scrim = androidx.compose.ui.graphics.Color(0xFF000000),
+    )
+}
+
+/**
+ * Meridian (r107): the Meridian chrome's own color scheme, forced
+ * dark like Night and Pitlane (see schemeForcesDark) — there is NO
+ * light variant in this round, and the light MAP is unaffected:
+ * map tiles are Vela-drawn and AutoSpace never touches a map pixel,
+ * so a light map under dark Meridian chrome needs no work and no
+ * flag. The palette extends the four photo-picked Meridian colors
+ * (MapChromeColors — sampled from a reference rendering photo, NOT
+ * Google's official tokens, which are unpublished): the turn-card
+ * teal #3E6F74 as primary (white on it 5.63:1), the strip band
+ * #335C5E as primaryContainer (white on it 7.41:1), the near-black
+ * navy #131429 as background/surface (white on it 18.11:1), and the
+ * sage minutes green #789A75 as secondary — a LARGE-ACCENT color
+ * only (navy on it 5.76:1, but it fails as small text on white at
+ * 3.14:1 and the teal fails as small text on navy at 3.22:1, so
+ * neither is ever body text on the other's surface). Surfaces step
+ * up from the navy in small increments (#1B1C33, #232444, #2A2C50,
+ * #33355E; white on the highest step 11.59:1). onSurfaceVariant is
+ * white at MERIDIAN_DIM_ALPHA 0.75 (blended ~10.43:1). Tertiary is
+ * plain white with navy text (no new color introduced); outline is
+ * white at low alpha over navy (a border, not text). Error follows
+ * the app's existing dark error red. Auto night still overrides to
+ * NIGHT like every scheme; DarkModeType does not alter it.
+ */
+private fun meridianScheme(): androidx.compose.material3.ColorScheme {
+    return androidx.compose.material3.darkColorScheme(
+        primary = androidx.compose.ui.graphics.Color(MeridianPalette.primary),
+        onPrimary = androidx.compose.ui.graphics.Color(MeridianPalette.onPrimary),
+        primaryContainer = androidx.compose.ui.graphics.Color(MeridianPalette.primaryContainer),
+        onPrimaryContainer = androidx.compose.ui.graphics.Color(MeridianPalette.onPrimaryContainer),
+        secondary = androidx.compose.ui.graphics.Color(MeridianPalette.secondary),
+        onSecondary = androidx.compose.ui.graphics.Color(MeridianPalette.onSecondary),
+        secondaryContainer = androidx.compose.ui.graphics.Color(MeridianPalette.secondaryContainer),
+        onSecondaryContainer = androidx.compose.ui.graphics.Color(MeridianPalette.onSecondaryContainer),
+        tertiary = androidx.compose.ui.graphics.Color(MeridianPalette.tertiary),
+        onTertiary = androidx.compose.ui.graphics.Color(MeridianPalette.onTertiary),
+        error = androidx.compose.ui.graphics.Color(MeridianPalette.error),
+        onError = androidx.compose.ui.graphics.Color(MeridianPalette.onError),
+        background = androidx.compose.ui.graphics.Color(MeridianPalette.background),
+        onBackground = androidx.compose.ui.graphics.Color(MeridianPalette.onSurface),
+        surface = androidx.compose.ui.graphics.Color(MeridianPalette.background),
+        onSurface = androidx.compose.ui.graphics.Color(MeridianPalette.onSurface),
+        surfaceVariant = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceVariant),
+        onSurfaceVariant = androidx.compose.ui.graphics.Color(MeridianPalette.onSurfaceVariant),
+        outline = androidx.compose.ui.graphics.Color(MeridianPalette.outline),
+        outlineVariant = androidx.compose.ui.graphics.Color(MeridianPalette.outlineVariant),
+        surfaceContainerLowest = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceContainerLowest),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceContainerLow),
+        surfaceContainer = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceContainer),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceContainerHigh),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceContainerHighest),
+        surfaceDim = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceDim),
+        surfaceBright = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceBright),
+        surfaceTint = androidx.compose.ui.graphics.Color(MeridianPalette.surfaceTint),
+        inverseSurface = androidx.compose.ui.graphics.Color(MeridianPalette.inverseSurface),
+        inverseOnSurface = androidx.compose.ui.graphics.Color(MeridianPalette.inverseOnSurface),
+        inversePrimary = androidx.compose.ui.graphics.Color(MeridianPalette.inversePrimary),
+        scrim = androidx.compose.ui.graphics.Color(MeridianPalette.scrim),
     )
 }
 

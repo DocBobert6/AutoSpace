@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheThreeApprovedInOrder() {
+    fun pairsAreExactlyTheFourApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Neutral"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Neutral", "Meridian + Meridian"),
             themePairs.map { it.label },
         )
     }
@@ -37,10 +37,18 @@ class ThemePairsTest {
     }
 
     @Test
+    fun meridianPairSetsMeridianStyleAndScheme() {
+        val pair = themePairs[3]
+        assertEquals("meridian", pair.styleId)
+        assertEquals(ColorScheme.MERIDIAN, pair.scheme)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
         assertEquals(themePairs[2], themePairFor("frost", ColorScheme.NEUTRAL))
+        assertEquals(themePairs[3], themePairFor("meridian", ColorScheme.MERIDIAN))
     }
 
     @Test

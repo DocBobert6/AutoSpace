@@ -10,10 +10,11 @@ import app.autospace.car.theme.GsThemes
  * The individual pickers read the same two keys, so they naturally
  * reflect a pair's values and stay freely changeable afterward.
  *
- * The approved pairs, in order: Pitlane+Pitlane, Verve+Verve, and
- * Frost+Neutral (the default). Horizon+Horizon is NOT here — Horizon
- * did not exist when Pairs was approved, so it waits on Robert's word
- * as a proposed fourth pair rather than being added silently.
+ * The approved pairs, in order: Pitlane+Pitlane, Verve+Verve,
+ * Frost+Neutral (the default), and Meridian+Meridian (r107).
+ * Horizon+Horizon is NOT here — Horizon did not exist when Pairs was
+ * approved, so it waits on Robert's word as a proposed fifth pair
+ * rather than being added silently.
  *
  * Pure (no Compose runtime, no Android API), so it is unit-testable
  * on the JVM.
@@ -25,6 +26,7 @@ val themePairs: List<ThemePair> = listOf(
     ThemePair(GsThemes.Pitlane.id, ColorScheme.PITLANE, "Pitlane + Pitlane"),
     ThemePair(GsThemes.Verve.id, ColorScheme.VERVE, "Verve + Verve"),
     ThemePair(GsThemes.Frost.id, ColorScheme.NEUTRAL, "Frost + Neutral"),
+    ThemePair(GsThemes.Meridian.id, ColorScheme.MERIDIAN, "Meridian + Meridian"),
 )
 
 /**

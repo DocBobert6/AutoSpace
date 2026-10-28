@@ -21,12 +21,13 @@ import org.junit.Test
 class VerveTest {
 
     @Test
-    fun verveSchemeIsNamedVerveAndImmediatelyBeforeHorizon() {
+    fun verveSchemeIsNamedVerveAndBeforeHorizon() {
         assertEquals(ColorScheme.VERVE, ColorScheme.valueOf("VERVE"))
         assertEquals("Verve", ColorScheme.VERVE.displayName)
-        // r79 appends Horizon last (pinned by HorizonTest); Verve keeps
-        // the slot immediately before it, and nothing else moved.
-        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 2])
+        // r79 appends Horizon last (pinned by HorizonTest) and r107
+        // appends Meridian last (pinned by MeridianTest); Verve keeps
+        // its order before both, and nothing else moved.
+        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 3])
         assertTrue(colorSchemes.contains(ColorScheme.VERVE))
         // No legacy install migrates onto Verve by accident.
         assertFalse(isLegacyThemeName("VERVE"))
@@ -82,9 +83,10 @@ class VerveTest {
     @Test
     fun verveStyleIsBuiltInWith24dpCornerAndSpringFlags() {
         assertTrue(GsThemes.builtIn.any { it.id == "verve" && it.name == "Verve" })
-        // r79 appends Horizon last (pinned by HorizonTest); Verve keeps
-        // the slot immediately before it, and nothing else moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        // r79 appends Horizon last (pinned by HorizonTest) and r107
+        // appends Meridian last (pinned by MeridianTest); Verve keeps
+        // its order before both, and nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())
