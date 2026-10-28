@@ -13,7 +13,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -43,6 +42,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -254,13 +254,18 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     // cutout (the native side reads this inset); in landscape
     // it stays centred and the inset is zero. The car screen is
     // landscape in practice, so this is usually zero - but the
-    // plumbing is ported, not assumed away.
+    // plumbing is ported, not assumed away. The cutout comes
+    // from the host view's platform insets, not Compose's
+    // WindowInsets.displayCutout, which this tree's Compose
+    // version does not resolve (the work head failed CI on
+    // exactly that reference).
     val configuration = LocalConfiguration.current
     val portrait =
         configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val density = LocalDensity.current
+    val view = LocalView.current
     val topInsetPx = if (portrait) {
-        WindowInsets.displayCutout.getTop(density) +
+        (view.rootWindowInsets?.displayCutout?.safeInsetTop ?: 0) +
             with(density) { 8.dp.toPx().toInt() }
     } else {
         0
