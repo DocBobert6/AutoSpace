@@ -62,7 +62,8 @@ object GameMotionSink {
  */
 class GameKeyRouter(
     private val setBit: (bit: Int, on: Boolean) -> Unit,
-    private val onActivity: () -> Unit = {}
+    private val onActivity: () -> Unit = {},
+    private val keyToBit: (Int) -> Int = GamepadMap::bitForKeyCode,
 ) {
     var analogMode: Boolean = false
     var onAnalog: (lx: Int, ly: Int, rx: Int, ry: Int) -> Unit =
@@ -89,9 +90,15 @@ class GameKeyRouter(
         )
     }
 
-    /** Returns true when the key maps to a game button. */
+    /**
+     * Returns true when the key maps to a game button. The
+     * mapping is injected (r147): by default it is today's
+     * GamepadMap, and the playback screen hands it the stored
+     * per-console mapping instead, so the router itself stays
+     * mapping-agnostic.
+     */
     fun onKey(code: Int, down: Boolean): Boolean {
-        val bit = GamepadMap.bitForKeyCode(code)
+        val bit = keyToBit(code)
         if (bit < 0) return false
         if (down) heldKeys.add(code) else heldKeys.remove(code)
         setBit(bit, down)

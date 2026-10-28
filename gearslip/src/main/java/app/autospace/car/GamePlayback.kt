@@ -158,6 +158,10 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     // RetroEngine for r93: the native runner behind this same seam.
     val engine: GameEngine = remember { RetroEngine }
 
+    // r147: the stored per-console mapping, read once at launch
+    // like core options — a mapping changed while a game is open
+    // applies the next time one of this console's games launches.
+    val padMapping = GamePadMapping.storedMapping(context, game.system)
     val router = remember {
         GameKeyRouter(
             setBit = { bit, on ->
@@ -169,6 +173,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
                 engine.setInput(inputMask)
             },
             onActivity = {},
+            keyToBit = { code -> GamePadMapping.bitForKeyCode(padMapping, code) },
         ).also { it.analogMode = GameInput.analogCapable(game.system) }
     }
     router.onAnalog = { lx, ly, rx, ry -> engine.setAnalog(lx, ly, rx, ry) }

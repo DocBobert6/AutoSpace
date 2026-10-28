@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            105, "0.4.94-alpha",
+            listOf(
+                "Each console now has its own controller mapping in the Games section: pick a console, remap its buttons from a list, and that mapping is the one used when you launch its games. Buttons you don't remap keep working exactly as before.",
+            ),
+        ),
+        Release(
             104, "0.4.93-alpha",
             listOf(
                 "More icon packs can be found now — One 8.5, 17 top packs, and 60 more from Eatos are all named, so packs that declare only a theme intent show up in the picker when installed.",

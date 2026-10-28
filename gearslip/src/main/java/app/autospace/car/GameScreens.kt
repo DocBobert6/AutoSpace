@@ -541,6 +541,18 @@ private fun ConsolePage(
 ) {
     val context = LocalContext.current
     val console = GameConsoles.byKey(consoleKey)
+    // r147: mapping state lives here, in the @Composable body —
+    // not in the LazyColumn scope below, which is not a
+    // @Composable context and cannot call remember. The console
+    // key rides the remember keys, so switching consoles never
+    // shows the previous console's mapping, and the version bump
+    // recomposes the rows with the fresh stored values after an
+    // assignment or reset.
+    var mappingVersion by remember { mutableStateOf(0) }
+    var expandedAction by remember { mutableStateOf<Int?>(null) }
+    val padMapping = remember(consoleKey, mappingVersion) {
+        GamePadMapping.storedMapping(context, consoleKey)
+    }
     ScreenHeader(console?.label ?: consoleKey)
     Text(
         "Plays " + (console?.extensions?.joinToString(", ") { ".$it" } ?: ""),
@@ -574,6 +586,63 @@ private fun ConsolePage(
                     else -> "Not downloaded — tap to download"
                 },
             ) { if (!downloading) onDownloadCore() }
+        }
+        item(key = "mapping-header") {
+            Text(
+                "Controller mapping",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        item(key = "mapping-note") {
+            Text(
+                "Remap this console's buttons. The mapping is stored " +
+                    "for this console only, and applies the next time " +
+                    "you launch one of its games. Buttons you don't " +
+                    "remap keep today's behavior.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        for (action in GamePadMapping.ACTIONS) {
+            val assigned = padMapping.getValue(action.bit)
+            item(key = "mapping-${action.bit}") {
+                GameMenuRow(
+                    title = action.label,
+                    caption = "Assigned: " + GamePadMapping.buttonLabel(assigned),
+                    trailing = {
+                        Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                    },
+                ) {
+                    expandedAction = if (expandedAction == action.bit) null else action.bit
+                }
+            }
+            if (expandedAction == action.bit) {
+                items(GamePadMapping.CANDIDATE_CODES, key = { "mapping-${action.bit}-$it" }) { code ->
+                    GameMenuRow(
+                        title = GamePadMapping.buttonLabel(code),
+                        caption = if (code == assigned) {
+                            "Currently assigned to " + action.label
+                        } else {
+                            null
+                        },
+                    ) {
+                        GamePadMapping.setKeyCode(context, consoleKey, action.bit, code)
+                        mappingVersion++
+                        expandedAction = null
+                    }
+                }
+            }
+        }
+        item(key = "mapping-reset") {
+            GameMenuRow(
+                "Reset to defaults",
+                "Restores this console's buttons to today's defaults",
+            ) {
+                GamePadMapping.resetConsole(context, consoleKey)
+                mappingVersion++
+                expandedAction = null
+            }
         }
         item(key = "bios-header") {
             Text(
