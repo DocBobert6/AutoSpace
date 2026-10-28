@@ -156,16 +156,17 @@ class VerveTest {
         // damped — the fastest settle with no overshoot — and latched
         // controls carry a faint primary tint. Both variants, and no
         // other style gains the tint — besides Blueprint (r110,
-        // whose latched primary ring + faint tint are deliberate)
-        // and Sector (r112, whose latched trio brighten + faint
-        // tint are deliberate).
+        // whose latched primary ring + faint tint are deliberate),
+        // Sector (r112, whose latched trio brighten + faint
+        // tint are deliberate), and Aurora (r143, whose latched
+        // primary glow + resting sheen are deliberate).
         val look = GsThemes.Verve.control
         assertEquals(1.0f, look.springDamping, 0.001f)
         assertTrue(look.latchedPrimaryTint)
         val light = checkNotNull(look.light)
         assertEquals(1.0f, light.springDamping, 0.001f)
         assertTrue(light.latchedPrimaryTint)
-        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "blueprint" && it.id != "sector" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "blueprint" && it.id != "sector" && it.id != "aurora" }) {
             assertFalse(other.control.latchedPrimaryTint)
             assertFalse(other.control.light?.latchedPrimaryTint == true)
         }
