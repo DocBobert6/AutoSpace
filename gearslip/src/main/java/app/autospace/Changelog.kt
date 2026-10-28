@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            79, "0.4.68-alpha",
+            listOf(
+                "The Circuit color scheme has a button style of its own: Sector, with a blue, red, and yellow racing segment across the top edge of buttons, plus a Circuit + Sector pair that sets both at once.",
+            ),
+        ),
+        Release(
             78, "0.4.67-alpha",
             listOf(
                 "The floating media card's press-and-hold drag now reads its parked gate live, so repeated drags keep working: hold the card, drag it, release, and hold again to drag again.",

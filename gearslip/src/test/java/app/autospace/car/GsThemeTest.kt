@@ -175,8 +175,10 @@ class GsThemeTest {
         // named Heirloom and no "Leather stitch" label exists in code.
         // r110: Blueprint appends after it, so Heirloom sits second
         // from last, not last.
+        // r112: Sector appends after Blueprint, so Heirloom sits
+        // third from last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -223,8 +225,10 @@ class GsThemeTest {
         // (GsTone.Outline is the unrelated outlined-button tone).
         // The rename is label-only: the stored scheme name stays
         // NEUTRAL, so existing Canvas users keep their scheme.
+        // r112: Sector appends after it, so Blueprint sits second
+        // from last, not last.
         assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
-        assertEquals(GsThemes.Blueprint, GsThemes.builtIn.last())
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("blueprint", GsThemes.byId("blueprint").id)
         assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
         val look = GsThemes.Blueprint.control
@@ -249,6 +253,52 @@ class GsThemeTest {
         val light = checkNotNull(look.light)
         assertEquals(16, light.corner.value.toInt())
         assertEquals(1f, light.ringAlpha, 0.001f)
+        assertTrue(light.latchedPrimaryTint)
+    }
+
+    @Test
+    fun sectorIsBuiltInWithTrioSegmentSpec() {
+        // r112: the Circuit scheme's own style, appended last, same
+        // rule as Verve/Horizon/Meridian/Heirloom/Blueprint —
+        // nobody moves to it automatically. The bevel is Tactile's
+        // exact values (0.16/0.22 dark, 0.24/0.30 light), not a
+        // midpoint; the segment is 3dp thick at full alpha, and
+        // the latched brighten lives in the draw code (20% toward
+        // white), not in a field, so it is pinned by eye on device
+        // rather than here. State- or role-based coloring was
+        // rejected in the pick, so no field carries it.
+        assertTrue(GsThemes.builtIn.any { it.id == "sector" && it.name == "Sector" })
+        assertEquals(GsThemes.Sector, GsThemes.builtIn.last())
+        assertEquals("sector", GsThemes.byId("sector").id)
+        val look = GsThemes.Sector.control
+        assertEquals(14, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0f, look.hairlineAlpha, 0.001f)
+        assertEquals(0.16f, look.bevelTop, 0.001f)
+        assertEquals(0.22f, look.bevelBottom, 0.001f)
+        assertEquals(2, look.shadow.value.toInt())
+        assertEquals(0.20f, look.shadowAlpha, 0.001f)
+        assertEquals(1f, look.segmentAlpha, 0.001f)
+        assertEquals(3, look.segmentThickness.value.toInt())
+        assertEquals(0f, look.ringAlpha, 0.001f)
+        assertEquals(0f, look.stitchAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        assertFalse(look.rectangularButtons)
+        assertFalse(look.cardsUseStyleCorner)
+        assertFalse(look.springMotion)
+        assertFalse(look.pillButtons)
+        assertTrue(look.latchedPrimaryTint)
+        assertEquals(0.14f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        val light = checkNotNull(look.light)
+        assertEquals(14, light.corner.value.toInt())
+        assertEquals(0.24f, light.bevelTop, 0.001f)
+        assertEquals(0.30f, light.bevelBottom, 0.001f)
+        assertEquals(0.16f, light.shadowAlpha, 0.001f)
+        assertEquals(1f, light.segmentAlpha, 0.001f)
+        assertEquals(3, light.segmentThickness.value.toInt())
         assertTrue(light.latchedPrimaryTint)
     }
 }

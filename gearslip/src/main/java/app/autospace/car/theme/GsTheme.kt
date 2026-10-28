@@ -73,6 +73,24 @@ data class ControlLook(
      * inset half a pixel so the full pixel shows inside the edge.
      */
     val ringAlpha: Float = 0f,
+    /**
+     * r112 (Sector only): a trio accent segment along the top edge,
+     * drawn as part of the button background in gsSurface (under
+     * content, like the stitch and ring) — never an overlay widget.
+     * Three equal parallelogram blocks in the scheme's accent order
+     * (primary, secondary, tertiary), sharing slanted 45° seams that
+     * lean forward, start-aligned, about a third of the button wide.
+     * Alpha of the segment; 0 for none. Under Circuit the accents
+     * are exactly blue #007AC2, red #E4002B, yellow #FFD659, so the
+     * segment IS the picked trio there and adapts under
+     * mix-and-match instead of stamping Circuit's trio on every
+     * scheme. Latched, the trio brightens (see gsSurface); pressed,
+     * the fill dims but the trio stays full (the pressed dim is
+     * notched around the segment's footprint).
+     */
+    val segmentAlpha: Float = 0f,
+    /** Thickness of the segment bar; 0 for none. The seam slant equals the thickness (45°), so the slant scales with any thickness nudge. */
+    val segmentThickness: Dp = 0.dp,
     /** How far the face drops while pressed; 0 for none. */
     val sink: Dp = 0.dp,
     /**
@@ -679,6 +697,73 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Sector (2026-10-28, r112; picked by Robert 2026-10-27 ~18:41):
+     * the Circuit scheme's own button style. A flat 14dp face with a
+     * soft Tactile-class bevel — Tactile's exact values, not a
+     * midpoint: 0.16 top / 0.22 bottom dark, 0.24 / 0.30 light
+     * (GsTheme.kt Tactile, same file) — and only a minimal 2dp
+     * shadow, so nothing competes with the ONE new draw routine:
+     * the trio accent segment along the top edge (see
+     * ControlLook.segmentAlpha / segmentThickness and the segment
+     * block in gsSurface). No ring, no weave, no grain, no rivets,
+     * no hairline — the segment is the whole material story, and
+     * state-based or role-based coloring was rejected in the pick,
+     * so the segment never changes color by state or role: pressed,
+     * the fill dims and the trio stays full; latched, the trio
+     * brightens (20% toward white) plus the faint primary tint
+     * (latchedPrimaryTint, shared with Verve/Blueprint). The face
+     * is flat, so the hold marker is the DOT. Cards keep their
+     * fallback corners (cardsUseStyleCorner is false — the pick
+     * covers buttons, not cards) and do not call gsSurface, so no
+     * segment lands on cards. Segment read, checked geometrically
+     * at build time (no thickness nudge): at button width the
+     * seams are subtle (a 200dp button gives 22dp blocks with a
+     * 3dp slant); at key size the trio still separates by color
+     * (a 71dp letter key gives 7.9dp blocks, a 44dp floor key
+     * 4.9dp blocks, both with the same 3dp slant — slanted, but
+     * three distinct colors in sequence); the 26dp switch knob is
+     * the weakest read (2.9dp blocks) and is flagged for device
+     * eyes rather than simplified away. Seams lean forward by
+     * default and flip only on Robert's word.
+     */
+    val Sector = GsTheme(
+        id = "sector",
+        name = "Sector",
+        control = ControlLook(
+            corner = 14.dp,
+            topLight = 0f,
+            hairlineAlpha = 0f,
+            bevelTop = 0.16f,
+            bevelBottom = 0.22f,
+            shadow = 2.dp,
+            shadowAlpha = 0.20f,
+            segmentAlpha = 1f,
+            segmentThickness = 3.dp,
+            pressedDim = 0.14f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            latchedPrimaryTint = true,
+            light = ControlLook(
+                corner = 14.dp,
+                topLight = 0f,
+                hairlineAlpha = 0f,
+                bevelTop = 0.24f,
+                bevelBottom = 0.30f,
+                shadow = 2.dp,
+                shadowAlpha = 0.16f,
+                segmentAlpha = 1f,
+                segmentThickness = 3.dp,
+                pressedDim = 0.14f,
+                pressedScale = 0.98f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+                latchedPrimaryTint = true,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -700,7 +785,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r110: Blueprint appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint)
+    // r112: Sector appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

@@ -85,10 +85,10 @@ class VerveTest {
         assertTrue(GsThemes.builtIn.any { it.id == "verve" && it.name == "Verve" })
         // r79 appends Horizon last (pinned by HorizonTest), r107
         // appends Meridian last (pinned by MeridianTest), r108
-        // appends Heirloom last, and r110 appends Blueprint last;
-        // Verve keeps its order before all four, and nothing else
-        // moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 5])
+        // appends Heirloom last, r110 appends Blueprint last, and
+        // r112 appends Sector last; Verve keeps its order before
+        // all five, and nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 6])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())
@@ -148,14 +148,16 @@ class VerveTest {
         // damped — the fastest settle with no overshoot — and latched
         // controls carry a faint primary tint. Both variants, and no
         // other style gains the tint — besides Blueprint (r110,
-        // whose latched primary ring + faint tint are deliberate).
+        // whose latched primary ring + faint tint are deliberate)
+        // and Sector (r112, whose latched trio brighten + faint
+        // tint are deliberate).
         val look = GsThemes.Verve.control
         assertEquals(1.0f, look.springDamping, 0.001f)
         assertTrue(look.latchedPrimaryTint)
         val light = checkNotNull(look.light)
         assertEquals(1.0f, light.springDamping, 0.001f)
         assertTrue(light.latchedPrimaryTint)
-        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "blueprint" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "verve" && it.id != "blueprint" && it.id != "sector" }) {
             assertFalse(other.control.latchedPrimaryTint)
             assertFalse(other.control.light?.latchedPrimaryTint == true)
         }

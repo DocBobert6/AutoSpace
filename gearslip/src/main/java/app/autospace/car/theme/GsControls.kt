@@ -411,6 +411,56 @@ fun Modifier.gsSurface(
                 )
             }
         }
+        // r112 (Sector only): the trio accent segment — three equal
+        // parallelogram blocks along the top edge, start-aligned,
+        // about a third of the button wide, 3dp thick, sharing
+        // slanted 45° seams that lean forward (the top of each seam
+        // shifted toward the reading direction by the thickness).
+        // The colors are the scheme's accents in order (primary,
+        // secondary, tertiary) — under Circuit exactly blue
+        // #007AC2, red #E4002B, yellow #FFD659 — read here, in the
+        // composable body, because a draw scope cannot call
+        // MaterialTheme. Drawn under content, like the stitch and
+        // ring, and clipped to the shape, so the start end follows
+        // the corner arc. Latched: the trio brightens (each accent
+        // lifted 20% toward white) plus the faint primary tint
+        // drawn above (latchedPrimaryTint). Pressed: the fill dims
+        // but the trio stays full — the pressed dim below is
+        // notched around the segment's footprint, so the trio is
+        // never dimmed or dropped. Seams lean forward by default
+        // and flip only on Robert's word; in RTL the whole segment
+        // mirrors, so blue still starts at the start edge.
+        if (look.segmentAlpha > 0f && look.segmentThickness > 0.dp) {
+            val trio = listOf(
+                MaterialTheme.colorScheme.primary,
+                MaterialTheme.colorScheme.secondary,
+                MaterialTheme.colorScheme.tertiary,
+            )
+            val lift = if (latched) 0.20f else 0f
+            val segColors = trio.map { lerp(it, Color.White, lift).copy(alpha = look.segmentAlpha) }
+            val segThickness = look.segmentThickness
+            m = m.drawBehind {
+                val thicknessPx = segThickness.toPx()
+                val segW = size.width / 3f
+                val slant = thicknessPx
+                val blockW = segW / 3f
+                fun mx(x: Float) = if (layoutDirection == LayoutDirection.Rtl) size.width - x else x
+                for (i in 0..2) {
+                    val x0b = i * blockW
+                    val x1b = (i + 1) * blockW
+                    val x0t = x0b + slant
+                    val x1t = x1b + slant
+                    val block = Path().apply {
+                        moveTo(mx(x0b), thicknessPx)
+                        lineTo(mx(x1b), thicknessPx)
+                        lineTo(mx(x1t), 0f)
+                        lineTo(mx(x0t), 0f)
+                        close()
+                    }
+                    drawPath(block, segColors[i])
+                }
+            }
+        }
         // r108 (Heirloom only): the leather stitch — a dashed
         // hairline inset from the edge, drawn as part of the button
         // background (under content, like the weave), never as an
@@ -461,7 +511,38 @@ fun Modifier.gsSurface(
     if (border.isSpecified) m = m.border(BorderStroke(1.dp, border), shape)
     if (pressed) m = m.drawWithContent {
         drawContent()
-        drawRect(Color.Black.copy(alpha = look.pressedDim))
+        if (look.segmentAlpha > 0f && look.segmentThickness > 0.dp && effContainer.alpha > 0f) {
+            // r112: the trio segment stays the full trio while
+            // pressed — the dim is drawn around the segment's
+            // footprint instead of over it: the full face below the
+            // strip, plus the face beside the strip on the top row.
+            // Same two rects in RTL, mirrored with the segment.
+            // (The segment only drew inside the alpha gate above,
+            // so the notch applies only when it actually drew.)
+            val thicknessPx = look.segmentThickness.toPx()
+            val segRight = size.width / 3f + thicknessPx
+            val dim = Color.Black.copy(alpha = look.pressedDim)
+            drawRect(
+                dim,
+                topLeft = Offset(0f, thicknessPx),
+                size = Size(size.width, (size.height - thicknessPx).coerceAtLeast(0f)),
+            )
+            if (layoutDirection == LayoutDirection.Ltr) {
+                drawRect(
+                    dim,
+                    topLeft = Offset(segRight, 0f),
+                    size = Size((size.width - segRight).coerceAtLeast(0f), thicknessPx),
+                )
+            } else {
+                drawRect(
+                    dim,
+                    topLeft = Offset(0f, 0f),
+                    size = Size((size.width - segRight).coerceAtLeast(0f), thicknessPx),
+                )
+            }
+        } else {
+            drawRect(Color.Black.copy(alpha = look.pressedDim))
+        }
     }
     return m
 }

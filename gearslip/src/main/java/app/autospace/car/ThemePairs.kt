@@ -12,7 +12,8 @@ import app.autospace.car.theme.GsThemes
  *
  * The approved pairs, in order: Pitlane+Pitlane, Verve+Verve,
  * Frost+Canvas (the default), Meridian+Meridian (r107),
- * Heritage+Heirloom (r108), and Canvas+Blueprint (r110).
+ * Heritage+Heirloom (r108), Canvas+Blueprint (r110), and
+ * Circuit+Sector (r112).
  * Horizon+Horizon is NOT here — Horizon did not exist when Pairs was
  * approved, so it waits on Robert's word as a proposed pair
  * rather than being added silently.
@@ -30,6 +31,7 @@ val themePairs: List<ThemePair> = listOf(
     ThemePair(GsThemes.Meridian.id, ColorScheme.MERIDIAN, "Meridian + Meridian"),
     ThemePair(GsThemes.Heirloom.id, ColorScheme.HERITAGE, "Heritage + Heirloom"),
     ThemePair(GsThemes.Blueprint.id, ColorScheme.NEUTRAL, "Canvas + Blueprint"),
+    ThemePair(GsThemes.Sector.id, ColorScheme.CIRCUIT, "Circuit + Sector"),
 )
 
 /**
