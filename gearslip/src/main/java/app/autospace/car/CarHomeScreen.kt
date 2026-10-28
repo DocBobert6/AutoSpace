@@ -197,6 +197,13 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     }
     val showLiveWidget = isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
         !showMiniVideo && !liveWidgetDismissed
+    // r131: publish the widget's visibility so the overlay can step aside
+    // while the widget owns the surface — one surface, one X. The effect
+    // re-runs on every showLiveWidget change, and showLiveWidget is false
+    // at IDLE, so the flag clears itself when the conversation ends.
+    LaunchedEffect(showLiveWidget) {
+        LiveWidgetState.setVisible(showLiveWidget)
+    }
     val showFloatingCard = shouldShowFloatingCard(
         phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,

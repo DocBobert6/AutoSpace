@@ -174,4 +174,38 @@ class LiveSwapTest {
         val turns = liveWidgetTurns(emptyList(), "now asking", "now answering", moving = false)
         assertEquals(false, turns[0].fromAi)
     }
+
+    // r131: one surface, one X — the overlay row steps aside while the widget owns it.
+
+    @Test
+    fun overlayRowShowsWhenLiveAndWidgetHidden() {
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.LISTENING, false))
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.SPEAKING, false))
+    }
+
+    @Test
+    fun overlayRowHiddenWhenWidgetVisible() {
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.LISTENING, true))
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.THINKING, true))
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.SPEAKING, true))
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.ERROR, true))
+    }
+
+    @Test
+    fun overlayRowHiddenWhenIdleEitherWay() {
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.IDLE, false))
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.IDLE, true))
+    }
+
+    @Test
+    fun widgetVisibleFlagTracksSetVisible() {
+        try {
+            LiveWidgetState.setVisible(true)
+            assertEquals(true, LiveWidgetState.visible.value)
+            LiveWidgetState.setVisible(false)
+            assertEquals(false, LiveWidgetState.visible.value)
+        } finally {
+            LiveWidgetState.setVisible(false)
+        }
+    }
 }

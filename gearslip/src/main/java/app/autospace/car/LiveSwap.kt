@@ -122,6 +122,16 @@ object LiveWidgetState {
     private val _dismissed = MutableStateFlow(false)
     val dismissed: StateFlow<Boolean> = _dismissed.asStateFlow()
 
+    /**
+     * r131: whether the widget is currently the visible conversation
+     * surface. Published by CarHome (which owns the slot condition) so
+     * the overlay can step aside while the widget shows — one surface,
+     * one X. Clears itself: the slot condition is false at IDLE, so
+     * the publishing effect resets this when the conversation ends.
+     */
+    private val _visible = MutableStateFlow(false)
+    val visible: StateFlow<Boolean> = _visible.asStateFlow()
+
     fun dismiss() {
         _dismissed.value = true
     }
@@ -129,7 +139,22 @@ object LiveWidgetState {
     fun reset() {
         _dismissed.value = false
     }
+
+    fun setVisible(value: Boolean) {
+        _visible.value = value
+    }
 }
+
+/**
+ * r131: whether the overlay's own conversation row shows. Pure, so the
+ * unit test pins it: the row shows while a conversation is live and the
+ * live widget does NOT own the surface. On Home the widget owns it, so
+ * the overlay row steps aside — one surface, one X — and returns as the
+ * fallback the moment the widget is dismissed (r117 semantics kept:
+ * dismiss hides the widget, it never ends the conversation).
+ */
+fun overlayConversationRowVisible(phase: CarAssistant.Phase, widgetVisible: Boolean): Boolean =
+    phase != CarAssistant.Phase.IDLE && !widgetVisible
 
 /**
  * r76: which turns the widget shows. Pure, so the unit test pins it.

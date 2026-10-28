@@ -57,6 +57,12 @@ import kotlinx.coroutines.launch
  * What the assistant hears and says, laid over the bottom of whatever screen is up: a dark shade
  * so white words read over a bright map, and a glow along the bottom edge in the phone's own
  * colours that breathes while listening. The shade passes touches through; only the buttons take them.
+ *
+ * r131: on Home the live widget owns the conversation surface, so this overlay's row, shade,
+ * and glow all step aside while the widget shows — one surface, one X, and the bar no longer
+ * covers the map's corner labels under a live conversation. The proposal sheet is unaffected
+ * (it has no widget equivalent), and when the widget is dismissed the overlay returns as the
+ * r117 fallback, with its own Dismiss ending the conversation as before.
  */
 @Composable
 fun AssistantOverlay(modifier: Modifier = Modifier) {
@@ -66,6 +72,11 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
     // phase returns to IDLE, but the proposal stays open until its window lapses or the
     // user answers — so the overlay stays up for a pending proposal even while idle.
     if (state.phase == CarAssistant.Phase.IDLE && pending == null) return
+    // r131: while the live widget owns the surface on Home, the overlay
+    // contributes nothing of its own — its row, shade, and glow all step
+    // aside (see below). A pending proposal still renders its sheet.
+    val widgetVisible by LiveWidgetState.visible.collectAsState()
+    if (widgetVisible && pending == null) return
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
     val frame by CarEnvironment.frame.collectAsState()
@@ -108,13 +119,14 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
     // and idle keep exactly today's treatment. The r57 follow-up window
     // keeps the phase at LISTENING, so the band stays up through
     // "Still listening…" with no special-casing.
-    val fullWidthGlow = state.phase == CarAssistant.Phase.LISTENING
+    val fullWidthGlow = state.phase == CarAssistant.Phase.LISTENING && !widgetVisible
 
     Box(
         modifier
             .fillMaxWidth()
             .drawBehind {
-                drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.85f)))
+                // r131: no shade while the widget owns the surface.
+                if (!widgetVisible) drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.85f)))
                 if (fullWidthGlow) {
                     // r67: the band replaces the small oval while
                     // listening — a full-width strip at the bottom edge
@@ -137,7 +149,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                         topLeft = Offset(0f, size.height - bandHeight),
                         size = Size(size.width, bandHeight),
                     )
-                } else {
+                } else if (!widgetVisible) {
                     // A wide, flat oval of light rising from the bottom edge.
                     scale(1f, 0.22f, Offset(size.width / 2, size.height)) {
                         drawCircle(
@@ -202,7 +214,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 }
             }
         }
-        if (state.phase != CarAssistant.Phase.IDLE) {
+        if (overlayConversationRowVisible(state.phase, widgetVisible)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             PulsingMic(listening)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
