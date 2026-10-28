@@ -732,11 +732,15 @@ internal val NAV_BAR_SIDE_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NA
 internal val NAV_BAR_PILL_STRIP_WIDTH = NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT
 
 /**
- * r99: the Meridian rail's top and bottom float — 32dp from each
- * vertical edge, so the rail never spans the full height, while
- * the side float stays 12dp like every other floating bar.
+ * r105: the Meridian rail's top and bottom float — it matches the
+ * collapsed map pane logo's top inset (COLLAPSED_PANE_TILE_FLOAT,
+ * TemplateChrome.kt), the little map-icon button that expands the
+ * pane, so the rail's top edge sits level with that tile's top and
+ * the bottom mirrors it exactly. The rail still floats: it never
+ * touches an edge or a corner. The themed rail is untouched — it
+ * keeps its own 12dp margins on every side.
  */
-internal val MERIDIAN_RAIL_VERTICAL_FLOAT = 32.dp
+internal val MERIDIAN_RAIL_VERTICAL_FLOAT = COLLAPSED_PANE_TILE_FLOAT
 
 
 /**
@@ -789,7 +793,10 @@ private fun CarSideBar(
     // Meridian mode the fill is Meridian dark instead of the theme
     // surface, the Pitlane texture is dropped for the photo's clean
     // dark, and the vertical float grows to 32dp top and bottom, so
-    // the rail never spans the full height.
+    // the rail never spans the full height. r105: the vertical float
+    // now matches the collapsed map pane tile's top inset (12dp) top
+    // and bottom, so the rail stretches closer to both edges while
+    // still floating.
     Surface(
         modifier = if (meridian) {
             modifier.padding(

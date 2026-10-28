@@ -77,7 +77,7 @@ object VoiceTrace {
      * push that forgets to bump it fails CI instead of shipping an
      * ambiguous trace. NEVER reuse a tag value across pushes.
      */
-    const val BUILD_TAG = "r104"
+    const val BUILD_TAG = "r105"
 
     private const val PREFS = "voice_trace"
     private const val KEY_ARMED = "armed"

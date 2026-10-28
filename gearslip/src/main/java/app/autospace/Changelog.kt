@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            72, "0.4.61-alpha",
+            listOf(
+                "In Meridian mode the side bar now stretches closer to the top and bottom of the screen, lining up with the little map icon at the top of the map.",
+            ),
+        ),
+        Release(
             71, "0.4.60-alpha",
             listOf(
                 "Icon packs: a pack that doesn't show up in the picker can now be added by typing its package name, and more packs are found in the first place.",

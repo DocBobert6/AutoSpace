@@ -11,7 +11,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** r87 steering-side app bar, r94 float, r99 Meridian forms, r103 centered icons + digits-only clock: strip mapping, alignment mapping, clock text, rail/pill form. */
+/** r87 steering-side app bar, r94 float, r99 Meridian forms, r103 centered icons + digits-only clock, r105 Meridian rail float: strip mapping, alignment mapping, clock text, rail/pill form. */
 class SideBarTest {
 
 
@@ -136,6 +136,28 @@ class SideBarTest {
     @Test
     fun pillStripIsPillHeightPlusFloats() {
         assertEquals(NAV_BAR_HEIGHT + NAV_BAR_SIDE_FLOAT + NAV_BAR_SIDE_FLOAT, NAV_BAR_PILL_STRIP_WIDTH)
+    }
+
+    @Test
+    fun meridianRailFloatMatchesCollapsedPaneTile() {
+        // r105: the rail's top inset IS the tile's top inset — one
+        // constant, not two numbers that could drift apart.
+        assertEquals(COLLAPSED_PANE_TILE_FLOAT, MERIDIAN_RAIL_VERTICAL_FLOAT)
+    }
+
+    @Test
+    fun meridianRailFloatIsTwelveDp() {
+        // r105: the tile sits 12dp from the top, so the rail does too,
+        // and the bottom mirrors it exactly (both read the same constant).
+        assertEquals(12.dp, MERIDIAN_RAIL_VERTICAL_FLOAT)
+    }
+
+    @Test
+    fun meridianRailFloatMatchesThemedSideFloat() {
+        // r105: with the tile at 12dp, the Meridian rail spans the same
+        // vertical extent as the themed rail's 12dp margins — the
+        // themed rail itself is untouched, still on NAV_BAR_SIDE_FLOAT.
+        assertEquals(NAV_BAR_SIDE_FLOAT, MERIDIAN_RAIL_VERTICAL_FLOAT)
     }
 }
 

@@ -489,6 +489,15 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
  * handful of buttons no longer claim a whole column of the map. [fullHeight] is for content that
  * needs the room, such as a search field with its keyboard.
  */
+/**
+ * r105: the collapsed map pane logo's float — its padding on every
+ * side, so its top inset is this value. The Meridian rail's vertical
+ * float (MERIDIAN_RAIL_VERTICAL_FLOAT, CarUi.kt) is defined from
+ * this constant, so the rail's top edge always sits level with
+ * this tile's top; change this and the rail follows.
+ */
+internal val COLLAPSED_PANE_TILE_FLOAT = 12.dp
+
 @Composable
 private fun MapPaneLayout(
     modifier: Modifier,
@@ -524,7 +533,7 @@ private fun MapPaneLayout(
                 ChromeSurface(
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(12.dp)
+                        .padding(COLLAPSED_PANE_TILE_FLOAT)
                         .clickable(onClickLabel = "Expand pane") { collapsed = false },
                     shape = cardShapeForLook(gsLook(), androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                     shadowElevation = 6.dp,
