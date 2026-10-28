@@ -3,6 +3,7 @@ package app.autospace.car
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.morphContrastRatio
@@ -115,11 +116,15 @@ class MorphTest {
 
     @Test
     fun roundedCornerDpRejectsPillsCirclesAndMixedCorners() {
-        assertEquals(12.dp, roundedCornerDp(RoundedCornerShape(12.dp)))
-        assertEquals(20.dp, roundedCornerDp(RoundedCornerShape(20.dp)))
+        val density = Density(1f)
+        assertEquals(12.dp, roundedCornerDp(RoundedCornerShape(12.dp), density))
+        assertEquals(20.dp, roundedCornerDp(RoundedCornerShape(20.dp), density))
         // Percent corners (pills) never morph.
-        assertNull(roundedCornerDp(RoundedCornerShape(50)))
-        assertNull(roundedCornerDp(CircleShape))
+        assertNull(roundedCornerDp(RoundedCornerShape(50), density))
+        assertNull(roundedCornerDp(CircleShape, density))
+        // A zero corner stays square rather than opening
+        // to 2dp on latch.
+        assertNull(roundedCornerDp(RoundedCornerShape(0.dp), density))
         assertNull(
             roundedCornerDp(
                 RoundedCornerShape(
@@ -128,6 +133,7 @@ class MorphTest {
                     bottomEnd = 12.dp,
                     bottomStart = 12.dp,
                 ),
+                density,
             ),
         )
     }

@@ -43,7 +43,6 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.DpCornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
@@ -68,6 +67,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -192,18 +193,26 @@ fun morphLatchedWashPasses(content: Color, container: Color, primary: Color, was
 
 /**
  * r114 (Morph only): the uniform Dp corner of a rounded
- * shape, or null for percent corners (pills), mixed
- * corners, and non-rounded shapes — those never morph.
- * Pure so it is unit-testable.
+ * shape, or null when the shape must never morph (percent
+ * corners — pills; mixed corners; non-rounded shapes; a zero
+ * corner, which stays square rather than opening to 2dp on
+ * latch). DpCornerSize is internal to foundation, so the
+ * corner is read through the public [CornerSize.toPx]: a
+ * Dp corner's pixel size is independent of the shape size,
+ * while a percent corner scales with it — comparing at two
+ * sizes tells them apart. Pure so it is unit-testable.
  */
-fun roundedCornerDp(shape: Shape): Dp? {
+fun roundedCornerDp(shape: Shape, density: Density): Dp? {
     val r = shape as? RoundedCornerShape ?: return null
-    val tl = r.topStart as? DpCornerSize ?: return null
-    val tr = r.topEnd as? DpCornerSize ?: return null
-    val be = r.bottomEnd as? DpCornerSize ?: return null
-    val bl = r.bottomStart as? DpCornerSize ?: return null
-    if (tl.size != tr.size || tl.size != be.size || tl.size != bl.size) return null
-    return tl.size
+    val corners = listOf(r.topStart, r.topEnd, r.bottomEnd, r.bottomStart)
+    val small = Size(100f, 100f)
+    val large = Size(200f, 200f)
+    val pxSmall = corners.map { it.toPx(small, density) }
+    val pxLarge = corners.map { it.toPx(large, density) }
+    if (pxSmall != pxLarge) return null
+    val first = pxSmall[0]
+    if (first == 0f || pxSmall.any { it != first }) return null
+    return (first / density.density).dp
 }
 
 /**
@@ -368,7 +377,7 @@ fun Modifier.gsSurface(
     // any future simplification.
     val morphBase: Dp? = if (!look.morphCorners) null
         else if (shape == buttonShapeForLook(look)) look.corner
-        else roundedCornerDp(shape)
+        else roundedCornerDp(shape, LocalDensity.current)
     val morphTarget = morphBase?.let { morphCornerTarget(it, look, pressed, latched) } ?: 0.dp
     val cornerNow by animateDpAsState(morphTarget, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(110), label = "morph")
     val drawShape: Shape = if (morphBase != null) RoundedCornerShape(cornerNow) else shape
