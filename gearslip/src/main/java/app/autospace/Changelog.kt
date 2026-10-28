@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            91, "0.4.80-alpha",
+            listOf(
+                "The media card's cover art now stays sharp instead of blurring into a wash, and the faint outline around the card is gone — the art itself is the card's face now. Cards without art look exactly as before.",
+            ),
+        ),
+        Release(
             90, "0.4.79-alpha",
             listOf(
                 "The play button in the music player now matches the other player buttons — the same color and round shape as previous and next — instead of taking its color and shape from the album cover. The progress bars still take their color from the cover.",

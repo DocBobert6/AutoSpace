@@ -22,6 +22,13 @@ import kotlin.math.roundToInt
  * very slight blur ([CARD_BLUR_RADIUS]) and draws the art opaque, with
  * no scheme fill underneath and no float alpha. The heavy radius
  * ([BLUR_RADIUS]) stays as the default for any other backdrop caller.
+ * r133: the card's art STILL washed out on device (0.4.78), and the
+ * cause was not the radius — the card passes [CARD_BLUR_RADIUS] = 2,
+ * but the working copy is only 64px and the card draws it at
+ * 240–380dp wide, a 6–12x bilinear upscale. The upscale, not the
+ * 5-tap blur, is what turns the art into a wash. The card now uses
+ * its own working size ([CARD_SAMPLE_MAX]) so the upscale is ~2–3x
+ * and the art reads as art; the radius stays 2.
  * The pure pieces (sample size, box blur, cache key) carry no Android
  * imports in their signatures and are unit-tested; only [forArt]
  * touches Bitmaps.
@@ -36,27 +43,37 @@ object ArtBlur {
 
     /**
      * r129: the floating media card's own radius — VERY slight, so the
-     * art stays recognizable instead of washing out to a flat tint. On
-     * the 64px working copy a 5-tap window softens edges without moving
-     * shapes or colors; the bilinear upscale to card size adds the rest
-     * of the softness. One word changes it if the card wants sharper or
-     * softer art.
+     * art stays recognizable instead of washing out to a flat tint.
+     * r133: the radius was never the wash — the 64px working copy was
+     * (see [CARD_SAMPLE_MAX]). On the card's own working copy a 5-tap
+     * window softens edges without moving shapes or colors. One word
+     * changes it if the card wants sharper or softer art.
      */
     const val CARD_BLUR_RADIUS = 2
+
+    /**
+     * r133: the floating media card's own working size — longest side
+     * of the working copy, replacing [SAMPLE_MAX] on the card path
+     * only. 64px upscaled 6–12x to card size (240–380dp wide) is what
+     * washed the art out on device; at 256px the upscale is ~2–3x and
+     * the art stays recognizable. Still computed once per art change
+     * and cached, so the cost stays trivial.
+     */
+    const val CARD_SAMPLE_MAX = 256
 
     /** Blurred backgrounds kept by URI, so re-entering composition never recomputes. */
     const val CACHE_SIZE = 8
 
     /**
      * Downscaled dimensions preserving aspect ratio, longest side capped
-     * at [SAMPLE_MAX]; art already smaller stays exactly as it is. Pure
-     * so it is unit-testable.
+     * at [max] ([SAMPLE_MAX] by default); art already smaller stays
+     * exactly as it is. Pure so it is unit-testable.
      */
-    fun sampleSize(srcWidth: Int, srcHeight: Int): Pair<Int, Int> {
+    fun sampleSize(srcWidth: Int, srcHeight: Int, max: Int = SAMPLE_MAX): Pair<Int, Int> {
         if (srcWidth <= 0 || srcHeight <= 0) return 1 to 1
         val longest = maxOf(srcWidth, srcHeight)
-        if (longest <= SAMPLE_MAX) return srcWidth to srcHeight
-        val scale = SAMPLE_MAX.toFloat() / longest
+        if (longest <= max) return srcWidth to srcHeight
+        val scale = max.toFloat() / longest
         return maxOf(1, (srcWidth * scale).roundToInt()) to maxOf(1, (srcHeight * scale).roundToInt())
     }
 
@@ -150,20 +167,22 @@ object ArtBlur {
      * ArtColor does, since its pixels cannot be read directly.
      *
      * [radius] defaults to [BLUR_RADIUS]; the floating media card
-     * passes [CARD_BLUR_RADIUS]. The cache key carries the radius, so
-     * the same art blurred two ways never collides in the cache.
+     * passes [CARD_BLUR_RADIUS]. [sampleMax] defaults to [SAMPLE_MAX];
+     * the card passes [CARD_SAMPLE_MAX]. The cache key carries both,
+     * so the same art at two radii or two working sizes never collides
+     * in the cache.
      */
-    fun forArt(art: Bitmap?, artUri: Uri?, radius: Int = BLUR_RADIUS): ImageBitmap? {
+    fun forArt(art: Bitmap?, artUri: Uri?, radius: Int = BLUR_RADIUS, sampleMax: Int = SAMPLE_MAX): ImageBitmap? {
         if (art == null) return null
         val key = artUri?.toString()?.let { cacheKey(it) }
-        val cacheKeyWithRadius = key?.let { "$it#r$radius" }
+        val cacheKeyWithRadius = key?.let { "$it#r$radius#s$sampleMax" }
         if (cacheKeyWithRadius != null) cache.get(cacheKeyWithRadius)?.let { return it }
         val readable = (if (art.config == Bitmap.Config.HARDWARE) {
             art.copy(Bitmap.Config.ARGB_8888, false)
         } else {
             art
         }) ?: return null
-        val (w, h) = sampleSize(readable.width, readable.height)
+        val (w, h) = sampleSize(readable.width, readable.height, sampleMax)
         val small = Bitmap.createScaledBitmap(readable, w, h, true)
         val pixels = IntArray(w * h)
         small.getPixels(pixels, 0, w, 0, 0, w, h)

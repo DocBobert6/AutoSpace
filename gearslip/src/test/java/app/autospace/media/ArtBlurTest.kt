@@ -72,6 +72,20 @@ class ArtBlurTest {
     }
 
     @Test
+    fun cardWorkingSizeIsLargerThanTheDefaultWash() {
+        assertEquals(256, ArtBlur.CARD_SAMPLE_MAX)
+        assertTrue(ArtBlur.CARD_SAMPLE_MAX > ArtBlur.SAMPLE_MAX)
+    }
+
+    @Test
+    fun sampleSizeHonorsACustomCap() {
+        assertEquals(256 to 192, ArtBlur.sampleSize(1024, 768, ArtBlur.CARD_SAMPLE_MAX))
+        assertEquals(100 to 50, ArtBlur.sampleSize(100, 50, ArtBlur.CARD_SAMPLE_MAX))
+        // Default still caps at 64.
+        assertEquals(64 to 48, ArtBlur.sampleSize(1024, 768))
+    }
+
+    @Test
     fun cacheKeyPrefersUriAndRejectsBlanks() {
         assertEquals("content://art/1", ArtBlur.cacheKey("content://art/1"))
         assertNull(ArtBlur.cacheKey(null))

@@ -71,6 +71,14 @@ class FloatingHomeTest {
     }
 
     @Test
+    fun artCardDrawsNoPerimeterButPlainCardKeepsItsEdge() {
+        // r133: with art the art IS the face, so no kit edge strokes
+        // over it; without art the card keeps exactly today's edge.
+        assertFalse(artCardDrawsPerimeter(true))
+        assertTrue(artCardDrawsPerimeter(false))
+    }
+
+    @Test
     fun transportRowDefaultsToCircles() {
         // r42: callers that pass no shape (full player, CompactPlayer)
         // keep circles; only the floating card passes gsShape().

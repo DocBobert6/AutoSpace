@@ -127,6 +127,15 @@ fun floatingCardWidth(frameWidth: Dp): Dp =
     (frameWidth * 0.40f).coerceIn(240.dp, 380.dp).coerceAtMost(frameWidth - 24.dp)
 
 /**
+ * r133: whether the art-backed card draws a kit edge. The art IS the
+ * card face, so with art no perimeter decoration (Blueprint ring,
+ * Silhouette halo, Pitlane panel border, OLED hairline) may stroke
+ * over it; without art the card keeps exactly today's edge. Pure so
+ * it is unit-testable.
+ */
+fun artCardDrawsPerimeter(hasArt: Boolean): Boolean = !hasArt
+
+/**
  * r42: dismiss button sizing — the glyph and drawn box shrink, the touch
  * target does not. Pure values so the floor is unit-testable: the drawn
  * box (36dp) stays centered in the 44dp touch target, and the glyph
@@ -193,8 +202,10 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // (or a failed blur) means no background image: the card keeps
     // exactly today's background. r129: the card passes ArtBlur's
     // slight radius, not the heavy default — the art must stay
-    // recognizable, not wash out to a tint.
-    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS) } }
+    // recognizable, not wash out to a tint. r133: the card also passes
+    // ArtBlur's own 256px working size — the 64px copy upscaled 6–12x
+    // was the wash, not the radius.
+    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS, ArtBlur.CARD_SAMPLE_MAX) } }
     // r48: the card takes the style corner under Verve (24dp) via the
     // look-fed card rule; every other style keeps its exact shape.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
@@ -206,18 +217,19 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     Box(modifier) {
         // r129: the artwork itself is the card's background now,
         // drawn OPAQUE with only a very slight blur (ArtBlur radius 2
-        // on the 64px working copy) — no scheme fill underneath (the
-        // panel fill is transparent when art is present) and no 0.88
-        // float alpha on the art. r97's 0.88 treatment averaged the art
-        // into a wash over the map, which is why the card read as
-        // scheme fill instead of album art. No scrim or overlay is
-        // added: title and controls sit directly on the blurred art.
-        // Without art the card keeps exactly today's background
-        // (pinned 0.88 fill, no image). The art is drawn at the card's
-        // size (matchParentSize) and cropped, then upscaled with
-        // bilinear filtering; the working copy is only 64px, so the
-        // upscale stays smooth. Null art (or a failed blur) draws
-        // nothing.
+        // on the card's own 256px working copy — r133: the 64px copy
+        // upscaled 6–12x was the wash, not the radius) — no scheme
+        // fill underneath (the panel fill is transparent when art is
+        // present) and no 0.88 float alpha on the art. r97's 0.88
+        // treatment averaged the art into a wash over the map, which
+        // is why the card read as scheme fill instead of album art.
+        // No scrim or overlay is added: title and controls sit
+        // directly on the blurred art. Without art the card keeps
+        // exactly today's background (pinned 0.88 fill, no image).
+        // The art is drawn at the card's size (matchParentSize) and
+        // cropped, then upscaled with bilinear filtering; the working
+        // copy is 256px, so the ~2–3x upscale keeps the art readable.
+        // Null art (or a failed blur) draws nothing.
         blurredArt?.let {
             Image(
                 it, null,
@@ -231,6 +243,10 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
             shape = cardShape,
             elevation = 4.dp,
             fillAlpha = if (blurredArt != null) 0f else FrostedChromeAlpha,
+            // r133: with art, the art IS the card face — no kit edge
+            // (ring, halo, panel border, OLED hairline) may stroke
+            // over it. Without art the card keeps exactly today's edge.
+            perimeter = artCardDrawsPerimeter(blurredArt != null),
         ) {
             Column(Modifier.fillMaxWidth().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

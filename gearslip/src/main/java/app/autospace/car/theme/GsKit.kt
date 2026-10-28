@@ -410,6 +410,8 @@ fun frostedChromeColor(): Color =
  * panels keep their call-site shape (routed through gsButtonShape) and
  * elevation. Pitlane border + texture are no-ops under every other
  * style, and the hairline stays Pitch-gated, exactly as the card has it.
+ * r133: callers may pass perimeter = false to drop every edge
+ * decoration (the art-backed media card does — the art is its face).
  */
 @Composable
 fun FrostedPanelSurface(
@@ -421,15 +423,21 @@ fun FrostedPanelSurface(
     // This sits BEFORE content on purpose: content is the trailing-lambda parameter, and
     // a parameter after it would steal every call site's trailing lambda block.
     fillAlpha: Float = FrostedChromeAlpha,
+    // r133: the art-backed media card passes perimeter = false — with
+    // art, the art IS the card face, so no kit edge (Pitlane border,
+    // Blueprint ring, Silhouette halo, OLED hairline) strokes over it.
+    // Every other caller keeps the default true, so their edge is
+    // unchanged. Like fillAlpha, this sits BEFORE content on purpose.
+    perimeter: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val look = gsLook()
     Surface(
-        modifier = modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape),
+        modifier = if (perimeter) modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape) else modifier,
         shape = shape,
         color = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha)),
         shadowElevation = elevation,
-        border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (perimeter && LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Box(Modifier.pitLanePanelTexture()) { content() }
     }
