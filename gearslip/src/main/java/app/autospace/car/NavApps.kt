@@ -87,14 +87,16 @@ internal class BuiltInApp(
     val label: String,
     val glyph: ImageVector,
     val screen: CarScreen?,
-    val open: (CarNavigator) -> Unit,
     /**
      * r116: a bitmap tile that replaces the glyph where one is set. Only the Browser carries
      * one — the Notscape Mariner icon as a circle (drawable-nodpi/browser_mariner_circle.png,
      * composed from Mariner's own icon source). Every other built-in keeps its vector glyph,
      * and installed apps keep their own icons, so icon packs never touch this tile.
+     * Declared before [open] on purpose: [open] must stay the last parameter so the
+     * trailing-lambda call sites below keep binding to it.
      */
     val circleIconRes: Int? = null,
+    val open: (CarNavigator) -> Unit,
 )
 
 internal object BuiltInApps {

@@ -41,7 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.res.imageResource
+import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -280,8 +280,12 @@ fun CarLauncher() {
     val running = rememberRunningApps()
 
     // r116: the Browser tile's Mariner circle, decoded once here; tileOf hands it to the Web
-    // tile. imageResource remembers by id, so this is one decode, not one per tile.
-    val browserCircle = BuiltInApps.Web.circleIconRes?.let { imageResource(it) }
+    // tile. Decoded with the framework loader and remembered, so this is one decode, not one
+    // per tile. (The Compose resource helper was tried first and does not resolve in this
+    // project's Compose version, so the framework loader it is.)
+    val browserCircle = remember(context) {
+        BuiltInApps.Web.circleIconRes?.let { BitmapFactory.decodeResource(context.resources, it)?.asImageBitmap() }
+    }
 
     fun tileOf(entry: Entry): Tile {
         // Only apps that don't work get a mark. The X rates an app's own car screens; a messenger

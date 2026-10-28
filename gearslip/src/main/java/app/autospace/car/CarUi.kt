@@ -1,5 +1,6 @@
 package app.autospace.car
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -75,7 +76,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
 import app.autospace.R
@@ -1341,8 +1341,14 @@ private fun NavAppIcon(
         // shares this path) shows the circle and never the magnifier on top of it. No other
         // entry carries both a bitmap and a glyph, so nothing else changes. The 8dp
         // rounded-square clip is a no-op on the circular bitmap: its corners are already
-        // transparent, so the circle stays circular.
-        val icon = entry.icon ?: entry.builtIn?.circleIconRes?.let { imageResource(it) }
+        // transparent, so the circle stays circular. The remember runs unconditionally so the
+        // hook order never shifts when the entry in this slot changes.
+        val context = LocalContext.current
+        val circleRes = entry.builtIn?.circleIconRes
+        val circle = remember(context, circleRes) {
+            circleRes?.let { BitmapFactory.decodeResource(context.resources, it)?.asImageBitmap() }
+        }
+        val icon = entry.icon ?: circle
         if (icon != null) Image(icon, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)))
         else entry.builtIn?.let { Icon(it.glyph, entry.label, Modifier.size(30.dp)) }
         // Only running apps get the line along the bottom edge, the usual taskbar mark for it.
