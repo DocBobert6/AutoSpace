@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            98, "0.4.87-alpha",
+            listOf(
+                "When you are talking to the assistant, the conversation now shows in the listening bar over the map, with your earlier turns scrolling above the current one — instead of a separate live conversation card. Dismissing the bar ends the conversation.",
+            ),
+        ),
+        Release(
             97, "0.4.86-alpha",
             listOf(
                 "The media card's cover now blends softly into its own blurred background at the edges instead of ending in a hard rectangle edge — the middle of the cover stays sharp and whole.",

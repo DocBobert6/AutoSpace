@@ -3,12 +3,8 @@ package app.autospace.car
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/** r76 A58 Live conversation widget swap: liveness, labels, turn display rule. */
+/** r140: the widget is retired — liveness, overlay row visibility, and the overlay turn display rule. */
 class LiveSwapTest {
-
-
-
-
 
     @Test
     fun idleIsNotLive() {
@@ -35,59 +31,19 @@ class LiveSwapTest {
         assertEquals(true, isLiveConversation(CarAssistant.Phase.ERROR))
     }
 
+    // r140: the overlay row shows whenever a conversation is live — no second surface gates it.
+
     @Test
-    fun phaseLabelListening() {
-        assertEquals("Listening", livePhaseLabel(CarAssistant.Phase.LISTENING, false))
+    fun overlayRowShowsWhenLive() {
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.LISTENING))
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.THINKING))
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.SPEAKING))
+        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.ERROR))
     }
 
     @Test
-    fun phaseLabelStillListening() {
-        assertEquals("Still listening", livePhaseLabel(CarAssistant.Phase.LISTENING, true))
-    }
-
-    @Test
-    fun phaseLabelThinking() {
-        assertEquals("Thinking", livePhaseLabel(CarAssistant.Phase.THINKING, false))
-    }
-
-    @Test
-    fun phaseLabelSpeaking() {
-        assertEquals("Speaking", livePhaseLabel(CarAssistant.Phase.SPEAKING, false))
-    }
-
-    @Test
-    fun phaseLabelError() {
-        assertEquals("Error", livePhaseLabel(CarAssistant.Phase.ERROR, false))
-    }
-
-    @Test
-    fun phaseLabelIdleBlank() {
-        assertEquals("", livePhaseLabel(CarAssistant.Phase.IDLE, false))
-    }
-
-    @Test
-    fun emptyBodyListeningReady() {
-        assertEquals("Listening…", liveEmptyBody(CarAssistant.Phase.LISTENING, true))
-    }
-
-    @Test
-    fun emptyBodyListeningNotReady() {
-        assertEquals("One moment…", liveEmptyBody(CarAssistant.Phase.LISTENING, false))
-    }
-
-    @Test
-    fun emptyBodyThinking() {
-        assertEquals("…", liveEmptyBody(CarAssistant.Phase.THINKING, true))
-    }
-
-    @Test
-    fun emptyBodySpeakingBlank() {
-        assertEquals("", liveEmptyBody(CarAssistant.Phase.SPEAKING, true))
-    }
-
-    @Test
-    fun emptyBodyIdleBlank() {
-        assertEquals("", liveEmptyBody(CarAssistant.Phase.IDLE, false))
+    fun overlayRowHiddenWhenIdle() {
+        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.IDLE))
     }
 
     @Test
@@ -96,23 +52,24 @@ class LiveSwapTest {
             ConversationTurn("first question", "first answer"),
             ConversationTurn("second question", "second answer"),
         )
-        val turns = liveWidgetTurns(history, "now asking", "now answering", moving = true)
-        assertEquals(listOf(LiveWidgetTurn("now asking", "now answering")), turns)
+        val turns = overlayConversationTurns(history, "now asking", "now answering", moving = true)
+        assertEquals(listOf(OverlayConversationTurn("now asking", "now answering")), turns)
     }
 
     @Test
-    fun parkedShowsLastTwoPlusCurrent() {
+    fun parkedShowsFullSessionPlusCurrent() {
         val history = listOf(
             ConversationTurn("first question", "first answer"),
             ConversationTurn("second question", "second answer"),
             ConversationTurn("third question", "third answer"),
         )
-        val turns = liveWidgetTurns(history, "now asking", "now answering", moving = false)
+        val turns = overlayConversationTurns(history, "now asking", "now answering", moving = false)
         assertEquals(
             listOf(
-                LiveWidgetTurn("second question", "second answer"),
-                LiveWidgetTurn("third question", "third answer"),
-                LiveWidgetTurn("now asking", "now answering"),
+                OverlayConversationTurn("first question", "first answer"),
+                OverlayConversationTurn("second question", "second answer"),
+                OverlayConversationTurn("third question", "third answer"),
+                OverlayConversationTurn("now asking", "now answering"),
             ),
             turns,
         )
@@ -121,21 +78,21 @@ class LiveSwapTest {
     @Test
     fun blankCurrentParkedShowsHistoryOnly() {
         val history = listOf(ConversationTurn("earlier question", "earlier answer"))
-        val turns = liveWidgetTurns(history, "", "", moving = false)
-        assertEquals(listOf(LiveWidgetTurn("earlier question", "earlier answer")), turns)
+        val turns = overlayConversationTurns(history, "", "", moving = false)
+        assertEquals(listOf(OverlayConversationTurn("earlier question", "earlier answer")), turns)
     }
 
     @Test
     fun blankCurrentMovingShowsNothing() {
         val history = listOf(ConversationTurn("earlier question", "earlier answer"))
-        val turns = liveWidgetTurns(history, "", "", moving = true)
-        assertEquals(emptyList<LiveWidgetTurn>(), turns)
+        val turns = overlayConversationTurns(history, "", "", moving = true)
+        assertEquals(emptyList<OverlayConversationTurn>(), turns)
     }
 
     @Test
     fun emptyHistoryShowsCurrentOnly() {
-        val turns = liveWidgetTurns(emptyList(), "now asking", "", moving = false)
-        assertEquals(listOf(LiveWidgetTurn("now asking", "")), turns)
+        val turns = overlayConversationTurns(emptyList(), "now asking", "", moving = false)
+        assertEquals(listOf(OverlayConversationTurn("now asking", "")), turns)
     }
 
     @Test
@@ -144,13 +101,11 @@ class LiveSwapTest {
             ConversationTurn("old question", "old answer"),
             ConversationTurn("new question", "new answer"),
         )
-        val turns = liveWidgetTurns(history, "current question", "current answer", moving = false)
+        val turns = overlayConversationTurns(history, "current question", "current answer", moving = false)
         assertEquals("old question", turns[0].user)
         assertEquals("new question", turns[1].user)
         assertEquals("current question", turns[2].user)
     }
-
-    // r117: the AI flag rides through the widget's turn mapping.
 
     @Test
     fun historyAiFlagCarried() {
@@ -158,54 +113,62 @@ class LiveSwapTest {
             ConversationTurn("ai question", "ai answer", fromAi = true),
             ConversationTurn("builtin question", "builtin answer", fromAi = false),
         )
-        val turns = liveWidgetTurns(history, "now asking", "now answering", moving = false)
+        val turns = overlayConversationTurns(history, "now asking", "now answering", moving = false)
         assertEquals(true, turns[0].fromAi)
         assertEquals(false, turns[1].fromAi)
     }
 
     @Test
     fun currentAiFlagCarried() {
-        val turns = liveWidgetTurns(emptyList(), "now asking", "now answering", moving = false, currentFromAi = true)
+        val turns = overlayConversationTurns(emptyList(), "now asking", "now answering", moving = false, currentFromAi = true)
         assertEquals(true, turns[0].fromAi)
     }
 
     @Test
     fun currentBuiltinFlagDefaultsFalse() {
-        val turns = liveWidgetTurns(emptyList(), "now asking", "now answering", moving = false)
+        val turns = overlayConversationTurns(emptyList(), "now asking", "now answering", moving = false)
         assertEquals(false, turns[0].fromAi)
     }
 
-    // r131: one surface, one X — the overlay row steps aside while the widget owns it.
+    // Audit §6 F3: a recorded turn must render once, never as history plus current.
 
     @Test
-    fun overlayRowShowsWhenLiveAndWidgetHidden() {
-        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.LISTENING, false))
-        assertEquals(true, overlayConversationRowVisible(CarAssistant.Phase.SPEAKING, false))
+    fun recordedCurrentTurnRendersOnce() {
+        val history = listOf(
+            ConversationTurn("earlier question", "earlier answer"),
+            ConversationTurn("now asking", "now answering"),
+        )
+        val turns = overlayConversationTurns(history, "now asking", "now answering", moving = false)
+        assertEquals(
+            listOf(
+                OverlayConversationTurn("earlier question", "earlier answer"),
+                OverlayConversationTurn("now asking", "now answering"),
+            ),
+            turns,
+        )
     }
 
     @Test
-    fun overlayRowHiddenWhenWidgetVisible() {
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.LISTENING, true))
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.THINKING, true))
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.SPEAKING, true))
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.ERROR, true))
+    fun followUpWindowTurnRendersOnce() {
+        // The follow-up window clears heard but keeps reply, so the
+        // current turn reads ("", reply) against a recorded
+        // (user, reply) — still the same exchange, still once.
+        val history = listOf(ConversationTurn("now asking", "now answering"))
+        val turns = overlayConversationTurns(history, "", "now answering", moving = false)
+        assertEquals(listOf(OverlayConversationTurn("", "now answering")), turns)
     }
 
     @Test
-    fun overlayRowHiddenWhenIdleEitherWay() {
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.IDLE, false))
-        assertEquals(false, overlayConversationRowVisible(CarAssistant.Phase.IDLE, true))
+    fun differentQuestionSameAnswerNotDeduped() {
+        val history = listOf(ConversationTurn("first question", "same answer"))
+        val turns = overlayConversationTurns(history, "second question", "same answer", moving = false)
+        assertEquals(2, turns.size)
     }
 
     @Test
-    fun widgetVisibleFlagTracksSetVisible() {
-        try {
-            LiveWidgetState.setVisible(true)
-            assertEquals(true, LiveWidgetState.visible.value)
-            LiveWidgetState.setVisible(false)
-            assertEquals(false, LiveWidgetState.visible.value)
-        } finally {
-            LiveWidgetState.setVisible(false)
-        }
+    fun sameQuestionDifferentAnswerNotDeduped() {
+        val history = listOf(ConversationTurn("same question", "first answer"))
+        val turns = overlayConversationTurns(history, "same question", "second answer", moving = false)
+        assertEquals(2, turns.size)
     }
 }

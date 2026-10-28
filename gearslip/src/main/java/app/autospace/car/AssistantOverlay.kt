@@ -11,11 +11,15 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.produceState
+import app.autospace.notify.CarMotion
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -58,11 +62,12 @@ import kotlinx.coroutines.launch
  * so white words read over a bright map, and a glow along the bottom edge in the phone's own
  * colours that breathes while listening. The shade passes touches through; only the buttons take them.
  *
- * r131: on Home the live widget owns the conversation surface, so this overlay's row, shade,
- * and glow all step aside while the widget shows — one surface, one X, and the bar no longer
- * covers the map's corner labels under a live conversation. The proposal sheet is unaffected
- * (it has no widget equivalent), and when the widget is dismissed the overlay returns as the
- * r117 fallback, with its own Dismiss ending the conversation as before.
+ * r140: the live widget is retired, so this overlay is the one assistant surface again — its
+ * row, shade, and glow no longer step aside for anything. The live conversation renders
+ * inside it, with the full session scrollable above the current turn while parked (current
+ * turn only while moving, the same safety shape the widget had). Dismiss ends the
+ * conversation (CarAssistant.cancel), as it always did here; there is no widget-scoped
+ * dismiss anymore. The proposal sheet is unaffected.
  */
 @Composable
 fun AssistantOverlay(modifier: Modifier = Modifier) {
@@ -72,11 +77,6 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
     // phase returns to IDLE, but the proposal stays open until its window lapses or the
     // user answers — so the overlay stays up for a pending proposal even while idle.
     if (state.phase == CarAssistant.Phase.IDLE && pending == null) return
-    // r131: while the live widget owns the surface on Home, the overlay
-    // contributes nothing of its own — its row, shade, and glow all step
-    // aside (see below). A pending proposal still renders its sheet.
-    val widgetVisible by LiveWidgetState.visible.collectAsState()
-    if (widgetVisible && pending == null) return
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
     val frame by CarEnvironment.frame.collectAsState()
@@ -119,14 +119,13 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
     // and idle keep exactly today's treatment. The r57 follow-up window
     // keeps the phase at LISTENING, so the band stays up through
     // "Still listening…" with no special-casing.
-    val fullWidthGlow = state.phase == CarAssistant.Phase.LISTENING && !widgetVisible
+    val fullWidthGlow = state.phase == CarAssistant.Phase.LISTENING
 
     Box(
         modifier
             .fillMaxWidth()
             .drawBehind {
-                // r131: no shade while the widget owns the surface.
-                if (!widgetVisible) drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.85f)))
+                drawRect(Brush.verticalGradient(0f to Color.Transparent, 0.45f to Color.Black.copy(alpha = 0.6f), 1f to Color.Black.copy(alpha = 0.85f)))
                 if (fullWidthGlow) {
                     // r67: the band replaces the small oval while
                     // listening — a full-width strip at the bottom edge
@@ -149,7 +148,7 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                         topLeft = Offset(0f, size.height - bandHeight),
                         size = Size(size.width, bandHeight),
                     )
-                } else if (!widgetVisible) {
+                } else {
                     // A wide, flat oval of light rising from the bottom edge.
                     scale(1f, 0.22f, Offset(size.width / 2, size.height)) {
                         drawCircle(
@@ -214,7 +213,77 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
                 }
             }
         }
-        if (overlayConversationRowVisible(state.phase, widgetVisible)) {
+        if (overlayConversationRowVisible(state.phase)) {
+        // r140: history lives inside the overlay now. CarMotion.moving
+        // is a plain value, not a flow — poll it 1 s, the same way
+        // the retired widget did (GPS only updates every 2 s).
+        val movingNow by produceState(CarMotion.moving) {
+            while (true) {
+                value = CarMotion.moving
+                delay(1_000)
+            }
+        }
+        val displayTurns = overlayConversationTurns(
+            ConversationSession.historyForRequest(),
+            state.heard, state.reply, movingNow, currentFromAi = state.fromAi,
+        )
+        val hasCurrent = state.heard.isNotBlank() || state.reply.isNotBlank()
+        val historyTurns = if (hasCurrent) displayTurns.dropLast(1) else displayTurns
+        // r140: the history scrolls, capped at 240dp so the overlay
+        // stays a bottom bar and never grows into a full screen.
+        // Auto-scroll (detail b): a new turn follows to the bottom
+        // ONLY when the list is already at the bottom. The check
+        // reads the previous frame's layout: a fresh turn makes the
+        // old last item exactly one short of the new last, so a
+        // bottom reader follows; a reader scrolled up further does
+        // not get yanked down. A first-appearing list (no layout
+        // yet) starts at the bottom.
+        val historyListState = rememberLazyListState()
+        LaunchedEffect(historyTurns.size) {
+            if (historyTurns.isNotEmpty()) {
+                val lastVisible = historyListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                if (lastVisible == null || lastVisible >= historyTurns.lastIndex - 1) {
+                    historyListState.scrollToItem(historyTurns.lastIndex)
+                }
+            }
+        }
+        if (historyTurns.isNotEmpty()) {
+            LazyColumn(
+                state = historyListState,
+                modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(historyTurns) { turn ->
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        if (turn.user.isNotBlank()) {
+                            Text(
+                                turn.user,
+                                color = Color.White.copy(alpha = 0.7f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (turn.assistant.isNotBlank()) {
+                            if (turn.fromAi) {
+                                Text(
+                                    "AI",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                            }
+                            Text(
+                                turn.assistant,
+                                color = Color.White,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             PulsingMic(listening)
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {

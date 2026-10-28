@@ -68,8 +68,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The home screen: the map full-bleed, with the floating media card,
- * the live conversation widget, and the widget column over it. The map
+ * The home screen: the map full-bleed, with the floating media card
+ * and the widget column over it. The map
  * is whatever navigation app was used last, brought back on its own.
  * The one exception is lyrics: it keeps a split (map + lyrics column),
  * since lyrics is a view the driver explicitly opened.
@@ -123,7 +123,6 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     var miniVideoDragOffsetDp by remember { mutableStateOf(Offset.Zero) }
     var miniVideoDragSizeDp by remember { mutableStateOf(Offset.Zero) }
     LaunchedEffect(miniVideoItem?.url) { miniVideoDragOffsetDp = Offset.Zero }
-    val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
     // r97: the rail is the only app bar; a non-zero strip means it is showing.
     val railVisible = mapSurfaceStrip > 0.dp
 
@@ -178,36 +177,17 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     // graduation: PiP is regular now, so the card shows whenever a
     // mini video is active.
     val showMiniVideo = miniVideoItem != null && onHome
-    // r76: A58 Live conversation widget swap — while a live
-    // conversation is active, the floating media card's slot shows
-    // the conversation widget instead of the card. Precedence is
-    // mini video first (hiding it would stop playback — its player
-    // lives in composition), then the conversation widget (hiding
-    // the audio card stops nothing), then the audio card. The swap
-    // is drawn only inside the floating branch below, so classic
-    // Home is untouched; the lyrics split is excluded like the card
-    // itself. The widget swaps back the moment the phase returns to
-    // IDLE — the follow-up window expiring ends the conversation.
-    // r117: a dismissed live widget stays dismissed only for its
-    // conversation; the flag resets the moment the phase returns
-    // to IDLE, so the next conversation shows the widget again.
-    val liveWidgetDismissed by LiveWidgetState.dismissed.collectAsStateWithLifecycle()
-    LaunchedEffect(assistantState.phase) {
-        if (assistantState.phase == CarAssistant.Phase.IDLE) LiveWidgetState.reset()
-    }
-    val showLiveWidget = isLiveConversation(assistantState.phase) && onHome && panel != SidePanel.LYRICS &&
-        !showMiniVideo && !liveWidgetDismissed
-    // r131: publish the widget's visibility so the overlay can step aside
-    // while the widget owns the surface — one surface, one X. The effect
-    // re-runs on every showLiveWidget change, and showLiveWidget is false
-    // at IDLE, so the flag clears itself when the conversation ends.
-    LaunchedEffect(showLiveWidget) {
-        LiveWidgetState.setVisible(showLiveWidget)
-    }
+    // r140: the live conversation widget is retired — the
+    // AssistantOverlay is the one conversation surface again, so
+    // the floating-card slot has no widget branch anymore.
+    // Precedence is mini video first (hiding it would stop
+    // playback — its player lives in composition), then the audio
+    // card, which now stays visible during a conversation exactly
+    // as it did before the widget existed.
     val showFloatingCard = shouldShowFloatingCard(
         phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
-    ) && !showMiniVideo && !showLiveWidget
+    ) && !showMiniVideo
     // r69: mini-player docking (A44/A45). The trip bar
     // sits at the bottom-start corner during guidance (see
     // NavigationChrome), so the effective dock steps a Start dock
@@ -449,43 +429,6 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                                         mediaCardDragOffsetDp.y.dp.roundToPx(),
                                     )
                                 },
-                        )
-                    }
-                }
-            }
-            if (showLiveWidget) {
-                // r77: same clearance slot as the audio card (see above).
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-                    val clearanceAlignment = mediaCardDockAlignment(
-                        clearanceDock(
-                            cardDock,
-                            true, // r97 graduation: break 1 is regular now.
-                            CardClearanceState.controls,
-                            clearanceStartAllowed,
-                            maxWidth.value, maxHeight.value,
-                            floatingCardWidth(maxWidth).value,
-                            CardClearanceState.cardHeightDp ?: 0f,
-                            0f, // r97: no bottom bar strip anymore.
-                        ),
-                    )
-                    // r77 fix: captured here, in the BoxWithConstraints
-                    // scope — the inner Box content has neither the scope
-                    // receiver (maxWidth) nor a composable context
-                    // (LocalDensity.current) for the size callback.
-                    val clearanceCardWidth = floatingCardWidth(maxWidth)
-                    val clearanceDensity = LocalDensity.current
-                    Box(
-                        Modifier.fillMaxSize().padding(
-                            start = 24.dp, top = 24.dp, end = 24.dp,
-                            bottom = 24.dp,
-                        ),
-                        contentAlignment = clearanceAlignment,
-                    ) {
-                        LiveConversationWidget(
-                            assistantState,
-                            Modifier.width(clearanceCardWidth).onSizeChanged {
-                                CardClearanceState.reportCardHeight(with(clearanceDensity) { it.height.toDp().value })
-                            },
                         )
                     }
                 }
