@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            87, "0.4.76-alpha",
+            listOf(
+                "When the song playing has cover art, the media card now shows that art as its background, barely blurred, instead of the plain color fill. Cards without art look exactly as before.",
+            ),
+        ),
+        Release(
             86, "0.4.75-alpha",
             listOf(
                 "Browse rows now show a folder for lists and a music note for songs when the app gives no cover art, and the compact player beside a list is centred like the full player.",

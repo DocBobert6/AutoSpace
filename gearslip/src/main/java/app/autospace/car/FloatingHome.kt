@@ -157,12 +157,12 @@ internal val FloatingCardSessionSwipeMinDp: Dp = 24.dp
  * language, never claimed as blur. The content itself stays opaque for
  * glanceability.
  *
- * r97 graduation (review #1 fix): when album art is available, the
- * artwork itself is the card's background, drawn at the pinned frosted
- * alpha (0.88) — the transparency treatment is applied TO the artwork,
- * replacing r88's fill-over-art. This is NOT live map blur (still
- * impossible over the SurfaceView): the art is our own image, blurred
- * once per art change and cached by its URI. No art means no background
+ * r129: when album art is available, the artwork itself is the card's
+ * background, drawn OPAQUE with only a very slight blur — replacing
+ * r97's 0.88-alpha treatment, which averaged the art into an
+ * unrecognizable wash over the map and read as scheme fill. No scheme
+ * fill sits underneath the art (the panel fill is transparent when art
+ * is present); no scrim or overlay is added. No art means no background
  * image: the card keeps exactly today's background (pinned 0.88 fill).
  *
  * Turn-zone clearance is structural, not numeric: the card is bottom-
@@ -191,8 +191,10 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // additionally cached in ArtBlur, so track changes do not jank and
     // leaving and re-entering composition does not recompute. Null art
     // (or a failed blur) means no background image: the card keeps
-    // exactly today's background.
-    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri) } }
+    // exactly today's background. r129: the card passes ArtBlur's
+    // slight radius, not the heavy default — the art must stay
+    // recognizable, not wash out to a tint.
+    val blurredArt = remember(art, now.artUri) { art?.let { ArtBlur.forArt(it, now.artUri, ArtBlur.CARD_BLUR_RADIUS) } }
     // r48: the card takes the style corner under Verve (24dp) via the
     // look-fed card rule; every other style keeps its exact shape.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
@@ -202,26 +204,27 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // r71 (A28): the swipe threshold in pixels, resolved once per composition.
     val swipeThresholdPx = with(LocalDensity.current) { FloatingCardSessionSwipeMinDp.toPx() }
     Box(modifier) {
-        // r97 graduation (review #1 fix): the artwork itself is the
-        // card's background now, at the theme's pinned frosted alpha
-        // (0.88) — the transparency treatment is applied TO the
-        // artwork, replacing r88's fill-over-art, so the art reads
-        // instead of showing through a fill. No second translucent
-        // layer is added: with art the panel fill is transparent.
-        // The art is a heavily blurred copy with no sharp edges, so
-        // the bold title stays readable over it. Without art the card
-        // keeps exactly today's background (pinned 0.88 fill, no
-        // image). The art is drawn at the card's size (matchParentSize)
-        // and cropped, then upscaled with bilinear filtering; the
-        // working copy is only 64px, so the upscale stays smooth.
-        // Null art (or a failed blur) draws nothing.
+        // r129: the artwork itself is the card's background now,
+        // drawn OPAQUE with only a very slight blur (ArtBlur radius 2
+        // on the 64px working copy) — no scheme fill underneath (the
+        // panel fill is transparent when art is present) and no 0.88
+        // float alpha on the art. r97's 0.88 treatment averaged the art
+        // into a wash over the map, which is why the card read as
+        // scheme fill instead of album art. No scrim or overlay is
+        // added: title and controls sit directly on the blurred art.
+        // Without art the card keeps exactly today's background
+        // (pinned 0.88 fill, no image). The art is drawn at the card's
+        // size (matchParentSize) and cropped, then upscaled with
+        // bilinear filtering; the working copy is only 64px, so the
+        // upscale stays smooth. Null art (or a failed blur) draws
+        // nothing.
         blurredArt?.let {
             Image(
                 it, null,
                 Modifier.matchParentSize().clip(cardShape),
                 contentScale = ContentScale.Crop,
                 filterQuality = FilterQuality.Medium,
-                alpha = FrostedChromeAlpha,
+                alpha = 1f,
             )
         }
         FrostedPanelSurface(

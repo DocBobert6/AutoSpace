@@ -12,13 +12,19 @@ import kotlin.math.roundToInt
  *
  * The art is our own image, so blurring it is nothing like live map blur
  * (impossible over a SurfaceView): it is shrunk to a small working copy,
- * box-blurred once per art change, and drawn behind the card's existing
- * frosted fill — never over it. The 0.88 frosted fill stays the only
- * translucent layer, which is why legibility is exactly today's: the art
- * reads as a color wash through the frost, and no second translucent
- * stack is ever built on top. The pure pieces (sample size, box blur,
- * cache key) carry no Android imports in their signatures and are
- * unit-tested; only [forArt] touches Bitmaps.
+ * box-blurred once per art change, and drawn behind the card's content.
+ *
+ * r129: the card's art is NO LONGER a heavy color wash. The old treatment
+ * (radius 12 on a 64px working copy, drawn at the 0.88 float alpha over
+ * the map) averaged each pixel over a 25px window and then let the map
+ * show through — the result read as a scheme tint, not as album art,
+ * which is exactly what the device report said. The card now uses a
+ * very slight blur ([CARD_BLUR_RADIUS]) and draws the art opaque, with
+ * no scheme fill underneath and no float alpha. The heavy radius
+ * ([BLUR_RADIUS]) stays as the default for any other backdrop caller.
+ * The pure pieces (sample size, box blur, cache key) carry no Android
+ * imports in their signatures and are unit-tested; only [forArt]
+ * touches Bitmaps.
  */
 object ArtBlur {
 
@@ -27,6 +33,16 @@ object ArtBlur {
 
     /** Box-blur radius on the working copy; heavy, because this is a backdrop, not a photo. */
     const val BLUR_RADIUS = 12
+
+    /**
+     * r129: the floating media card's own radius — VERY slight, so the
+     * art stays recognizable instead of washing out to a flat tint. On
+     * the 64px working copy a 5-tap window softens edges without moving
+     * shapes or colors; the bilinear upscale to card size adds the rest
+     * of the softness. One word changes it if the card wants sharper or
+     * softer art.
+     */
+    const val CARD_BLUR_RADIUS = 2
 
     /** Blurred backgrounds kept by URI, so re-entering composition never recomputes. */
     const val CACHE_SIZE = 8
@@ -132,11 +148,16 @@ object ArtBlur {
      * MediaArt's cache or the media session. Only copies made here are
      * recycled. A hardware bitmap is copied into memory first, same as
      * ArtColor does, since its pixels cannot be read directly.
+     *
+     * [radius] defaults to [BLUR_RADIUS]; the floating media card
+     * passes [CARD_BLUR_RADIUS]. The cache key carries the radius, so
+     * the same art blurred two ways never collides in the cache.
      */
-    fun forArt(art: Bitmap?, artUri: Uri?): ImageBitmap? {
+    fun forArt(art: Bitmap?, artUri: Uri?, radius: Int = BLUR_RADIUS): ImageBitmap? {
         if (art == null) return null
         val key = artUri?.toString()?.let { cacheKey(it) }
-        if (key != null) cache.get(key)?.let { return it }
+        val cacheKeyWithRadius = key?.let { "$it#r$radius" }
+        if (cacheKeyWithRadius != null) cache.get(cacheKeyWithRadius)?.let { return it }
         val readable = (if (art.config == Bitmap.Config.HARDWARE) {
             art.copy(Bitmap.Config.ARGB_8888, false)
         } else {
@@ -146,13 +167,13 @@ object ArtBlur {
         val small = Bitmap.createScaledBitmap(readable, w, h, true)
         val pixels = IntArray(w * h)
         small.getPixels(pixels, 0, w, 0, 0, w, h)
-        val blurred = boxBlurPixels(pixels, w, h, BLUR_RADIUS)
+        val blurred = boxBlurPixels(pixels, w, h, radius)
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         out.setPixels(blurred, 0, w, 0, 0, w, h)
         val image = out.asImageBitmap()
         if (small !== readable) small.recycle()
         if (readable !== art) readable.recycle()
-        if (key != null) cache.put(key, image)
+        if (cacheKeyWithRadius != null) cache.put(cacheKeyWithRadius, image)
         return image
     }
 }
