@@ -270,19 +270,23 @@ fun morphCardColor(color: Color): Color {
 }
 
 /**
- * r142 (Foundry only): the card treatment — the brushed-metal
- * gradient + the machined rim, NO gloss band. [foundryCardRim]
- * is the same 1dp machined rim gsSurface draws on controls
- * (white top, black bottom), applied at the same four call
- * sites as [blueprintCardRing]; [foundryCardGradient] is the
- * vertical gradient over the card's own container color
- * (top lightened 10% toward white, bottom the container
+ * r142 (Foundry only), revised r145: the card treatment —
+ * the brushed-metal gradient + the machined rim + the inner
+ * top highlight, NO gloss band. [foundryCardRim] is the same
+ * 1dp machined rim gsSurface draws on controls (white top,
+ * black bottom), applied at the same four call sites as
+ * [blueprintCardRing]; [foundryCardGradient] is the vertical
+ * gradient over the card's own container color (top lightened
+ * by the style's topLight toward white — r145: 0.20 dark,
+ * 0.18 light, up from r142's fixed 0.10 — bottom the container
  * itself), drawn behind the card's content like
  * pitLanePanelTexture — so it tints the fill, never the
- * text. The gradient preserves the container's alpha, so
- * the frosted chrome pin (0.88) holds on frosted surfaces.
- * No-op under every other style. Cards never draw the gloss
- * band: at card scale the band would wash card text.
+ * text, plus the same 1dp inner top highlight line gsSurface
+ * draws on controls (inset 1dp from the top edge). The
+ * gradient preserves the container's alpha, so the frosted
+ * chrome pin (0.88) holds on frosted surfaces. No-op under
+ * every other style. Cards never draw the gloss band: at card
+ * scale the band would wash card text.
  */
 @Composable
 fun Modifier.foundryCardRim(shape: Shape): Modifier {
@@ -363,16 +367,30 @@ fun Modifier.foundryCardGradient(containerColor: Color, enabled: Boolean = true)
     if (!enabled || !look.machinedRim) return this
     return this.drawBehind {
         // Plain arithmetic: graphics lerp has no Float overload
-        // (Color/Shadow only), so the 10% lift toward white is
-        // written out channel by channel.
+        // (Color/Shadow only), so the lift toward white is
+        // written out channel by channel. r145: the lift follows
+        // the style's topLight (0.20 dark, 0.18 light) instead
+        // of r142's fixed 0.10, so cards get the same stronger
+        // metal gradient as controls.
+        val lift = look.topLight
         val top = containerColor.copy(
-            red = containerColor.red + (1f - containerColor.red) * 0.10f,
-            green = containerColor.green + (1f - containerColor.green) * 0.10f,
-            blue = containerColor.blue + (1f - containerColor.blue) * 0.10f,
+            red = containerColor.red + (1f - containerColor.red) * lift,
+            green = containerColor.green + (1f - containerColor.green) * lift,
+            blue = containerColor.blue + (1f - containerColor.blue) * lift,
         )
         drawRect(
             Brush.verticalGradient(0f to top, 1f to containerColor),
         )
+        // r145: the same thin inner top highlight controls draw
+        // in gsSurface — 1dp white, inset 1dp from the top edge.
+        if (look.innerTopHighlightAlpha > 0f) {
+            val linePx = 1.dp.toPx()
+            drawRect(
+                Color.White.copy(alpha = look.innerTopHighlightAlpha),
+                topLeft = Offset(0f, linePx),
+                size = Size(size.width, linePx),
+            )
+        }
     }
 }
 

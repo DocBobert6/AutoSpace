@@ -328,6 +328,15 @@ data class ControlLook(
     val machinedRimTopAlpha: Float = 0f,
     val machinedRimBottomAlpha: Float = 0f,
     /**
+     * The thin inner top highlight (r145, Foundry only): a 1dp
+     * white line inset 1dp from the top edge inside the face,
+     * drawn against the machined rim's darker outer edge so
+     * the metal reads as metal at a glance (see the highlight
+     * block in gsSurface and the line in foundryCardGradient).
+     * 0 for none — every other style draws no inner highlight.
+     */
+    val innerTopHighlightAlpha: Float = 0f,
+    /**
      * The diagonal sheen (r143, Aurora only): a white band at
      * [sheenAngleDegrees] across the face, white at [sheenAlpha]
      * in the band's middle fading to transparent at its edges
@@ -1100,23 +1109,31 @@ object GsThemes {
 
     /**
      * Foundry (2026-10-28, r142; the Skeuomorphic style
-     * picked as matching old iOS best):
+     * picked as matching old iOS best; revised r145 after
+     * Robert's verdict that r142 was too brown, too flat,
+     * and not skeuomorphic enough):
      * the Workshop scheme's own button style. A machined-metal
      * look: a 10dp corner, a vertical brushed-metal gradient
-     * (scheme-tinted — topLight 0.10 toward white, bottomShade
-     * 0.08 toward black, 0.12 on light fills where the top lift
-     * barely shows), and the ONE new draw routine: a white gloss
-     * band, alpha 0.30 at the top edge fading to 0 over the top
-     * 35% of the face (see ControlLook.glossAlpha /
+     * (scheme-tinted — r145: topLight 0.20 toward white,
+     * bottomShade 0.18 toward black, 0.20 on light fills,
+     * roughly double r142's lift and shade so the metal reads
+     * at car distance), and the ONE new draw routine: a white
+     * gloss band, alpha 0.30 at the top edge fading to 0 over
+     * the top 35% of the face (see ControlLook.glossAlpha /
      * glossFraction and the gloss block in gsSurface). The rim
-     * is machined: a 1dp border, white at 0.35 alpha on top,
-     * black at 0.30 alpha on the bottom, fading through
-     * transparent between. Shadow 6dp at 0.35 alpha. Pressed:
-     * the gloss drops to 0.12, the shadow shrinks to 2dp (see
-     * pressedShadow), the face drops 1dp (sink). Latched: the
-     * rim takes the scheme primary, the gloss stays at rest
-     * alpha. The face is flat enough that the hold marker is
-     * the DOT. Cards get the gradient + rim, NO gloss band
+     * is machined: a 1dp border, white at 0.50 alpha on top,
+     * black at 0.45 alpha on the bottom, fading through
+     * transparent between — and r145 adds a thin inner top
+     * highlight inside it (1dp white at 0.55, inset 1dp from
+     * the top edge; see innerTopHighlightAlpha), so the bright
+     * inner line sits against the darker outer edge. Shadow
+     * r145: 10dp at 0.45 alpha (dark) / 0.40 (light), deeper
+     * than r142's 6dp at 0.35 / 0.30. Pressed: the gloss drops
+     * to 0.12, the shadow shrinks to 2dp (see pressedShadow),
+     * the face drops 1dp (sink). Latched: the rim takes the
+     * scheme primary, the gloss stays at rest alpha. The face
+     * is flat enough that the hold marker is the DOT. Cards
+     * get the gradient + rim + inner highlight, NO gloss band
      * (see foundryCardTreatment in GsKit) — the band would
      * wash card text at card scale. Cards keep their fallback
      * corners (cardsUseStyleCorner is false — the pick covers
@@ -1126,23 +1143,26 @@ object GsThemes {
      * band scales to 60% of its base alpha — rest 0.30 reads
      * 0.18, pressed 0.12 reads 0.072 — while dark fills keep the
      * full band (see foundryGlossAlpha, pinned in tests).
+     * No stitched leather cue: Heirloom already owns
+     * stitching, and r145 deliberately adds none here.
      */
     val Foundry = GsTheme(
         id = "foundry",
         name = "Foundry",
         control = ControlLook(
             corner = 10.dp,
-            topLight = 0.10f,
-            bottomShade = 0.08f,
-            bottomShadeOnLight = 0.12f,
-            shadow = 6.dp,
-            shadowAlpha = 0.35f,
+            topLight = 0.20f,
+            bottomShade = 0.18f,
+            bottomShadeOnLight = 0.20f,
+            shadow = 10.dp,
+            shadowAlpha = 0.45f,
             glossAlpha = 0.30f,
             glossPressedAlpha = 0.12f,
             glossFraction = 0.35f,
             machinedRim = true,
-            machinedRimTopAlpha = 0.35f,
-            machinedRimBottomAlpha = 0.30f,
+            machinedRimTopAlpha = 0.50f,
+            machinedRimBottomAlpha = 0.45f,
+            innerTopHighlightAlpha = 0.55f,
             pressedShadow = 2.dp,
             sink = 1.dp,
             pressedDim = 0.22f,
@@ -1151,17 +1171,18 @@ object GsThemes {
             holdMarker = HoldMarkerStyle.DOT,
             light = ControlLook(
                 corner = 10.dp,
-                topLight = 0.08f,
-                bottomShade = 0.08f,
-                bottomShadeOnLight = 0.12f,
-                shadow = 6.dp,
-                shadowAlpha = 0.30f,
+                topLight = 0.18f,
+                bottomShade = 0.18f,
+                bottomShadeOnLight = 0.20f,
+                shadow = 10.dp,
+                shadowAlpha = 0.40f,
                 glossAlpha = 0.30f,
                 glossPressedAlpha = 0.12f,
                 glossFraction = 0.35f,
                 machinedRim = true,
-                machinedRimTopAlpha = 0.35f,
-                machinedRimBottomAlpha = 0.30f,
+                machinedRimTopAlpha = 0.50f,
+                machinedRimBottomAlpha = 0.45f,
+                innerTopHighlightAlpha = 0.55f,
                 pressedShadow = 2.dp,
                 sink = 1.dp,
                 pressedDim = 0.22f,

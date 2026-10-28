@@ -704,6 +704,26 @@ fun Modifier.gsSurface(
             }
             m = m.border(1.dp, rimBrush, drawShape)
         }
+        // r145 (Foundry only): the thin inner top highlight —
+        // a 1dp white line inset 1dp from the top edge inside
+        // the face, drawn against the machined rim's darker
+        // outer edge so the metal reads as metal at a glance.
+        // Drawn here, after the clip and the rim, so it sits
+        // inside the rounded shape on top of the gradient;
+        // latched, it stays (the rim takes the primary, the
+        // highlight stays white). Cards draw their own line
+        // in foundryCardGradient, since cards never reach
+        // gsSurface.
+        if (look.innerTopHighlightAlpha > 0f) {
+            m = m.drawBehind {
+                val linePx = 1.dp.toPx()
+                drawRect(
+                    Color.White.copy(alpha = look.innerTopHighlightAlpha),
+                    topLeft = Offset(0f, linePx),
+                    size = Size(size.width, linePx),
+                )
+            }
+        }
         if (latched && look.insetAlpha > 0f) {
             val inset = look.insetAlpha
             m = m.drawBehind {

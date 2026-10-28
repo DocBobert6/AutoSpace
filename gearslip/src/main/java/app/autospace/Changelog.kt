@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            103, "0.4.92-alpha",
+            listOf(
+                "Workshop + Foundry reworked: dark mode is charcoal linen instead of espresso brown, light mode is cool off-white linen instead of cream, the accents stay brass, copper, and olive, and the metal buttons are stronger — a brighter gradient, a deeper shadow, and a bright inner line along the top edge.",
+            ),
+        ),
+        Release(
             102, "0.4.91-alpha",
             listOf(
                 "The floating media card's waveform track is clearer now — the unplayed bars show more strongly over album art.",

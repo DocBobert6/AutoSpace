@@ -6,13 +6,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Workshop (r142): the Skeuomorphic scheme — espresso and
- * parchment with brass, copper, and olive accents — plus its
- * Foundry style's gloss-lightness rule (the style values
- * themselves are pinned in GsThemeTest). Scheme tokens live
- * in [WorkshopPalette] as plain ARGB Ints, so the contrast
+ * Workshop (r142, revised r145): the Skeuomorphic scheme —
+ * charcoal linen and cool off-white linen with brass, copper,
+ * and olive accents used accent-only — plus its Foundry
+ * style's gloss-lightness rule (the style values themselves
+ * are pinned in GsThemeTest). Scheme tokens live in
+ * [WorkshopPalette] as plain ARGB Ints, so the contrast
  * rules are JVM-testable; [CarUi.workshopScheme] maps them
  * mechanically. The pair is pinned in ThemePairsTest.
+ * r145 replaces the r142 espresso/parchment backgrounds and
+ * accent-tinted containers with neutral gray ladders; the
+ * three accents themselves are unchanged.
  */
 class WorkshopTest {
 
@@ -31,18 +35,33 @@ class WorkshopTest {
 
     @Test
     fun workshopPaletteTokensMatchTheApprovedSpec() {
-        // The settled spec values, exact, both variants.
-        assertEquals(0xFF2B1D16.toInt(), WorkshopPalette.backgroundDark)
-        assertEquals(0xFFF5EEDD.toInt(), WorkshopPalette.backgroundLight)
+        // The r145 revised values, exact, both variants.
+        // Dark: charcoal linen, not espresso.
+        assertEquals(0xFF252423.toInt(), WorkshopPalette.backgroundDark)
+        assertEquals(0xFFF2F3F2.toInt(), WorkshopPalette.onSurfaceDark)
+        // Light: cool off-white linen, not parchment, with a
+        // subtle vertical gradient foot for the app background.
+        assertEquals(0xFFF1F2F2.toInt(), WorkshopPalette.backgroundLight)
+        assertEquals(0xFFE3E6E5.toInt(), WorkshopPalette.backgroundLightGradientBottom)
+        assertEquals(0xFF232427.toInt(), WorkshopPalette.onSurfaceLight)
+        // The three accents are unchanged from r142.
         assertEquals(0xFFC9A227.toInt(), WorkshopPalette.primaryDark)
         assertEquals(0xFFC9A227.toInt(), WorkshopPalette.primaryLight)
         assertEquals(0xFFB87333.toInt(), WorkshopPalette.secondaryDark)
         assertEquals(0xFFB87333.toInt(), WorkshopPalette.secondaryLight)
         assertEquals(0xFF6B7C3F.toInt(), WorkshopPalette.tertiaryDark)
         assertEquals(0xFF6B7C3F.toInt(), WorkshopPalette.tertiaryLight)
-        // Cards, exact.
-        assertEquals(0xFF3A2A1E.toInt(), WorkshopPalette.surfaceVariantDark)
-        assertEquals(0xFFEFE6CF.toInt(), WorkshopPalette.surfaceVariantLight)
+        // Cards, exact: warm dark gray / cool light gray.
+        assertEquals(0xFF3B3733.toInt(), WorkshopPalette.surfaceVariantDark)
+        assertEquals(0xFFDFE2E1.toInt(), WorkshopPalette.surfaceVariantLight)
+        // Accent-only rule: no container token is an accent
+        // tint — every container is a neutral gray step.
+        assertEquals(0xFF47423B.toInt(), WorkshopPalette.primaryContainerDark)
+        assertEquals(0xFF3B3733.toInt(), WorkshopPalette.secondaryContainerDark)
+        assertEquals(0xFF2E2C29.toInt(), WorkshopPalette.tertiaryContainerDark)
+        assertEquals(0xFFD8DBDA.toInt(), WorkshopPalette.primaryContainerLight)
+        assertEquals(0xFFDFE2E1.toInt(), WorkshopPalette.secondaryContainerLight)
+        assertEquals(0xFFE8EBEA.toInt(), WorkshopPalette.tertiaryContainerLight)
     }
 
     @Test
@@ -60,21 +79,29 @@ class WorkshopTest {
     }
 
     @Test
-    fun workshopContrastPassesExceptTheFlaggedBrassOnParchment() {
+    fun workshopContrastPassesExceptTheFlaggedBrassOnOffWhite() {
         // Body text on both backgrounds, comfortably.
         assertTrue(contrastRatio(WorkshopPalette.onSurfaceDark, WorkshopPalette.backgroundDark) >= 4.5)
-        assertEquals(14.07, contrastRatio(WorkshopPalette.onSurfaceDark, WorkshopPalette.backgroundDark), 0.02)
+        assertEquals(13.93, contrastRatio(WorkshopPalette.onSurfaceDark, WorkshopPalette.backgroundDark), 0.02)
         assertTrue(contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.backgroundLight) >= 4.5)
+        assertEquals(13.84, contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.backgroundLight), 0.02)
+        // Body text on the gradient foot, too.
+        assertTrue(contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.backgroundLightGradientBottom) >= 4.5)
+        assertEquals(12.35, contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.backgroundLightGradientBottom), 0.02)
         // Primary pair: espresso text on brass, both variants.
         assertTrue(contrastRatio(WorkshopPalette.onPrimaryDark, WorkshopPalette.primaryDark) >= 4.5)
         assertEquals(6.73, contrastRatio(WorkshopPalette.onPrimaryDark, WorkshopPalette.primaryDark), 0.02)
         assertTrue(contrastRatio(WorkshopPalette.onPrimaryLight, WorkshopPalette.primaryLight) >= 4.5)
-        // The flagged watch-out, pinned as a failure on purpose:
-        // brass as small text on parchment is only 2.09:1, so
-        // brass stays on fills and accents in light mode, never
-        // small text on parchment.
+        // The flagged watch-out, re-measured for r145 and
+        // pinned as a failure on purpose: brass as small text
+        // on the new off-white is only 2.16:1 (on the new card
+        // 1.86:1), so brass stays on fills and accents in light
+        // mode, never small text on the light background or
+        // card.
         assertTrue(contrastRatio(WorkshopPalette.primaryLight, WorkshopPalette.backgroundLight) < 4.5)
-        assertEquals(2.09, contrastRatio(WorkshopPalette.primaryLight, WorkshopPalette.backgroundLight), 0.02)
+        assertEquals(2.16, contrastRatio(WorkshopPalette.primaryLight, WorkshopPalette.backgroundLight), 0.02)
+        assertTrue(contrastRatio(WorkshopPalette.primaryLight, WorkshopPalette.surfaceVariantLight) < 4.5)
+        assertEquals(1.86, contrastRatio(WorkshopPalette.primaryLight, WorkshopPalette.surfaceVariantLight), 0.02)
         // Secondary pair: black on copper (espresso on copper is
         // only 4.29:1, so black, not espresso).
         assertTrue(contrastRatio(WorkshopPalette.onSecondaryDark, WorkshopPalette.secondaryDark) >= 4.5)
@@ -93,6 +120,8 @@ class WorkshopTest {
         assertTrue(contrastRatio(WorkshopPalette.onTertiaryContainerLight, WorkshopPalette.tertiaryContainerLight) >= 4.5)
         // Body text on the card fills, both variants.
         assertTrue(contrastRatio(WorkshopPalette.onSurfaceDark, WorkshopPalette.surfaceVariantDark) >= 4.5)
+        assertEquals(10.60, contrastRatio(WorkshopPalette.onSurfaceDark, WorkshopPalette.surfaceVariantDark), 0.02)
         assertTrue(contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.surfaceVariantLight) >= 4.5)
+        assertEquals(11.90, contrastRatio(WorkshopPalette.onSurfaceLight, WorkshopPalette.surfaceVariantLight), 0.02)
     }
 }

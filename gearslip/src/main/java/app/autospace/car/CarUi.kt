@@ -73,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -339,11 +340,33 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         // frost gradient still has an edge to shade.
         LocalOledDark provides ((dark && effDarkType == DarkModeType.OLED) || effScheme == ColorScheme.NIGHT),
     ) {
+        // r145 (Workshop light only): the app background is a
+        // subtle vertical gradient — cool off-white linen at
+        // the top to a slightly darker cool step at the bottom
+        // — so the surface reads as a surface rather than a
+        // flat tint. Every other scheme keeps its flat
+        // background color, and Workshop dark keeps its flat
+        // charcoal. The gradient lives at the two root
+        // background sites (this Surface and the non-Home
+        // cover Box below); screens that paint their own flat
+        // background keep it.
+        val workshopLightGradient = effScheme == ColorScheme.WORKSHOP && !dark
+        val workshopLightBackground = if (workshopLightGradient) {
+            Modifier.background(
+                Brush.verticalGradient(
+                    0f to Color(WorkshopPalette.backgroundLight),
+                    1f to Color(WorkshopPalette.backgroundLightGradientBottom),
+                ),
+            )
+        } else {
+            Modifier
+        }
         MaterialTheme(colorScheme = colors) {
           CompositionLocalProvider(LocalIndication provides FocusRingIndication(MaterialTheme.colorScheme.primary)) {
             Surface(
                 Modifier
                     .fillMaxSize()
+                    .then(workshopLightBackground)
                     // Watches every touch without taking any: first in line, consumes nothing.
                     .pointerInput(controlsWake) {
                         awaitPointerEventScope {
@@ -353,7 +376,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                             }
                         }
                     },
-                color = MaterialTheme.colorScheme.background,
+                color = if (workshopLightGradient) Color.Transparent else MaterialTheme.colorScheme.background,
             ) {
                 // Insets are in video-frame pixels, so convert with the un-scaled density.
                 val pad = with(base) {
@@ -459,7 +482,10 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                             Box(
                                 Modifier
                                     .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.background)
+                                    .then(
+                                        if (workshopLightGradient) workshopLightBackground
+                                        else Modifier.background(MaterialTheme.colorScheme.background),
+                                    )
                                     // Keeps touches that miss this screen's controls off the map.
                                     .pointerInput(Unit) { detectTapGestures { } },
                             ) {
@@ -1849,20 +1875,28 @@ private fun meridianScheme(): androidx.compose.material3.ColorScheme {
 }
 
 /**
- * Workshop (r142, the Skeuomorphic scheme): deep espresso dark
- * (#2B1D16 bg, parchment text, brass primary with espresso text
- * at 6.73:1, copper secondary with black text at 5.54:1, olive
- * tertiary with white text at 4.59:1) and parchment light
- * (#F5EEDD bg, espresso text, the same three accents — brass
- * on parchment is only 2.09:1, so brass stays on fills and
- * accents in light mode, never small text on parchment; the
+ * Workshop (r142, revised r145, the Skeuomorphic scheme):
+ * charcoal linen dark (#252423 bg, cool off-white text, brass
+ * primary with espresso text at 6.73:1, copper secondary with
+ * black text at 5.54:1, olive tertiary with white text at
+ * 4.59:1) and cool off-white linen light (#F1F2F2 bg, charcoal
+ * text, the same three accents — brass on off-white is only
+ * 2.16:1, so brass stays on fills and accents in light mode,
+ * never small text on the light background or card; the
  * onPrimary pair, espresso on brass at 6.73:1, carries
- * primary-fill text). Cards dark #3A2A1E, light #EFE6CF.
- * Workshop does NOT force dark (see schemeForcesDark): it
- * follows the mode control like Verve and Horizon, so both
- * variants ship; Auto night still overrides to NIGHT like
- * every scheme. Accents are for icons, selection and
- * controls, never body text except via the paired on* colors.
+ * primary-fill text). Cards dark #3B3733, light #DFE2E1.
+ * The r145 accent-only rule: brass, copper, and olive appear
+ * only as accents — never as broad background or container
+ * fills — so every container token is a neutral gray step of
+ * its variant's ladder (see WorkshopPalette). Light mode
+ * draws the app background as a subtle vertical gradient
+ * from #F1F2F2 at the top to #E3E6E5 at the bottom (see the
+ * gradient sites in CarUi) instead of a flat tint. Workshop
+ * does NOT force dark (see schemeForcesDark): it follows the
+ * mode control like Verve and Horizon, so both variants ship;
+ * Auto night still overrides to NIGHT like every scheme.
+ * Accents are for icons, selection and controls, never body
+ * text except via the paired on* colors.
  */
 private fun workshopScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     return if (!dark) androidx.compose.material3.lightColorScheme(
@@ -1889,11 +1923,11 @@ private fun workshopScheme(dark: Boolean): androidx.compose.material3.ColorSchem
         outline = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineLight),
         outlineVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineVariantLight),
         surfaceContainerLowest = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
-        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFFF1EAD8),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFFE8EBEA),
         surfaceContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantLight),
-        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFFE6DCC2),
-        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFFD8C9A8),
-        surfaceDim = androidx.compose.ui.graphics.Color(0xFFD8C9A8),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFFD5D8D7),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFFC6CAC8),
+        surfaceDim = androidx.compose.ui.graphics.Color(0xFFC6CAC8),
         surfaceBright = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundLight),
         surfaceTint = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryLight),
         inverseSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
@@ -1924,12 +1958,12 @@ private fun workshopScheme(dark: Boolean): androidx.compose.material3.ColorSchem
         outline = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineDark),
         outlineVariant = androidx.compose.ui.graphics.Color(WorkshopPalette.outlineVariantDark),
         surfaceContainerLowest = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
-        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF33241B),
+        surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF2E2C29),
         surfaceContainer = androidx.compose.ui.graphics.Color(WorkshopPalette.surfaceVariantDark),
-        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF453522),
-        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF54402E),
+        surfaceContainerHigh = androidx.compose.ui.graphics.Color(0xFF47423B),
+        surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF544E45),
         surfaceDim = androidx.compose.ui.graphics.Color(WorkshopPalette.backgroundDark),
-        surfaceBright = androidx.compose.ui.graphics.Color(0xFF54402E),
+        surfaceBright = androidx.compose.ui.graphics.Color(0xFF544E45),
         surfaceTint = androidx.compose.ui.graphics.Color(WorkshopPalette.primaryDark),
         inverseSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceDark),
         inverseOnSurface = androidx.compose.ui.graphics.Color(WorkshopPalette.onSurfaceLight),
