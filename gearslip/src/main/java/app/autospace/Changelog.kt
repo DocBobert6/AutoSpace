@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            77, "0.4.66-alpha",
+            listOf(
+                "The Neutral color scheme is now called Canvas, and it has a button style of its own: Blueprint, with a crisp hairline ring around buttons, cards, and sheets, plus a Canvas + Blueprint pair that sets both at once.",
+            ),
+        ),
+        Release(
             76, "0.4.65-alpha",
             listOf(
                 "The floating media card now moves on a press-and-hold drag: hold the card, then drag it to any spot while parked. That also fixes a bug where the card could stop dragging after the first move.",

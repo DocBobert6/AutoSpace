@@ -83,6 +83,7 @@ import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.FrostedChromeAlpha
 import app.autospace.car.theme.NavBarItemAlpha
 import app.autospace.car.theme.GsIconBox
+import app.autospace.car.theme.blueprintCardRing
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.gsButtonShape
@@ -1112,11 +1113,11 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
     val clockTime = railClockDigits(Date(now))
     val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
     Surface(
-        modifier = modifier,
+        modifier = modifier.blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)),
         shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && gsLook().ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Row(
             Modifier

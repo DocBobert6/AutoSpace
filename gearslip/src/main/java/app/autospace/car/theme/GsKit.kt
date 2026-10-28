@@ -20,13 +20,17 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -138,6 +142,44 @@ val LocalOledDark = compositionLocalOf { false }
  */
 val LocalOnPitlanePanel = compositionLocalOf { false }
 
+/**
+ * r110 (Blueprint only): the card/sheet ring — the same crisp 1px
+ * onSurfaceVariant ring gsSurface draws on controls, applied to kit
+ * card/sheet surfaces ([GsGroupedCard], [GsPanelCard],
+ * [GsSheetSurface], [FrostedPanelSurface]) and the Meridian pill, so
+ * cards get the ring instead of fill contrast. No-op under every
+ * other style. Drawn with drawWithContent AFTER the surface fill:
+ * a Card/Surface draws its own background, so a drawBehind ring
+ * would hide under it. The 1px stroke sits inset 0.5px inside the
+ * edge, following the surface's own shape, so it never clips
+ * outside rounded corners and never touches inner content, which
+ * sits padded inside every card. Under OLED the kit's forced
+ * hairline border is skipped wherever this ring draws (see the
+ * call sites) — the ring IS the edge there, and the hairline
+ * would double it.
+ */
+@Composable
+fun Modifier.blueprintCardRing(shape: Shape): Modifier {
+    val look = gsLook()
+    if (look.ringAlpha <= 0f) return this
+    val ring = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = look.ringAlpha)
+    return this.drawWithContent {
+        drawContent()
+        val insetPx = 0.5f
+        val ringSize = Size(
+            (size.width - 1f).coerceAtLeast(0f),
+            (size.height - 1f).coerceAtLeast(0f),
+        )
+        translate(insetPx, insetPx) {
+            drawOutline(
+                shape.createOutline(ringSize, layoutDirection, this),
+                ring,
+                style = Stroke(width = 1f),
+            )
+        }
+    }
+}
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -152,11 +194,11 @@ fun GsGroupedCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
                 Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
@@ -180,11 +222,11 @@ fun GsPanelCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
                 Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
@@ -205,10 +247,10 @@ fun GsSheetSurface(
     val sheetShape = cardShapeForLook(look, GsKit.SheetShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
-        modifier = modifier.pitLanePanelBorder(sheetShape),
+        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape),
         color = GsKit.sheetColor(),
         shape = sheetShape,
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
         content = {
             CompositionLocalProvider(LocalOnPitlanePanel provides panelTextured) {
                 Column(Modifier.fillMaxWidth().pitLanePanelTexture()) { content() }
@@ -295,12 +337,13 @@ fun FrostedPanelSurface(
     fillAlpha: Float = FrostedChromeAlpha,
     content: @Composable () -> Unit,
 ) {
+    val look = gsLook()
     Surface(
-        modifier = modifier.pitLanePanelBorder(shape),
+        modifier = modifier.pitLanePanelBorder(shape).blueprintCardRing(shape),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha),
         shadowElevation = elevation,
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Box(Modifier.pitLanePanelTexture()) { content() }
     }

@@ -173,8 +173,10 @@ class GsThemeTest {
         // Verve/Horizon/Meridian — nobody moves to it automatically.
         // The working name was "Leather stitch"; the style ships
         // named Heirloom and no "Leather stitch" label exists in code.
+        // r110: Blueprint appends after it, so Heirloom sits second
+        // from last, not last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn.last())
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -209,5 +211,44 @@ class GsThemeTest {
         assertEquals(ColorScheme.CIRCUIT, ColorScheme.valueOf("CIRCUIT"))
         assertEquals(ColorScheme.HERITAGE, ColorScheme.valueOf("HERITAGE"))
         assertEquals("frost", GsThemes.default.id)
+    }
+
+    @Test
+    fun blueprintIsBuiltInWithRingSpec() {
+        // r110: the Neutral — now Canvas — scheme's own style,
+        // appended last, same rule as Verve/Horizon/Meridian/
+        // Heirloom — nobody moves to it automatically.
+        // The working name was "Outline"; the style ships named
+        // Blueprint and no "Outline" style label exists in code
+        // (GsTone.Outline is the unrelated outlined-button tone).
+        // The rename is label-only: the stored scheme name stays
+        // NEUTRAL, so existing Canvas users keep their scheme.
+        assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn.last())
+        assertEquals("blueprint", GsThemes.byId("blueprint").id)
+        assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
+        val look = GsThemes.Blueprint.control
+        assertEquals(16, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0f, look.hairlineAlpha, 0.001f)
+        assertEquals(0f, look.bevelTop, 0.001f)
+        assertEquals(0f, look.bevelBottom, 0.001f)
+        assertEquals(2, look.shadow.value.toInt())
+        assertEquals(0.20f, look.shadowAlpha, 0.001f)
+        assertEquals(1f, look.ringAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        assertFalse(look.rectangularButtons)
+        assertFalse(look.cardsUseStyleCorner)
+        assertFalse(look.springMotion)
+        assertFalse(look.pillButtons)
+        assertTrue(look.latchedPrimaryTint)
+        assertEquals(0.14f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        val light = checkNotNull(look.light)
+        assertEquals(16, light.corner.value.toInt())
+        assertEquals(1f, light.ringAlpha, 0.001f)
+        assertTrue(light.latchedPrimaryTint)
     }
 }

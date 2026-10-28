@@ -338,13 +338,43 @@ fun Modifier.gsSurface(
         if (look.hairlineAlpha > 0f) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = look.hairlineAlpha), shape)
         }
+        // r110 (Blueprint only): the crisp 1px ring in
+        // onSurfaceVariant around the control, drawn as part of
+        // the button background (under content, like the stitch).
+        // A literal pixel, not 1dp — the pick says 1px — inset
+        // 0.5px so the full pixel lands inside the edge (the
+        // clip would halve a stroke centered on the outline).
+        // Latched: the ring takes the scheme primary, plus the
+        // faint primary tint drawn above (latchedPrimaryTint).
+        // Pressed: the dim at the end of gsSurface overlays
+        // everything, so a pressed control dims its ring with
+        // the rest of the face but never drops it.
+        if (look.ringAlpha > 0f) {
+            val ring = if (latched) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            m = m.drawBehind {
+                val insetPx = 0.5f
+                val ringSize = Size(
+                    (size.width - 1f).coerceAtLeast(0f),
+                    (size.height - 1f).coerceAtLeast(0f),
+                )
+                translate(insetPx, insetPx) {
+                    drawOutline(
+                        shape.createOutline(ringSize, layoutDirection, this),
+                        ring.copy(alpha = look.ringAlpha),
+                        style = Stroke(width = 1f),
+                    )
+                }
+            }
+        }
         // Phase 8 OLED: every surface token is pure black, so a control whose
         // look has no hairline (Flat, Tactile, Keycap) would be a black shape
         // on a black backdrop, separated by nothing but its icon and label.
         // Force the same 0.5dp kit hairline on every Gs control in OLED mode,
         // whatever the style — for Frost it duplicates its own identical
         // hairline, which is visually a no-op.
-        if (LocalOledDark.current) {
+        // r110: under a ring style the ring IS the edge, so the forced
+        // hairline would double it — skipped when the ring draws.
+        if (LocalOledDark.current && look.ringAlpha <= 0f) {
             m = m.border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f), shape)
         }
         // r26: the bevel is the panel edge. Raised (default): light top,

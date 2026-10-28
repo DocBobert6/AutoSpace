@@ -62,6 +62,17 @@ data class ControlLook(
     val stitchAlpha: Float = 0f,
     /** Inset of the stitch line from the control edge; 0 for none. */
     val stitchInset: Dp = 0.dp,
+    /**
+     * r110 (Blueprint only): a crisp 1px ring in onSurfaceVariant
+     * around the control, drawn as part of the button background
+     * in gsSurface (under content, like the stitch) — never an
+     * overlay widget. Latched: the ring takes the scheme primary
+     * (see gsSurface) plus the faint primary tint
+     * ([latchedPrimaryTint]). Alpha of the ring line; 0 for none.
+     * The line itself is a literal pixel wide (see gsSurface),
+     * inset half a pixel so the full pixel shows inside the edge.
+     */
+    val ringAlpha: Float = 0f,
     /** How far the face drops while pressed; 0 for none. */
     val sink: Dp = 0.dp,
     /**
@@ -173,11 +184,12 @@ data class ControlLook(
      */
     val bevelOnLatched: Boolean = false,
     /**
-     * r100 (Verve only): a faint primary tint over a latched control's
-     * container, in addition to the spring settle — so a selected
-     * option reads selected even where the tone is not Primary.
-     * False everywhere else; other styles keep their exact latched
-     * read (down state + call-site tone).
+     * r100 (Verve only, Blueprint since r110): a faint primary tint
+     * over a latched control's container, in addition to the spring
+     * settle — so a selected option reads selected even where the
+     * tone is not Primary. False everywhere else; other styles keep
+     * their exact latched read (down state + call-site tone).
+     * Blueprint pairs it with its primary ring (see gsSurface).
      */
     val latchedPrimaryTint: Boolean = false,
     /**
@@ -597,6 +609,76 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Blueprint (2026-10-28, r110; picked by Robert 2026-10-27 ~18:28
+     * as "Outline", renamed Blueprint in the 2026-10-27 ~19:22 name
+     * review — the style ships named Blueprint, and no "Outline"
+     * style label ever reached the code: GsTone.Outline is the
+     * unrelated outlined-button tone and stays): the Neutral —
+     * now Canvas — scheme's own button style. The outline IS the
+     * style: a crisp 1px ring in onSurfaceVariant around every
+     * control (see ControlLook.ringAlpha and the ring block in
+     * gsSurface), on a flat 16dp fill — no bevel, no gradient, no
+     * weave, no rivets, no hairline (the ring replaces it), and
+     * only a minimal 2dp shadow. Pressed tints the fill slightly
+     * (the kit's slight pressed dim) and the ring stays, dimmed
+     * with the face like the stitch, never dropped. Latched: the
+     * ring takes the scheme primary plus the faint primary tint
+     * (latchedPrimaryTint, shared with Verve). Cards and sheets
+     * keep their fallback corners (cardsUseStyleCorner is false —
+     * the pick gives cards the ring, not the corner) and gain the
+     * same 1px ring instead of fill contrast (see
+     * blueprintCardRing); nav bar and rail buttons read as
+     * outlined chips (16dp corner + ring through gsSurface), and
+     * pills get the ring too. Keyboard keys keep the ring: at 1px
+     * it is thinner than the 1dp dashed stitch that already draws
+     * on keys under Heirloom, so no simpler key treatment was
+     * needed. The face is flat, so the hold marker is the DOT.
+     * Ring contrast, checked against the Canvas tokens at build
+     * time (WCAG ratios, ring at full alpha): light mode 4.04:1
+     * against the Neutral button fill, 5.07:1 / 4.54:1 against
+     * card fills, 5.07:1 against the page — strong everywhere
+     * except on Primary-tone fills (1.26:1, where the blue fill
+     * itself carries the edge); dark OLED 11.75:1 / 12.47:1 and
+     * dark Regular 4.13:1 / 5.13:1 on the same surfaces. The
+     * Primary-tone weakness is the pick's own color choice,
+     * reported honestly, not adjusted away.
+     */
+    val Blueprint = GsTheme(
+        id = "blueprint",
+        name = "Blueprint",
+        control = ControlLook(
+            corner = 16.dp,
+            topLight = 0f,
+            hairlineAlpha = 0f,
+            bevelTop = 0f,
+            bevelBottom = 0f,
+            shadow = 2.dp,
+            shadowAlpha = 0.20f,
+            ringAlpha = 1f,
+            pressedDim = 0.14f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+            latchedPrimaryTint = true,
+            light = ControlLook(
+                corner = 16.dp,
+                topLight = 0f,
+                hairlineAlpha = 0f,
+                bevelTop = 0f,
+                bevelBottom = 0f,
+                shadow = 2.dp,
+                shadowAlpha = 0.16f,
+                ringAlpha = 1f,
+                pressedDim = 0.14f,
+                pressedScale = 0.98f,
+                containerAlpha = 1f,
+                holdMarker = HoldMarkerStyle.DOT,
+                latchedPrimaryTint = true,
+            ),
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -616,7 +698,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r108: Heirloom appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom)
+    // r110: Blueprint appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

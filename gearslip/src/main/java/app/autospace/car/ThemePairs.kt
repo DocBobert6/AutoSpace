@@ -11,10 +11,10 @@ import app.autospace.car.theme.GsThemes
  * reflect a pair's values and stay freely changeable afterward.
  *
  * The approved pairs, in order: Pitlane+Pitlane, Verve+Verve,
- * Frost+Neutral (the default), Meridian+Meridian (r107), and
- * Heritage+Heirloom (r108).
+ * Frost+Canvas (the default), Meridian+Meridian (r107),
+ * Heritage+Heirloom (r108), and Canvas+Blueprint (r110).
  * Horizon+Horizon is NOT here — Horizon did not exist when Pairs was
- * approved, so it waits on Robert's word as a proposed fifth pair
+ * approved, so it waits on Robert's word as a proposed pair
  * rather than being added silently.
  *
  * Pure (no Compose runtime, no Android API), so it is unit-testable
@@ -26,9 +26,10 @@ data class ThemePair(val styleId: String, val scheme: ColorScheme, val label: St
 val themePairs: List<ThemePair> = listOf(
     ThemePair(GsThemes.Pitlane.id, ColorScheme.PITLANE, "Pitlane + Pitlane"),
     ThemePair(GsThemes.Verve.id, ColorScheme.VERVE, "Verve + Verve"),
-    ThemePair(GsThemes.Frost.id, ColorScheme.NEUTRAL, "Frost + Neutral"),
+    ThemePair(GsThemes.Frost.id, ColorScheme.NEUTRAL, "Frost + Canvas"),
     ThemePair(GsThemes.Meridian.id, ColorScheme.MERIDIAN, "Meridian + Meridian"),
     ThemePair(GsThemes.Heirloom.id, ColorScheme.HERITAGE, "Heritage + Heirloom"),
+    ThemePair(GsThemes.Blueprint.id, ColorScheme.NEUTRAL, "Canvas + Blueprint"),
 )
 
 /**

@@ -30,7 +30,7 @@ val appearanceModes: List<AppearanceMode> = AppearanceMode.entries.toList()
 
 val ColorScheme.displayName: String
     get() = when (this) {
-        ColorScheme.NEUTRAL -> "Neutral"
+        ColorScheme.NEUTRAL -> "Canvas"
         ColorScheme.MATERIAL_YOU -> "Material You"
         ColorScheme.NIGHT -> "Night"
         ColorScheme.PITLANE -> "Pitlane"

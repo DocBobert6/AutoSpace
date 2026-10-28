@@ -110,7 +110,7 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
                 )
                 Text("Color scheme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Neutral", scheme == ColorScheme.NEUTRAL, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NEUTRAL) }
+                    ThemeChoice("Canvas", scheme == ColorScheme.NEUTRAL, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NEUTRAL) }
                     ThemeChoice("Material You", scheme == ColorScheme.MATERIAL_YOU, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.MATERIAL_YOU) }
                     ThemeChoice("Night", scheme == ColorScheme.NIGHT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NIGHT) }
                 }

@@ -125,7 +125,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
 
             SettingsSection("Preview colors") {
                 RadioRow("Use car setting", colours == null) { PreviewSettings.setColours(context, null) }
-                RadioRow("Neutral", colours == ColorScheme.NEUTRAL) {
+                RadioRow("Canvas", colours == ColorScheme.NEUTRAL) {
                     PreviewSettings.setColours(context, ColorScheme.NEUTRAL)
                 }
                 RadioRow("Material You", colours == ColorScheme.MATERIAL_YOU) {
