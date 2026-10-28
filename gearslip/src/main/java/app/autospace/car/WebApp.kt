@@ -25,6 +25,7 @@ import androidx.car.app.CarToast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,8 +122,8 @@ import org.json.JSONObject
  * Leaving the browser entirely destroys every tab's WebView (the
  * WebApp DisposableEffect), which matches the pre-tab behaviour where
  * leaving destroyed the single WebView. [rawHtml] is only for a launch
- * payload that is not a URL (the old loadDataWithBaseURL path); new
- * tabs always start at no-AI DuckDuckGo.
+ * payload that is not a URL (the old loadDataWithBaseURL path); a new
+ * tab is a start page (r21), never a bare search page.
  */
 private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? = null) {
     var title by mutableStateOf<String?>(null)
@@ -213,16 +214,38 @@ fun WebApp(content: String) {
     // BrowserTab). The first tab is the launch payload; every later tab
     // starts at the start page (r21). Tabs are never zero: closing the last
     // tab resets it to a fresh start page in place (see closeTab).
-    // Session restore (r21): when there is no explicit launch payload
-    // (no voice URL, no http content), a saved session reopens its tabs
-    // as URLs only — never playback state — with private tabs excluded
-    // (they were never saved). A fresh install has no session and opens
-    // no-AI DuckDuckGo, as before; an explicit http content payload
-    // still wins over a session, as it did over the default.
-    val restoredSession = remember {
-        if (voiceUrl == null && !content.startsWith("http")) BrowserStore.loadSession(context)
-        else emptyList<SavedPage>() to 0
+    // Session restore (r21, fixed r130): when there is no explicit voice
+    // payload, a saved session reopens its tabs as URLs only — never
+    // playback state — with private tabs excluded (they were never
+    // saved). A fresh install has no session and opens no-AI DuckDuckGo,
+    // as before; a voice URL still wins over a session, as it did over
+    // the default. r130: the restore gate used to ALSO require the
+    // launch content to be non-http — but CarApps always passes
+    // ProjectedContent.resolve(), which is an http startup URL on every
+    // composition, so restore never ran in normal use and every return
+    // to the browser (including closing the video player) reopened the
+    // startup URL instead of the saved tabs. The startup URL is a
+    // first-tab default, not an explicit payload, so the gate is the
+    // voice URL alone now. A session older than 4 hours is discarded
+    // and the browser opens a start page instead (the 4-hour rule).
+    val launchSession = remember {
+        if (voiceUrl == null) {
+            val saved = BrowserStore.loadSession(context)
+            when {
+                saved.first.isEmpty() -> Triple(emptyList<SavedPage>(), 0, false)
+                BrowserStore.sessionIsFresh(
+                    BrowserStore.sessionSavedAt(context),
+                    System.currentTimeMillis(),
+                ) -> Triple(saved.first, saved.second, false)
+                else -> {
+                    BrowserStore.clearSession(context)
+                    Triple(emptyList<SavedPage>(), 0, true)
+                }
+            }
+        } else Triple(emptyList<SavedPage>(), 0, false)
     }
+    val restoredSession = launchSession.first to launchSession.second
+    val staleSessionDiscarded = launchSession.third
     val tabs = remember {
         val list = mutableStateListOf<BrowserTab>()
         if (restoredSession.first.isNotEmpty()) {
@@ -231,6 +254,9 @@ fun WebApp(content: String) {
                 tab.title = page.title.takeIf { it.isNotBlank() }
                 list.add(tab)
             }
+        } else if (staleSessionDiscarded) {
+            // 4-hour rule: a stale session opens a start page, not the startup URL.
+            list.add(BrowserTab(0, "").apply { isStartPage = true })
         } else {
             list.add(
                 BrowserTab(
@@ -295,6 +321,10 @@ fun WebApp(content: String) {
     // untouched by this.
     var addressSelected by remember { mutableStateOf(false) }
     var listsOpen by remember { mutableStateOf(false) }
+    // r130: which section the lists sheet opens at. The bar star button
+    // opens at the top; the settings sheet's Library rows jump straight
+    // to History or Bookmarks (see BrowserListsSheet.initialSection).
+    var listsSection by remember { mutableStateOf(ListsSection.TOP) }
     // Audit fix (2026-10-25, A2/A3): browser text zoom (persisted
     // in BrowserStore, applied to the active tab) and find-in-page
     // state. The find bar follows tab switches: the active-tab
@@ -1154,7 +1184,7 @@ fun WebApp(content: String) {
                 Box(
                     Modifier.size(44.dp)
                         .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
-                        .clickable { refreshLists(); listsOpen = true },
+                        .clickable { refreshLists(); listsSection = ListsSection.TOP; listsOpen = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     androidx.compose.material3.Icon(
@@ -1237,6 +1267,7 @@ fun WebApp(content: String) {
                     BrowserStartPage(
                         pins = pins,
                         bookmarks = bookmarks,
+                        history = historyList,
                         onSearch = { input ->
                             openUrlInTab(activeTab, BrowserSearch.navigateUrl(context, input))
                         },
@@ -1872,7 +1903,7 @@ fun WebApp(content: String) {
                     popupSettingForHost = setting
                 },
                 currentHost = hostOf(activeTab.currentUrl),
-                onOpenLists = { settingsMenuOpen = false; refreshLists(); listsOpen = true },
+                onOpenLists = { section -> settingsMenuOpen = false; refreshLists(); listsSection = section; listsOpen = true },
                 onOpenTabs = { settingsMenuOpen = false; tabsOpen = true },
                 onCloseMenu = { settingsMenuOpen = false },
                 onCloseBrowser = { settingsMenuOpen = false; navigator.forceBack() },
@@ -1928,6 +1959,7 @@ fun WebApp(content: String) {
             BrowserListsSheet(
                 bookmarks = bookmarks,
                 history = historyList,
+                initialSection = listsSection,
                 currentUrl = activeTab.currentUrl,
                 currentHost = hostOf(activeTab.currentUrl),
                 popupStrict = popupStrict,
@@ -2265,6 +2297,7 @@ fun WebApp(content: String) {
 private fun BrowserStartPage(
     pins: List<SavedPage>,
     bookmarks: List<String>,
+    history: List<String>,
     onSearch: (String) -> Unit,
     onOpen: (String) -> Unit,
     onRemovePin: (String) -> Unit,
@@ -2357,6 +2390,42 @@ private fun BrowserStartPage(
                     }
                 }
             }
+            // r130: recent history as shortcut chips — the most recent
+            // 8 visits, host labels, one sideways-scrolling row. The
+            // lists sheet still holds the full history; these are the
+            // quick route back to a just-visited page from a new tab.
+            Text("History", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (history.isEmpty()) {
+                Text(
+                    "No history yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    history.take(8).forEach { url ->
+                        Box(
+                            Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                                )
+                                .clickable { onOpen(url) }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                runCatching { Uri.parse(url).host ?: url }.getOrDefault(url),
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
         }
         if (searchEditing) {
             CarKeyboard(
@@ -2417,7 +2486,7 @@ private fun BrowserSettingsMenu(
     popupSetting: BrowserStore.PopupSetting,
     onPopupSetting: (BrowserStore.PopupSetting) -> Unit,
     currentHost: String,
-    onOpenLists: () -> Unit,
+    onOpenLists: (ListsSection) -> Unit,
     onOpenTabs: () -> Unit,
     onCloseMenu: () -> Unit,
     onCloseBrowser: () -> Unit,
@@ -2514,6 +2583,13 @@ private fun BrowserSettingsMenu(
                     Text("Browser settings", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     GsIconButton(Icons.Filled.Close, "Close settings", onCloseMenu, size = 56.dp, iconSize = 28.dp)
                 }
+                // r130: the library first — History and Bookmarks are
+                // the rows a driver reaches for mid-browse, so they sit
+                // at the top and jump straight to their section of the
+                // lists sheet instead of living at the bottom.
+                MenuSection("Library")
+                MenuRow("History", false) { onOpenLists(ListsSection.HISTORY) }
+                MenuRow("Bookmarks", false) { onOpenLists(ListsSection.BOOKMARKS) }
                 MenuSection("Address bar")
                 MenuRow("At the top", !barBottom) { onBarPosition(false) }
                 MenuRow("At the bottom", barBottom) { onBarPosition(true) }
@@ -2589,8 +2665,8 @@ private fun BrowserSettingsMenu(
                 Text(
                     "Blocks ad and tracker requests — real filter lists (EasyList, EasyPrivacy, " +
                         "AdGuard, uBlock) downloaded in the background, with the bundled host list " +
-                        "still covering the gap before the first download and offline. " +
-                        "The page itself is never blocked. Turning it off loads everything again.",
+                        "covering offline gaps. The page itself is never blocked. " +
+                        "Turning it off loads everything again.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2643,7 +2719,6 @@ private fun BrowserSettingsMenu(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 MenuSection("Browser")
-                MenuRow("Saved & history", false) { onOpenLists() }
                 MenuRow("Tabs", false) { onOpenTabs() }
                 GsButton(onClick = onCloseBrowser, modifier = Modifier.fillMaxWidth()) { Text("Close browser") }
             }

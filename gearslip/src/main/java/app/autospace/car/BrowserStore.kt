@@ -157,6 +157,28 @@ object BrowserStore {
     private const val KEY_DESKTOP_SITES = "browser_desktop_sites"
     /** Saved session (non-private tabs only): "active:<idx>" + one page per line. */
     private const val KEY_SESSION = "browser_session"
+    /**
+     * When the session was last saved, epoch millis. Written on every
+     * saveSession, cleared with the session. A session saved before this
+     * key existed reads back 0 — a legacy session with no provable age.
+     */
+    private const val KEY_SESSION_SAVED_AT = "browser_session_saved_at"
+    /**
+     * Session freshness window (r130, the 4-hour rule): a saved session
+     * restores only while younger than this. Exactly 4 hours is stale —
+     * the rule discards at 4+ hours, it does not restore through them.
+     */
+    const val SESSION_FRESH_MS = 4L * 60 * 60 * 1000L
+
+    /**
+     * Pure freshness rule, no storage involved so it is unit-testable:
+     * a session with no stamp (legacy, or never saved) counts as fresh —
+     * with no provable age the rule restores rather than discards — and
+     * a clock set backwards also counts as fresh, for the same reason:
+     * only a proven 4+ hours of age discards.
+     */
+    fun sessionIsFresh(savedAtMs: Long, nowMs: Long): Boolean =
+        savedAtMs <= 0L || nowMs - savedAtMs < SESSION_FRESH_MS
     /** Recently closed tabs, most recent first, capped. */
     private const val KEY_RECENTLY_CLOSED = "browser_recently_closed"
     private const val MAX_RECENTLY_CLOSED = 20
@@ -220,13 +242,19 @@ object BrowserStore {
     /** Saves the session: non-private tabs only, URLs + titles, never playback state. */
     fun saveSession(context: Context, pages: List<SavedPage>, activeIndex: Int) {
         AppSettings.putString(context, KEY_SESSION, encodeSession(pages, activeIndex))
+        AppSettings.putString(context, KEY_SESSION_SAVED_AT, System.currentTimeMillis().toString())
     }
 
     fun loadSession(context: Context): Pair<List<SavedPage>, Int> =
         decodeSession(AppSettings.getString(context, KEY_SESSION, ""))
 
+    /** When the stored session was last saved, 0 when never saved or legacy. */
+    fun sessionSavedAt(context: Context): Long =
+        AppSettings.getString(context, KEY_SESSION_SAVED_AT, "0").toLongOrNull() ?: 0L
+
     fun clearSession(context: Context) {
         AppSettings.putString(context, KEY_SESSION, "")
+        AppSettings.putString(context, KEY_SESSION_SAVED_AT, "")
     }
 
     fun recentlyClosed(context: Context): List<SavedPage> =

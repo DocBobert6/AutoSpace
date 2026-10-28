@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            88, "0.4.77-alpha",
+            listOf(
+                "Closing the video player now takes you back to the page you were watching, instead of the search page. New tabs still open to the start page, and returning to the browser restores your last tabs unless 4 or more hours have passed — after that it opens a fresh start page instead. History and Bookmarks sit at the top of the browser settings, and the start page shows your recent history as shortcut chips.",
+            ),
+        ),
+        Release(
             87, "0.4.76-alpha",
             listOf(
                 "When the song playing has cover art, the media card now shows that art as its background, barely blurred, instead of the plain color fill. Cards without art look exactly as before.",

@@ -15,10 +15,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,10 +55,19 @@ import app.autospace.car.theme.GsTone
  * LazyColumn-in-scroll-Column, which Compose forbids in spirit
  * (the inner list would lose its bounds).
  */
+/**
+ * Which section the lists sheet opens at (r130). TOP is the whole sheet
+ * from the top (the bar star button and the old Saved & history row);
+ * BOOKMARKS and HISTORY are the settings sheet's Library rows jumping
+ * straight to their section.
+ */
+enum class ListsSection { TOP, BOOKMARKS, HISTORY }
+
 @Composable
 fun BrowserListsSheet(
     bookmarks: List<String>,
     history: List<String>,
+    initialSection: ListsSection = ListsSection.TOP,
     currentUrl: String,
     currentHost: String,
     popupStrict: Boolean,
@@ -82,8 +97,24 @@ fun BrowserListsSheet(
         GsSheetSurface(Modifier.fillMaxWidth().padding(
             start = 16.dp, end = 16.dp, top = 16.dp, bottom = 80.dp,
         )) {
+            // r130: section jumps. The title/row offsets are captured
+            // in the column's own coordinates, which is exactly what
+            // the scroll state scrolls by; the effect re-runs when an
+            // offset lands after first layout, so the jump happens even
+            // though layout has not run when the sheet first composes.
+            val scrollState = rememberScrollState()
+            var bookmarksY by remember { mutableStateOf(-1) }
+            var historyY by remember { mutableStateOf(-1) }
+            LaunchedEffect(initialSection, bookmarksY, historyY) {
+                val target = when (initialSection) {
+                    ListsSection.BOOKMARKS -> bookmarksY
+                    ListsSection.HISTORY -> historyY
+                    ListsSection.TOP -> -1
+                }
+                if (target >= 0) scrollState.scrollTo(target)
+            }
             Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp),
+                Modifier.fillMaxWidth().verticalScroll(scrollState).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
@@ -121,7 +152,9 @@ fun BrowserListsSheet(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         GsButton(
                             onClick = { onPopupSettingChange(BrowserStore.PopupSetting.ALLOW) },
                             tone = if (popupSetting == BrowserStore.PopupSetting.ALLOW) GsTone.Primary else GsTone.Neutral,
@@ -139,7 +172,12 @@ fun BrowserListsSheet(
                         ) { Text("Strict default") }
                     }
                 }
-                Text("Bookmarks", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Bookmarks",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.onGloballyPositioned { bookmarksY = it.positionInParent().y.toInt() },
+                )
                 if (bookmarks.isEmpty()) {
                     Text(
                         "No bookmarks yet.",
@@ -167,7 +205,10 @@ fun BrowserListsSheet(
                         }
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.onGloballyPositioned { historyY = it.positionInParent().y.toInt() },
+                ) {
                     Text("History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     GsButton(onClick = onClearHistory, tone = GsTone.Neutral) { Text("Clear") }
                 }
