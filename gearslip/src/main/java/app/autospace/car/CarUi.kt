@@ -93,6 +93,8 @@ import app.autospace.car.theme.gsColors
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.gsShape
+import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.car.theme.LocalGsTheme
 import app.autospace.media.CarMedia
@@ -746,8 +748,9 @@ internal val MERIDIAN_RAIL_VERTICAL_FLOAT = 32.dp
  * (frosted surfaceContainerLow at 0.88, 4dp elevation, Pitlane
  * texture, OLED hairline) — and, since r94, it floats: 12dp margins
  * on every side, so it touches no screen edge, and its corners
- * follow the button style through gsButtonShape (square under
- * Pitlane, the card's rounded corner under every other style).
+ * follow the look-fed card rule (square under Pitlane, the
+ * style's 24dp corner under Verve, the card's rounded corner
+ * under every other style).
  * The icon list
  * scrolls so a long pin/running list can never push the clock off
  * the frame; the clock stays pinned to the bottom. The clock is
@@ -769,9 +772,9 @@ private fun CarSideBar(
 
     // r94: the rail floats again — full frame height minus 12dp
     // margins on every side, so it touches no screen edge, and its
-    // corners follow the button style through gsButtonShape
-    // (square under Pitlane, the card's rounded corner under every
-    // other style). The scaffold pads the content Column by the
+    // corners follow the look-fed card rule (square under
+    // Pitlane, the style's 24dp corner under Verve, the card's
+    // rounded corner under every other style). The scaffold pads the content Column by the
     // strip width (rail + both margins), so this Surface is the only
     // thing that draws in the strip. Treatment is otherwise the
     // overlay bar's exactly (frosted surfaceContainerLow at 0.88,
@@ -791,7 +794,7 @@ private fun CarSideBar(
         } else {
             modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight()
         },
-        shape = gsButtonShape(GsKit.CardShape),
+        shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = if (meridian) {
             Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha)
         } else {
@@ -1068,7 +1071,7 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
     val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
     Surface(
         modifier = modifier,
-        shape = gsButtonShape(GsKit.CardShape),
+        shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
         border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,

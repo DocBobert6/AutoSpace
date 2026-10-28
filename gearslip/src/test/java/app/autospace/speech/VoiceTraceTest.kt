@@ -32,7 +32,7 @@ class VoiceTraceTest {
         // Round 7 tripwire: the tag must change on every push (see
         // VoiceTrace.BUILD_TAG). A push that forgets to bump it fails
         // here instead of shipping traces no one can attribute.
-        assertEquals("r99", VoiceTrace.BUILD_TAG)
+        assertEquals("r100", VoiceTrace.BUILD_TAG)
     }
 
     @Test

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            67, "0.4.56-alpha",
+            listOf(
+                "Verve's button style is refined: the same 24dp corner now runs across cards, sheets, and the app bar, the press spring settles without overshoot, and selected controls carry a faint primary tint.",
+            ),
+        ),
+        Release(
             66, "0.4.55-alpha",
             listOf(
                 "In Meridian mode the app bar now floats as a slim side rail on wide displays and a bottom pill on narrow or short ones, with the clock on top and the active app on a white square.",

@@ -135,4 +135,25 @@ class VerveTest {
         assertEquals(Spring.StiffnessMedium, spring.stiffness, 0.001f)
         assertTrue(stateChangeMotionSpec<androidx.compose.ui.unit.Dp>(true) is SnapSpec)
     }
+
+    @Test
+    fun verveRefinedDampingAndLatchedTint() {
+        // r100 (Verve Refined): the spring is retuned to critically
+        // damped — the fastest settle with no overshoot — and latched
+        // controls carry a faint primary tint. Both variants, and no
+        // other style gains the tint.
+        val look = GsThemes.Verve.control
+        assertEquals(1.0f, look.springDamping, 0.001f)
+        assertTrue(look.latchedPrimaryTint)
+        val light = checkNotNull(look.light)
+        assertEquals(1.0f, light.springDamping, 0.001f)
+        assertTrue(light.latchedPrimaryTint)
+        for (other in GsThemes.builtIn.filter { it.id != "verve" }) {
+            assertFalse(other.control.latchedPrimaryTint)
+            assertFalse(other.control.light?.latchedPrimaryTint == true)
+        }
+        // Horizon keeps its own 0.65 damping; the shared default is untouched.
+        assertEquals(0.65f, GsThemes.Horizon.control.springDamping, 0.001f)
+        assertEquals(0.7f, GsThemes.Frost.control.springDamping, 0.001f)
+    }
 }

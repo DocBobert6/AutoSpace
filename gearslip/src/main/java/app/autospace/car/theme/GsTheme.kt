@@ -108,9 +108,9 @@ data class ControlLook(
     val springMotion: Boolean = false,
     /**
      * r79: damping for the spring-motion spec ([stateChangeMotionSpec]).
-     * Default 0.7 is Verve's approved spring, so every existing style
-     * is unchanged; Horizon passes 0.65. Only read when [springMotion]
-     * is true.
+     * Default 0.7 is the shared default; Horizon passes 0.65, and Verve
+     * passes 1.0 since r100 (critically damped: the fastest settle
+     * with no overshoot). Only read when [springMotion] is true.
      */
     val springDamping: Float = 0.7f,
     /**
@@ -161,6 +161,14 @@ data class ControlLook(
      * edge, not a selection cue, so it stays on latched controls.
      */
     val bevelOnLatched: Boolean = false,
+    /**
+     * r100 (Verve only): a faint primary tint over a latched control's
+     * container, in addition to the spring settle — so a selected
+     * option reads selected even where the tone is not Primary.
+     * False everywhere else; other styles keep their exact latched
+     * read (down state + call-site tone).
+     */
+    val latchedPrimaryTint: Boolean = false,
     /**
      * RETIRED in r24: formerly drew a small black-and-white checker strip
      * along the top edge of latched controls under Pitlane. Robert
@@ -383,6 +391,10 @@ object GsThemes {
      * The color scheme lives in [app.autospace.car.ColorScheme.VERVE]
      * (palette tokens in VervePalette); style and scheme are
      * independently selectable, as with every other pair.
+     * r100 (Verve Refined): the spring is retuned to a critically
+     * damped 1.0 (no overshoot), latched controls carry a faint
+     * primary tint, and the rail/pill app-bar surfaces take the
+     * style's 24dp corner like cards and sheets.
      */
     val Verve = GsTheme(
         id = "verve",
@@ -400,6 +412,8 @@ object GsThemes {
             holdMarker = HoldMarkerStyle.DOT,
             springMotion = true,
             cardsUseStyleCorner = true,
+            springDamping = 1.0f,
+            latchedPrimaryTint = true,
             light = ControlLook(
                 corner = 24.dp,
                 topLight = 0.04f,
@@ -413,6 +427,8 @@ object GsThemes {
                 holdMarker = HoldMarkerStyle.DOT,
                 springMotion = true,
                 cardsUseStyleCorner = true,
+                springDamping = 1.0f,
+                latchedPrimaryTint = true,
             ),
         ),
     )

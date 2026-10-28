@@ -136,13 +136,15 @@ fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
 
 /**
  * r48 (Verve motion): the state-change animation spec, pure so it is
- * unit-testable. Parked: the approved spring (dampingRatio 0.7, medium
- * stiffness) on press, toggle, morph and expand. Moving: an instant
- * snap — no spring while driving. Never continuous or looping: this
- * spec is only ever fed to state-change animations, and it is only
- * used by looks with [ControlLook.springMotion] (Verve only).
- * r79: [dampingRatio] defaults to Verve's approved 0.7, so existing
- * callers are unchanged; Horizon passes 0.65.
+ * unit-testable. Parked: the approved spring (medium stiffness;
+ * dampingRatio defaults to 0.7) on press, toggle, morph and expand.
+ * Moving: an instant snap — no spring while driving. Never continuous
+ * or looping: this spec is only ever fed to state-change animations,
+ * and it is only used by looks with [ControlLook.springMotion]
+ * (Verve; Horizon since r79).
+ * r79: [dampingRatio] defaults to 0.7, so existing callers are
+ * unchanged; Horizon passes 0.65. r100: Verve passes 1.0 (critically
+ * damped, no overshoot).
  */
 fun <T> stateChangeMotionSpec(moving: Boolean, dampingRatio: Float = 0.7f): AnimationSpec<T> =
     if (moving) snap() else spring(dampingRatio = dampingRatio, stiffness = Spring.StiffnessMedium)
@@ -243,6 +245,16 @@ fun Modifier.gsSurface(
             val inset = look.insetAlpha
             m = m.drawBehind {
                 drawRect(Brush.verticalGradient(0f to Color.Black.copy(alpha = inset), 0.3f to Color.Transparent))
+            }
+        }
+        // r100 (Verve only): the latched primary tint — a faint primary
+        // wash over the container, under the content and borders, so a
+        // latched control reads selected on any tone. 0.12 keeps it a
+        // tint, never a fill change; transparent containers skip it
+        // with the rest of this block.
+        if (latched && look.latchedPrimaryTint) {
+            m = m.drawBehind {
+                drawRect(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
             }
         }
         // r24: the checker strip is gone entirely (Robert disliked it
