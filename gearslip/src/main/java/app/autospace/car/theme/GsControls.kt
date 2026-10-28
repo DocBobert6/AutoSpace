@@ -8,9 +8,11 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import app.autospace.car.CarSettings
 import app.autospace.notify.CarMotion
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.drawBehind
@@ -20,6 +22,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -170,6 +173,28 @@ fun gsLook(): ControlLook {
 }
 
 /**
+ * r113: the minimum of the car screen's brightness setting
+ * (CarSettings clamps brightness to 0.05..1 on load and on
+ * set — see CarSettings.kt). The halo fade is measured
+ * against this floor, so the halo reaches exactly zero at
+ * minimum brightness instead of merely dimming with the
+ * brightness scrim.
+ */
+const val HaloBrightnessMin = 0.05f
+
+/**
+ * r113: the halo's brightness factor, pure so it is
+ * unit-testable. 1 at full brightness, 0 at minimum
+ * brightness ([HaloBrightnessMin]), linear between — so the
+ * halo fades out as the panel dims and the blend degrades
+ * to pure Contour at the floor. The brightness scrim dims
+ * everything uniformly; this factor fades the halo FASTER,
+ * to nothing, which is what the pick asks for.
+ */
+fun haloBrightnessFactor(brightness: Float): Float =
+    ((brightness - HaloBrightnessMin) / (1f - HaloBrightnessMin)).coerceIn(0f, 1f)
+
+/**
  * r46: the pure container-alpha rule behind [gsSurface], kept free of
  * Composition so it is unit-testable. Frosted fills pin their alpha
  * (see [FrostedChromeAlpha]) — the style's containerAlpha must not
@@ -209,6 +234,12 @@ fun Modifier.gsSurface(
     // other style keeps its exact tween durations. The moving flag is
     // read at the state change, which is when the decision matters.
     val moving = CarMotion.moving
+    // r113: the panel brightness for the halo fade (Silhouette
+    // only in practice — every other look has haloAlpha 0, so
+    // the value is read but never used). Read unconditionally:
+    // a conditional collectAsState would change the hook count
+    // when the style changes.
+    val brightness by CarSettings.brightness.collectAsState()
     val lipNow by animateDpAsState(if (down) 0.dp else look.lip, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 110), label = "keycap")
     // Tactile: the drop shadow collapses and the face drops by [ControlLook.sink].
     val lift by animateFloatAsState(if (down) 0f else 1f, if (look.springMotion) stateChangeMotionSpec(moving, look.springDamping) else tween(if (pressed) 50 else 140), label = "lift")
@@ -216,6 +247,48 @@ fun Modifier.gsSurface(
     var m = this
     if (effContainer.alpha > 0f && look.shadow > 0.dp) {
         m = m.drawBehind { drawSoftShadow(shape, look.shadow.toPx(), look.shadowAlpha * lift, lift) }
+    }
+    // r113 (Silhouette only): the faint halo, buttons at half
+    // strength — neutral white, never primary, top + sides only.
+    // Drawn here, BEFORE clip(shape), like the soft shadow: the
+    // glow must reach past the edge, and the clip would cut it.
+    // The clipRect cuts everything below the bottom edge, so
+    // the bottom stays clean (no drop-shadow read). Cards draw
+    // the full halo (see silhouetteCardHalo); buttons draw half
+    // (the faintest tier), both scaled by the brightness factor
+    // so the halo fades out at minimum brightness. The nested
+    // translucent fills are the same faked-blur idiom as
+    // drawSoftShadow: each larger fill adds one layer of alpha
+    // at the rim, so the glow falls off over haloFalloff
+    // instead of stopping hard. Transparent containers skip it
+    // with the shadow.
+    if (effContainer.alpha > 0f && look.haloAlpha > 0f && look.haloFalloff > 0.dp) {
+        val haloTotal = look.haloAlpha * 0.5f * haloBrightnessFactor(brightness)
+        if (haloTotal > 0f) {
+            val falloff = look.haloFalloff
+            m = m.drawBehind {
+                val falloffPx = falloff.toPx()
+                val steps = 4
+                clipRect(
+                    left = -falloffPx,
+                    top = -falloffPx,
+                    right = size.width + falloffPx,
+                    bottom = size.height,
+                ) {
+                    for (i in steps downTo 1) {
+                        val grow = falloffPx * i / steps
+                        val outline = shape.createOutline(
+                            Size((size.width + grow * 2).coerceAtLeast(0f), (size.height + grow * 2).coerceAtLeast(0f)),
+                            layoutDirection,
+                            this,
+                        )
+                        translate(-grow, -grow) {
+                            drawOutline(outline, Color.White.copy(alpha = haloTotal / steps))
+                        }
+                    }
+                }
+            }
+        }
     }
     if (look.sink > 0.dp) m = m.offset(y = sinkNow)
     if (effContainer.alpha > 0f && look.lip > 0.dp) {
@@ -488,6 +561,31 @@ fun Modifier.gsSurface(
                         style = Stroke(width = 1.dp.toPx(), pathEffect = dash),
                     )
                 }
+            }
+        }
+        // r113 (Silhouette only): the Contour bottom line — ONE
+        // soft light line along the BOTTOM edge only, drawn as
+        // part of the button background (under content, like the
+        // stitch and ring), never as an overlay widget. A 1dp
+        // line in white at bottomLineAlpha, clipped to the shape
+        // (the clip above) so it follows the bottom corners;
+        // latched, the line takes the scheme primary (amber
+        // under Nocturne). The pressed dim at the end of
+        // gsSurface overlays the whole face, so a pressed
+        // control dims its line with the rest of the face —
+        // unlike Sector's trio, which is notched around, the
+        // pick WANTS the line dimmed on press. The color is
+        // read here, in the composable body — a draw scope
+        // cannot call MaterialTheme.
+        if (look.bottomLineAlpha > 0f) {
+            val line = if (latched) MaterialTheme.colorScheme.primary else Color.White
+            m = m.drawBehind {
+                val thicknessPx = 1.dp.toPx()
+                drawRect(
+                    line.copy(alpha = look.bottomLineAlpha),
+                    topLeft = Offset(0f, size.height - thicknessPx),
+                    size = Size(size.width, thicknessPx),
+                )
             }
         }
         // r26: latched LED — a single lit yellow dot at the top-end

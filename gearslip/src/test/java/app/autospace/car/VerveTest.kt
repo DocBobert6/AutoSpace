@@ -85,10 +85,11 @@ class VerveTest {
         assertTrue(GsThemes.builtIn.any { it.id == "verve" && it.name == "Verve" })
         // r79 appends Horizon last (pinned by HorizonTest), r107
         // appends Meridian last (pinned by MeridianTest), r108
-        // appends Heirloom last, r110 appends Blueprint last, and
-        // r112 appends Sector last; Verve keeps its order before
-        // all five, and nothing else moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 6])
+        // appends Heirloom last, r110 appends Blueprint last,
+        // r112 appends Sector last, and r113 appends Silhouette
+        // last; Verve keeps its order before all six, and
+        // nothing else moved.
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 7])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())

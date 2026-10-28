@@ -32,7 +32,7 @@ val ColorScheme.displayName: String
     get() = when (this) {
         ColorScheme.NEUTRAL -> "Canvas"
         ColorScheme.MATERIAL_YOU -> "Material You"
-        ColorScheme.NIGHT -> "Night"
+        ColorScheme.NIGHT -> "Nocturne"
         ColorScheme.PITLANE -> "Pitlane"
         ColorScheme.CIRCUIT -> "Circuit"
         ColorScheme.HERITAGE -> "Heritage"

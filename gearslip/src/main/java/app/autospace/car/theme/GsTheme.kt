@@ -91,6 +91,31 @@ data class ControlLook(
     val segmentAlpha: Float = 0f,
     /** Thickness of the segment bar; 0 for none. The seam slant equals the thickness (45°), so the slant scales with any thickness nudge. */
     val segmentThickness: Dp = 0.dp,
+    /**
+     * r113 (Silhouette only): a soft light line along the BOTTOM edge
+     * only, drawn as part of the button background in gsSurface (under
+     * content, like the stitch and ring) — never an overlay widget.
+     * A 1dp line in white at this alpha; latched, the line takes the
+     * scheme primary (see gsSurface); pressed, the full-face dim
+     * dims it with the rest of the face (unlike Sector's trio, which
+     * is notched around — the pick WANTS the line dimmed on press).
+     * Alpha of the line; 0 for none.
+     */
+    val bottomLineAlpha: Float = 0f,
+    /**
+     * r113 (Silhouette only): the faint halo — a neutral white glow,
+     * never the scheme primary — drawn around the top and sides
+     * only, the bottom edge kept clean (see gsSurface for buttons
+     * and silhouetteCardHalo for cards). The value here is the FULL
+     * card/sheet halo; buttons draw half of it (the faintest tier),
+     * and both tiers scale by [haloBrightnessFactor] so the halo
+     * fades out at minimum brightness. A fraction of a
+     * standalone-Halo treatment by design (a full-strength glow
+     * would be ~0.30); 0 for none.
+     */
+    val haloAlpha: Float = 0f,
+    /** Falloff of the halo — how far the glow reaches past the edge; 0 for none. A few dp, tight, so the glow hugs the surface instead of blooming. */
+    val haloFalloff: Dp = 0.dp,
     /** How far the face drops while pressed; 0 for none. */
     val sink: Dp = 0.dp,
     /**
@@ -764,6 +789,73 @@ object GsThemes {
         ),
     )
 
+    /**
+     * Silhouette (2026-10-28, r113; picked by Robert 2026-10-27 ~18:52
+     * as "Contour", renamed Silhouette in the 2026-10-27 ~19:22 name
+     * review — the style ships named Silhouette, and no "Contour"
+     * style label ever reached the code): the Night — now Nocturne —
+     * scheme's own button style. The Night scheme forces dark, so the
+     * style is dark-only by design and carries NO light variant: on
+     * a light scheme (mix-and-match) it keeps its flat 16dp read
+     * while the white bottom line and halo simply do not read on
+     * light fills — the Contour identity is a dark-UI treatment,
+     * and the pick never asked for a light variant. Contour base:
+     * a 16dp corner, a dark matte flat fill (topLight 0, no bevel,
+     * no shadow, no hairline of its own), and ONE soft light line
+     * along the BOTTOM edge only (see ControlLook.bottomLineAlpha
+     * and the bottom-line block in gsSurface): white at 0.25 alpha,
+     * which blends to ~2.03:1 on pure black — a decorative line,
+     * never a text-contrast claim. Pressed dims the line with the
+     * face (the full-face dim, not Sector's notch). Latched: the
+     * line takes the scheme primary — amber #FF9F0A under Nocturne,
+     * 10.22:1 on black — with NO faint primary tint (the line alone
+     * is the latched statement, unlike Verve/Blueprint/Sector).
+     * The faint halo (see ControlLook.haloAlpha / haloFalloff):
+     * neutral white always, never primary; tight 3dp falloff;
+     * top + sides only, the bottom edge kept clean (the clip in
+     * the halo draws cuts everything below the bottom edge);
+     * cards/sheets draw the full halo (0.12), buttons draw half
+     * (0.06, the faintest tier), and dense lists carry no halo of
+     * their own (list rows are not card surfaces and no halo is
+     * added to row containers — buttons inside lists draw the
+     * faintest tier like every button, governed by the acceptance
+     * rule below). Both tiers scale by haloBrightnessFactor, so
+     * the halo fades to exactly nothing at minimum brightness
+     * (0.05) and the blend degrades to pure Contour. Acceptance
+     * rule from the pick: if the halo is noticeable at a glance
+     * on a dense screen, it is too strong — the 0.06 button tier
+     * is the guard. The face is flat, so the hold marker is the
+     * DOT. Cards keep their fallback corners (cardsUseStyleCorner
+     * is false — the pick gives cards the halo, not the corner).
+     * Note, stated honestly: under Night the kit's forced OLED
+     * hairline (GsControls.kt, Pitch-gated) still draws its muted
+     * full outline — it is kit legibility infrastructure for
+     * black-on-black, not a style decoration, and the r110
+     * ring-skip rationale does not transfer (the ring IS a full
+     * edge; the bottom line is not). The hairline stays unless
+     * Robert says otherwise.
+     */
+    val Silhouette = GsTheme(
+        id = "silhouette",
+        name = "Silhouette",
+        control = ControlLook(
+            corner = 16.dp,
+            topLight = 0f,
+            hairlineAlpha = 0f,
+            bevelTop = 0f,
+            bevelBottom = 0f,
+            shadow = 0.dp,
+            shadowAlpha = 0f,
+            bottomLineAlpha = 0.25f,
+            haloAlpha = 0.12f,
+            haloFalloff = 3.dp,
+            pressedDim = 0.22f,
+            pressedScale = 0.98f,
+            containerAlpha = 1f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -787,7 +879,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r112: Sector appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector)
+    // r113: Silhouette appended last, same rule — nobody moves to it
+    // automatically, and no existing stored style changes meaning.
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette)
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

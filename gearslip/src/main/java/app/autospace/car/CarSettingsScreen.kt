@@ -293,9 +293,9 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         scheme,
     ) { CarSettings.setColorScheme(it) }
     Text(
-        "Neutral is the plain theme, no wallpaper colors. Material You " +
+        "Canvas is the plain theme, no wallpaper colors. Material You " +
             "follows the phone's wallpaper colors; its light/dark variant " +
-            "follows the mode control below. Night is the dedicated " +
+            "follows the mode control below. Nocturne is the dedicated " +
             "night-driving scheme: pure black, warm gray text, amber " +
             "accents, always dark. Pitlane is the stock-car scheme: " +
             "carbon black, white text, red and yellow, no blue, always " +
@@ -303,7 +303,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "(white in its light variant). Heritage is deep racing green " +
             "with cream text and brass gold accents. Circuit and Heritage " +
             "follow the mode control; Auto night still switches " +
-            "every scheme to Night.",
+            "every scheme to Nocturne.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -315,7 +315,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     ) { CarSettings.setAppearanceMode(it) }
     Text(
         "Light and Dark force that variant for every scheme that has " +
-            "one. System follows the phone's light/dark. Night and " +
+            "one. System follows the phone's light/dark. Nocturne and " +
             "Pitlane are always dark, so while one of them is active " +
             "the screen stays dark whatever mode is picked here; your " +
             "mode applies again when you choose another scheme." +
@@ -334,7 +334,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         "Regular dark uses dark-gray surfaces, no pure black. Pitch " +
             "uses pure-black backgrounds and surfaces; panels are " +
             "separated by their edges, not by gray fills. Applies to " +
-            "Neutral and Material You when dark, in every style. While Night is " +
+            "Canvas and Material You when dark, in every style. While Nocturne is " +
             "active, the background is pure black no matter which " +
             "dark type is picked.",
         style = MaterialTheme.typography.bodyMedium,
@@ -1315,11 +1315,11 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
 }
 
 /**
- * Night: the dedicated night-driving color scheme and its Auto night
+ * Nocturne: the dedicated night-driving color scheme and its Auto night
  * schedule (Robert, 2026-10-25). Auto night overrides the chosen scheme
- * at night and the chosen scheme returns in the morning; picking Night
- * yourself means Night all the time; turning Auto night off stops the
- * switching. While Night is active, the background is pure black no
+ * at night and the chosen scheme returns in the morning; picking Nocturne
+ * yourself means Nocturne all the time; turning Auto night off stops the
+ * switching. While Nocturne is active, the background is pure black no
  * matter which dark type is picked.
  */
 @Composable
@@ -1387,15 +1387,15 @@ private fun NightSettingsSection() {
         }
         if (active) {
             Text(
-                "Night is on now (Auto night).",
+                "Nocturne is on now (Auto night).",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
-            "At night, Auto night switches the color scheme to Night. Your " +
-                "chosen scheme returns in the morning. If you pick Night " +
-                "yourself, it stays Night all the time. To stop the switching, " +
+            "At night, Auto night switches the color scheme to Nocturne. Your " +
+                "chosen scheme returns in the morning. If you pick Nocturne " +
+                "yourself, it stays Nocturne all the time. To stop the switching, " +
                 "turn Auto night off.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

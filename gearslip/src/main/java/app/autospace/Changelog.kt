@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            80, "0.4.69-alpha",
+            listOf(
+                "The Night color scheme is now called Nocturne, and it has a button style of its own: Silhouette, with a soft light line along the bottom edge of buttons and a faint halo on cards that fades out at minimum brightness, plus a Nocturne + Silhouette pair that sets both at once.",
+            ),
+        ),
+        Release(
             79, "0.4.68-alpha",
             listOf(
                 "The Circuit color scheme has a button style of its own: Sector, with a blue, red, and yellow racing segment across the top edge of buttons, plus a Circuit + Sector pair that sets both at once.",

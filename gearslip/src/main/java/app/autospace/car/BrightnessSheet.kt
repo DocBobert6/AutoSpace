@@ -112,7 +112,7 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Canvas", scheme == ColorScheme.NEUTRAL, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NEUTRAL) }
                     ThemeChoice("Material You", scheme == ColorScheme.MATERIAL_YOU, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.MATERIAL_YOU) }
-                    ThemeChoice("Night", scheme == ColorScheme.NIGHT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NIGHT) }
+                    ThemeChoice("Nocturne", scheme == ColorScheme.NIGHT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NIGHT) }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Pitlane", scheme == ColorScheme.PITLANE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.PITLANE) }

@@ -131,7 +131,7 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
                 RadioRow("Material You", colours == ColorScheme.MATERIAL_YOU) {
                     PreviewSettings.setColours(context, ColorScheme.MATERIAL_YOU)
                 }
-                RadioRow("Night", colours == ColorScheme.NIGHT) {
+                RadioRow("Nocturne", colours == ColorScheme.NIGHT) {
                     PreviewSettings.setColours(context, ColorScheme.NIGHT)
                 }
                 RadioRow("Pitlane", colours == ColorScheme.PITLANE) {

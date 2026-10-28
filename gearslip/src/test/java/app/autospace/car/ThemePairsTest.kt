@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheSevenApprovedInOrder() {
+    fun pairsAreExactlyTheEightApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette"),
             themePairs.map { it.label },
         )
     }
@@ -65,6 +65,13 @@ class ThemePairsTest {
     }
 
     @Test
+    fun nocturnePairSetsSilhouetteStyleAndScheme() {
+        val pair = themePairs[7]
+        assertEquals("silhouette", pair.styleId)
+        assertEquals(ColorScheme.NIGHT, pair.scheme)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -73,6 +80,7 @@ class ThemePairsTest {
         assertEquals(themePairs[4], themePairFor("heirloom", ColorScheme.HERITAGE))
         assertEquals(themePairs[5], themePairFor("blueprint", ColorScheme.NEUTRAL))
         assertEquals(themePairs[6], themePairFor("sector", ColorScheme.CIRCUIT))
+        assertEquals(themePairs[7], themePairFor("silhouette", ColorScheme.NIGHT))
     }
 
     @Test
@@ -83,5 +91,6 @@ class ThemePairsTest {
         assertNull(themePairFor("edge", ColorScheme.NEUTRAL))
         assertNull(themePairFor("blueprint", ColorScheme.HERITAGE))
         assertNull(themePairFor("sector", ColorScheme.NEUTRAL))
+        assertNull(themePairFor("silhouette", ColorScheme.NEUTRAL))
     }
 }

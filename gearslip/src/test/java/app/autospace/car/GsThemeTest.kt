@@ -1,8 +1,10 @@
 package app.autospace.car
 
 import app.autospace.car.theme.GsThemes
+import app.autospace.car.theme.haloBrightnessFactor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -177,8 +179,10 @@ class GsThemeTest {
         // from last, not last.
         // r112: Sector appends after Blueprint, so Heirloom sits
         // third from last.
+        // r113: Silhouette appends after Sector, so Heirloom sits
+        // fourth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 4])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -227,8 +231,10 @@ class GsThemeTest {
         // NEUTRAL, so existing Canvas users keep their scheme.
         // r112: Sector appends after it, so Blueprint sits second
         // from last, not last.
+        // r113: Silhouette appends after Sector, so Blueprint sits
+        // third from last.
         assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
-        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("blueprint", GsThemes.byId("blueprint").id)
         assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
         val look = GsThemes.Blueprint.control
@@ -267,8 +273,10 @@ class GsThemeTest {
         // white), not in a field, so it is pinned by eye on device
         // rather than here. State- or role-based coloring was
         // rejected in the pick, so no field carries it.
+        // r113: Silhouette appends after it, so Sector sits second
+        // from last, not last.
         assertTrue(GsThemes.builtIn.any { it.id == "sector" && it.name == "Sector" })
-        assertEquals(GsThemes.Sector, GsThemes.builtIn.last())
+        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("sector", GsThemes.byId("sector").id)
         val look = GsThemes.Sector.control
         assertEquals(14, look.corner.value.toInt())
@@ -282,6 +290,9 @@ class GsThemeTest {
         assertEquals(3, look.segmentThickness.value.toInt())
         assertEquals(0f, look.ringAlpha, 0.001f)
         assertEquals(0f, look.stitchAlpha, 0.001f)
+        assertEquals(0f, look.bottomLineAlpha, 0.001f)
+        assertEquals(0f, look.haloAlpha, 0.001f)
+        assertEquals(0, look.haloFalloff.value.toInt())
         assertEquals(0f, look.weaveAlpha, 0.001f)
         assertEquals(0f, look.grainAlpha, 0.001f)
         assertFalse(look.rivets)
@@ -300,5 +311,66 @@ class GsThemeTest {
         assertEquals(1f, light.segmentAlpha, 0.001f)
         assertEquals(3, light.segmentThickness.value.toInt())
         assertTrue(light.latchedPrimaryTint)
+    }
+
+    @Test
+    fun silhouetteIsBuiltInWithContourLineAndHaloSpec() {
+        // r113: the Night — now Nocturne — scheme's own style,
+        // appended last, same rule as Verve/Horizon/Meridian/
+        // Heirloom/Blueprint/Sector — nobody moves to it
+        // automatically. The working name was "Contour"; the
+        // style ships named Silhouette and no "Contour" style
+        // label exists in code. Dark-only by design: NO light
+        // variant (the pick never asked for one), so on a light
+        // scheme it keeps its flat 16dp read while the white
+        // line and halo do not read on light fills. The bottom
+        // line is white at 0.25 (latched: scheme primary); the
+        // halo is the full 0.12 on cards and half that on
+        // buttons, with a tight 3dp falloff, top + sides only.
+        // The latched statement is the line alone: no faint
+        // primary tint, no spring motion, no style corner on
+        // cards. The rename is label-only: the stored scheme
+        // name stays NIGHT, so existing Night users keep
+        // their scheme.
+        assertTrue(GsThemes.builtIn.any { it.id == "silhouette" && it.name == "Silhouette" })
+        assertEquals(GsThemes.Silhouette, GsThemes.builtIn.last())
+        assertEquals("silhouette", GsThemes.byId("silhouette").id)
+        assertEquals("Nocturne", ColorScheme.NIGHT.displayName)
+        val look = GsThemes.Silhouette.control
+        assertEquals(16, look.corner.value.toInt())
+        assertEquals(0f, look.topLight, 0.001f)
+        assertEquals(0f, look.hairlineAlpha, 0.001f)
+        assertEquals(0f, look.bevelTop, 0.001f)
+        assertEquals(0f, look.bevelBottom, 0.001f)
+        assertEquals(0, look.shadow.value.toInt())
+        assertEquals(0f, look.shadowAlpha, 0.001f)
+        assertEquals(0.25f, look.bottomLineAlpha, 0.001f)
+        assertEquals(0.12f, look.haloAlpha, 0.001f)
+        assertEquals(3, look.haloFalloff.value.toInt())
+        assertEquals(0f, look.ringAlpha, 0.001f)
+        assertEquals(0f, look.stitchAlpha, 0.001f)
+        assertEquals(0f, look.segmentAlpha, 0.001f)
+        assertEquals(0f, look.weaveAlpha, 0.001f)
+        assertEquals(0f, look.grainAlpha, 0.001f)
+        assertFalse(look.rivets)
+        assertFalse(look.rectangularButtons)
+        assertFalse(look.cardsUseStyleCorner)
+        assertFalse(look.springMotion)
+        assertFalse(look.pillButtons)
+        assertFalse(look.latchedPrimaryTint)
+        assertEquals(0.22f, look.pressedDim, 0.001f)
+        assertEquals(0.98f, look.pressedScale, 0.001f)
+        assertNull(look.light)
+    }
+
+    @Test
+    fun haloBrightnessFactorFadesToZeroAtMinimumBrightness() {
+        // r113: the halo's brightness factor — 1 at full
+        // brightness, 0 at the setting's floor (0.05), linear
+        // between, clamped outside.
+        assertEquals(1f, haloBrightnessFactor(1f), 0.001f)
+        assertEquals(0f, haloBrightnessFactor(0.05f), 0.001f)
+        assertEquals(0f, haloBrightnessFactor(0f), 0.001f)
+        assertEquals(0.5f, haloBrightnessFactor(0.525f), 0.001f)
     }
 }

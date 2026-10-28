@@ -105,8 +105,10 @@ class SchemeModeSplitTest {
         // No scheme row reads as a mode, and no mode row reads as a scheme.
         // r110: the Neutral scheme's picker label is Canvas (label
         // only — the stored enum name stays NEUTRAL).
+        // r113: the Night scheme's picker label is Nocturne (label
+        // only — the stored enum name stays NIGHT).
         assertEquals(
-            listOf("Canvas", "Material You", "Night", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian"),
+            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian"),
             colorSchemes.map { it.displayName },
         )
         assertEquals(

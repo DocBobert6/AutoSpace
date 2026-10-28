@@ -16,9 +16,12 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -30,12 +33,14 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import app.autospace.car.CarSettings
 
 /**
  * AutoSpace's port of Notscape Mariner's FrostKit (Phase 7), car-adapted: the
@@ -180,6 +185,64 @@ fun Modifier.blueprintCardRing(shape: Shape): Modifier {
     }
 }
 
+/**
+ * r113 (Silhouette only): the card/sheet halo — the FULL
+ * faint halo (buttons draw half; see gsSurface), so cards
+ * and sheets glow slightly more than the buttons on them.
+ * Neutral white always, never primary; tight falloff;
+ * top + sides only, the bottom edge kept clean (the
+ * clipRect cuts everything below the bottom edge, so the
+ * glow never reads as a drop shadow). Scales by
+ * [haloBrightnessFactor], so the halo fades out at
+ * minimum brightness and the card degrades to pure
+ * Contour. No-op under every other style. Drawn with
+ * drawBehind on the card's own modifier: the Card's fill
+ * covers the interior part of the nested fills, and the
+ * exterior part shows past the edge — the same reason
+ * the soft shadow in gsSurface draws before the clip.
+ * Applied at the same four call sites as
+ * [blueprintCardRing] ([GsGroupedCard], [GsPanelCard],
+ * [GsSheetSurface], [FrostedPanelSurface]); the Meridian
+ * pill is a bar surface, not a card, and keeps no halo.
+ * Dense lists carry no halo of their own: list rows are
+ * not card surfaces, and no halo is added to row
+ * containers — the only halo on a list screen is the
+ * sheet's own (this tier) and the faintest button tier
+ * on its buttons, governed by the acceptance rule (if
+ * the halo is noticeable at a glance on a dense screen,
+ * it is too strong).
+ */
+@Composable
+fun Modifier.silhouetteCardHalo(shape: Shape): Modifier {
+    val look = gsLook()
+    if (look.haloAlpha <= 0f || look.haloFalloff <= 0.dp) return this
+    val brightness by CarSettings.brightness.collectAsState()
+    val haloTotal = look.haloAlpha * haloBrightnessFactor(brightness)
+    if (haloTotal <= 0f) return this
+    return this.drawBehind {
+        val falloffPx = look.haloFalloff.toPx()
+        val steps = 4
+        clipRect(
+            left = -falloffPx,
+            top = -falloffPx,
+            right = size.width + falloffPx,
+            bottom = size.height,
+        ) {
+            for (i in steps downTo 1) {
+                val grow = falloffPx * i / steps
+                val outline = shape.createOutline(
+                    Size((size.width + grow * 2).coerceAtLeast(0f), (size.height + grow * 2).coerceAtLeast(0f)),
+                    layoutDirection,
+                    this,
+                )
+                translate(-grow, -grow) {
+                    drawOutline(outline, Color.White.copy(alpha = haloTotal / steps))
+                }
+            }
+        }
+    }
+}
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -194,7 +257,7 @@ fun GsGroupedCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = GsKit.cardColor()),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -222,7 +285,7 @@ fun GsPanelCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -247,7 +310,7 @@ fun GsSheetSurface(
     val sheetShape = cardShapeForLook(look, GsKit.SheetShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
-        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape),
+        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape),
         color = GsKit.sheetColor(),
         shape = sheetShape,
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -339,7 +402,7 @@ fun FrostedPanelSurface(
 ) {
     val look = gsLook()
     Surface(
-        modifier = modifier.pitLanePanelBorder(shape).blueprintCardRing(shape),
+        modifier = modifier.pitLanePanelBorder(shape).blueprintCardRing(shape).silhouetteCardHalo(shape),
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = fillAlpha),
         shadowElevation = elevation,
