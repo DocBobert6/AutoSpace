@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material3.Icon
@@ -171,7 +172,7 @@ private fun DialerTab(label: String, selected: Boolean, modifier: Modifier, onCl
         modifier = modifier.height(44.dp),
         colors = if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
         else GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-        shape = MaterialTheme.shapes.large,
+        shape = gsButtonShape(MaterialTheme.shapes.large),
         latched = selected,
     ) {
         Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
@@ -237,7 +238,9 @@ private fun KeypadButton(digit: String, modifier: Modifier, onClick: () -> Unit)
         onClick,
         modifier,
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-        shape = MaterialTheme.shapes.large,
+        // r152 (audit §3 F3): the dialer keypad takes the in-app keyboard's
+        // 12dp fallback, so the two keypads agree under every style.
+        shape = gsButtonShape(RoundedCornerShape(12.dp)),
     ) {
         Text(digit, style = MaterialTheme.typography.titleLarge)
     }
@@ -320,7 +323,9 @@ private fun ConfirmCallOverlay(contact: Contact, onConfirm: () -> Unit, onDismis
     ) {
         Surface(
             onClick = {},
-            shape = MaterialTheme.shapes.extraLarge,
+            // r152 (audit §3 F4): the confirm-call dialog shares the kit
+            // sheet rule instead of raw 28dp extraLarge.
+            shape = dialogShapeForLook(gsLook()),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth(0.85f).padding(16.dp),
         ) {

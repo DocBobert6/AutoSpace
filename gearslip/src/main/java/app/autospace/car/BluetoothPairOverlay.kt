@@ -86,7 +86,9 @@ private fun PairCard(title: String, body: String, secondary: Pair<String, () -> 
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = MaterialTheme.shapes.extraLarge,
+            // r152 (audit §3 F4): the pairing dialog shares the kit sheet
+            // rule instead of raw 28dp extraLarge.
+            shape = dialogShapeForLook(gsLook()),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
             modifier = Modifier.fillMaxWidth(0.85f).padding(16.dp),
         ) {

@@ -191,7 +191,7 @@ fun MediaScreen(app: MediaApp, onExit: () -> Unit) {
                                 { searching = true },
                                 colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
                                 size = 44.dp,
-                                shape = MaterialTheme.shapes.large,
+                                shape = gsButtonShape(MaterialTheme.shapes.large),
                             )
                         }
                     }
@@ -375,7 +375,7 @@ private fun MediaTab(label: String, selected: Boolean, modifier: Modifier, onCli
         modifier = modifier.height(44.dp),
         colors = if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
         else GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-        shape = MaterialTheme.shapes.large,
+        shape = gsButtonShape(MaterialTheme.shapes.large),
         latched = selected,
     ) {
         Text(

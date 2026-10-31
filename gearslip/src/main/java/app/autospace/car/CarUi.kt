@@ -88,6 +88,7 @@ import app.autospace.car.theme.NavBarItemAlpha
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.auroraCardRim
 import app.autospace.car.theme.blueprintCardRing
+import app.autospace.car.theme.silhouetteCardHalo
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.gsButtonShape
@@ -98,6 +99,7 @@ import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.car.theme.gsShape
 import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.dialogShapeForLook
 import app.autospace.car.theme.morphCardColor
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelTexture
@@ -342,7 +344,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         // hairline outline when this is true, so a dark surface on the
         // pure-black OLED background still reads as a surface, and the
         // frost gradient still has an edge to shade.
-        LocalOledDark provides ((dark && effDarkType == DarkModeType.OLED) || effScheme == ColorScheme.NIGHT),
+        // r152 (audit §3 N9): the OLED branch is narrowed to schemes
+        // with pure-black surfaces (oledBlackSchemes) — grey-surface
+        // schemes keep the surface-derived frost gradient under Pitch
+        // instead of the black-background idiom. NIGHT stays
+        // unconditional, as before.
+        LocalOledDark provides (((dark && effDarkType == DarkModeType.OLED) && effScheme in oledBlackSchemes) || effScheme == ColorScheme.NIGHT),
     ) {
         // r145 (Workshop light only): the app background is a
         // subtle vertical gradient — cool off-white linen at
@@ -608,7 +615,9 @@ private fun CarSafetyWizard(onDone: () -> Unit) {
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerLow,
                 // r54 (D3): dialog shape through the style rule, so Pitlane squares it.
-                shape = gsButtonShape(RoundedCornerShape(28.dp)),
+                // r152 (audit §3 F4): the shared dialog rule, so dialogs
+                // and sheets share one corner under every style.
+                shape = dialogShapeForLook(gsLook()),
                 modifier = Modifier.fillMaxWidth(),
                 border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
             ) {
@@ -851,7 +860,9 @@ private fun CarSideBar(
     // margins on every side, so it touches no screen edge, and its
     // corners follow the look-fed card rule (square under
     // Pitlane, the style's 24dp corner under Verve, the card's
-    // rounded corner under every other style). The scaffold pads the content Column by the
+    // rounded corner under every other style). Audit §3 N1, intentional,
+    // not drift: the rail follows the card corner, not the button corner.
+    // The scaffold pads the content Column by the
     // strip width (rail + both margins), so this Surface is the only
     // thing that draws in the strip. Treatment is otherwise the
     // overlay bar's exactly (frosted surfaceContainerLow at 0.88,
@@ -873,7 +884,7 @@ private fun CarSideBar(
             ).fillMaxHeight()
         } else {
             modifier.padding(NAV_BAR_SIDE_FLOAT).fillMaxHeight()
-        }).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
+        }).blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)).silhouetteCardHalo(cardShapeForLook(gsLook(), GsKit.CardShape)).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
         shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = if (meridian) {
             Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha)
@@ -885,7 +896,10 @@ private fun CarSideBar(
             morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha))
         },
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        // r152 (audit §3 F5): the OLED hairline is ring-guarded exactly
+        // as kit cards guard it, so under Blueprint + Pitch dark the
+        // rail stops drawing the hairline kit cards suppress.
+        border = if (LocalOledDark.current && gsLook().ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Column(
             Modifier.width(NAV_BAR_HEIGHT).fillMaxHeight()
@@ -1220,8 +1234,10 @@ private fun CarMeridianPill(navigator: CarNavigator, modifier: Modifier = Modifi
         navigator.current is CarScreen.Notifications
     val clockTime = railClockDigits(Date(now))
     val dimColor = Color.White.copy(alpha = MERIDIAN_DIM_ALPHA)
+    // Audit §3 N1, intentional, not drift: the pill follows the card
+    // corner, not the button corner, like the rail.
     Surface(
-        modifier = modifier.blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
+        modifier = modifier.blueprintCardRing(cardShapeForLook(gsLook(), GsKit.CardShape)).silhouetteCardHalo(cardShapeForLook(gsLook(), GsKit.CardShape)).auroraCardRim(cardShapeForLook(gsLook(), GsKit.CardShape)),
         shape = cardShapeForLook(gsLook(), GsKit.CardShape),
         color = Color(MapChromeColors.MERIDIAN_ETA).copy(alpha = FrostedChromeAlpha),
         shadowElevation = NAV_BAR_FLOAT_ELEVATION,

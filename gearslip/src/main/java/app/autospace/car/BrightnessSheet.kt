@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.PaddingValues
@@ -109,22 +110,27 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text("Color scheme", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Canvas", scheme == ColorScheme.NEUTRAL, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NEUTRAL) }
-                    ThemeChoice("Material You", scheme == ColorScheme.MATERIAL_YOU, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.MATERIAL_YOU) }
-                    ThemeChoice("Nocturne", scheme == ColorScheme.NIGHT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.NIGHT) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Pitlane", scheme == ColorScheme.PITLANE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.PITLANE) }
-                    ThemeChoice("Circuit", scheme == ColorScheme.CIRCUIT, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.CIRCUIT) }
-                    ThemeChoice("Heritage", scheme == ColorScheme.HERITAGE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.HERITAGE) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Verve", scheme == ColorScheme.VERVE, Modifier.weight(1f)) { CarSettings.setColorScheme(ColorScheme.VERVE) }
+                // r152 (audit §3 F1): rows are built from colorSchemes with
+                // displayName, as the settings page does — the old hardcoded
+                // rows listed 7 schemes and could never select Horizon,
+                // Meridian, Workshop, or Aurora Field. Chunked into rows of
+                // three; a short last row is padded with spacers so the
+                // grid columns stay aligned.
+                for (rowSchemes in colorSchemes.chunked(3)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (rowScheme in rowSchemes) {
+                            ThemeChoice(rowScheme.displayName, scheme == rowScheme, Modifier.weight(1f)) { CarSettings.setColorScheme(rowScheme) }
+                        }
+                        repeat(3 - rowSchemes.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
                 Text("Appearance mode", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeChoice("Light", appearanceMode == AppearanceMode.LIGHT, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.LIGHT) }
+                    // r152 (audit §3 N7): the Light row is greyed out while
+                    // a forced-dark scheme is active, since resolveDark
+                    // makes Light a no-op there — reusing schemeForcesDark
+                    // rather than a second hardcoded scheme list.
+                    ThemeChoice("Light", appearanceMode == AppearanceMode.LIGHT, Modifier.weight(1f), enabled = !schemeForcesDark(scheme)) { CarSettings.setAppearanceMode(AppearanceMode.LIGHT) }
                     ThemeChoice("Dark", appearanceMode == AppearanceMode.DARK, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.DARK) }
                     ThemeChoice("System", appearanceMode == AppearanceMode.SYSTEM, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.SYSTEM) }
                 }
@@ -140,8 +146,8 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
 }
 
 @Composable
-private fun ThemeChoice(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    GsButton(onClick = onClick, tone = if (selected) GsTone.Primary else GsTone.Neutral, modifier = modifier) {
+private fun ThemeChoice(label: String, selected: Boolean, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    GsButton(onClick = onClick, tone = if (selected) GsTone.Primary else GsTone.Neutral, modifier = modifier, enabled = enabled) {
         Text(label)
     }
 }

@@ -191,6 +191,18 @@ fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
     else if (look.rectangularButtons || look.cardsUseStyleCorner) RoundedCornerShape(look.corner) else fallback
 
 /**
+ * r152 (audit §3 F4): the shared dialog shape rule, so dialogs and
+ * sheets cannot drift again. A dialog takes exactly the kit sheet rule
+ * — the card rule over the 28dp sheet fallback — so under Verve a
+ * dialog is 24dp like a sheet, under Meridian 16dp, under Morph 20dp,
+ * under Horizon 28dp (masked, as before), and under Pitlane chamfered.
+ * Dialog call sites use this instead of gsButtonShape (which ignores
+ * cardsUseStyleCorner by design) or raw shapes.extraLarge.
+ */
+fun dialogShapeForLook(look: ControlLook): Shape =
+    cardShapeForLook(look, GsKit.SheetShape)
+
+/**
  * r115 (Pitlane only): the zoned frame tier, driven by the surface's
  * smaller dimension. The thresholds are the kit's own size facts: keys
  * bottom out at a 44dp floor (CarKeyboard) while standard buttons sit

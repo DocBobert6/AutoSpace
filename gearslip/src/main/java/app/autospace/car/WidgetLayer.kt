@@ -44,7 +44,9 @@ import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.morphCardColor
 import app.autospace.car.theme.gsLook
+import app.autospace.car.theme.blueprintCardRing
 import app.autospace.car.theme.pitLanePanelBorder
+import app.autospace.car.theme.silhouetteCardHalo
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.notify.CarNotification
 import app.autospace.notify.CarNotifications
@@ -465,14 +467,16 @@ private fun WidgetCard(onClick: (() -> Unit)?, content: @Composable () -> Unit) 
     // r48: Verve takes its own 24dp corner, same as the floating card.
     val cardShape = cardShapeForLook(gsLook(), GsKit.CardShape)
     Card(
-        modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape)
+        // r152 (audit §3 F5): widget cards wear the kit ring + halo like
+        // kit cards, instead of only the Pitlane border.
+        modifier = Modifier.fillMaxWidth().pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape)
             .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
         shape = cardShape,
         colors = CardDefaults.cardColors(
             containerColor = morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)),
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        border = if (LocalOledDark.current) BorderStroke(0.5.dp, GsKit.hairline()) else null,
+        border = if (LocalOledDark.current && gsLook().ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
     ) {
         Box(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).pitLanePanelTexture().padding(12.dp),

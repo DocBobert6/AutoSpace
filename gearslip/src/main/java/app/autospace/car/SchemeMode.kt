@@ -109,3 +109,26 @@ fun effectiveScheme(stored: ColorScheme, autoNightActive: Boolean): ColorScheme 
 /** True when the stored scheme forces dark regardless of the mode control. */
 fun schemeForcesDark(scheme: ColorScheme): Boolean =
     scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN
+
+/**
+ * r152 (audit §3 N9): the schemes whose dark surfaces are pure black, and
+ * therefore the only schemes the OLED (Pitch) frost treatment is true
+ * for. Grounded at HEAD from each scheme's dark tokens in CarUi.kt:
+ * NEUTRAL's OLED branch is background AND all surfaces pure #000000
+ * (single #0A0A0C step at surfaceContainerHighest); MATERIAL_YOU's
+ * oledDynamicDark is the same pattern; NIGHT's background, surface,
+ * and surfaceDim are pure black (its containers are warm near-black
+ * steps, and it is provided LocalOledDark unconditionally anyway).
+ * Everything else is OUT: PITLANE is carbon #0A0A0A (near-black, not
+ * pure, and DarkModeType does not alter it — ambiguous, so the
+ * conservative narrower guard excludes it); CIRCUIT's dark containers
+ * are #0A0A0A–#222222 grey steps, fixed regardless of DarkModeType;
+ * HERITAGE is deep racing green, VERVE dark ink #16121F, HORIZON navy
+ * #0B1526, MERIDIAN #131429, WORKSHOP charcoal #252423, AURORA_FIELD
+ * ocean #0A1F2E. CarUi's LocalOledDark provider reads this set, so
+ * grey-surface schemes keep the surface-derived frost gradient under
+ * Pitch instead of the black-background idiom.
+ */
+val oledBlackSchemes: Set<ColorScheme> = setOf(
+    ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.NIGHT,
+)

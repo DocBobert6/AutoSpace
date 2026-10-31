@@ -461,7 +461,7 @@ internal fun ActionButton(
         modifier = modifier,
         colors = GsColors(background, content),
         enabled = action.isEnabled,
-        shape = if (title.isEmpty()) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(if (large) 28.dp else 24.dp),
+        shape = gsButtonShape(if (title.isEmpty()) androidx.compose.foundation.shape.CircleShape else RoundedCornerShape(if (large) 28.dp else 24.dp)),
         latched = active,
         keepAlpha = frostedButton || headerFrosted || meridian,
     ) {
@@ -536,7 +536,7 @@ internal fun AutoStartButton(action: Action, modifier: Modifier = Modifier) {
         // behind never shows through however much of the five seconds is left.
         colors = if (meridian) GsColors(Color(MapChromeColors.MERIDIAN_CARD), content) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, content),
         enabled = action.isEnabled,
-        shape = RoundedCornerShape(28.dp),
+        shape = gsButtonShape(RoundedCornerShape(28.dp)),
     ) {
         androidx.compose.foundation.layout.Box {
             // The countdown itself: a plain fill sweeping left to right underneath the label.
@@ -815,7 +815,7 @@ private fun RowButtons(rows: List<CarRow>, modifier: Modifier) {
                     else GsColors(Color(MapChromeColors.MERIDIAN_STRIP), Color.White)
                 } else if (i == 0) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurface),
                 enabled = row.isEnabled,
-                shape = RoundedCornerShape(24.dp),
+                shape = gsButtonShape(RoundedCornerShape(24.dp)),
             ) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
@@ -868,7 +868,7 @@ private fun DetailRow(row: CarRow, placeName: String) {
             GsIconBox(
                 onClick = { CallPrompt.ask(placeName.ifBlank { number!! }, number!!) },
                 colors = if (LocalMeridianChrome.current) GsColors(Color(MapChromeColors.MERIDIAN_CARD), Color.White) else GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
-                shape = RoundedCornerShape(24.dp),
+                shape = gsButtonShape(RoundedCornerShape(24.dp)),
             ) {
                 Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Icon(Icons.Filled.Call, null, Modifier.size(20.dp))

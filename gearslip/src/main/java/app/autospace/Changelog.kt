@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            110, "0.4.99-alpha",
+            listOf(
+                "Interface corners now agree across the app: template buttons, media and dialer tabs, and dialogs follow the same style rules as the rest of the interface, and the brightness sheet lists every color scheme.",
+            ),
+        ),
+        Release(
             109, "0.4.98-alpha",
             listOf(
                 "Two button styles have new names: Flat is now Bare, and Edge is now Ink. Nothing about how they look or behave changes.",

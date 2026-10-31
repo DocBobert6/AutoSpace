@@ -464,7 +464,7 @@ private fun TabContent(template: TabTemplate, modifier: Modifier) {
                             else GsColors(Color(MapChromeColors.MERIDIAN_STRIP), Color.White)
                         } else if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
                         else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
-                        shape = RoundedCornerShape(20.dp),
+                        shape = gsButtonShape(RoundedCornerShape(20.dp)),
                         latched = selected,
                     ) {
                         Row(
