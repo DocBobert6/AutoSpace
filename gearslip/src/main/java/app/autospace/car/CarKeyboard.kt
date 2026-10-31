@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -28,11 +29,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -49,6 +59,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -145,10 +156,23 @@ object CarKeyboardVisibility {
  * letter widths below 44dp — no preview size is that narrow, so this is a stated
  * boundary, not a preview-size issue.
  *
- * What is NOT ported from Gboard, deliberately: the top toolbar row (features menu,
- * sticker, GIF, clipboard, theme, voice mic) — voice and settings already exist elsewhere
- * in the car UI, and GIF/clipboard/sticker are not car-appropriate. If Robert actually
- * wants the toolbar he can say so.
+ * What is NOT ported from Gboard, deliberately: the top toolbar row's features menu,
+ * sticker, GIF, clipboard, and theme — GIF/sticker are not car-appropriate, and the
+ * clipboard lives in the strip toolbar, not Gboard's features menu. Voice dictation
+ * arrived in r154 (see below); it was deliberately absent before that, not an
+ * oversight in this paragraph.
+ *
+ * r154 (Gboard decided picks): sentence-start auto-capitalization and double-space
+ * to period, both gated off in URL fields ([urlMode]); and a microphone key that
+ * dictates through [CarAssistant.dictate] (final text only, never live partials),
+ * with a keyboard-local breathing band in the assistant band's own values (72dp,
+ * scheme primary, 900ms 0.55 to 1 breathe) that appears at mic-tap, breathes
+ * while talking, and fades out at finish — the assistant's own animation is
+ * untouched, because dictate does not drive its phase. The band is drawn over
+ * the bottom of the board (no footprint change, no touches), so it tints the
+ * control row while dictating. Page fields cannot be classified (no input-type
+ * signal reaches the keyboard), so a URL typed into a page's own field still
+ * gets prose treatment — the page-field blind spot, stated not fixed.
  *
  * [onDismiss] is null wherever there's no keyboard-shown state independent of the screen itself
  * (a search template, sign-in) - there, the header's own back action is the only way out and no
@@ -176,9 +200,20 @@ fun CarKeyboard(
     submitIcon: Boolean = true,
     submitImage: ImageVector? = null,
     onDismiss: (() -> Unit)? = null,
+    // r154: true ONLY for fields that hold a URL or URL pattern — the browser
+    // address bar, the search-engine template, and the ad-block rule editor.
+    // URL fields get no auto-formatting at all; every other field is prose
+    // and keeps both auto-cap and double-space-period. Default false, so
+    // every existing call site stays prose unless it opts in.
+    urlMode: Boolean = false,
 ) {
     var symbols by remember { mutableStateOf(false) }
     var shifted by remember { mutableStateOf(false) }
+    // r154: tapping shift while auto-cap is showing suppresses auto-cap for
+    // the next letter (Gboard's rule: the shift key turns its own auto-shift
+    // off), instead of leaving the letter uppercase anyway. Cleared on the
+    // next text change, so it never sticks past one letter.
+    var capSuppressed by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         CarKeyboardVisibility.state.value = true
@@ -195,7 +230,90 @@ fun CarKeyboard(
     // even wiped a whole query). Fed from rememberUpdatedState, the same pattern the
     // PhoneTyping callbacks above already use, so "current" really is current.
     val latestText = rememberUpdatedState(text)
-    val keyInsert = remember { KeyInsert({ latestText.value }, { latestChange(it) }) }
+    val latestUrlMode = rememberUpdatedState(urlMode)
+    val keyInsert = remember { KeyInsert({ latestText.value }, { latestChange(it) }, { latestUrlMode.value }) }
+    // r154: auto-cap, from the CURRENT text at composition time (labels
+    // recompute on every text change, so this is fresh by construction —
+    // never closed over by a pointerInput block). Letters mode only, prose
+    // fields only; URL fields never auto-format.
+    val autoCap = !urlMode && !symbols && !capSuppressed && AutoFormat.shouldCapitalize(text)
+    // r154: mic dictation state. [dictationRun] is the generation guard:
+    // every stop bumps it, so a late onResult/onError from a stopped
+    // dictate can never insert or clear state belonging to a newer one
+    // (the VoiceReply pattern). [lastPartial] is kept only so the
+    // checkmark-finish path can insert what was heard so far — partials
+    // are never inserted live.
+    var dictating by remember { mutableStateOf(false) }
+    var lastPartial by remember { mutableStateOf("") }
+    var dictationError by remember { mutableStateOf<String?>(null) }
+    var dictationRun by remember { mutableStateOf(0) }
+    // Leaving the keyboard mid-dictation stops the listen, so a dictate
+    // never outlives the board that started it.
+    DisposableEffect(Unit) {
+        onDispose {
+            if (dictating) {
+                dictationRun++
+                CarAssistant.stopListening()
+            }
+        }
+    }
+    // r154: dictated-text insert rule (final text only). A single separating
+    // space when the field is non-empty and does not already end in
+    // whitespace; sentence-start capitalization follows the same auto-cap
+    // rule as typed letters, and never applies in URL fields. Plain append,
+    // never the suggestion path.
+    val insertDictation = { heard: String ->
+        val current = latestText.value
+        val separator = if (current.isEmpty() || current.last().isWhitespace()) "" else " "
+        val spoken = if (!latestUrlMode.value && AutoFormat.shouldCapitalize(current)) {
+            heard.replaceFirstChar { it.uppercaseChar() }
+        } else heard
+        latestChange(current + separator + spoken)
+    }
+    // r154: the dictate lifecycle, wired keyboard-locally (dictate does not
+    // drive the assistant phase, so nothing here reads that phase). Start
+    // cancels any in-flight assistant turn first (dictate's own behavior,
+    // preserved) and is silent during active calls (also dictate's own
+    // behavior, preserved — not something this board re-implements).
+    val startDictation = {
+        dictationError = null
+        lastPartial = ""
+        val run = ++dictationRun
+        dictating = true
+        CarAssistant.dictate(
+            onPartial = { partial -> if (run == dictationRun) lastPartial = partial },
+            onResult = { heard ->
+                if (run == dictationRun) {
+                    dictating = false
+                    insertDictation(heard)
+                }
+            },
+            onError = { message ->
+                if (run == dictationRun) {
+                    dictating = false
+                    dictationError = message
+                }
+            },
+        )
+    }
+    // r154: stop paths. Mic-again and X both cancel (nothing inserted);
+    // checkmark finishes (the last partial, if any, is inserted, then the
+    // listen stops). All three bump the run first, so a late callback from
+    // the stopped dictate is ignored rather than inserting after the stop.
+    val cancelDictation = {
+        dictationRun++
+        CarAssistant.stopListening()
+        dictating = false
+        lastPartial = ""
+    }
+    val finishDictation = {
+        val heard = lastPartial
+        dictationRun++
+        CarAssistant.stopListening()
+        dictating = false
+        lastPartial = ""
+        if (heard.isNotBlank()) insertDictation(heard)
+    }
     val phoneField = remember {
         PhoneTyping.open(text, { latestChange(it) }, { latestSubmit() }, onDismiss?.let { { latestDismiss?.invoke() } })
     }
@@ -236,6 +354,10 @@ fun CarKeyboard(
                 learned = KeyboardSuggestions.learnedEntries(context)
             }
         }
+        // r154: a keystroke ends a one-letter auto-cap suppression, and
+        // any dictation error clears once the driver types again.
+        capSuppressed = false
+        dictationError = null
         prevText = text
         // r50: a text change ends any low-confidence glide offer — a tap or a
         // keystroke returns the strip to normal prefix candidates.
@@ -304,12 +426,31 @@ fun CarKeyboard(
                 // r30: the strip row always leads (full row when the strip is
                 // on, dismiss + gear only when it is off, so settings stay
                 // reachable); the settings panel replaces the keys below it.
+                if (dictationError != null) {
+                    Text(
+                        dictationError!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                }
                 if (stripEnabled) {
                     SuggestionStripRow(
                         word = word,
                         suggestions = suggestions,
                         title = if (showKeyboardSettings) "Keyboard settings" else null,
                         onDismiss = onDismiss,
+                        // r154: the mic lives in the strip toolbar in both
+                        // strip states (see MinimalStripRow below); tapping
+                        // it while the settings panel is open closes the
+                        // panel first, so the band and keys are visible.
+                        onMic = {
+                            showKeyboardSettings = false
+                            if (dictating) cancelDictation() else startDictation()
+                        },
+                        dictating = dictating,
+                        onMicCancel = cancelDictation,
+                        onMicFinish = finishDictation,
                         // r50: through [keyInsert] so a glide candidate tapped
                         // after an empty current word appends instead of
                         // replacing nothing (replaceCurrentWord alone returns
@@ -336,6 +477,13 @@ fun CarKeyboard(
                 } else {
                     MinimalStripRow(
                         onDismiss = onDismiss,
+                        onMic = {
+                            showKeyboardSettings = false
+                            if (dictating) cancelDictation() else startDictation()
+                        },
+                        dictating = dictating,
+                        onMicCancel = cancelDictation,
+                        onMicFinish = finishDictation,
                         onSettings = { showKeyboardSettings = !showKeyboardSettings },
                     )
                 }
@@ -375,7 +523,7 @@ fun CarKeyboard(
                         val staggered = !symbols && row.size == 9
                         if (staggered) Spacer(Modifier.weight(0.5f))
                         row.forEach { key ->
-                            val label = if (shifted && !symbols) key.uppercase() else key
+                            val label = if ((shifted || autoCap) && !symbols) key.uppercase() else key
                             val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
                             LetterKey(label, Modifier.weight(1f), hint = hint,
                                 onLetter = {
@@ -403,10 +551,12 @@ fun CarKeyboard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     if (!symbols) {
-                        Key("⇧", Modifier.weight(1.1f), active = shifted) { shifted = !shifted }
+                        Key("⇧", Modifier.weight(1.1f), active = shifted || autoCap) {
+                        if (autoCap && !shifted) capSuppressed = true else shifted = !shifted
+                    }
                     }
                     rows.last().forEach { key ->
-                        val label = if (shifted && !symbols) key.uppercase() else key
+                        val label = if ((shifted || autoCap) && !symbols) key.uppercase() else key
                         val hint = if (!symbols) LONG_PRESS_HINTS[key] else null
                         LetterKey(label, Modifier.weight(1f), hint = hint,
                             onLetter = {
@@ -444,7 +594,7 @@ fun CarKeyboard(
                     if (!symbols) {
                         Key(",", Modifier.weight(1f)) { onTextChange("$text,") }
                     }
-                    Key("space", Modifier.weight(3.7f)) { onTextChange("$text ") }
+                    Key("space", Modifier.weight(3.7f)) { onTextChange(if (urlMode) "$text " else AutoFormat.spaceResult(text)) }
                     if (!symbols) {
                         Key(".", Modifier.weight(1f)) { onTextChange("$text.") }
                     }
@@ -455,6 +605,33 @@ fun CarKeyboard(
                 }
                 } // !showKeyboardSettings
                 } // Column
+                // r154: the dictation band — the assistant band's own values
+                // (72dp, scheme primary, 900ms 0.55 to 1 breathe), drawn over
+                // the bottom of the board like the glide trace below: no
+                // footprint change, no touches, so it tints the control row
+                // while dictating rather than resizing the board. It
+                // appears at mic-tap (listening-ready breathe, before the
+                // first word), breathes while talking, and fades out at
+                // finish/cancel (bandAlpha, 300ms) rather than vanishing.
+                val breathe by rememberInfiniteTransition(label = "dictation").animateFloat(
+                    0.55f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dictation",
+                )
+                val bandAlpha by animateFloatAsState(if (dictating) 1f else 0f, tween(300), label = "dictation")
+                if (bandAlpha > 0.01f) {
+                    val bandColor = MaterialTheme.colorScheme.primary
+                    Canvas(Modifier.fillMaxSize()) {
+                        val bandHeight = 72.dp.toPx()
+                        drawRect(
+                            Brush.verticalGradient(
+                                0f to Color.Transparent,
+                                0.5f to bandColor.copy(alpha = 0.25f * breathe * bandAlpha),
+                                1f to bandColor.copy(alpha = 0.75f * breathe * bandAlpha),
+                            ),
+                            topLeft = Offset(0f, size.height - bandHeight),
+                            size = Size(size.width, bandHeight),
+                        )
+                    }
+                }
                 // r50: the glide trace line, drawn only while a trace is active
                 // (three keys) and the trail switch is on. The line itself is
                 // state-driven: each new point recomposes this scope, so the
@@ -1068,6 +1245,11 @@ class GlideState {
 class KeyInsert(
     private val currentText: () -> String,
     private val onTextChange: (String) -> Unit,
+    // r154: read through a provider like currentText, because this holder
+    // is remembered once — a plain Boolean parameter would freeze the
+    // first call site's value. CarKeyboard feeds it from
+    // rememberUpdatedState, so it tracks the caller's urlMode.
+    private val isUrlMode: () -> Boolean = { false },
 ) {
     fun append(insert: String) {
         onTextChange(currentText() + insert)
@@ -1080,10 +1262,16 @@ class KeyInsert(
      * tap-shift: a shifted glide capitalizes its word and the caller consumes
      * shift; otherwise the strip's matchCase rule applies inside
      * replaceCurrentWord, so display and insert agree on case.
+     *
+     * r154: auto-cap rides along — a glide or strip tap at a sentence
+     * start capitalizes its word exactly like a tapped letter, prose
+     * fields only (URL fields never auto-format). The caller still
+     * passes tap-shift explicitly; the two rules OR together.
      */
     fun insertWord(word: String, capitalize: Boolean = false) {
-        val candidate = if (capitalize) word.replaceFirstChar { it.uppercaseChar() } else word
         val current = currentText()
+        val autoCap = !isUrlMode() && AutoFormat.shouldCapitalize(current)
+        val candidate = if (capitalize || autoCap) word.replaceFirstChar { it.uppercaseChar() } else word
         if (KeyboardSuggestions.currentWord(current).isEmpty()) {
             onTextChange(current + candidate)
         } else {
@@ -1094,6 +1282,46 @@ class KeyInsert(
     fun dropLast() {
         val current = currentText()
         if (current.isNotEmpty()) onTextChange(current.dropLast(1))
+    }
+}
+
+/**
+ * r154: the auto-formatting rules for [CarKeyboard], kept pure so every
+ * path is unit-testable (the same reason [KeyInsert] is pure).
+ *
+ * Sentence-start auto-cap: the next letter capitalizes when the field is
+ * empty (or holds only whitespace), ends in a newline, or its last
+ * non-space character is a sentence terminator (`.`, `!`, `?`). Digits
+ * and punctuation are unaffected (uppercasing them is a no-op), and a
+ * letter typed directly after a terminator with no space ("hello.World")
+ * capitalizes too — that IS a sentence boundary, just a cramped one.
+ * Known Gboard-faithful quirk, kept deliberately: abbreviations end in a
+ * terminator, so "e.g. " capitalizes the next word, exactly as Gboard
+ * does. URL fields never reach these rules at all ([CarKeyboard.urlMode]
+ * gates them off at every call site), so "www.example.com" typed in the
+ * address bar is never re-cased or re-punctuated.
+ *
+ * Double-space-period: pressing space when the field ends in exactly
+ * one space (and at least one non-space character precedes it) replaces
+ * that space with ". " — the next letter then auto-capitalizes by the
+ * rule above. It does NOT fire after a terminator ("hello. " + space
+ * stays "hello.  ", never "hello.. "), after two spaces already
+ * present, or at the start of an empty field.
+ */
+object AutoFormat {
+    private val SENTENCE_END = setOf('.', '!', '?')
+
+    fun shouldCapitalize(text: String): Boolean {
+        if (text.endsWith('\n')) return true
+        val last = text.lastOrNull { !it.isWhitespace() }
+        return last == null || last in SENTENCE_END
+    }
+
+    fun spaceResult(text: String): String {
+        if (!text.endsWith(" ") || text.endsWith("  ")) return "$text "
+        val last = text.dropLastWhile { it == ' ' }.lastOrNull()
+        if (last == null || last in SENTENCE_END) return "$text "
+        return text.dropLast(1) + ". "
     }
 }
 
@@ -1230,6 +1458,14 @@ private fun SuggestionStripRow(
     onCopy: () -> Unit,
     onPaste: () -> Unit,
     onSettings: () -> Unit,
+    // r154: the mic lives in this toolbar in both strip states. While
+    // dictating, copy/paste give way to the mic (tap = cancel), X
+    // (cancel), and checkmark (finish with the last partial) — the
+    // Gboard video pattern, minus the gold strip.
+    onMic: () -> Unit,
+    dictating: Boolean,
+    onMicCancel: () -> Unit,
+    onMicFinish: () -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().height(44.dp),
@@ -1274,8 +1510,15 @@ private fun SuggestionStripRow(
                 }
             }
         }
-        StripToolButton(onCopy, "Copy") { Icon(Icons.Filled.ContentCopy, contentDescription = null) }
-        StripToolButton(onPaste, "Paste") { Icon(Icons.Filled.ContentPaste, contentDescription = null) }
+        if (dictating) {
+            StripToolButton(onMic, "Stop dictation") { Icon(Icons.Filled.Mic, contentDescription = null) }
+            StripToolButton(onMicCancel, "Cancel dictation") { Icon(Icons.Filled.Close, contentDescription = null) }
+            StripToolButton(onMicFinish, "Finish dictation") { Icon(Icons.Filled.Check, contentDescription = null) }
+        } else {
+            StripToolButton(onCopy, "Copy") { Icon(Icons.Filled.ContentCopy, contentDescription = null) }
+            StripToolButton(onPaste, "Paste") { Icon(Icons.Filled.ContentPaste, contentDescription = null) }
+            StripToolButton(onMic, "Dictate") { Icon(Icons.Filled.Mic, contentDescription = null) }
+        }
         StripToolButton(onSettings, "Keyboard settings") { Icon(Icons.Filled.Settings, contentDescription = null) }
     }
 }
@@ -1289,6 +1532,10 @@ private fun SuggestionStripRow(
 @Composable
 private fun MinimalStripRow(
     onDismiss: (() -> Unit)?,
+    onMic: () -> Unit,
+    dictating: Boolean,
+    onMicCancel: () -> Unit,
+    onMicFinish: () -> Unit,
     onSettings: () -> Unit,
 ) {
     Row(
@@ -1300,6 +1547,16 @@ private fun MinimalStripRow(
             StripToolButton(onDismiss, "Hide keyboard") {
                 Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
             }
+        }
+        // r154: the mic lives here too when the strip is off (same
+        // toolbar row, not the bottom-row dismiss slot — one row for
+        // the mic in both strip states, so it never moves).
+        if (dictating) {
+            StripToolButton(onMic, "Stop dictation") { Icon(Icons.Filled.Mic, contentDescription = null) }
+            StripToolButton(onMicCancel, "Cancel dictation") { Icon(Icons.Filled.Close, contentDescription = null) }
+            StripToolButton(onMicFinish, "Finish dictation") { Icon(Icons.Filled.Check, contentDescription = null) }
+        } else {
+            StripToolButton(onMic, "Dictate") { Icon(Icons.Filled.Mic, contentDescription = null) }
         }
         Spacer(Modifier.weight(1f))
         StripToolButton(onSettings, "Keyboard settings") { Icon(Icons.Filled.Settings, contentDescription = null) }

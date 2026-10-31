@@ -18,9 +18,9 @@ import org.junit.Test
 class KeyInsertTest {
 
     /** Simulates the field state a parent composable holds, mutated by each onTextChange. */
-    private class Field(var text: String = "") {
+    private class Field(var text: String = "", private val urlMode: Boolean = false) {
         val received = mutableListOf<String>()
-        fun handler() = KeyInsert({ text }) { updated -> text = updated; received.add(updated) }
+        fun handler() = KeyInsert({ text }, { updated -> text = updated; received.add(updated) }, { urlMode })
     }
 
     @Test
@@ -94,5 +94,32 @@ class KeyInsertTest {
         val insert = field.handler()
         insert.insertWord("world", capitalize = true)
         assertEquals("hello World", field.text)
+    }
+
+    @Test
+    fun insertWordAutoCapitalizesAtSentenceStart() {
+        // r154: a glide or strip tap at a sentence start capitalizes its
+        // word exactly like a tapped letter, without tap-shift.
+        val field = Field("hello. ")
+        val insert = field.handler()
+        insert.insertWord("world")
+        assertEquals("hello. World", field.text)
+    }
+
+    @Test
+    fun insertWordDoesNotAutoCapitalizeMidSentence() {
+        val field = Field("hello ")
+        val insert = field.handler()
+        insert.insertWord("world")
+        assertEquals("hello world", field.text)
+    }
+
+    @Test
+    fun insertWordNeverAutoCapitalizesInUrlMode() {
+        // r154: URL fields never auto-format, even at a terminator.
+        val field = Field("www.example. ", urlMode = true)
+        val insert = field.handler()
+        insert.insertWord("com")
+        assertEquals("www.example. com", field.text)
     }
 }

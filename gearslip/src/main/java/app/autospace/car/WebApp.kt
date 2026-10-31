@@ -1546,7 +1546,9 @@ fun WebApp(content: String) {
                 )
             }
             if (addressEditing) {
+                // r154: the address bar holds a URL, so no auto-formatting.
                 CarKeyboard(
+                    urlMode = true,
                     text = addressText,
                     onTextChange = { updated ->
                         if (addressSelected) {
@@ -1625,7 +1627,10 @@ fun WebApp(content: String) {
                         GsButton(onClick = { engineEditing = false }, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     }
                 }
+                // r154: a search-engine template IS a URL (with %s for the
+                // query), so auto-cap/double-space would corrupt it.
                 CarKeyboard(
+                    urlMode = true,
                     text = engineEditText,
                     onTextChange = { updated ->
                         engineEditText = updated
@@ -1750,7 +1755,10 @@ fun WebApp(content: String) {
                         GsButton(onClick = { ruleEditing = false }, modifier = Modifier.weight(1f)) { Text("Done") }
                     }
                 }
+                // r154: host/URL filter rules are URL patterns (block host,
+                // block URL, allow host), so auto-cap would corrupt them.
                 CarKeyboard(
+                    urlMode = true,
                     text = ruleEditText,
                     onTextChange = { updated ->
                         ruleEditText = updated

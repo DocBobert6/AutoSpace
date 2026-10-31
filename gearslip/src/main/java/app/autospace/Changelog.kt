@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            112, "0.4.101-alpha",
+            listOf(
+                "The car keyboard now capitalizes sentence starts and turns a double space into a period, except in web addresses, and gains a microphone key for voice dictation with the assistant's breathing band.",
+            ),
+        ),
+        Release(
             111, "0.4.100-alpha",
             listOf(
                 "New in the car UI: a Recents tab in the dialer, search, favorites-only, and sort in the games lists, a way to hide apps from the launcher, search in bookmarks and history, a playlist sheet in the video player, a visible timer countdown on Home you can tap to cancel, and reset rows for the launcher order and sizes. The gated-off Recommended Apps screen is gone.",
