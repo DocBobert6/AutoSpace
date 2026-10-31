@@ -39,7 +39,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -56,8 +55,6 @@ fun HomeScreen(
     onDisconnect: () -> Unit,
 ) {
     val status by SessionStatus.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
-    val workedCar by remember { WorkedPrompt.pending(context) }.collectAsStateWithLifecycle()
     val live = status.phase == SessionStatus.Phase.CONNECTING ||
         status.phase == SessionStatus.Phase.PROJECTING
 
@@ -139,8 +136,6 @@ fun HomeScreen(
         }
         // Sharing just went on from the "it worked" ask: a little thanks.
         if (celebrate) ConfettiFall(onDone = WorkedPrompt::celebrated)
-        // The usage notes ask comes first; the donation ask waits until that's answered.
-        if (workedCar == null) DonateDialog(live)
     }
 }
 

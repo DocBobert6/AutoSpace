@@ -228,7 +228,6 @@ object SessionReport {
             }
             if (outcome == "connected") runCatching {
                 app.autospace.stats.WorkedPrompt.onDriveWorked(context, headUnitInfo, protocolVersion, carScreen, carDpi)
-                app.autospace.ui.DonatePrompt.onDriveWorked(context)
             }
             runCatching { app.autospace.update.UpdateChecker.onDriveEnded(context) }
         }

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            108, "0.4.97-alpha",
+            listOf(
+                "The disabled donation-ask machinery was removed; nothing visible changes.",
+            ),
+        ),
+        Release(
             107, "0.4.96-alpha",
             listOf(
                 "Games get picture options: each console page now has a Display section with CRT shaders (one named look per console), display curvature, rounded corners, an FPS readout, fast-forward, and integer scaling. Shaders stay off until you switch them on, so the picture is unchanged unless you opt in; fast-forward gets its own row in the pause menu, and save states now carry a thumbnail of the game frame.",

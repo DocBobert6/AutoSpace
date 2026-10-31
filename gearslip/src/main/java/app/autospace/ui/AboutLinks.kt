@@ -1,11 +1,8 @@
 package app.autospace.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -33,13 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 
 /** Where AutoSpace lives outside the app: the code, and the project it forked from. */
 internal object GearslipLinks {
-    const val BUY_ME_A_COFFEE = "https://buymeacoffee.com/seb3thehacker"
-    const val LIBERAPAY = "https://liberapay.com/Seb3thehacker"
-    /** A card payment page for giving once, any amount. Its row stays hidden while this is empty. */
-    const val PAYMENT_LINK = ""
-    /** Gearslip's Monero address. Its row stays hidden while this is empty. */
-    const val MONERO = "44gTVxQJY3cirBJ41J5i1bPUVnSkTMhn9esSp1kg9MHwJ3TUz8tkkigUTKwiok5zA5RZvNxyM4pqkAfPs79pPLfaNG21pCn"
-    const val MATRIX = "https://matrix.to/#/!mf0_mgBd5KqKpc9FfX_wHp1jFCcwAtPrndIn_oGIyMk?via=matrix.org"
     const val SOURCE = "https://github.com/DocBobert6/AutoSpace"
     /** Upstream Gearslip, credited in About; the CARS.md link lived here until 2026-10-25. */
     const val UPSTREAM = "https://github.com/twinksoftware/Gearslip"
@@ -49,31 +39,9 @@ internal object GearslipLinks {
             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
-
-    /** Opens a Monero wallet app on the address; says so when none is installed. */
-    fun openMoneroWallet(context: Context) {
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("monero:$MONERO")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.onFailure {
-            Toast.makeText(context, "No Monero wallet app found. Copy the address instead.", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    fun copyMonero(context: Context) {
-        context.getSystemService(ClipboardManager::class.java)
-            ?.setPrimaryClip(ClipData.newPlainText("Monero address", MONERO))
-        Toast.makeText(context, "Monero address copied", Toast.LENGTH_SHORT).show()
-    }
 }
 
-/** The ways to support Gearslip: Liberapay first, Monero last, card once it's set up. */
-// AutoSpace: donate rows removed — no donation recipient is configured for this fork.
-@Composable
-internal fun DonateRows() {
-}
-// Audit fix (2026-10-25, B7/R2): MoneroDialog deleted —
-// it had no caller since DonateRows() was emptied.
-/** The About section's links: the chat room, the source code, and credits. */
+/** The About section's links: the source code, and credits. */
 @Composable
 internal fun AboutLinkRows() {
     val context = LocalContext.current
