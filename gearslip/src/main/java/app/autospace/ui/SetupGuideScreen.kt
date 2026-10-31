@@ -559,17 +559,8 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
         )
     }
 
-    // --- Apps worth installing, once everything above is set up -----------------------
-    if (SHOW_RECOMMENDED_APPS) {
-        add(
-            GuidePage(
-                title = "Good company.",
-                explanation = RECOMMENDED_INTRO,
-                icon = { StarIcon(it) },
-                content = { RecommendedAppsList() },
-            ),
-        )
-    }
+    // r153 (audit §4 R1): the "apps worth installing" guide page is gone with the
+    // Recommended Apps screen itself — a gated-off list would only go stale unseen.
 
     // r97 graduation: the Experimental guide page is gone — floating media, home widgets,
     // frosted map chrome, and vehicle data are regular behavior now, not opt-ins, so there

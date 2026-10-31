@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.CallLog
 import android.provider.ContactsContract
 import android.provider.Settings
 import androidx.compose.foundation.background
@@ -46,6 +47,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -76,6 +79,39 @@ internal fun loadContacts(context: Context): List<Contact> {
             val name = cursor.getString(nameIndex) ?: continue
             val number = cursor.getString(numberIndex) ?: continue
             out += Contact(name, number)
+        }
+    }
+    return out.distinctBy { it.number }
+}
+
+/**
+ * A recent call, as read off the device's call log: the most recent call per number, newest
+ * first. The name is the cached contact name when the log has one, else the number itself.
+ * Read-only: nothing here writes to the log.
+ */
+internal data class RecentCall(val name: String, val number: String, val dateMs: Long)
+
+/**
+ * r153 (audit §4 A2): the Recents tab's list, in the same off-main-thread pattern as
+ * [loadContacts]. READ_CALL_LOG is already declared and requested in the setup guide, so no
+ * new permission; without it this returns empty and the tab says so instead of listing.
+ */
+internal fun loadRecents(context: Context): List<RecentCall> {
+    if (context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) != PackageManager.PERMISSION_GRANTED) return emptyList()
+    val out = mutableListOf<RecentCall>()
+    val projection = arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.DATE)
+    context.contentResolver.query(
+        CallLog.Calls.CONTENT_URI,
+        projection, null, null,
+        "${CallLog.Calls.DATE} DESC",
+    )?.use { cursor ->
+        val numberIndex = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+        val nameIndex = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME)
+        val dateIndex = cursor.getColumnIndex(CallLog.Calls.DATE)
+        while (cursor.moveToNext()) {
+            val number = cursor.getString(numberIndex) ?: continue
+            val name = cursor.getString(nameIndex)?.takeIf { it.isNotBlank() } ?: number
+            out += RecentCall(name, number, cursor.getLong(dateIndex))
         }
     }
     return out.distinctBy { it.number }
@@ -118,8 +154,9 @@ internal fun CallPromptOverlay() {
 
 private const val TAB_CONTACTS = 0
 private const val TAB_KEYPAD = 1
+private const val TAB_RECENTS = 2
 
-/** Dialing a number or calling a contact from the car screen: a contacts tab and a keypad tab. */
+/** Dialing a number or calling a contact from the car screen: contacts, keypad, and recents tabs. */
 @Composable
 fun PhoneDialerScreen() {
     val context = LocalContext.current
@@ -133,6 +170,7 @@ fun PhoneDialerScreen() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     DialerTab("Contacts", tab == TAB_CONTACTS, Modifier.width(140.dp)) { tab = TAB_CONTACTS }
                     DialerTab("Keypad", tab == TAB_KEYPAD, Modifier.width(140.dp)) { tab = TAB_KEYPAD }
+                    DialerTab("Recents", tab == TAB_RECENTS, Modifier.width(140.dp)) { tab = TAB_RECENTS }
                 }
             }
         }
@@ -143,7 +181,11 @@ fun PhoneDialerScreen() {
         }
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (tab == TAB_CONTACTS) ContactsList(context) else Keypad(context)
+            when (tab) {
+                TAB_CONTACTS -> ContactsList(context)
+                TAB_RECENTS -> RecentsList(context)
+                else -> Keypad(context)
+            }
         }
     }
 }
@@ -243,6 +285,96 @@ private fun KeypadButton(digit: String, modifier: Modifier, onClick: () -> Unit)
         shape = gsButtonShape(RoundedCornerShape(12.dp)),
     ) {
         Text(digit, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+/**
+ * r153 (audit §4 A2): the Recents tab. Tapping a row asks the same confirm-call overlay the
+ * contacts tab uses, then dials through the same [placeCall]. Without the call-log permission
+ * the tab explains that instead of listing, with the same app-settings button the dialer
+ * shows when its own permissions are missing.
+ */
+@Composable
+private fun RecentsList(context: Context) {
+    val hasLogPermission = context.checkSelfPermission(Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
+    val recents by produceState(emptyList<RecentCall>(), context) {
+        value = withContext(Dispatchers.IO) { loadRecents(context) }
+    }
+    var pendingCall by remember { mutableStateOf<Contact?>(null) }
+
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (!hasLogPermission) {
+            Text(
+                "AutoSpace needs the Call log permission to show recent calls. Grant it " +
+                    "from the app's settings.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            GsButton(tone = GsTone.Tonal, onClick = {
+                context.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                )
+            }) { Text("Open app settings") }
+        } else if (recents.isEmpty()) {
+            Text(
+                "No recent calls found.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(recents) { recent ->
+                    RecentRow(recent) { pendingCall = Contact(recent.name, recent.number) }
+                }
+            }
+        }
+    }
+
+    pendingCall?.let { contact ->
+        ConfirmCallOverlay(
+            contact = contact,
+            onConfirm = { placeCall(context, contact.number); pendingCall = null },
+            onDismiss = { pendingCall = null },
+        )
+    }
+}
+
+@Composable
+private fun RecentRow(recent: RecentCall, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Box(
+                Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    recent.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Column(Modifier.weight(1f)) {
+                Text(recent.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(recent.number, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                DateFormat.getDateInstance(DateFormat.SHORT).format(Date(recent.dateMs)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Icon(Icons.Filled.Call, contentDescription = "Call", tint = MaterialTheme.colorScheme.primary)
+        }
     }
 }
 

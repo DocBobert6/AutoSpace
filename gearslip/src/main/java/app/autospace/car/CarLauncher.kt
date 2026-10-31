@@ -195,8 +195,15 @@ internal fun rememberAllEntries(): List<Entry> {
  * reproduce it exactly. The pinned row is NOT a category — pinning is a user
  * choice shown as its own row, kept deliberately (see CarLauncher).
  */
-internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: List<String>): List<Entry> {
-    val shown = all.filter { it.builtIn !== BuiltInApps.VehicleData || showVehicleData }
+/**
+ * r153 (audit §4 R4): the dead vehicle-data gating parameter is gone — vehicle data has
+ * been regular since r97, so its tile always shows and no caller passed anything but true.
+ * r153 (audit §4 A4): [hidden] is the [CarSettings.hiddenApps] set, filtered here so a
+ * hidden app leaves the launcher grid; Settings and Exit are never hidden, even if a stored
+ * set names them.
+ */
+internal fun launcherOrder(all: List<Entry>, custom: List<String>, hidden: Set<String> = emptySet()): List<Entry> {
+    val shown = all.filter { it.componentId !in hidden || it.builtIn?.id == "settings" || it.builtIn?.id == "exit" }
     val alpha = shown.sortedBy { it.label.lowercase() }
     if (custom.isEmpty()) return alpha
     val byId = alpha.associateBy { it.componentId }
@@ -305,6 +312,7 @@ fun CarLauncher() {
     }
 
     val appOrder by CarSettings.appOrder.collectAsState()
+    val hiddenApps by CarSettings.hiddenApps.collectAsState()
     // Icon-size slider (Phase 6): 1.0 is the Phase 6 large size, 0 hides the
     // icon; the tile, its label and its tap area stay, so a tile is never lost
     // by shrinking it. Tile-size slider (Phase 7): 1.0 is the Phase 6 large
@@ -317,8 +325,7 @@ fun CarLauncher() {
     // width alone (2 columns on an 800px screen, 1 on a narrow one),
     // not from the tile-size slider. Tile size scales pill HEIGHT
     // (see AppTile), icon size scales the pill icon.
-    // r97 graduation: vehicle data is regular now, so its tile always shows.
-    val ordered = launcherOrder(all, true, appOrder)
+    val ordered = launcherOrder(all, appOrder, hiddenApps)
 
     // Search, through the car's own keyboard: tapping the search row opens it, typing
     // filters tiles by label, submitting or dismissing closes it again.

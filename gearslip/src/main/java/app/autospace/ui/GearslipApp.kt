@@ -38,7 +38,7 @@ import app.autospace.BuildConfig
 import app.autospace.CertProvider
 import app.autospace.car.TestMode
 
-private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, RECOMMENDED_APPS, ASSISTANT_PREVIEW }
+private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, ASSISTANT_PREVIEW }
 
 /** Three screens and a back stack of depth one: no navigation library needed. */
 @Composable
@@ -125,7 +125,6 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
                 Screen.ASSISTANT_PREVIEW -> AssistantPreviewScreen(onBack = { screen = Screen.SETTINGS })
                 Screen.SETTINGS -> SettingsScreen(
                     onBack = { screen = Screen.HOME },
-                    onOpenRecommendedApps = { screen = Screen.RECOMMENDED_APPS },
                     onOpenWhatsNew = { backTo = Screen.SETTINGS; screen = Screen.WHATS_NEW },
                     onOpenHelp = { backTo = Screen.SETTINGS; screen = Screen.HELP },
                     onOpenCarPreview = { screen = Screen.CAR_PREVIEW },
@@ -135,7 +134,6 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
                     onReplayTutorial = { screen = Screen.SETUP_GUIDE },
                     onReplayIntro = { Intro.replay(context); introReturn = Screen.SETTINGS; screen = Screen.INTRO },
                 )
-                Screen.RECOMMENDED_APPS -> RecommendedAppsScreen(onBack = { screen = Screen.SETTINGS })
                 Screen.CAR_PREVIEW -> CarPreviewScreen(
                     onBack = { screen = Screen.SETTINGS },
                     onOpenPreviewSettings = { screen = Screen.CAR_PREVIEW_SETTINGS },

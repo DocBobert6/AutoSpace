@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import android.os.SystemClock
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
@@ -610,6 +611,46 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                     onPassenger = { MiniVideoState.onPassengerAnswer() },
                 )
             }
+        }
+        // r153 (audit §4 A7): drawn last, so it sits above the map and the cards.
+        TimerChip()
+    }
+}
+
+/**
+ * r153 (audit §4 A7): the assistant timer's visible countdown on Home. Tapping it cancels
+ * the timer, so the driver never has to remember it exists and say "cancel timer" blind.
+ * The surrounding Box takes no touches, so only the chip itself intercepts a tap and the
+ * map stays usable around it. Top-center, clear of the turn card (top-start) and the
+ * widget column (top-start or top-end).
+ */
+@Composable
+private fun TimerChip() {
+    val countdown by AssistantCommands.timerCountdown.collectAsStateWithLifecycle()
+    val info = countdown ?: return
+    var remainingMs by remember { mutableStateOf(info.endsAtUptimeMs - SystemClock.uptimeMillis()) }
+    LaunchedEffect(info) {
+        while (true) {
+            remainingMs = info.endsAtUptimeMs - SystemClock.uptimeMillis()
+            if (remainingMs <= 0) break
+            delay(1_000)
+        }
+    }
+    if (remainingMs <= 0) return
+    val minutes = remainingMs / 60_000
+    val seconds = (remainingMs % 60_000) / 1_000
+    Box(Modifier.fillMaxSize().padding(top = 12.dp), contentAlignment = Alignment.TopCenter) {
+        Surface(
+            onClick = { AssistantCommands.cancelTimer() },
+            shape = gsButtonShape(RoundedCornerShape(50)),
+            color = MaterialTheme.colorScheme.primaryContainer,
+        ) {
+            Text(
+                "Timer $minutes:${seconds.toString().padStart(2, '0')} — tap to cancel",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            )
         }
     }
 }

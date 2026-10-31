@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -286,6 +287,8 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var selectedTextId by remember { mutableStateOf<String?>(null) }
     var subtitlesOff by remember { mutableStateOf(false) }
     var showAudioRow by remember { mutableStateOf(false) }
+    // r153 (audit §4 A6): the playlist sheet's toggle, alongside the other option rows.
+    var showPlaylistRow by remember { mutableStateOf(false) }
     var showTextRow by remember { mutableStateOf(false) }
     var videoTracks by remember { mutableStateOf<List<TrackChoice>>(emptyList()) }
     var selectedVideoId by remember { mutableStateOf<String?>(null) }
@@ -293,7 +296,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var parsedQualities by remember { mutableStateOf<List<ParsedQuality>>(emptyList()) }
     var selectedParsedBw by remember { mutableStateOf<Long?>(null) }
 
-    fun closeAllRows() { showScaleRow = false; showAudioRow = false; showTextRow = false; showQualityRow = false; showBrightnessRow = false }
+    fun closeAllRows() { showScaleRow = false; showAudioRow = false; showTextRow = false; showQualityRow = false; showBrightnessRow = false; showPlaylistRow = false }
 
     fun buildItems(): List<MediaItem> = urls.mapIndexed { i, u ->
         val builder = MediaItem.Builder().setUri(u).setMediaId(u)
@@ -724,9 +727,11 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         val wasText = row == "text" && showTextRow
         val wasQuality = row == "quality" && showQualityRow
         val wasBrightness = row == "brightness" && showBrightnessRow
+        val wasPlaylist = row == "playlist" && showPlaylistRow
         closeAllRows()
         when (row) {
             "scale" -> showScaleRow = !wasScale
+            "playlist" -> showPlaylistRow = !wasPlaylist
             "audio" -> showAudioRow = !wasAudio
             "text" -> showTextRow = !wasText
             "quality" -> showQualityRow = !wasQuality
@@ -1208,6 +1213,47 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             }
                         }
                     }
+                    // r153 (audit §4 A6): the playlist sheet — the queued titles in
+                    // the player's own row style, tapping one seeks straight to it
+                    // instead of stepping through the videos between. No
+                    // PlayerResume change: resume stays per-URL as before.
+                    if (showPlaylistRow && urls.size > 1) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                            horizontalAlignment = Alignment.End,
+                        ) {
+                            Row(
+                                Modifier.playerCapsule()
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Playlist", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            }
+                            urls.forEachIndexed { i, url ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(bottom = 2.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                ) {
+                                    Row(
+                                        Modifier.playerCapsule()
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            .horizontalScroll(rememberScrollState()),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        PlayerTextButton(
+                                            titles.getOrNull(i) ?: url, selected = i == currentIndex,
+                                            onClick = {
+                                                saveCurrentPosition()
+                                                player.seekTo(i, 0)
+                                                touchControls()
+                                                showPlaylistRow = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if (showAudioRow && audioTracks.isNotEmpty()) {
                         Row(
                             Modifier.fillMaxWidth().padding(bottom = 10.dp),
@@ -1340,6 +1386,16 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                                     Icons.Filled.Audiotrack, "Audio track",
                                     { openRow("audio") },
                                     size = 56.dp, iconSize = 28.dp, active = showAudioRow,
+                                )
+                            }
+                            // r153 (audit §4 A6): the playlist button, shown only when
+                            // there is actually a queue to list, like the audio and
+                            // quality buttons gate on more than one track.
+                            if (urls.size > 1) {
+                                PlayerIconButton(
+                                    Icons.Filled.List, "Playlist",
+                                    { openRow("playlist") },
+                                    size = 56.dp, iconSize = 28.dp, active = showPlaylistRow,
                                 )
                             }
                             if ((videoTracks.size > 1 || parsedQualities.size > 1) && !listenMode) {

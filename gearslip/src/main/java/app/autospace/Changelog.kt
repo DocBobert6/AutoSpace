@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            111, "0.4.100-alpha",
+            listOf(
+                "New in the car UI: a Recents tab in the dialer, search, favorites-only, and sort in the games lists, a way to hide apps from the launcher, search in bookmarks and history, a playlist sheet in the video player, a visible timer countdown on Home you can tap to cancel, and reset rows for the launcher order and sizes. The gated-off Recommended Apps screen is gone.",
+            ),
+        ),
+        Release(
             110, "0.4.99-alpha",
             listOf(
                 "Interface corners now agree across the app: template buttons, media and dialer tabs, and dialogs follow the same style rules as the rest of the interface, and the brightness sheet lists every color scheme.",

@@ -108,6 +108,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_ICON_MANUAL_PACKS = "car_icon_manual_packs"
     private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
     private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
+    private const val KEY_APPS_HIDDEN = "car_apps_hidden"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
     private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
@@ -196,6 +197,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val mapThemeFlow = MutableStateFlow(MapChrome.THEMED)
     private val widgetsDismissedFlow = MutableStateFlow(false)
     private val hiddenWidgetsFlow = MutableStateFlow<Set<WidgetKind>>(emptySet())
+    private val hiddenAppsFlow = MutableStateFlow<Set<String>>(emptySet())
     private val seenSafetyWarningFlow = MutableStateFlow(false)
     private val unitsFlow = MutableStateFlow(Units.AUTO)
 
@@ -401,6 +403,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      * it: hiding one widget is a column preference, not a suite flag.
      */
     val hiddenWidgets: StateFlow<Set<WidgetKind>> = hiddenWidgetsFlow
+    val hiddenApps: StateFlow<Set<String>> = hiddenAppsFlow
 
     /**
      * Whether the car screen's own "drive safely" warning has already been shown and dismissed
@@ -553,6 +556,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
+        hiddenAppsFlow.value = AppSettings.getString(app, KEY_APPS_HIDDEN, "")
+            .split(",").filter { it.isNotEmpty() }.toSet()
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
         unitsFlow.value = runCatching {
             Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
@@ -822,6 +827,19 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         val updated = if (hidden) hiddenWidgetsFlow.value + kind else hiddenWidgetsFlow.value - kind
         hiddenWidgetsFlow.value = updated
         AppSettings.putString(app, KEY_WIDGETS_HIDDEN, updated.joinToString(",") { it.name })
+    }
+
+    /**
+     * r153 (audit §4 A4): the launcher's hidden-apps set, mirroring [setWidgetHidden] — a
+     * persisted comma-joined set of component ids, filtered in [launcherOrder]. Built-ins the
+     * car needs (Settings, Exit) are never hidden: hiding them is refused here, and the
+     * filter itself keeps them even if an older stored set names them.
+     */
+    fun setAppHidden(componentId: String, hidden: Boolean) {
+        if (componentId == BUILT_IN_PREFIX + "settings" || componentId == BUILT_IN_PREFIX + "exit") return
+        val updated = if (hidden) hiddenAppsFlow.value + componentId else hiddenAppsFlow.value - componentId
+        hiddenAppsFlow.value = updated
+        AppSettings.putString(app, KEY_APPS_HIDDEN, updated.joinToString(","))
     }
 
     fun setNightMode(mode: NightMode) {

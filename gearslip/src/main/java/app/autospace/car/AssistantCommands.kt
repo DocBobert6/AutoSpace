@@ -117,6 +117,27 @@ object AssistantCommands {
     private var timerHandler: Handler? = null
     private var timerRunnable: Runnable? = null
 
+    /**
+     * r153 (audit §4 A7): the running timer's countdown, for the visible chip on Home.
+     * The end instant in uptime milliseconds — the chip renders the remaining time from it
+     * and ticks itself. Local and non-persistent like the timer itself: nothing here is
+     * written to storage, and a process death drops the timer and the chip together.
+     */
+    data class TimerCountdown(val endsAtUptimeMs: Long)
+
+    private val timerCountdownFlow = MutableStateFlow<TimerCountdown?>(null)
+    val timerCountdown: StateFlow<TimerCountdown?> = timerCountdownFlow.asStateFlow()
+
+    /** Cancels the running timer, if any, and clears the countdown. Returns true if one was running. */
+    fun cancelTimer(): Boolean {
+        val wasRunning = timerHandler != null
+        timerRunnable?.let { timerHandler?.removeCallbacks(it) }
+        timerHandler = null
+        timerRunnable = null
+        timerCountdownFlow.value = null
+        return wasRunning
+    }
+
     suspend fun handle(context: Context, navigator: CarNavigator, frame: CarEnvironment.Frame, heardRaw: String): String {
         lastReplyWasAi = false
         lastReplyWasBuiltin = false
@@ -1050,10 +1071,7 @@ object AssistantCommands {
      */
     private fun timerCommand(heard: String): String? {
         if (heard == "cancel timer" || heard == "cancel the timer") {
-            val handler = timerHandler ?: return "No timer is running."
-            timerRunnable?.let { handler.removeCallbacks(it) }
-            timerHandler = null
-            timerRunnable = null
+            if (!cancelTimer()) return "No timer is running."
             return "Timer canceled."
         }
         val minutes = Regex("^(?:remind me in|set a timer for|timer for) (\\d+) minutes?$").find(heard)
@@ -1068,10 +1086,12 @@ object AssistantCommands {
         val runnable = Runnable {
             timerHandler = null
             timerRunnable = null
+            timerCountdownFlow.value = null
             CarAssistant.say("Your timer is done.", {})
         }
         timerHandler = handler
         timerRunnable = runnable
+        timerCountdownFlow.value = TimerCountdown(SystemClock.uptimeMillis() + minutes * 60_000L)
         handler.postDelayed(runnable, minutes * 60_000L)
         return if (minutes == 60) "Timer set for 1 hour." else "Timer set for $minutes minutes."
     }

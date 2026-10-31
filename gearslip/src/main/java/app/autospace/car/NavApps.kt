@@ -208,6 +208,7 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>,
         return
     }
     val pinned by CarSettings.pinnedApps.collectAsState()
+    val hiddenApps by CarSettings.hiddenApps.collectAsState()
     val isPinned = id in pinned
     val barFull = !isPinned && pinned.size >= CarSettings.MAX_PINNED
     val slot = running[id]
@@ -272,6 +273,26 @@ internal fun AppMenu(navigator: CarNavigator, running: Map<String, RunningSlot>,
                             },
                             style = MaterialTheme.typography.titleMedium,
                         )
+                    }
+                    // r153 (audit §4 A4): hide this app from the launcher grid.
+                    // Settings and Exit never get the row — the car needs them —
+                    // and a hidden app's row offers to show it again. The menu
+                    // closes so the grid behind it already reflects the change.
+                    if (entry.builtIn?.id != "settings" && entry.builtIn?.id != "exit") {
+                        val isHidden = id in hiddenApps
+                        GsButton(
+                            onClick = {
+                                CarSettings.setAppHidden(id, !isHidden)
+                                navigator.dismissAppMenu()
+                            },
+                            tone = GsTone.Tonal,
+                            modifier = Modifier.fillMaxWidth().height(56.dp),
+                        ) {
+                            Text(
+                                if (isHidden) "Show in launcher" else "Hide from launcher",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        }
                     }
                     // r81 icon packs: only for installed apps, and only
                     // while a pack is selected — the picker draws from the
@@ -488,8 +509,10 @@ private fun PackIconCell(packPkg: String, drawable: String, selected: Boolean, o
 @Composable
 private fun MoveButtons(id: String) {
     val custom by CarSettings.appOrder.collectAsState()
-    // r97 graduation: vehicle data is regular now, so its tile always shows.
-    val order = launcherOrder(rememberAllEntries(), true, custom).mapNotNull { it.componentId }
+    val hiddenApps by CarSettings.hiddenApps.collectAsState()
+    // r153: the move order matches the grid exactly, hidden apps excluded, so a
+    // walked tile lands where the grid shows it.
+    val order = launcherOrder(rememberAllEntries(), custom, hiddenApps).mapNotNull { it.componentId }
     val index = order.indexOf(id)
     if (index < 0) return
     fun move(by: Int) {

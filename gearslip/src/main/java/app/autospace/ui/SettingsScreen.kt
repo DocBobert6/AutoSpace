@@ -78,7 +78,6 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
-    onOpenRecommendedApps: () -> Unit,
     onOpenWhatsNew: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenCarPreview: () -> Unit,
@@ -130,7 +129,6 @@ fun SettingsScreen(
             // Call speaker, same state as car Settings: a call-audio choice, not a
             // voice model, so it gets its own section rather than joining the above.
             CallSpeakerSection()
-            if (SHOW_RECOMMENDED_APPS) AppsSection(onOpenRecommendedApps)
             // Usage notes were removed (2026-10-25): there is no
             // stats server, the notes go nowhere, and the section
             // had already shrunk to an informational note. The
@@ -381,18 +379,6 @@ private fun NightTimeRow(label: String, minutes: Int, onSet: (Int) -> Unit) {
             }
         },
     )
-}
-
-@Composable
-private fun AppsSection(onOpenRecommendedApps: () -> Unit) {
-    SettingsSection("Apps") {
-        SettingsRow(
-            "Recommended apps",
-            Modifier.clickable(onClick = onOpenRecommendedApps),
-            icon = Icons.Filled.Star,
-            trailing = { Arrow() },
-        )
-    }
 }
 
 @Composable

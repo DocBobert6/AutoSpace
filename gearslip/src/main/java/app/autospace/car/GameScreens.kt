@@ -567,6 +567,23 @@ private fun ConsolePage(
     // body - the tick remounts the rows below with the fresh
     // stored values after a toggle, reset, or amount step.
     var displayVersion by remember { mutableStateOf(0) }
+    // r153 (audit §4 A3): search, favorites-only, and sort for the games list.
+    // In-memory only, over the already-loaded list: no storage change, and the
+    // library JSON already carries favorite. The controls live here, in the
+    // @Composable body, for the same reason the mapping state does — the
+    // LazyColumn scope below is not a @Composable context.
+    var gamesQuery by remember { mutableStateOf("") }
+    var gamesSearching by remember { mutableStateOf(false) }
+    var gamesFavoritesOnly by remember { mutableStateOf(false) }
+    var gamesSortTitle by remember { mutableStateOf(false) }
+    val visibleGames = remember(games, gamesQuery, gamesFavoritesOnly, gamesSortTitle) {
+        val filtered = games.filter {
+            (!gamesFavoritesOnly || it.favorite) &&
+                (gamesQuery.isBlank() || it.title.contains(gamesQuery, ignoreCase = true) ||
+                    it.fileName.contains(gamesQuery, ignoreCase = true))
+        }
+        if (gamesSortTitle) filtered.sortedBy { it.title.lowercase() } else filtered.sortedByDescending { it.addedAt }
+    }
     val padMapping = remember(consoleKey, mappingVersion) {
         GamePadMapping.storedMapping(context, consoleKey)
     }
@@ -832,6 +849,36 @@ private fun ConsolePage(
                 }
             }
         }
+        // r153 (audit §4 A3): the games list's own search, favorites-only
+        // filter, and sort, above the list itself.
+        item(key = "games-search") {
+            GameMenuRow(
+                "Search games",
+                if (gamesQuery.isBlank()) "Find a title in this console's library" else "Searching: $gamesQuery",
+            ) { gamesSearching = !gamesSearching }
+        }
+        if (gamesSearching) {
+            item(key = "games-keyboard") {
+                CarKeyboard(
+                    gamesQuery,
+                    onTextChange = { gamesQuery = it },
+                    onSubmit = { gamesSearching = false },
+                    onDismiss = { gamesSearching = false },
+                )
+            }
+        }
+        item(key = "games-favorites") {
+            GameMenuRow(
+                if (gamesFavoritesOnly) "Favorites only: On" else "Favorites only: Off",
+                "Show only the games you starred",
+            ) { gamesFavoritesOnly = !gamesFavoritesOnly }
+        }
+        item(key = "games-sort") {
+            GameMenuRow(
+                "Sort: " + if (gamesSortTitle) "Title A–Z" else "Newest first",
+                "Tap to switch the order",
+            ) { gamesSortTitle = !gamesSortTitle }
+        }
         if (games.isEmpty()) {
             item(key = "empty") {
                 Text(
@@ -840,8 +887,16 @@ private fun ConsolePage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        } else if (visibleGames.isEmpty()) {
+            item(key = "games-empty-filter") {
+                Text(
+                    "No games match that search.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         } else {
-            items(games.sortedByDescending { it.addedAt }, key = { it.id }) { game ->
+            items(visibleGames, key = { it.id }) { game ->
                 GameMenuRow(
                     title = game.title,
                     caption = game.fileName,

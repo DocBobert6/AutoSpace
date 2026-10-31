@@ -287,6 +287,23 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         }
     }
 
+    // r153 (audit §4 A8): a way back. Reset order restores alphabetical order —
+    // an empty custom order is exactly what launcherOrder returns as alphabetical —
+    // and Reset sizes restores the three sliders' ship defaults. No migration, no new keys.
+    GsButton(onClick = { CarSettings.setAppOrder(emptyList()) }, modifier = Modifier.fillMaxWidth()) {
+        Text("Reset launcher order")
+    }
+    GsButton(
+        onClick = {
+            CarSettings.setScale(1f)
+            CarSettings.setIconSize(1f)
+            CarSettings.setTileSize(1f)
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text("Reset sizes")
+    }
+
     ChoiceRow(
         "Color scheme",
         colorSchemes.map { it to it.displayName },

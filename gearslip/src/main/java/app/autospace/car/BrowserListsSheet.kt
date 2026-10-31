@@ -113,6 +113,17 @@ fun BrowserListsSheet(
                 }
                 if (target >= 0) scrollState.scrollTo(target)
             }
+            // r153 (audit §4 A5): search inside the bookmarks and history lists.
+            // In-memory substring filter over the already-received lists, contacts
+            // pattern — no BrowserStore change, no new persistence, and the
+            // section-jump offsets below keep working because they re-capture
+            // on layout.
+            var listQuery by remember { mutableStateOf("") }
+            var listSearching by remember { mutableStateOf(false) }
+            val shownBookmarks = if (listQuery.isBlank()) bookmarks
+                else bookmarks.filter { it.contains(listQuery, ignoreCase = true) }
+            val shownHistory = if (listQuery.isBlank()) history
+                else history.filter { it.contains(listQuery, ignoreCase = true) }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(scrollState).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -122,6 +133,17 @@ fun BrowserListsSheet(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
+                GsButton(onClick = { listSearching = !listSearching }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (listSearching) "Done searching" else "Search bookmarks and history")
+                }
+                if (listSearching) {
+                    CarKeyboard(
+                        listQuery,
+                        onTextChange = { listQuery = it },
+                        onSubmit = { listSearching = false },
+                        onDismiss = { listSearching = false },
+                    )
+                }
                 GsButton(onClick = onBookmarkToggle, modifier = Modifier.fillMaxWidth()) {
                     Text(if (isBookmarked) "Remove this page from bookmarks" else "Bookmark this page")
                 }
@@ -178,9 +200,9 @@ fun BrowserListsSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.onGloballyPositioned { bookmarksY = it.positionInParent().y.toInt() },
                 )
-                if (bookmarks.isEmpty()) {
+                if (shownBookmarks.isEmpty()) {
                     Text(
-                        "No bookmarks yet.",
+                        if (listQuery.isBlank()) "No bookmarks yet." else "No bookmarks match \"$listQuery\".",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -189,7 +211,7 @@ fun BrowserListsSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        bookmarks.forEach { url ->
+                        shownBookmarks.forEach { url ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -212,9 +234,9 @@ fun BrowserListsSheet(
                     Text("History", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                     GsButton(onClick = onClearHistory, tone = GsTone.Neutral) { Text("Clear") }
                 }
-                if (history.isEmpty()) {
+                if (shownHistory.isEmpty()) {
                     Text(
-                        "No history yet.",
+                        if (listQuery.isBlank()) "No history yet." else "No history matches \"$listQuery\".",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -223,7 +245,7 @@ fun BrowserListsSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        history.forEach { url ->
+                        shownHistory.forEach { url ->
                             GsButton(onClick = { onLoad(url) }, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
                                 Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
