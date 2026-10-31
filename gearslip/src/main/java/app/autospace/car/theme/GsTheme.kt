@@ -387,7 +387,7 @@ data class ControlLook(
 
 object GsThemes {
     /**
-     * Edge (2026-10-25, r20): Keycap's successor, picked by Robert from the six
+     * Ink (2026-10-25, r20): Keycap's successor, picked by Robert from the six
      * replacement options. The outline IS the style — a strong hairline, a 1px bevel
      * on the edge only, and nothing else: no gradient (topLight 0), no shadow, no lip.
      * The face is flat, so the hold marker is the DOT, not the PEEL (which needs a
@@ -396,7 +396,7 @@ object GsThemes {
      */
     val Edge = GsTheme(
         id = "edge",
-        name = "Edge",
+        name = "Ink",
         control = ControlLook(
             corner = 16.dp,
             topLight = 0f,
@@ -550,7 +550,7 @@ object GsThemes {
 
     val Flat = GsTheme(
         id = "flat",
-        name = "Flat",
+        name = "Bare",
         control = ControlLook(holdMarker = HoldMarkerStyle.DOT),
     )
 
@@ -760,7 +760,7 @@ object GsThemes {
      * 22dp corner (inside the picked 20–24dp range), a soft
      * Tactile-class bevel (0.20 top / 0.25 bottom — Tactile itself
      * is 0.16/0.22 dark, 0.24/0.30 light, so this sits in its
-     * class, not Edge's hard 0.35/0.45 or Pitlane's 0.50/0.60),
+     * class, not Ink's hard 0.35/0.45 or Pitlane's 0.50/0.60),
      * a soft-medium 4dp shadow, and the ONE new draw routine: a
      * dashed stitch hairline inset 2dp from the edge in warm
      * cream (see ControlLook.stitchAlpha / stitchInset and the

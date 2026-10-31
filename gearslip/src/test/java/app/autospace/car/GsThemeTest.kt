@@ -11,18 +11,18 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Edge (r20) takes Keycap's slot: new id, old id never reused, Keycap out of the picker. */
+/** Ink (r20) takes Keycap's slot: new id, old id never reused, Keycap out of the picker. */
 class GsThemeTest {
 
     @Test
-    fun edgeIsBuiltInAndKeycapIsNot() {
-        assertTrue(GsThemes.builtIn.any { it.id == "edge" && it.name == "Edge" })
+    fun inkIsBuiltInAndKeycapIsNot() {
+        assertTrue(GsThemes.builtIn.any { it.id == "edge" && it.name == "Ink" })
         assertFalse(GsThemes.builtIn.any { it.id == "keycap" })
         assertEquals("edge", GsThemes.byId("edge").id)
     }
 
     @Test
-    fun edgeParametersMatchTheApprovedSpec() {
+    fun inkParametersMatchTheApprovedSpec() {
         val look = GsThemes.Edge.control
         assertEquals(0.85f, look.hairlineAlpha, 0.001f)
         assertEquals(0.35f, look.bevelTop, 0.001f)
@@ -38,7 +38,7 @@ class GsThemeTest {
     }
 
     @Test
-    fun frostFlatAndTactileUnchanged() {
+    fun frostBareAndTactileUnchanged() {
         assertEquals("frost", GsThemes.default.id)
         assertTrue(GsThemes.builtIn.any { it.id == "flat" })
         assertTrue(GsThemes.builtIn.any { it.id == "tactile" })

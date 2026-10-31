@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            109, "0.4.98-alpha",
+            listOf(
+                "Two button styles have new names: Flat is now Bare, and Edge is now Ink. Nothing about how they look or behave changes.",
+            ),
+        ),
+        Release(
             108, "0.4.97-alpha",
             listOf(
                 "The disabled donation-ask machinery was removed; nothing visible changes.",

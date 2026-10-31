@@ -1581,7 +1581,7 @@ private fun VideoPassengerGateDialog(
 // Phase 8 (Robert 2026-10-25 00:32, correcting Phase 6/7): the player must
 // be basically the exact same player as Notscape Mariner's, so its chrome
 // wears Notscape's playerCapsule — the kit frostBar material — and NOT a
-// Gs control, and it must NOT vary with GsTheme (Frost/Flat/Tactile/
+// Gs control, and it must NOT vary with GsTheme (Frost/Bare/Tactile/
 // Keycap). Colours come from MaterialTheme's scheme (neutral/dynamic per
 // scheme + mode), exactly as Notscape's do; on-video labels stay WHITE.
 // Notscape's playerCapsule passes elevation 4dp (the kit default is 6dp);

@@ -19,7 +19,7 @@ class ThemesRoundTest {
 
     @Test
     fun otherStylesKeepTheirFallbackExactly() {
-        // Frost (12dp), Edge (16dp), or any non-rectangular style: the fallback
+        // Frost (12dp), Ink (16dp), or any non-rectangular style: the fallback
         // passes through untouched, so their look is unchanged by construction.
         assertEquals(RoundedCornerShape(20.dp), cardShapeForLook(false, 12.dp, RoundedCornerShape(20.dp)))
         assertEquals(RoundedCornerShape(50), cardShapeForLook(false, 16.dp, RoundedCornerShape(50)))

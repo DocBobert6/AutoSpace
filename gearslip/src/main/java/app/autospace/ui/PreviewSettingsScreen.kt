@@ -116,9 +116,9 @@ fun PreviewSettingsScreen(onBack: () -> Unit, onOpenCarPreview: () -> Unit) {
             ) {
                 RadioRow("Use car setting", style == null) { PreviewSettings.setStyle(context, null) }
                 RadioRow("Frost", style == "frost") { PreviewSettings.setStyle(context, "frost") }
-                RadioRow("Flat", style == "flat") { PreviewSettings.setStyle(context, "flat") }
+                RadioRow("Bare", style == "flat") { PreviewSettings.setStyle(context, "flat") }
                 RadioRow("Tactile", style == "tactile") { PreviewSettings.setStyle(context, "tactile") }
-                RadioRow("Edge", style == "edge") { PreviewSettings.setStyle(context, "edge") }
+                RadioRow("Ink", style == "edge") { PreviewSettings.setStyle(context, "edge") }
                 RadioRow("Pitlane", style == "pitlane") { PreviewSettings.setStyle(context, "pitlane") }
                 RadioRow("Verve", style == "verve") { PreviewSettings.setStyle(context, "verve") }
             }
