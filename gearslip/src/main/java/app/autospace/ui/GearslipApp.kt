@@ -69,7 +69,7 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
     var backTo by rememberSaveable { mutableStateOf(Screen.SETTINGS) }
     BackHandler(enabled = screen != Screen.HOME && screen != Screen.INTRO) {
         screen = when (screen) {
-            Screen.RECOMMENDED_APPS, Screen.LOGS, Screen.CAR_PREVIEW, Screen.CAR_PREVIEW_SETTINGS, Screen.ASSISTANT_PREVIEW -> Screen.SETTINGS
+            Screen.LOGS, Screen.CAR_PREVIEW, Screen.CAR_PREVIEW_SETTINGS, Screen.ASSISTANT_PREVIEW -> Screen.SETTINGS
             Screen.HELP, Screen.WHATS_NEW -> backTo
             else -> Screen.HOME
         }
