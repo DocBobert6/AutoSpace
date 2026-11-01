@@ -488,7 +488,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
  * needs the room, such as a search field with its keyboard.
  */
 /**
- * r105: the collapsed map pane logo's float — its padding on every
+ * r105: the collapsed map pane bar's float — its padding on every
  * side, so its top inset is this value. The Meridian rail's vertical
  * float (MERIDIAN_RAIL_VERTICAL_FLOAT, CarUi.kt) is defined from
  * this constant, so the rail's top edge always sits level with
@@ -502,7 +502,7 @@ private fun MapPaneLayout(
     actionStrip: androidx.car.app.model.ActionStrip?,
     mapActionStrip: androidx.car.app.model.ActionStrip?,
     fullHeight: Boolean = false,
-    /** r78: the connected app's package, for the collapsed pane's logo. */
+    /** r78: the connected app's package, for the collapsed pane's bar. */
     appPackage: String? = null,
     pane: @Composable () -> Unit,
 ) {
@@ -522,12 +522,18 @@ private fun MapPaneLayout(
     androidx.compose.foundation.layout.BoxWithConstraints(modifier.fillMaxWidth()) {
         if (!pan) {
             if (collapsed) {
-                // Collapsed: the pane is just its app's logo, tappable
-                // to re-expand. Same surface treatment as the pane
-                // (frosted/Meridian, 6dp) at the pane's own corner, so
-                // it reads as the pane folded, not a new control. The
-                // edge controls below are outside this branch and
-                // stay drawn — collapsing never hides template chrome.
+                // Collapsed: the pane is one bar — its app's icon
+                // plus its name — tappable to re-expand. Same
+                // surface treatment as the pane (frosted/Meridian,
+                // 6dp) at the pane's own corner, so it reads as the
+                // pane folded, not a new control. The edge controls
+                // below are outside this branch and stay drawn —
+                // collapsing never hides template chrome. The bar
+                // keeps the tile's top inset
+                // (COLLAPSED_PANE_TILE_FLOAT) and height, so the
+                // Meridian rail — whose float is defined from that
+                // constant — stays level with it. A package with no
+                // resolvable name shows the icon alone, as before.
                 ChromeSurface(
                     Modifier
                         .align(Alignment.TopStart)
@@ -538,8 +544,20 @@ private fun MapPaneLayout(
                     frosted = true,
                     meridian = meridian,
                 ) {
-                    Box(Modifier.padding(10.dp), contentAlignment = Alignment.Center) {
+                    Row(
+                        Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         PaneCollapseLogo(appPackage)
+                        collapsedPaneAppName(appPackage)?.let { name ->
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = ChromeType.title,
+                            )
+                        }
                     }
                 }
             } else {
@@ -618,6 +636,26 @@ private fun PaneCollapseLogo(appPackage: String?) {
             null,
             Modifier.size(32.dp),
         )
+    }
+}
+
+/**
+ * r176: the collapsed bar's app name — the connected app's launcher
+ * label, or null when the package is null or unresolvable, in which
+ * case the bar shows the icon alone (the pre-r176 look). Resolution
+ * never throws: a dead package must not take the bar down with it.
+ */
+@Composable
+private fun collapsedPaneAppName(appPackage: String?): String? {
+    val context = LocalContext.current
+    return remember(appPackage) {
+        appPackage?.let {
+            runCatching {
+                context.packageManager.getApplicationLabel(
+                    context.packageManager.getApplicationInfo(it, 0),
+                ).toString().takeIf { label -> label.isNotBlank() }
+            }.getOrNull()
+        }
     }
 }
 
