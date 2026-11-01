@@ -187,11 +187,35 @@ const val WIDGET_DIGEST_MIN_WIDTH_DP = 400f
 const val WIDGET_EVENT_MIN_WIDTH_DP = 560f
 
 /**
+ * r181 break 3: next-event needs at least this frame height; below it,
+ * event hides first. Derivation, from the laid-out column: dismiss row
+ * 44dp + 10dp gaps + ~68dp cards (two text lines in 12dp padding) gives
+ * a full column of ~278dp + 12dp top pad ≈ 290dp, so 326dp — the
+ * documented break-3 boundary — keeps the full column on screen with
+ * margin for taller font metrics.
+ */
+const val WIDGET_EVENT_MIN_HEIGHT_DP = 326f
+
+/**
+ * r181 break 3: digest needs at least this frame height; below it,
+ * weather alone survives. Weather + digest lay out at ~200dp + 12dp
+ * top pad ≈ 212dp, so 240dp keeps them on screen with margin.
+ */
+const val WIDGET_DIGEST_MIN_HEIGHT_DP = 240f
+
+/**
  * Which widgets render, in fixed column order (weather, digest, event).
  * Pure so it is unit-testable. Degrade order (spec §3): next-event hides
  * first, then digest, weather last. Narrow frames hide the column entirely
  * while moving — EXCEPT parked, where the column shows its full available
  * set (a parked driver can read and tap; nothing here acts while moving).
+ * r181 break 3: height degrades the same way, as a second filter after
+ * the width logic — event needs [WIDGET_EVENT_MIN_HEIGHT_DP], digest
+ * needs [WIDGET_DIGEST_MIN_HEIGHT_DP], weather never drops on height.
+ * Height filters even the parked-narrow full set: width thresholds are
+ * skipped there because a parked driver can read a narrow column, but a
+ * column taller than the frame is off-screen parked or not, so it still
+ * degrades. The default (infinite height) is exactly today's behavior.
  */
 fun visibleWidgets(
     frameWidthDp: Float,
@@ -200,11 +224,12 @@ fun visibleWidgets(
     digestAvailable: Boolean,
     eventAvailable: Boolean,
     hidden: Set<WidgetKind> = emptySet(),
+    frameHeightDp: Float = Float.POSITIVE_INFINITY,
 ): List<WidgetKind> {
     val all = if (frameWidthDp < WIDGET_NARROW_WIDTH_DP && moving) {
         emptyList()
     } else if (frameWidthDp < WIDGET_NARROW_WIDTH_DP) {
-        // Parked narrow frame: the column shows, degrade thresholds skipped.
+        // Parked narrow frame: the column shows, width-degrade thresholds skipped.
         listOfNotNull(
             WidgetKind.WEATHER.takeIf { weatherReady },
             WidgetKind.DIGEST.takeIf { digestAvailable },
@@ -218,7 +243,15 @@ fun visibleWidgets(
         )
     }
     // r58 B10: a widget the driver hid never renders, whatever its source says.
-    return all.filter { it !in hidden }
+    val shown = all.filter { it !in hidden }
+    // r181 break 3: height degradation, mirroring width degradation.
+    return shown.filter { kind ->
+        when (kind) {
+            WidgetKind.EVENT -> frameHeightDp >= WIDGET_EVENT_MIN_HEIGHT_DP
+            WidgetKind.DIGEST -> frameHeightDp >= WIDGET_DIGEST_MIN_HEIGHT_DP
+            else -> true
+        }
+    }
 }
 
 /**
@@ -279,6 +312,7 @@ fun widgetEmptyReasons(
     eventAvailable: Boolean,
     hidden: Set<WidgetKind>,
     frameWidthDp: Float,
+    frameHeightDp: Float = Float.POSITIVE_INFINITY,
 ): List<String> {
     val reasons = mutableListOf<String>()
     if (WidgetKind.WEATHER in hidden) {
@@ -296,6 +330,8 @@ fun widgetEmptyReasons(
         reasons += "No notifications to show"
     } else if (frameWidthDp < WIDGET_DIGEST_MIN_WIDTH_DP) {
         reasons += "Digest needs a wider screen"
+    } else if (frameHeightDp < WIDGET_DIGEST_MIN_HEIGHT_DP) {
+        reasons += "Digest needs a taller screen"
     }
     if (WidgetKind.EVENT in hidden) {
         reasons += "Next event hidden"
@@ -303,6 +339,8 @@ fun widgetEmptyReasons(
         reasons += "No upcoming events"
     } else if (frameWidthDp < WIDGET_EVENT_MIN_WIDTH_DP) {
         reasons += "Next event needs a wider screen"
+    } else if (frameHeightDp < WIDGET_EVENT_MIN_HEIGHT_DP) {
+        reasons += "Next event needs a taller screen"
     }
     // Defensive: visibleWidgets empty with no cause above means a width
     // corner the reasons missed — never show a blank card.
@@ -346,6 +384,9 @@ internal fun WidgetColumn(
     // center (start edge) instead of the screen corner, so it never sits
     // on the template's right-edge controls.
     dismissAtStart: Boolean = false,
+    // r181 break 3: the frame height the column degrades against (see
+    // visibleWidgets); infinite keeps exactly today's width-only behavior.
+    frameHeightDp: Float = Float.POSITIVE_INFINITY,
 ) {
     val navigator = LocalCarNavigator.current
     val context = LocalContext.current
@@ -363,7 +404,7 @@ internal fun WidgetColumn(
     val weatherReady = weatherState is WeatherState.Ready
     val digestOk = digestAvailable(listening, unread, history.isEmpty())
     val event = (agenda as? AgendaResult.Events)?.events?.firstOrNull()
-    val visible = visibleWidgets(frameWidthDp, moving, weatherReady, digestOk, event != null, hidden)
+    val visible = visibleWidgets(frameWidthDp, moving, weatherReady, digestOk, event != null, hidden, frameHeightDp)
     // r58: the gates passed but nothing is visible — say why, instead of
     // vanishing. The dismiss row stays, so the explainer hides exactly
     // like the column (same persisted flag, same settings row back).
@@ -383,7 +424,7 @@ internal fun WidgetColumn(
             WidgetEmptyCard(
                 widgetEmptyReasons(
                     weatherReady, listening, unread, history.isEmpty(), event != null,
-                    hidden, frameWidthDp,
+                    hidden, frameWidthDp, frameHeightDp,
                 ),
             )
         }

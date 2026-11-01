@@ -39,17 +39,14 @@ import androidx.compose.runtime.setValue
  * only or pre-compromised: a centered card may cover trip-bar detail
  * text (never Stop) and may clip the turn card's bottom-right corner
  * on very short guidance frames (the turn card is display-only), and
- * either destination may overlap a visible widget column's bottom on
- * short frames with tall columns — the same class as r59's disclosed
- * column-over-controls compromise, and the column's dismiss row sits
- * at its top, so dismissal is never covered.
- *
- * What is NOT fixed here, deliberately: audit breaks 2–3 (column x
- * card on narrow frames; column under the bar on very short frames)
- * were proposed to fold into this round and are still unanswered, so
- * they are untouched. Frames so narrow that CENTER also reaches the
- * controls are break-2 territory and the card stays put — the fix
- * never invents a destination that trades one cover for another.
+ * r181 break 2: the widget column is now a second obstacle beside
+ * the edge controls (see WidgetColumnGeometry below), so a destination
+ * must clear BOTH rects. The column's dismiss row sits at its top and
+ * the whole column rect is the obstacle, so dismissal is never covered.
+ * Frames so narrow that no destination clears both rects keep the card
+ * put — the fix never invents a destination that trades one cover for
+ * another. Break 3 (column under the bar on very short frames) is fixed
+ * in WidgetLayer, by height-degradation mirroring width-degradation.
  *
  * Measurement, not estimates, for the card height: the slot's card
  * reports its laid-out height via onSizeChanged, so long titles,
@@ -147,6 +144,48 @@ fun cardOverlapsControls(
     return rectsOverlap(cardLeft, cardTop, cardRight, cardBottom, controlsLeft, controlsTop, controlsRight, controlsBottom)
 }
 
+/**
+ * r181 break 2: the widget column's laid-out rect, in frame dp, as
+ * reported by the Home slot. Presence means visible AND measured: the
+ * slot reports only after the column's first layout and clears on
+ * dispose, so an absent, hidden, or not-yet-measured column is never
+ * an obstacle. The left edge follows the placement side inside the
+ * slot's 12dp-padded box (start edge on the driver side, end edge on
+ * the passenger side); the top is that same 12dp padding; the height
+ * is measured with onSizeChanged, never estimated from widget counts.
+ */
+data class WidgetColumnGeometry(
+    val leftDp: Float,
+    val topDp: Float,
+    val rightDp: Float,
+    val bottomDp: Float,
+)
+
+/**
+ * Whether a card docked to [side] covers any of the widget column.
+ * A zero (or negative) card height means unmeasured: no overlap is
+ * claimed until the card's first layout reports, so the first frame
+ * never jumps on a guess. A degenerate (zero-area) column rect is
+ * likewise no obstacle.
+ */
+fun cardOverlapsColumn(
+    side: MediaCardDock,
+    frameWidthDp: Float,
+    frameHeightDp: Float,
+    cardWidthDp: Float,
+    cardHeightDp: Float,
+    column: WidgetColumnGeometry,
+    stripDp: Float,
+): Boolean {
+    if (cardHeightDp <= 0f) return false
+    if (column.bottomDp <= column.topDp || column.rightDp <= column.leftDp) return false
+    val cardLeft = cardLeftDp(side, frameWidthDp, cardWidthDp)
+    val cardTop = frameHeightDp - CardClearanceCardPadDp - stripDp - cardHeightDp
+    val cardRight = cardLeft + cardWidthDp
+    val cardBottom = frameHeightDp - CardClearanceCardPadDp - stripDp
+    return rectsOverlap(cardLeft, cardTop, cardRight, cardBottom, column.leftDp, column.topDp, column.rightDp, column.bottomDp)
+}
+
 
 /**
  * The clearance-adjusted dock for the slot's card. Pure, so the unit
@@ -168,13 +207,26 @@ fun clearanceDock(
     cardWidthDp: Float,
     cardHeightDp: Float,
     stripDp: Float,
+    column: WidgetColumnGeometry? = null,
 ): MediaCardDock {
     if (!gateOn) return current
-    val geometry = controls ?: return current
-    if (!geometry.visible || geometry.extentDp <= 0f) return current
-    if (!cardOverlapsControls(current, frameWidthDp, frameHeightDp, cardWidthDp, cardHeightDp, geometry, stripDp)) return current
-    if (startAllowed && !cardOverlapsControls(MediaCardDock.START, frameWidthDp, frameHeightDp, cardWidthDp, cardHeightDp, geometry, stripDp)) return MediaCardDock.START
-    if (!cardOverlapsControls(MediaCardDock.CENTER, frameWidthDp, frameHeightDp, cardWidthDp, cardHeightDp, geometry, stripDp)) return MediaCardDock.CENTER
+    // r181 break 2: the two obstacles are independent. The controls
+    // gate is exactly today's (a null, sleeping, or empty column of
+    // controls is no obstacle); the column gate is its presence as a
+    // measured, non-degenerate rect. With no column, every decision
+    // below reduces to today's break-1 logic, so break-1 behavior is
+    // byte-identical when the column is absent or hidden.
+    val activeControls =
+        if (controls != null && controls.visible && controls.extentDp > 0f) controls else null
+    val activeColumn =
+        if (column != null && column.bottomDp > column.topDp && column.rightDp > column.leftDp) column else null
+    if (activeControls == null && activeColumn == null) return current
+    fun overlaps(side: MediaCardDock): Boolean =
+        (activeControls != null && cardOverlapsControls(side, frameWidthDp, frameHeightDp, cardWidthDp, cardHeightDp, activeControls, stripDp)) ||
+            (activeColumn != null && cardOverlapsColumn(side, frameWidthDp, frameHeightDp, cardWidthDp, cardHeightDp, activeColumn, stripDp))
+    if (!overlaps(current)) return current
+    if (startAllowed && !overlaps(MediaCardDock.START)) return MediaCardDock.START
+    if (!overlaps(MediaCardDock.CENTER)) return MediaCardDock.CENTER
     return current
 }
 
@@ -189,6 +241,12 @@ object CardClearanceState {
         private set
     var cardHeightDp by mutableStateOf<Float?>(null)
         private set
+    // r181 break 2: the widget column's laid-out rect, reported by the
+    // Home slot and cleared when the column leaves composition. The
+    // card slot reads it alongside the controls geometry; neither
+    // writer depends on the card's alignment, so no feedback loop exists.
+    var column by mutableStateOf<WidgetColumnGeometry?>(null)
+        private set
 
     fun reportControls(geometry: EdgeControlsGeometry) {
         controls = geometry
@@ -200,5 +258,13 @@ object CardClearanceState {
 
     fun reportCardHeight(heightDp: Float) {
         cardHeightDp = heightDp
+    }
+
+    fun reportColumn(geometry: WidgetColumnGeometry) {
+        column = geometry
+    }
+
+    fun clearColumn() {
+        column = null
     }
 }

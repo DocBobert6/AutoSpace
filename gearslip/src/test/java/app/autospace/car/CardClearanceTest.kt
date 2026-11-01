@@ -163,4 +163,69 @@ class CardClearanceTest {
         // bottom without covering them.
         assertFalse(cardOverlapsControls(MediaCardDock.END, 800f, 550f, 320f, 190f, shortControls, 80f))
     }
+
+    // r181 break 2: the widget column is a second obstacle. Passenger column
+    // [508, 788] x [12, 302] (800-wide frame, 280dp column); driver column
+    // [12, 212] x [12, 302] (200dp column).
+    private val passengerColumn = WidgetColumnGeometry(leftDp = 508f, topDp = 12f, rightDp = 788f, bottomDp = 302f)
+    private val driverColumn = WidgetColumnGeometry(leftDp = 12f, topDp = 12f, rightDp = 212f, bottomDp = 302f)
+
+    @Test fun columnAloneStepsAsideToStart() {
+        // No controls at all; the passenger-side column overlaps the END card, START is free.
+        // Card END [456, 776] x [196, 456]; START [24, 344] clears the column's left edge (508).
+        assertEquals(
+            MediaCardDock.START,
+            clearanceDock(MediaCardDock.END, true, null, true, 800f, 480f, 320f, 260f, 0f, passengerColumn),
+        )
+    }
+
+    @Test fun columnAloneWithSleepingControlsStepsAside() {
+        // Sleeping controls alone would return current; the column still drives the step-aside.
+        assertEquals(
+            MediaCardDock.START,
+            clearanceDock(MediaCardDock.END, true, sleepingControls, true, 800f, 480f, 320f, 260f, 0f, passengerColumn),
+        )
+    }
+
+    @Test fun narrowFrameColumnBlocksBothDestinations() {
+        // 460-wide frame, driver column [12, 212]: START [24, 264] and CENTER [110, 350] both reach it.
+        assertEquals(
+            MediaCardDock.END,
+            clearanceDock(MediaCardDock.END, true, null, true, 460f, 400f, 240f, 190f, 0f, driverColumn),
+        )
+    }
+
+    @Test fun neitherDestinationClearsBothRectsStays() {
+        // Controls row [544, 788] blocks CENTER; driver column [12, 212] blocks START;
+        // END overlaps the controls, so the card stays rather than trading one cover for another.
+        val rowControls = EdgeControlsGeometry(extentDp = 244f, widthDp = 244f, visible = true)
+        assertEquals(
+            MediaCardDock.END,
+            clearanceDock(MediaCardDock.END, true, rowControls, true, 800f, 480f, 320f, 260f, 0f, driverColumn),
+        )
+    }
+
+    @Test fun nullColumnBehavesLikeBreak1() {
+        // Explicit null column: exactly today's break-1 decision.
+        assertEquals(
+            MediaCardDock.START,
+            clearanceDock(MediaCardDock.END, true, shortControls, true, 800f, 480f, 320f, 190f, 80f, null),
+        )
+    }
+
+    @Test fun degenerateColumnRectIsNoObstacle() {
+        // Zero-height rect: presence without area is no obstacle.
+        val flat = WidgetColumnGeometry(leftDp = 508f, topDp = 12f, rightDp = 788f, bottomDp = 12f)
+        assertEquals(
+            MediaCardDock.END,
+            clearanceDock(MediaCardDock.END, true, null, true, 800f, 480f, 320f, 260f, 0f, flat),
+        )
+    }
+
+    @Test fun columnOverlapValues() {
+        assertTrue(cardOverlapsColumn(MediaCardDock.END, 800f, 480f, 320f, 260f, passengerColumn, 0f))
+        assertFalse(cardOverlapsColumn(MediaCardDock.START, 800f, 480f, 320f, 260f, passengerColumn, 0f))
+        // Unmeasured card: no overlap claimed, same first-frame rule as controls.
+        assertFalse(cardOverlapsColumn(MediaCardDock.END, 800f, 480f, 320f, 0f, passengerColumn, 0f))
+    }
 }

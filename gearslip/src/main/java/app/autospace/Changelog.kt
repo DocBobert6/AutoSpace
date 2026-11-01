@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            139, "0.4.128-alpha",
+            listOf(
+                "Small-screen fixes: the floating media card now steps aside for the widget column as well as the map's edge buttons, and the widget column drops its lower widgets on very short screens so nothing runs underneath the bar.",
+            ),
+        ),
+        Release(
             137, "0.4.126-alpha",
             listOf(
                 "While the Meridian color scheme is active, navigation always wears the Meridian look, and the navigation style row is locked with a note. Your saved style returns when you leave the Meridian scheme.",

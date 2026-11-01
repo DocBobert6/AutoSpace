@@ -26,6 +26,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -285,6 +286,7 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                             floatingCardWidth(maxWidth).value,
                             CardClearanceState.cardHeightDp ?: 0f,
                             0f, // r97: no bottom bar strip anymore.
+                            CardClearanceState.column,
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints
@@ -467,10 +469,36 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                         Modifier.fillMaxSize().padding(12.dp),
                         contentAlignment = if (widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE) Alignment.TopEnd else Alignment.TopStart,
                     ) {
+                        // r181 break 2: the column's laid-out rect is the
+                        // card's second obstacle. Width is the fixed column
+                        // width; the left edge follows the placement side
+                        // inside this 12dp-padded box; the height is
+                        // measured, never estimated. The effect clears on
+                        // dispose, so a hidden or departed column never
+                        // leaves a stale rect behind.
+                        val columnWidth = widgetColumnWidth(maxWidth)
+                        val columnDensity = LocalDensity.current
+                        val columnLeftDp = if (widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE) {
+                            maxWidth.value - 12f - columnWidth.value
+                        } else {
+                            12f
+                        }
+                        DisposableEffect(Unit) {
+                            onDispose { CardClearanceState.clearColumn() }
+                        }
                         WidgetColumn(
-                            maxWidth.value, moving, Modifier.width(widgetColumnWidth(maxWidth)),
+                            maxWidth.value, moving, Modifier.width(columnWidth).onSizeChanged {
+                                CardClearanceState.reportColumn(
+                                    WidgetColumnGeometry(
+                                        columnLeftDp, 12f, columnLeftDp + columnWidth.value,
+                                        12f + with(columnDensity) { it.height.toDp().value },
+                                    ),
+                                )
+                            },
                             hidden = hiddenWidgets,
                             dismissAtStart = widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE,
+                            // r181 break 3: the column degrades by height too.
+                            frameHeightDp = maxHeight.value,
                         )
                     }
                 }
@@ -550,6 +578,7 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                             miniCardWidth.value,
                             CardClearanceState.cardHeightDp ?: 0f,
                             0f, // r97: no bottom bar strip anymore.
+                            CardClearanceState.column,
                         ),
                     )
                     // r77 fix: captured here, in the BoxWithConstraints

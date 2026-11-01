@@ -95,6 +95,51 @@ class WidgetLayerTest {
     }
 
     @Test
+    fun visibleWidgetsDegradeByHeight() {
+        // Tall frame: height changes nothing.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.DIGEST, WidgetKind.EVENT),
+            visibleWidgets(800f, true, true, true, true, emptySet(), 500f),
+        )
+        // At the event height threshold: event still survives.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.DIGEST, WidgetKind.EVENT),
+            visibleWidgets(800f, true, true, true, true, emptySet(), 326f),
+        )
+        // Below it: event hides first, digest survives.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.DIGEST),
+            visibleWidgets(800f, true, true, true, true, emptySet(), 325f),
+        )
+        // At the digest height threshold: digest still survives.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.DIGEST),
+            visibleWidgets(800f, true, true, true, true, emptySet(), 240f),
+        )
+        // Below it: weather last.
+        assertEquals(
+            listOf(WidgetKind.WEATHER),
+            visibleWidgets(800f, true, true, true, true, emptySet(), 239f),
+        )
+        // Height filters even the parked-narrow full set: a column taller
+        // than the frame is off-screen parked or not.
+        assertEquals(
+            listOf(WidgetKind.WEATHER),
+            visibleWidgets(300f, false, true, true, true, emptySet(), 200f),
+        )
+        // Narrow while moving: still nothing, whatever the height.
+        assertEquals(
+            emptyList<WidgetKind>(),
+            visibleWidgets(300f, true, true, true, true, emptySet(), 800f),
+        )
+        // Default height (no argument): today's behavior, unchanged.
+        assertEquals(
+            listOf(WidgetKind.WEATHER, WidgetKind.DIGEST, WidgetKind.EVENT),
+            visibleWidgets(800f, true, true, true, true),
+        )
+    }
+
+    @Test
     fun visibleWidgetsRespectSourceAvailability() {
         assertEquals(
             listOf(WidgetKind.DIGEST, WidgetKind.EVENT),
@@ -379,6 +424,11 @@ class WidgetLayerTest {
         assertEquals(
             listOf("Digest needs a wider screen", "Next event needs a wider screen"),
             widgetEmptyReasons(true, true, 3, false, true, emptySet(), 360f),
+        )
+        // Available but height-degraded.
+        assertEquals(
+            listOf("Digest needs a taller screen", "Next event needs a taller screen"),
+            widgetEmptyReasons(true, true, 3, false, true, emptySet(), 800f, 200f),
         )
         // Digest source states, in order.
         assertEquals(
