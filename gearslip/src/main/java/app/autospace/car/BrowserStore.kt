@@ -2,6 +2,8 @@ package app.autospace.car
 
 import android.content.Context
 import app.autospace.AppSettings
+import java.net.URLDecoder
+import java.net.URLEncoder
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -295,13 +297,18 @@ object BrowserStore {
     }
 
     // ---- Downloads (r157, slice 1 of the downloads + offline library port) ----
-    // One record per plain DownloadManager download, stored as a JSON array
-    // in SharedPreferences via AppSettings — the same pattern as bookmarks
-    // and history above, so no new database and no new permission. The
-    // record shape is deliberately minimal but forward-compatible: slice 2
-    // adds the media flag and the Offline library section on top of these
-    // records without changing this codec. HLS (.m3u8), DASH (.mpd), and
-    // segmented downloads get records only in slices 3–4; until then this
+    // One record per plain DownloadManager download, stored as one line
+    // per record in SharedPreferences via AppSettings — the same
+    // line-codec pattern as encodePages/decodePages for session pages,
+    // so no new database, no new permission, and the codec stays
+    // unit-testable in this tree's plain-JUnit setup (the org.json
+    // framework classes return defaults under
+    // unitTests.isReturnDefaultValues, so a JSON codec cannot be
+    // pinned by a JVM test here). The record shape is deliberately
+    // minimal but forward-compatible: slice 2 adds the media flag and
+    // the Offline library section on top of these records without
+    // changing this codec. HLS (.m3u8), DASH (.mpd), and segmented
+    // downloads get records only in slices 3–4; until then this
     // list covers plain DownloadManager downloads only.
     /** Plain-download lifecycle: in progress, finished, or failed. */
     enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED }
@@ -329,50 +336,54 @@ object BrowserStore {
     private const val KEY_DOWNLOADS = "browser_downloads"
     private const val MAX_DOWNLOADS = 200
 
-    /** Pure codec: one JSON object per record, tolerant on decode. */
-    fun encodeDownloads(records: List<DownloadRecord>): String {
-        val array = JSONArray()
-        records.forEach { record ->
-            array.put(
-                JSONObject()
-                    .put("id", record.id)
-                    .put("url", record.url)
-                    .put("file", record.fileName)
-                    .put("state", record.state.name)
-                    .put("dm", record.downloadManagerId)
-                    .put("local", record.localSource ?: "")
-                    .put("private", record.isPrivate)
-                    .put("created", record.createdAtMs),
-            )
-        }
-        return array.toString()
-    }
+    // Line-codec field escaping, same as the session-pages codec:
+    // URL-encoding keeps separators and newlines out of every field.
+    private fun encDownload(s: String): String = URLEncoder.encode(s, "UTF-8")
 
-    /** Pure codec: malformed rows are skipped, missing fields get safe defaults. */
+    private fun decDownload(s: String): String =
+        runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
+
+    /**
+     * Pure codec: one line per record, fields in fixed order —
+     * id | url | file | state | manager id | local source | private 1/0 | created ms.
+     */
+    fun encodeDownloads(records: List<DownloadRecord>): String =
+        records.joinToString("\n") { record ->
+            listOf(
+                encDownload(record.id),
+                encDownload(record.url),
+                encDownload(record.fileName),
+                record.state.name,
+                record.downloadManagerId.toString(),
+                encDownload(record.localSource ?: ""),
+                if (record.isPrivate) "1" else "0",
+                record.createdAtMs.toString(),
+            ).joinToString("|")
+        }
+
+    /** Pure codec: short rows are skipped, blank ids/urls are skipped, unknown fields default. */
     fun decodeDownloads(raw: String): List<DownloadRecord> {
         if (raw.isBlank()) return emptyList()
-        return runCatching {
-            val array = JSONArray(raw)
-            (0 until array.length()).mapNotNull { index ->
-                val obj = array.optJSONObject(index) ?: return@mapNotNull null
-                val id = obj.optString("id")
-                val url = obj.optString("url")
-                if (id.isBlank() || url.isBlank()) return@mapNotNull null
-                val state = runCatching {
-                    DownloadState.valueOf(obj.optString("state"))
-                }.getOrDefault(DownloadState.IN_PROGRESS)
-                DownloadRecord(
-                    id = id,
-                    url = url,
-                    fileName = obj.optString("file"),
-                    state = state,
-                    downloadManagerId = obj.optLong("dm", -1L),
-                    localSource = obj.optString("local").takeIf { it.isNotBlank() },
-                    isPrivate = obj.optBoolean("private", false),
-                    createdAtMs = obj.optLong("created", 0L),
-                )
-            }
-        }.getOrDefault(emptyList())
+        return raw.lines().mapNotNull { line ->
+            val parts = line.split("|")
+            if (parts.size != 8) return@mapNotNull null
+            val id = decDownload(parts[0])
+            val url = decDownload(parts[1])
+            if (id.isBlank() || url.isBlank()) return@mapNotNull null
+            val state = runCatching {
+                DownloadState.valueOf(parts[3])
+            }.getOrDefault(DownloadState.IN_PROGRESS)
+            DownloadRecord(
+                id = id,
+                url = url,
+                fileName = decDownload(parts[2]),
+                state = state,
+                downloadManagerId = parts[4].toLongOrNull() ?: -1L,
+                localSource = decDownload(parts[5]).takeIf { it.isNotBlank() },
+                isPrivate = parts[6] == "1",
+                createdAtMs = parts[7].toLongOrNull() ?: 0L,
+            )
+        }
     }
 
     /** All records, newest first — including private-origin ones. */

@@ -42,18 +42,20 @@ class DownloadStoreTest {
 
     @Test
     fun codecSkipsMalformedRowsAndDefaultsMissingFields() {
-        // Whole-array invalid JSON decodes to empty (the codec never
-        // guesses at a broken store); row-level tolerance covers blank
-        // ids/urls and unknown states inside valid JSON.
-        assertTrue(BrowserStore.decodeDownloads("[not json").isEmpty())
-        val raw = "[{\"id\":\"\",\"url\":\"https://example.com/a.pdf\"}," +
-            "{\"id\":\"dl-ok\",\"url\":\"https://example.com/b.pdf\"}," +
-            "{\"id\":\"dl-state\",\"url\":\"https://example.com/c.pdf\",\"state\":\"BOGUS\"}]"
+        // Whole-store garbage decodes to empty (the codec never guesses
+        // at a broken store); row-level tolerance covers blank ids,
+        // short rows, and unknown states inside line input.
+        assertTrue(BrowserStore.decodeDownloads("garbage").isEmpty())
+        val raw = "|https://example.com/a.pdf|a.pdf|IN_PROGRESS|1||0|1\n" +
+            "dl-ok|https://example.com/b.pdf|b.pdf|IN_PROGRESS|||0|1000000\n" +
+            "short|row\n" +
+            "dl-state|https://example.com/c.pdf|c.pdf|BOGUS|99|content://x|1|5"
         val decoded = BrowserStore.decodeDownloads(raw)
         assertEquals(listOf("dl-ok", "dl-state"), decoded.map { it.id })
         assertEquals(BrowserStore.DownloadState.IN_PROGRESS, decoded[0].state)
         assertEquals(-1L, decoded[0].downloadManagerId)
         assertEquals(BrowserStore.DownloadState.IN_PROGRESS, decoded[1].state)
+        assertTrue(decoded[1].isPrivate)
     }
 
     @Test
