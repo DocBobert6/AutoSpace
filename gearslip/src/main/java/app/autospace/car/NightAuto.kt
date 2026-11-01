@@ -1,9 +1,6 @@
 package app.autospace.car
 
-import android.Manifest
 import android.content.Context
-import android.content.pm.PackageManager
-import android.location.LocationManager
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.PI
@@ -110,14 +107,8 @@ object NightAuto {
 
     /** Last-known device location (lat, lon), or null without permission or any fix. */
     fun lastKnownLocation(context: Context): Pair<Double, Double>? {
-        val fine = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (!fine && !coarse) return null
-        val manager = context.getSystemService(LocationManager::class.java) ?: return null
-        val loc = manager.allProviders
-            .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
-            .maxByOrNull { it.time } ?: return null
-        return loc.latitude to loc.longitude
+        val known = LocationLookup.lastKnown(context) ?: return null
+        return known.latitude to known.longitude
     }
 
     /** Today's sunrise/sunset for the device location, or null when unknown. */

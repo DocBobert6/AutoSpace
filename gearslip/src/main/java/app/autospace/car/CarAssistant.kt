@@ -23,6 +23,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
+ * Module map (r174 audit §2 CLEAN-N09): the assistant is three objects with
+ * deliberately overlapping names. [CarAssistant] is the voice — listening
+ * through [SpeechEngine] and speaking through [VoiceEngine]. [AiAssistant]
+ * is the model — the pure, Android-free prompt, reply parser, and proposal
+ * validator. [AssistantCommands] is the meaning — turning what was heard
+ * into an action plus something to say back, with confirmation before
+ * anything runs. This file is the voice. The names stay as they are:
+ * Ai* is not renamed to AI* tree-wide.
+ *
  * A voice assistant: Gearslip's own [SpeechEngine] to listen, [VoiceEngine]
  * (Kokoro, with Piper as fallback) to answer. Listening used to go through
  * the system's [SpeechRecognizer] alone, but many phones have no recognizer

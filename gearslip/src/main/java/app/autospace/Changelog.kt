@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            132, "0.4.121-alpha",
+            listOf(
+                "Final audit cleanup: deduped helpers, module-map comments, and contributor docs. No behavior change.",
+            ),
+        ),
+        Release(
             131, "0.4.120-alpha",
             listOf(
                 "Settings cleanup: tidier settings code with no change to what any setting does.",

@@ -102,13 +102,10 @@ object Weather {
             context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     private fun locate(context: Context): Location? {
-        if (!hasLocationPermission(context)) return null
-        val manager = context.getSystemService(LocationManager::class.java) ?: return null
-        val known = manager.allProviders
-            .mapNotNull { runCatching { manager.getLastKnownLocation(it) }.getOrNull() }
-            .maxByOrNull { it.time }
+        val known = LocationLookup.lastKnown(context)
         if (known != null && System.currentTimeMillis() - known.time < FIX_MAX_AGE_MS) return known
 
+        val manager = context.getSystemService(LocationManager::class.java) ?: return known
         val provider = listOf(LocationManager.FUSED_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
             .firstOrNull { it in manager.allProviders && manager.isProviderEnabled(it) }
             ?: return known

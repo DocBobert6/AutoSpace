@@ -49,6 +49,16 @@ Text that users read, such as screens, release notes, and docs, follows Strunk's
 [*The Elements of Style*](https://www.gutenberg.org/ebooks/37134). In short: use the active
 voice, state things positively, cut needless words, and use the serial comma.
 
+## Naming
+
+One product, three names, on purpose (r174 audit §2 CLEAN-N10). Text that
+users read — screens, release notes, docs, and filenames — says AutoSpace.
+Internals keep `Gearslip` where renaming would churn public identifiers
+(the module, the log tag, the log filenames), and the theme system keeps
+its `Gs` prefix. Fix only new user-visible strings going forward; do not
+rename internals to match, and do not rename user-visible strings back
+to Gearslip.
+
 ## License
 
 AutoSpace is licensed under AGPL-3.0, and your contributions are too.

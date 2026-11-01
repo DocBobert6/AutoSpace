@@ -137,8 +137,9 @@ object SessionReport {
      * of a USB failure, or else the exception's class.
      */
     private fun codeOf(t: Throwable): String {
-        var root = t
-        while (root.cause != null && root.cause !== root) root = root.cause!!
+        // Audit §2 CLEAN-N05: the root cause comes from GearslipLog, not a
+        // second local walk; the regex extraction below is untouched.
+        val root = GearslipLog.deepestCause(t)
         val text = "${t.message} ${root.message}"
         Regex("(?i)alert[ _:]*\\(?([a-z_ ]{3,40}?)\\)?(?:\\s|$|[,;.])").find(text)?.let {
             return "alert ${it.groupValues[1].trim().lowercase().replace(' ', '_')}"

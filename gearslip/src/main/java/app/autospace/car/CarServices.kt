@@ -368,6 +368,8 @@ object CarServices {
         val sessions = try {
             manager.getActiveSessions(listener)
         } catch (e: SecurityException) {
+            // Audit §2 CLEAN-N15: class only, never a value.
+            app.autospace.GearslipLog.i("media: active sessions failed class=${e.javaClass.simpleName}")
             return null
         }
         val playingPackages = sessions
@@ -389,6 +391,8 @@ object CarServices {
         val playing = try {
             manager.getActiveSessions(listener).filter { it.playbackState?.state == PlaybackState.STATE_PLAYING }
         } catch (e: SecurityException) {
+            // Audit §2 CLEAN-N15: class only, never a value.
+            app.autospace.GearslipLog.i("media: active sessions failed class=${e.javaClass.simpleName}")
             null
         }
         if (playing == null) {

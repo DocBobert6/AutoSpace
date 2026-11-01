@@ -83,7 +83,9 @@ fun setPhoneDnd(context: Context, on: Boolean): Boolean = try {
         else NotificationManager.INTERRUPTION_FILTER_ALL,
     )
     true
-} catch (_: SecurityException) {
+} catch (e: SecurityException) {
+    // Audit §2 CLEAN-N15: class only, never a value.
+    app.autospace.GearslipLog.i("tiles: dnd set failed class=${e.javaClass.simpleName}")
     false
 }
 
@@ -101,7 +103,9 @@ fun openDndAccessSettings(context: Context) {
 
 private fun readDndState(context: Context): DndTileState = try {
     dndTileState(dndAccessGranted(context), dndIsOn(context))
-} catch (_: SecurityException) {
+} catch (e: SecurityException) {
+    // Audit §2 CLEAN-N15: class only, never a value.
+    app.autospace.GearslipLog.i("tiles: dnd read failed class=${e.javaClass.simpleName}")
     DndTileState.NEEDS_ACCESS
 }
 

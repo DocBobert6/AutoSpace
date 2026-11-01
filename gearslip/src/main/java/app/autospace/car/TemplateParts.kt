@@ -880,8 +880,12 @@ private fun DetailRow(row: CarRow, placeName: String) {
         }
         if (canCall) {
             Spacer(Modifier.width(8.dp))
+            // Audit §2 CLEAN-N16: canCall already requires a number, so this
+            // cannot be null here — but if the guard ever drifts, fail with a
+            // message instead of a bare NPE inside the click handler.
+            val dialNumber = requireNotNull(number) { "Call button shown without a number" }
             GsIconBox(
-                onClick = { CallPrompt.ask(placeName.ifBlank { number!! }, number!!) },
+                onClick = { CallPrompt.ask(placeName.ifBlank { dialNumber }, dialNumber) },
                 colors = if (LocalMeridianChrome.current) GsColors(Color(MapChromeColors.MERIDIAN_CARD), Color.White) else GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
                 shape = gsButtonShape(RoundedCornerShape(24.dp)),
             ) {

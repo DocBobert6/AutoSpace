@@ -51,13 +51,13 @@ object CarBluetooth {
     private var appContext: Context? = null
 
     /** This session's car: its channel, and how to open and write to it. */
-    private class Car(
+    private class CarDevice(
         val service: ServiceDiscovery.BluetoothService,
         val open: () -> Unit,
         val send: (messageId: Int, body: ByteArray) -> Unit,
     )
 
-    @Volatile private var car: Car? = null
+    @Volatile private var car: CarDevice? = null
     @Volatile private var bondStarted = false
     /** From the Pair tap until it succeeds or fails, whether or not the card still shows. */
     @Volatile private var pairing = false
@@ -79,7 +79,7 @@ object CarBluetooth {
         open: () -> Unit,
         send: (messageId: Int, body: ByteArray) -> Unit,
     ) {
-        car = Car(service, open, send)
+        car = CarDevice(service, open, send)
         bondStarted = false
         log.i("the car offers Bluetooth pairing, methods=${service.pairingMethods}")
         val device = device() ?: return

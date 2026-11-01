@@ -569,7 +569,10 @@ object SpeechEngine {
         }
         return when (MicSelection.selectSource(setting, carMicDead, inherited, car != null)) {
             MicSource.PHONE -> phoneMic() to MicSource.PHONE
-            MicSource.CAR -> car!! to MicSource.CAR
+            // Audit §2 CLEAN-N16: selectSource returns CAR only when a car mic
+            // was probed, so this cannot be null on this branch — but if the
+            // contract ever breaks, fail with a message instead of a bare NPE.
+            MicSource.CAR -> requireNotNull(car) { "selectSource returned CAR with no car mic" } to MicSource.CAR
         }
     }
 

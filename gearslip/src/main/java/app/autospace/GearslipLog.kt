@@ -155,10 +155,16 @@ object GearslipLog {
         return "$scheme://$host$path"
     }
 
-    /** "SSLHandshakeException: Received fatal alert: bad_certificate" - the deepest cause wins. */
-    fun rootCause(t: Throwable): String {
+    /** The deepest cause of [t], following the chain until it ends or loops back on itself. */
+    fun deepestCause(t: Throwable): Throwable {
         var cause: Throwable = t
         while (cause.cause != null && cause.cause !== cause) cause = cause.cause!!
+        return cause
+    }
+
+    /** "SSLHandshakeException: Received fatal alert: bad_certificate" - the deepest cause wins. */
+    fun rootCause(t: Throwable): String {
+        val cause = deepestCause(t)
         val top = "${t.javaClass.simpleName}: ${t.message}"
         return if (cause === t) top else "$top <- ${cause.javaClass.simpleName}: ${cause.message}"
     }

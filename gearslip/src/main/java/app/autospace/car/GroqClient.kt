@@ -139,24 +139,19 @@ object GroqClient {
      */
     fun validateKey(key: String): KeyCheck {
         if (key.isBlank()) return KeyCheck.INVALID
-        return try {
-            val conn = (URL(MODELS_URL).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("Authorization", "Bearer $key")
-                connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
-                readTimeout = AiAssistant.REQUEST_TIMEOUT_MS
-            }
-            val code = conn.responseCode
-            conn.disconnect()
-            GearslipLog.i("assistant: ai groq key check http=$code")
-            when (code) {
-                200 -> KeyCheck.VALID
-                401, 403 -> KeyCheck.INVALID
-                else -> KeyCheck.UNKNOWN
-            }
-        } catch (e: Exception) {
-            GearslipLog.i("assistant: ai groq key check failed class=${e.javaClass.simpleName}")
-            KeyCheck.UNKNOWN
+        val code = AiHttp.getStatusCode(
+            MODELS_URL,
+            "Authorization",
+            "Bearer $key",
+            AiAssistant.CONNECT_TIMEOUT_MS,
+            AiAssistant.REQUEST_TIMEOUT_MS,
+            "assistant: ai groq key check",
+        ) ?: return KeyCheck.UNKNOWN
+        GearslipLog.i("assistant: ai groq key check http=$code")
+        return when (code) {
+            200 -> KeyCheck.VALID
+            401, 403 -> KeyCheck.INVALID
+            else -> KeyCheck.UNKNOWN
         }
     }
 
@@ -256,6 +251,8 @@ object GroqClient {
         val root = try {
             JsonMini.parse(responseJson) as? JsonMini.Value.Obj
         } catch (e: Exception) {
+            // Audit §2 CLEAN-N15: class only, never a value.
+            GearslipLog.i("assistant: ai groq content parse failed class=${e.javaClass.simpleName}")
             null
         } ?: return null
         val choices = (root.objField("choices") as? JsonMini.Value.Arr)?.list ?: return null
@@ -284,6 +281,8 @@ object GroqClient {
         val root = try {
             JsonMini.parse(chunkJson) as? JsonMini.Value.Obj
         } catch (e: Exception) {
+            // Audit §2 CLEAN-N15: class only, never a value.
+            GearslipLog.i("assistant: ai groq delta parse failed class=${e.javaClass.simpleName}")
             null
         } ?: return null
         val choices = (root.objField("choices") as? JsonMini.Value.Arr)?.list ?: return null

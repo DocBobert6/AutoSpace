@@ -134,14 +134,12 @@ object AiKeyStore {
     /** The privacy notice (§6) has been shown and acknowledged for this provider at least once. */
     fun noticeAcked(context: Context, provider: AiAssistant.Provider): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val key = if (provider == AiAssistant.Provider.GROQ) KEY_NOTICE_ACKED_GROQ else KEY_NOTICE_ACKED
-        return prefs.getBoolean(key, false)
+        return prefs.getBoolean(noticeKey(provider), false)
     }
 
     fun ackNotice(context: Context, provider: AiAssistant.Provider) {
-        val key = if (provider == AiAssistant.Provider.GROQ) KEY_NOTICE_ACKED_GROQ else KEY_NOTICE_ACKED
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(key, true).apply()
+            .edit().putBoolean(noticeKey(provider), true).apply()
     }
 
     fun setEnabled(context: Context, on: Boolean) {
@@ -160,8 +158,7 @@ object AiKeyStore {
     fun hasKey(context: Context, provider: AiAssistant.Provider): Boolean {
         ensureLoaded(context)
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val key = if (provider == AiAssistant.Provider.GROQ) KEY_GROQ_CIPHERTEXT else KEY_CIPHERTEXT
-        return !prefs.getString(key, null).isNullOrEmpty()
+        return !prefs.getString(slot(provider).ciphertextKey, null).isNullOrEmpty()
     }
 
     /** The gate the AI fallback checks: on + a key stored for the active provider. Network is checked separately, per turn. */
@@ -188,6 +185,8 @@ object AiKeyStore {
             flow.value = KeyState.SAVED_UNTESTED
             true
         } catch (e: Exception) {
+            // Audit §2 CLEAN-N14: outcome only — the exception class, never a value.
+            app.autospace.GearslipLog.i("assistant: ai key save failed class=${e.javaClass.simpleName}")
             false
         }
     }
@@ -205,6 +204,8 @@ object AiKeyStore {
             val plain = cipher.doFinal(Base64.decode(ciphertext, Base64.NO_WRAP))
             String(plain, Charsets.UTF_8).ifBlank { null }
         } catch (e: Exception) {
+            // Audit §2 CLEAN-N14: outcome only — the exception class, never a value.
+            app.autospace.GearslipLog.i("assistant: ai key load failed class=${e.javaClass.simpleName}")
             null
         }
     }
@@ -270,6 +271,12 @@ object AiKeyStore {
     private fun slot(provider: AiAssistant.Provider): Slot = when (provider) {
         AiAssistant.Provider.GROQ -> Slot(KEY_GROQ_CIPHERTEXT, KEY_GROQ_IV, KEY_GROQ_STATE, groqKeyStateFlow)
         AiAssistant.Provider.GEMINI -> Slot(KEY_CIPHERTEXT, KEY_IV, KEY_STATE, geminiKeyStateFlow)
+    }
+
+    /** The notice-acked prefs key for one provider (r174 audit §2 CLEAN-N04). */
+    private fun noticeKey(provider: AiAssistant.Provider): String = when (provider) {
+        AiAssistant.Provider.GROQ -> KEY_NOTICE_ACKED_GROQ
+        AiAssistant.Provider.GEMINI -> KEY_NOTICE_ACKED
     }
 
     private fun getOrCreateKey(): SecretKey {

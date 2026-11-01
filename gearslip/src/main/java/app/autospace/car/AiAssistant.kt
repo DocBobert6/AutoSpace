@@ -1,6 +1,15 @@
 package app.autospace.car
 
 /**
+ * Module map (r174 audit §2 CLEAN-N09): the assistant is three objects with
+ * deliberately overlapping names. [CarAssistant] is the voice — listening
+ * through SpeechEngine and speaking through VoiceEngine. AiAssistant is the
+ * model — the pure, Android-free prompt, reply parser, and proposal
+ * validator. [AssistantCommands] is the meaning — turning what was heard
+ * into an action plus something to say back, with confirmation before
+ * anything runs. This file is the model. The names stay as they are:
+ * Ai* is not renamed to AI* tree-wide.
+ *
  * AI assistant (r25): the pure, Android-free half of the Gemini bring-your-own-key layer.
  *
  * Everything here is testable on the JVM with no device: the system prompt, the model reply

@@ -81,24 +81,19 @@ object GeminiClient {
      */
     fun validateKey(key: String): KeyCheck {
         if (key.isBlank()) return KeyCheck.INVALID
-        return try {
-            val conn = (URL(AiAssistant.MODEL_URL).openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                setRequestProperty("x-goog-api-key", key)
-                connectTimeout = AiAssistant.CONNECT_TIMEOUT_MS
-                readTimeout = AiAssistant.REQUEST_TIMEOUT_MS
-            }
-            val code = conn.responseCode
-            conn.disconnect()
-            GearslipLog.i("assistant: ai key check http=$code")
-            when (code) {
-                200 -> KeyCheck.VALID
-                400, 401, 403 -> KeyCheck.INVALID
-                else -> KeyCheck.UNKNOWN
-            }
-        } catch (e: Exception) {
-            GearslipLog.i("assistant: ai key check failed class=${e.javaClass.simpleName}")
-            KeyCheck.UNKNOWN
+        val code = AiHttp.getStatusCode(
+            AiAssistant.MODEL_URL,
+            "x-goog-api-key",
+            key,
+            AiAssistant.CONNECT_TIMEOUT_MS,
+            AiAssistant.REQUEST_TIMEOUT_MS,
+            "assistant: ai key check",
+        ) ?: return KeyCheck.UNKNOWN
+        GearslipLog.i("assistant: ai key check http=$code")
+        return when (code) {
+            200 -> KeyCheck.VALID
+            400, 401, 403 -> KeyCheck.INVALID
+            else -> KeyCheck.UNKNOWN
         }
     }
 
@@ -162,6 +157,8 @@ object GeminiClient {
         val root = try {
             JsonMini.parse(responseJson) as? JsonMini.Value.Obj
         } catch (e: Exception) {
+            // Audit §2 CLEAN-N15: class only, never a value.
+            GearslipLog.i("assistant: ai gemini grounding parse failed class=${e.javaClass.simpleName}")
             null
         } ?: return Grounding(false, 0)
         val candidates = (root.objField("candidates") as? JsonMini.Value.Arr)?.list ?: return Grounding(false, 0)
