@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheElevenApprovedInOrder() {
+    fun pairsAreExactlyTheTwelveApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon"),
             themePairs.map { it.label },
         )
     }
@@ -97,6 +97,13 @@ class ThemePairsTest {
     }
 
     @Test
+    fun horizonPairSetsHorizonStyleAndScheme() {
+        val pair = themePairs[11]
+        assertEquals("horizon", pair.styleId)
+        assertEquals(ColorScheme.HORIZON, pair.scheme)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -109,13 +116,13 @@ class ThemePairsTest {
         assertEquals(themePairs[8], themePairFor("morph", ColorScheme.MATERIAL_YOU))
         assertEquals(themePairs[9], themePairFor("foundry", ColorScheme.WORKSHOP))
         assertEquals(themePairs[10], themePairFor("aurora", ColorScheme.AURORA_FIELD))
+        assertEquals(themePairs[11], themePairFor("horizon", ColorScheme.HORIZON))
     }
 
     @Test
     fun lookupReturnsNullForNonPairCombinations() {
         assertNull(themePairFor("frost", ColorScheme.PITLANE))
         assertNull(themePairFor("verve", ColorScheme.NEUTRAL))
-        assertNull(themePairFor("horizon", ColorScheme.HORIZON))
         assertNull(themePairFor("edge", ColorScheme.NEUTRAL))
         assertNull(themePairFor("blueprint", ColorScheme.HERITAGE))
         assertNull(themePairFor("sector", ColorScheme.NEUTRAL))
