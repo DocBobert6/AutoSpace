@@ -64,12 +64,15 @@ import app.autospace.car.theme.GsTone
  */
 enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS, LIBRARY }
 
-/** r157: the label on a Downloads row — state rides in the label itself. */
+/** r157: the label on a Downloads row — state rides in the label itself. r159: worker rows show their reported percent while downloading, and paused rows say so. */
 private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
     when (record.state) {
-        BrowserStore.DownloadState.IN_PROGRESS -> "${record.fileName} - Downloading"
+        BrowserStore.DownloadState.IN_PROGRESS ->
+            if (record.progress in 0..100) "${record.fileName} - Downloading ${record.progress}%"
+            else "${record.fileName} - Downloading"
         BrowserStore.DownloadState.FAILED -> "${record.fileName} - Failed"
         BrowserStore.DownloadState.COMPLETE -> record.fileName
+        BrowserStore.DownloadState.PAUSED -> "${record.fileName} - Paused"
     }
 
 @Composable
@@ -105,6 +108,16 @@ fun BrowserListsSheet(
     onPlayLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onShareLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onSaveLibraryCopy: (BrowserStore.DownloadRecord) -> Unit,
+    // r159: library row management. Delete drops the record and its
+    // bytes (already-gone is success); Retry re-enqueues a failed
+    // row under the same id; Pause, Resume, and Cancel exist only
+    // for worker rows (the sheet gates them with the BrowserDownloads
+    // helpers, so plain rows never show a pause affordance).
+    onDeleteLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onRetryLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onPauseLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onResumeLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onCancelLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onClose: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -349,6 +362,11 @@ fun BrowserListsSheet(
                 // Private-origin media never reaches this list — the
                 // caller filters it out, and its bytes die with the
                 // private profile exactly like any private download.
+                // r159: Delete drops the row and its bytes; Retry
+                // re-enqueues a failed row; Pause, Resume, and Cancel
+                // show only on worker rows (HLS), gated by the
+                // BrowserDownloads helpers — plain rows never offer
+                // a pause, because plain downloads are not pausable.
                 Text(
                     "Offline library",
                     style = MaterialTheme.typography.titleMedium,
@@ -380,6 +398,29 @@ fun BrowserListsSheet(
                                 }
                                 GsButton(onClick = { onSaveLibraryCopy(record) }, tone = GsTone.Neutral) {
                                     Text("Save a copy")
+                                }
+                                GsButton(onClick = { onDeleteLibrary(record) }, tone = GsTone.Neutral) {
+                                    Text("Delete")
+                                }
+                                if (BrowserDownloads.showLibraryRetry(record)) {
+                                    GsButton(onClick = { onRetryLibrary(record) }, tone = GsTone.Neutral) {
+                                        Text("Retry")
+                                    }
+                                }
+                                if (BrowserDownloads.showLibraryPause(record)) {
+                                    GsButton(onClick = { onPauseLibrary(record) }, tone = GsTone.Neutral) {
+                                        Text("Pause")
+                                    }
+                                }
+                                if (BrowserDownloads.showLibraryResume(record)) {
+                                    GsButton(onClick = { onResumeLibrary(record) }, tone = GsTone.Neutral) {
+                                        Text("Resume")
+                                    }
+                                }
+                                if (BrowserDownloads.showLibraryCancel(record)) {
+                                    GsButton(onClick = { onCancelLibrary(record) }, tone = GsTone.Neutral) {
+                                        Text("Cancel")
+                                    }
                                 }
                             }
                         }

@@ -2162,6 +2162,38 @@ fun WebApp(content: String) {
                     pendingSaveCopy = record
                     saveCopyLauncher.launch(record.fileName)
                 },
+                // r159: library row management. Delete and Cancel drop
+                // the row and its bytes; Retry and Resume re-enqueue
+                // under the same id (worker resume reuses the segments
+                // already on disk); Pause cancels the work and keeps
+                // the segments for resume. Every action refreshes the
+                // lists, so the sheet never shows a stale row.
+                onDeleteLibrary = { record ->
+                    BrowserDownloads.deleteDownload(context, record)
+                    refreshLists()
+                },
+                onRetryLibrary = { record ->
+                    val updated = BrowserDownloads.retryDownload(context, record)
+                    if (updated.state == BrowserStore.DownloadState.FAILED) {
+                        CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                    }
+                    refreshLists()
+                },
+                onPauseLibrary = { record ->
+                    BrowserDownloads.pauseDownload(context, record)
+                    refreshLists()
+                },
+                onResumeLibrary = { record ->
+                    val updated = BrowserDownloads.retryDownload(context, record)
+                    if (updated.state == BrowserStore.DownloadState.FAILED) {
+                        CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                    }
+                    refreshLists()
+                },
+                onCancelLibrary = { record ->
+                    BrowserDownloads.cancelWorkerDownload(context, record)
+                    refreshLists()
+                },
                 onClose = { listsOpen = false },
             )
         }
@@ -2416,7 +2448,7 @@ fun WebApp(content: String) {
                             }, modifier = Modifier.fillMaxWidth()) { Text("View image") }
                             GsButton(onClick = {
                                 longPressTarget = null
-                                downloadUrl(longPress.url, activeTab.isPrivate)
+                                downloadUrl(longPress.url, activeTab.isPrivate, isMedia = false)
                             }, modifier = Modifier.fillMaxWidth()) { Text("Download") }
                         }
                         GsButton(onClick = {

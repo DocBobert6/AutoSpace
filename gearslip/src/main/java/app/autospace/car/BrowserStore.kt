@@ -307,23 +307,34 @@ object BrowserStore {
     // pinned by a JVM test here). The record shape is deliberately
     // minimal but forward-compatible: r158 (slice 2) added the media
     // flag and the Offline library section on top of these records
-    // without changing the store key. HLS (.m3u8), DASH (.mpd), and
-    // segmented downloads get records only in slices 3–4; until then
-    // this list covers plain DownloadManager downloads only.
-    /** Plain-download lifecycle: in progress, finished, or failed. */
-    enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED }
+    // without changing the store key. r159 (slice 3) adds the worker
+    // fields the same way: progress and engine kind ride as extra
+    // line fields, and pre-slice rows decode with unknown progress
+    // and the plain engine. HLS (.m3u8) downloads get worker records
+    // in slice 3; DASH (.mpd) and segmented downloads arrive in
+    // slice 4, and until then still plain-download.
+    /** Download lifecycle: in progress, finished, failed, or worker-paused. */
+    enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED, PAUSED }
+
+    /** Which engine owns a record: plain DownloadManager, or the HLS worker. */
+    enum class DownloadKind { PLAIN, HLS }
 
     /**
-     * One plain download. [downloadManagerId] is the DownloadManager id
+     * One download. [downloadManagerId] is the DownloadManager id
      * returned at enqueue time (-1 when unknown — no slice-1 record is
-     * created without one, but the codec tolerates it); [localSource] is
-     * the DownloadManager local URI once the download completes, null
-     * until then. [isPrivate] marks a private-tab origin: such records
+     * created without one, but the codec tolerates it; worker records
+     * never have one, since no DownloadManager row exists for them);
+     * [localSource] is the DownloadManager local URI once the download
+     * completes, null until then. [isPrivate] marks a private-tab origin: such records
      * are stored but never shown in either list, and their bytes
      * are deleted with the private profile (see BrowserDownloads).
      * [isMedia] (r158, slice 2) marks a video/audio download: such
      * records live in the Offline library, not in Downloads. It
      * defaults to false so pre-flag rows decode unchanged.
+     * [progress] (r159, slice 3) is the worker-reported percent
+     * 0..100, or -1 when unknown — plain DownloadManager downloads
+     * never report one, so they stay unknown. [kind] (r159) is the
+     * engine that owns the record; pre-slice rows decode as plain.
      */
     data class DownloadRecord(
         val id: String,
@@ -335,6 +346,8 @@ object BrowserStore {
         val isPrivate: Boolean,
         val createdAtMs: Long,
         val isMedia: Boolean = false,
+        val progress: Int = -1,
+        val kind: DownloadKind = DownloadKind.PLAIN,
     )
 
     private const val KEY_DOWNLOADS = "browser_downloads"
@@ -351,7 +364,10 @@ object BrowserStore {
      * Pure codec: one line per record, fields in fixed order —
      * id | url | file | state | manager id | local source | private 1/0 | created ms
      * | media 1/0 (r158; pre-flag rows have no ninth field and decode
-     * with media false).
+     * with media false) | progress percent or -1 (r159; pre-slice rows
+     * have no tenth field and decode with unknown progress)
+     * | engine kind name (r159; pre-slice rows have no eleventh field
+     * and decode as plain, unknown names also decode as plain).
      */
     fun encodeDownloads(records: List<DownloadRecord>): String =
         records.joinToString("\n") { record ->
@@ -365,6 +381,8 @@ object BrowserStore {
                 if (record.isPrivate) "1" else "0",
                 record.createdAtMs.toString(),
                 if (record.isMedia) "1" else "0",
+                record.progress.toString(),
+                record.kind.name,
             ).joinToString("|")
         }
 
@@ -373,7 +391,7 @@ object BrowserStore {
         if (raw.isBlank()) return emptyList()
         return raw.lines().mapNotNull { line ->
             val parts = line.split("|")
-            if (parts.size != 8 && parts.size != 9) return@mapNotNull null
+            if (parts.size != 8 && parts.size != 9 && parts.size != 11) return@mapNotNull null
             val id = decDownload(parts[0])
             val url = decDownload(parts[1])
             if (id.isBlank() || url.isBlank()) return@mapNotNull null
@@ -390,6 +408,10 @@ object BrowserStore {
                 isPrivate = parts[6] == "1",
                 createdAtMs = parts[7].toLongOrNull() ?: 0L,
                 isMedia = parts.getOrNull(8) == "1",
+                progress = parts.getOrNull(9)?.toIntOrNull() ?: -1,
+                kind = parts.getOrNull(10)?.let {
+                    runCatching { DownloadKind.valueOf(it) }.getOrDefault(DownloadKind.PLAIN)
+                } ?: DownloadKind.PLAIN,
             )
         }
     }
@@ -438,6 +460,16 @@ object BrowserStore {
     /** Pure retry transition: same record, fresh manager id, back to in progress. */
     fun retried(record: DownloadRecord, newDmId: Long): DownloadRecord =
         record.copy(state = DownloadState.IN_PROGRESS, downloadManagerId = newDmId, localSource = null)
+
+    /**
+     * Pure worker retry/resume transition (r159): same record, no
+     * manager id ever (worker records never have one), back to in
+     * progress with its progress and engine kind kept — the worker
+     * recomputes progress from the segments already on disk as it
+     * runs, so a resumed run does not restart its count from zero.
+     */
+    fun retriedWorker(record: DownloadRecord): DownloadRecord =
+        record.copy(state = DownloadState.IN_PROGRESS, localSource = null)
 
     // ---- Text zoom (audit fix, 2026-10-25, A2) ----
     // WebView textZoom percent, persisted like the bar position

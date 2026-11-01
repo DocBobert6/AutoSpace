@@ -193,6 +193,8 @@ dependencies {
     implementation(libs.media3.ui)
     // Private WebView profiles (r21, androidx.webkit ProfileStore).
     implementation(libs.androidx.webkit)
+    // HLS download worker (r159, downloads slice 3).
+    implementation(libs.androidx.work.runtime)
     testImplementation(libs.junit)
 }
 

@@ -22,6 +22,8 @@ class DownloadStoreTest {
         state: BrowserStore.DownloadState = BrowserStore.DownloadState.IN_PROGRESS,
         isPrivate: Boolean = false,
         isMedia: Boolean = false,
+        progress: Int = -1,
+        kind: BrowserStore.DownloadKind = BrowserStore.DownloadKind.PLAIN,
     ) = BrowserStore.DownloadRecord(
         id = id,
         url = "https://example.com/report.pdf",
@@ -32,6 +34,8 @@ class DownloadStoreTest {
         isPrivate = isPrivate,
         createdAtMs = 1_000_000L,
         isMedia = isMedia,
+        progress = progress,
+        kind = kind,
     )
 
     @Test
@@ -187,5 +191,79 @@ class DownloadStoreTest {
     fun retriedPreservesMediaFlag() {
         val failed = record(state = BrowserStore.DownloadState.FAILED, isMedia = true)
         assertTrue(BrowserStore.retried(failed, 99L).isMedia)
+    }
+
+    // ---- r159: HLS worker records ----
+
+    @Test
+    fun codecRoundTripPreservesProgressAndKind() {
+        val worker = record(
+            id = "dl-hls",
+            state = BrowserStore.DownloadState.IN_PROGRESS,
+            isMedia = true,
+            progress = 42,
+            kind = BrowserStore.DownloadKind.HLS,
+        ).copy(downloadManagerId = -1L)
+        val decoded = BrowserStore.decodeDownloads(BrowserStore.encodeDownloads(listOf(record(), worker)))
+        assertEquals(2, decoded.size)
+        assertEquals(record(), decoded[0])
+        assertEquals(worker, decoded[1])
+        assertEquals(42, decoded[1].progress)
+        assertEquals(BrowserStore.DownloadKind.HLS, decoded[1].kind)
+    }
+
+    @Test
+    fun codecPre159RowsDefaultProgressUnknownAndPlain() {
+        // 8-field (slice 1) and 9-field (slice 2) rows decode with
+        // unknown progress and the plain engine, so old records stay
+        // plain DownloadManager downloads after the upgrade.
+        val eight = "dl-old|https://example.com/a.mp4|a.mp4|COMPLETE|7|file:///storage/emulated/0/Download/a.mp4|0|1000000"
+        val nine = "dl-mid|https://example.com/b.mp4|b.mp4|COMPLETE|8|file:///storage/emulated/0/Download/b.mp4|0|1000000|1"
+        val decoded = BrowserStore.decodeDownloads("$eight\n$nine")
+        assertEquals(2, decoded.size)
+        assertEquals(-1, decoded[0].progress)
+        assertEquals(BrowserStore.DownloadKind.PLAIN, decoded[0].kind)
+        assertEquals(-1, decoded[1].progress)
+        assertEquals(BrowserStore.DownloadKind.PLAIN, decoded[1].kind)
+        assertTrue(decoded[1].isMedia)
+        // An 11-field row with an unknown kind name degrades to plain.
+        val bogusKind = "dl-bogus|https://example.com/c.mp4|c.mp4|FAILED|9||0|1000000|1|50|DASH"
+        assertEquals(BrowserStore.DownloadKind.PLAIN, BrowserStore.decodeDownloads(bogusKind)[0].kind)
+        assertEquals(50, BrowserStore.decodeDownloads(bogusKind)[0].progress)
+    }
+
+    @Test
+    fun pausedStateRoundTrips() {
+        val paused = record(
+            state = BrowserStore.DownloadState.PAUSED,
+            isMedia = true,
+            progress = 60,
+            kind = BrowserStore.DownloadKind.HLS,
+        ).copy(downloadManagerId = -1L)
+        val decoded = BrowserStore.decodeDownloads(BrowserStore.encodeDownloads(listOf(paused)))
+        assertEquals(1, decoded.size)
+        assertEquals(paused, decoded[0])
+    }
+
+    @Test
+    fun retriedWorkerKeepsIdentityKindMediaAndProgress() {
+        val failed = record(
+            state = BrowserStore.DownloadState.FAILED,
+            isMedia = true,
+            progress = 37,
+            kind = BrowserStore.DownloadKind.HLS,
+        ).copy(downloadManagerId = -1L, localSource = "content://media/external/downloads/9")
+        val retried = BrowserStore.retriedWorker(failed)
+        assertEquals(failed.id, retried.id)
+        assertEquals(failed.url, retried.url)
+        assertEquals(failed.fileName, retried.fileName)
+        assertEquals(failed.isPrivate, retried.isPrivate)
+        assertEquals(failed.createdAtMs, retried.createdAtMs)
+        assertTrue(retried.isMedia)
+        assertEquals(37, retried.progress)
+        assertEquals(BrowserStore.DownloadKind.HLS, retried.kind)
+        assertEquals(-1L, retried.downloadManagerId)
+        assertEquals(BrowserStore.DownloadState.IN_PROGRESS, retried.state)
+        assertEquals(null, retried.localSource)
     }
 }

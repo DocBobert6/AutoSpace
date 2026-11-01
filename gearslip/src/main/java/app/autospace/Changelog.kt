@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            117, "0.4.106-alpha",
+            listOf(
+                "Stream playlists now download properly: HLS videos save into the Offline library, where you can pause, resume, or cancel them.",
+            ),
+        ),
+        Release(
             116, "0.4.105-alpha",
             listOf(
                 "Downloaded videos and audio now live in an Offline library in the browser menu, where you can play, share, or save a copy.",
