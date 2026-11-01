@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            114, "0.4.103-alpha",
+            listOf(
+                "The assistant no longer hears 'skip' inside another word as a command to skip, and barge-in during a reply can now be turned off on the Voice page.",
+            ),
+        ),
+        Release(
             113, "0.4.102-alpha",
             listOf(
                 "Controller buttons no longer reach the phone's interface while AutoSpace is open, and controller mapping now captures a button press on the mapping row.",

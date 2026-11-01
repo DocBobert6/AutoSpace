@@ -87,6 +87,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_PHONE_MIC = "car_phone_mic_voice"
     private const val KEY_HOTWORD = "car_hotword"
     private const val KEY_HOTWORD_PHONE_MIC = "car_hotword_phone_mic"
+    private const val KEY_BARGE_IN = "car_barge_in"
     private const val KEY_CALL_SPEAKER = "car_call_speaker"
     private const val KEY_DARK_TYPE = "car_dark_type"
     private const val KEY_AUTO_NIGHT_MODE = "car_auto_night_mode"
@@ -189,6 +190,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private val phoneMicFlow = MutableStateFlow(false)
     private val hotwordFlow = MutableStateFlow(false)
     private val hotwordPhoneMicFlow = MutableStateFlow(false)
+    private val bargeInFlow = MutableStateFlow(true)
     private val callSpeakerFlow = MutableStateFlow(false)
     private val playerSpeedFlow = MutableStateFlow(1f)
     private val playerSkipSecFlow = MutableStateFlow(10)
@@ -332,6 +334,14 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
      * calls, and everything else are untouched by this switch.
      */
     val hotwordPhoneMic: StateFlow<Boolean> = hotwordPhoneMicFlow
+    /**
+     * Barge-in (r156): saying "Hey AutoSpace" / "Hey Gearslip" while a reply
+     * plays interrupts it (r72) — when this is off, the wake phrase is
+     * ignored while speaking and works again once the reply finishes.
+     * Default on. Idle wake, button commands, the follow-up window,
+     * proposal confirmations, and overlay dismiss are untouched.
+     */
+    val bargeIn: StateFlow<Boolean> = bargeInFlow
     /**
      * Calls go to the phone's speaker (and so the phone's microphone) instead of the car's
      * Bluetooth route, applied when a call starts and restored when it ends. Default off;
@@ -510,6 +520,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         phoneMicFlow.value = AppSettings.getString(app, KEY_PHONE_MIC, "false") == "true"
         hotwordFlow.value = AppSettings.getString(app, KEY_HOTWORD, "false") == "true"
         hotwordPhoneMicFlow.value = AppSettings.getString(app, KEY_HOTWORD_PHONE_MIC, "false") == "true"
+        bargeInFlow.value = AppSettings.getString(app, KEY_BARGE_IN, "true") == "true"
         callSpeakerFlow.value = AppSettings.getString(app, KEY_CALL_SPEAKER, "false") == "true"
         playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
         playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
@@ -770,6 +781,11 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     fun setHotwordPhoneMic(on: Boolean) {
         hotwordPhoneMicFlow.value = on
         AppSettings.putString(app, KEY_HOTWORD_PHONE_MIC, on.toString())
+    }
+
+    fun setBargeIn(on: Boolean) {
+        bargeInFlow.value = on
+        AppSettings.putString(app, KEY_BARGE_IN, on.toString())
     }
 
     fun setCallSpeaker(on: Boolean) {

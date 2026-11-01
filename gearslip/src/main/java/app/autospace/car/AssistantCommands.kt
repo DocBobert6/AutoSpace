@@ -776,6 +776,23 @@ object AssistantCommands {
         return "Looking for $query on $app."
     }
 
+    /**
+     * Whole-token skip/next test (r156): a media skip fires only when "skip" or
+     * "next" appears as its own word. The old substring test spent the turn
+     * whenever a noise-garbled transcript merely contained those letters
+     * ("skipping", "skipper"), so the user's question never reached AI and
+     * the reply was a spoken "Skipping.". Deliberate commands still match —
+     * "skip", "next", "skip this song", "please skip", "skip it" — because
+     * each contains the whole token. Heard text is already normalized
+     * (lowercase, punctuation stripped) by [natural] before it reaches
+     * [mediaCommand]; the lowercase here only guards direct callers.
+     * Public so the preview classifier and the JVM tests share this one rule.
+     */
+    fun isSkipCommand(heard: String): Boolean {
+        val tokens = heard.lowercase().split(" ").filter { it.isNotEmpty() }
+        return "skip" in tokens || "next" in tokens
+    }
+
     private fun mediaCommand(heard: String): String? {
         val media = CarServices.media
         return when {
@@ -789,7 +806,7 @@ object AssistantCommands {
                 if (!media.now.value.playing) CarServices.userTogglePlay()
                 "Playing."
             }
-            "next" in heard || "skip" in heard || heard.startsWith("change the song") -> {
+            isSkipCommand(heard) || heard.startsWith("change the song") -> {
                 media.next()
                 "Skipping."
             }

@@ -224,7 +224,11 @@ object AssistantPreview {
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Read messages (existing threads only)", spoken = "(messages read aloud)")
             heard == "pause" || heard.startsWith("stop") || heard == "quiet" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Media command", spoken = "Paused.")
-            heard == "next" || heard == "skip" ->
+            // r156: the live rule, shared — whole-token "skip"/"next", so a
+            // noise transcript containing those letters inside another word
+            // ("skipping") traces as unmatched/fuzzy here exactly as live
+            // leaves it unclaimed, instead of tracing a skip that never fires.
+            AssistantCommands.isSkipCommand(heard) ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Media command", spoken = "Skipping.")
             heard == "resume" || heard == "play" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "Media command", spoken = "Playing.")

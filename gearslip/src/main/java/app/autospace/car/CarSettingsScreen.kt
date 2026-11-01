@@ -653,6 +653,7 @@ private fun VoicePage() {
     val phoneMicForVoice by CarSettings.phoneMicForVoice.collectAsState()
     val hotword by CarSettings.hotword.collectAsState()
     val hotwordPhoneMic by CarSettings.hotwordPhoneMic.collectAsState()
+    val bargeIn by CarSettings.bargeIn.collectAsState()
 
     ChoiceRow(
         "Spoken directions",
@@ -694,7 +695,9 @@ private fun VoicePage() {
 
     // Hotword (2026-10-25): hands-free wake phrase, off by default. The
     // listener itself enforces the rest — car session only, suspended while
-    // the assistant is busy or on a call — so this row is only the switch.
+    // the assistant is listening or thinking, or on a call, and while
+    // speaking only when the barge-in switch below is off — so this row
+    // is only the switch.
     // Hotword-only phone mic (2026-10-25): the same switch as
     // phone Settings, same state. When on, hotword listening uses
     // the phone mic even when the car has one — the workaround for
@@ -714,10 +717,24 @@ private fun VoicePage() {
         description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
             "(or “Hey Gearslip”) and opens the assistant without a button press. " +
             "It needs the Kroko listening model downloaded, it stops while the " +
-            "assistant is speaking, on a call, or when the car disconnects, and " +
-            "nothing you say leaves the phone.",
+            "assistant is listening or thinking, on a call, or when the car " +
+            "disconnects, and nothing you say leaves the phone. While a reply " +
+            "plays, it stays live unless barge-in is turned off below.",
         checked = hotword,
     ) { CarSettings.setHotword(it) }
+
+    // Barge-in (r156): the mid-reply half of the hotword only. Off means the
+    // wake phrase is ignored while a reply plays; it changes nothing else —
+    // idle wake, button commands, the follow-up window, proposal
+    // confirmations, and overlay dismiss all work exactly as before.
+    SettingsToggleRow(
+        title = "Allow barge-in while the assistant speaks",
+        description = "When on, saying “Hey AutoSpace” while a reply plays interrupts it " +
+            "and starts a fresh listen. When off, the wake phrase is ignored until " +
+            "the reply finishes. Idle wake, button commands, and follow-up " +
+            "listening are unaffected.",
+        checked = bargeIn,
+    ) { CarSettings.setBargeIn(it) }
 
     // Voice shortcuts (r19): read-only here — adding and editing happen on the phone,
     // where typing an address is not a car-keyboard job. This list just shows the driver

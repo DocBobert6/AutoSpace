@@ -104,7 +104,8 @@ object CarServices {
         app.autospace.speech.HotwordListener.configure(
             sessionCheck = { CarEnvironment.isRunning || TestMode.active.value },
             // Suspended only while the assistant is actively listening or thinking,
-            // or a call is live. SPEAKING is deliberately NOT a suspension (r72
+            // or a call is live — plus, since r156, while SPEAKING when the
+            // barge-in switch is off. SPEAKING is otherwise NOT a suspension (r72
             // barge-in): the hotword stays live while a reply plays, so saying it
             // mid-sentence interrupts via start(), which already stops TTS and
             // starts a fresh listen; LISTENING/THINKING still suspend, so a live
@@ -122,6 +123,7 @@ object CarServices {
                 val phase = CarAssistant.state.value.phase
                 phase == CarAssistant.Phase.LISTENING ||
                     phase == CarAssistant.Phase.THINKING ||
+                    (phase == CarAssistant.Phase.SPEAKING && !CarSettings.bargeIn.value) ||
                     app.autospace.call.CarCalls.state.value is app.autospace.call.CallUiState.Active
             },
             onHotword = { CarAssistant.start() },
