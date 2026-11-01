@@ -74,6 +74,15 @@ object BrowserDownloads {
     enum class DownloadRoute { PLAIN, HLS_WORKER, DASH_WORKER, SEGMENTED_WORKER }
 
     /**
+     * Pure HLS detection (r159): the URL's path — query and fragment
+     * stripped, case-insensitive — ends in .m3u8. A bare .m3u8
+     * substring elsewhere (a query token, a directory name) does not
+     * count, so ordinary pages never route to the worker by accident.
+     */
+    fun isHlsUrl(url: String): Boolean =
+        url.substringBefore('?').substringBefore('#').lowercase().endsWith(".m3u8")
+
+    /**
      * Pure DASH detection (r160): the same path-only, case-insensitive
      * rule as [isHlsUrl], for the .mpd suffix.
      */
