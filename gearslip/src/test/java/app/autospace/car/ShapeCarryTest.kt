@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.ChamferShape
@@ -64,8 +65,12 @@ class ShapeCarryTest {
 
     @Test
     fun opaqueChromeShapeLeavesNonRoundedShapesAlone() {
+        // CircleShape IS a RoundedCornerShape(50) under the hood, so it
+        // is excluded by value in the guard, not by type.
         assertEquals(CircleShape, opaqueChromeShape(verveLike, CircleShape))
         assertEquals(CircleShape, opaqueChromeShape(pitlaneLike, CircleShape))
+        assertEquals(RectangleShape, opaqueChromeShape(verveLike, RectangleShape))
+        assertEquals(RectangleShape, opaqueChromeShape(pitlaneLike, RectangleShape))
     }
 
     @Test

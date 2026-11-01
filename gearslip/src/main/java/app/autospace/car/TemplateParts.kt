@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.ArrowBack
@@ -107,11 +108,14 @@ import app.autospace.host.text
  * r167 (audit §3 N2): the opaque chrome-surface shape rule, kept pure so
  * it is unit-testable. Non-zero rounded shapes route through the card
  * rule like the frosted branch; a 0dp fallback stays exactly 0dp (flush
- * panes must not round to 24dp under Verve); non-rounded shapes pass
- * through untouched.
+ * panes must not round to 24dp under Verve). CircleShape is a
+ * RoundedCornerShape(50) under the hood, so it is excluded by value
+ * alongside genuinely non-rounded shapes — routing a circle through
+ * the card rule would square it under Pitlane or round it to 24dp
+ * under Verve, which is never what a circle call site wants.
  */
 internal fun opaqueChromeShape(look: ControlLook, shape: Shape): Shape =
-    if (shape is RoundedCornerShape && shape != RoundedCornerShape(0.dp)) cardShapeForLook(look, shape) else shape
+    if (shape is RoundedCornerShape && shape != RoundedCornerShape(0.dp) && shape != CircleShape) cardShapeForLook(look, shape) else shape
 
 @Composable
 internal fun ChromeSurface(
