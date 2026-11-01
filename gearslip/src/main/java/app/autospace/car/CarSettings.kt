@@ -439,7 +439,7 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
      * the settings-hygiene test can pin its parse semantics; the log
      * line itself is code-review verified, not unit-pinned.
      */
-    internal fun <T> lenientParse(key: String, stored: String, fallback: T, parse: (String) -> T?, tag: String = "CarSettings"): T {
+    internal fun <T> lenientParse(key: String, stored: String, fallback: T, tag: String = "CarSettings", parse: (String) -> T?): T {
         val parsed = parse(stored)
         if (parsed != null) return parsed
         if (stored.isNotBlank()) {

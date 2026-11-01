@@ -269,7 +269,7 @@ object BrowserStore {
 
     /** When the stored session was last saved, 0 when never saved or legacy. */
     fun sessionSavedAt(context: Context): Long =
-        CarSettings.lenientParse(KEY_SESSION_SAVED_AT, AppSettings.getString(context, KEY_SESSION_SAVED_AT, "0"), 0L, { it.toLongOrNull() }, "BrowserStore")
+        CarSettings.lenientParse(KEY_SESSION_SAVED_AT, AppSettings.getString(context, KEY_SESSION_SAVED_AT, "0"), 0L, "BrowserStore") { it.toLongOrNull() }
 
     fun clearSession(context: Context) {
         AppSettings.putString(context, KEY_SESSION, "")
@@ -633,7 +633,7 @@ object BrowserStore {
     // 100 is the WebView default; 50..200 keeps pages readable
     // without breaking layouts that assume near-default sizes.
     fun textZoom(context: Context): Int =
-        CarSettings.lenientParse(KEY_TEXT_ZOOM, AppSettings.getString(context, KEY_TEXT_ZOOM, "100"), 100, { it.toIntOrNull()?.coerceIn(50, 200) }, "BrowserStore")
+        CarSettings.lenientParse(KEY_TEXT_ZOOM, AppSettings.getString(context, KEY_TEXT_ZOOM, "100"), 100, "BrowserStore") { it.toIntOrNull()?.coerceIn(50, 200) }
 
     fun setTextZoom(context: Context, zoom: Int) {
         AppSettings.putString(context, KEY_TEXT_ZOOM, zoom.coerceIn(50, 200).toString())
