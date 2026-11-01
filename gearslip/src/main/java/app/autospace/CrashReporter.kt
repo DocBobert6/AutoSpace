@@ -1,6 +1,7 @@
 package app.autospace
 
 import android.content.ContentValues
+import app.autospace.car.AiAssistant
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
@@ -70,11 +71,29 @@ object CrashReporter {
         "test message:",
         "media status: -> track",
         "starting a session over Wi-Fi to",
-        // AI key guard (r25, Groq-shaped tokens r40): any tail line containing a
-        // Gemini- or Groq-shaped key token is dropped whole — the second guard
-        // beside GearslipLog's scrub.
-        "AIza",
-        "gsk_",
+        // Backstop for a network identifier logged again by some future line: any line
+        // carrying an SSID/BSSID assignment drops whole (the live call sites redact the
+        // values; this only catches a line that forgot to).
+        "ssid=",
+        "bssid=",
+    )
+
+    /** A MAC-address shape (Bluetooth MAC, Wi-Fi BSSID): six colon-separated hex pairs. */
+    private val MAC_SHAPE = Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}")
+
+    /**
+     * App-usage metadata (r163 grouping Q5): lines that name which apps the driver runs or
+     * launched, or when. They stay in the live log and the file, but never reach a report,
+     * a trace, or a shared file — which apps someone uses is private in the same way a
+     * track title is.
+     */
+    private val APP_USAGE_MARKERS = listOf(
+        "launched ",
+        "launching ",
+        "no launch intent for ",
+        "mirror open: remembering ",
+        "media: paused ",
+        "app wants to start ",
     )
 
     private fun markerFile(context: Context): File =
@@ -177,7 +196,26 @@ object CrashReporter {
      * report and a trace can never drift apart on what they drop.
      */
     internal fun filterContentLines(lines: List<String>): List<String> =
-        lines.filter { line -> TAIL_FILTERS.none { line.contains(it) } }
+        lines.filter { line ->
+            TAIL_FILTERS.none { line.contains(it) } &&
+                // AI key guard (r25, Groq-shaped tokens r40): any line containing a
+                // Gemini- or Groq-shaped key token is dropped whole — the second guard
+                // beside GearslipLog's scrub. The marker strings live in AiRedaction
+                // (mustDrop), not as hand-duplicated literals here, so the two guards
+                // cannot drift apart.
+                !AiAssistant.AiRedaction.mustDrop(line) &&
+                !MAC_SHAPE.containsMatchIn(line) &&
+                APP_USAGE_MARKERS.none { line.contains(it) }
+        }
+
+    /**
+     * The crash detail with key-shaped tokens scrubbed (the same scrub GearslipLog applies
+     * to log lines). The detail used to ride into the report verbatim — including a full
+     * stackTraceToString — while only the tail passed the filters. Internal so the unit
+     * tests can pin it on a fake stack trace without a Context.
+     */
+    internal fun scrubbedDetail(detail: String): String =
+        AiAssistant.AiRedaction.scrub(detail)
 
     private fun filteredTail(tail: List<String>): List<String> =
         filterContentLines(tail).takeLast(TAIL_LINES)
@@ -191,7 +229,7 @@ object CrashReporter {
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE}), ${Build.SUPPORTED_ABIS.joinToString()}")
             appendLine("Local only: this file was never uploaded anywhere.")
             appendLine()
-            appendLine(detail.trimEnd())
+            appendLine(scrubbedDetail(detail).trimEnd())
             appendLine()
             appendLine("--- last ${kept.size} log lines (content-bearing lines filtered out) ---")
             kept.forEach { appendLine(it) }

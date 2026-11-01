@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            121, "0.4.110-alpha",
+            listOf(
+                "Bug reports and logs now scrub keys, network identifiers, and app-usage details before they leave the phone.",
+            ),
+        ),
+        Release(
             120, "0.4.109-alpha",
             listOf(
                 "Articles can now be saved to a Newsstand in the browser menu, and links inside the reader open in a browser tab.",

@@ -257,7 +257,7 @@ object BrowserDownloads {
             GearslipLog.i("car browser download started: $fileName")
             record
         }.getOrElse { e ->
-            GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+            GearslipLog.e("car browser download FAILED: ${GearslipLog.loggableUrl(url)} - ${e.message}")
             null
         }
     }
@@ -305,7 +305,7 @@ object BrowserDownloads {
             GearslipLog.i("car browser HLS download started: $fileName")
             record
         }.getOrElse { e ->
-            GearslipLog.e("car browser HLS download FAILED: $url - ${e.message}")
+            GearslipLog.e("car browser HLS download FAILED: ${GearslipLog.loggableUrl(url)} - ${e.message}")
             BrowserStore.removeDownload(context, record.id)
             null
         }
@@ -356,7 +356,7 @@ object BrowserDownloads {
             GearslipLog.i("car browser DASH download started: $fileName")
             record
         }.getOrElse { e ->
-            GearslipLog.e("car browser DASH download FAILED: $url - ${e.message}")
+            GearslipLog.e("car browser DASH download FAILED: ${GearslipLog.loggableUrl(url)} - ${e.message}")
             BrowserStore.removeDownload(context, record.id)
             null
         }
@@ -401,7 +401,7 @@ object BrowserDownloads {
             GearslipLog.i("car browser segmented download started: $fileName")
             record
         }.getOrElse { e ->
-            GearslipLog.e("car browser segmented download FAILED: $url - ${e.message}")
+            GearslipLog.e("car browser segmented download FAILED: ${GearslipLog.loggableUrl(url)} - ${e.message}")
             BrowserStore.removeDownload(context, record.id)
             null
         }
@@ -507,7 +507,7 @@ object BrowserDownloads {
             BrowserStore.updateDownload(context, updated)
             GearslipLog.i("car browser download started after Wi-Fi wait: ${current.fileName}")
         }.getOrElse { e ->
-            GearslipLog.e("car browser download start FAILED: ${current.url} - ${e.message}")
+            GearslipLog.e("car browser download start FAILED: ${GearslipLog.loggableUrl(current.url)} - ${e.message}")
             BrowserStore.updateDownload(context, current.copy(state = BrowserStore.DownloadState.FAILED))
         }
     }
@@ -617,7 +617,7 @@ object BrowserDownloads {
                 GearslipLog.i("car browser worker download retried: ${record.fileName}")
                 updated
             }.getOrElse { e ->
-                GearslipLog.e("car browser worker download retry FAILED: ${record.url} - ${e.message}")
+                GearslipLog.e("car browser worker download retry FAILED: ${GearslipLog.loggableUrl(record.url)} - ${e.message}")
                 val failed = current.copy(state = BrowserStore.DownloadState.FAILED)
                 BrowserStore.updateDownload(context, failed)
                 failed
@@ -636,7 +636,7 @@ object BrowserDownloads {
             GearslipLog.i("car browser download retried: ${record.fileName}")
             updated
         }.getOrElse { e ->
-            GearslipLog.e("car browser download retry FAILED: ${record.url} - ${e.message}")
+            GearslipLog.e("car browser download retry FAILED: ${GearslipLog.loggableUrl(record.url)} - ${e.message}")
             val failed = record.copy(state = BrowserStore.DownloadState.FAILED)
             BrowserStore.updateDownload(context, failed)
             failed

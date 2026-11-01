@@ -140,7 +140,7 @@ class SegmentedDownloadWorker(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GearslipLog.e("car browser segmented download FAILED: $fileUrl - ${e.message}")
+            GearslipLog.e("car browser segmented download FAILED: ${GearslipLog.loggableUrl(fileUrl)} - ${e.message}")
             markWorkerFailed(applicationContext, recordId)
             Result.failure()
         }

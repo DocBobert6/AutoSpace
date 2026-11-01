@@ -114,7 +114,7 @@ class DashDownloadWorker(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GearslipLog.e("car browser DASH download FAILED: $manifestUrl - ${e.message}")
+            GearslipLog.e("car browser DASH download FAILED: ${GearslipLog.loggableUrl(manifestUrl)} - ${e.message}")
             markWorkerFailed(applicationContext, recordId)
             Result.failure()
         }
@@ -139,7 +139,7 @@ class DashDownloadWorker(
                     exportResult: ExportResult,
                     exportException: ExportException,
                 ) {
-                    GearslipLog.e("car browser DASH export FAILED: $manifestUrl - ${exportException.message}")
+                    GearslipLog.e("car browser DASH export FAILED: ${GearslipLog.loggableUrl(manifestUrl)} - ${exportException.message}")
                     if (continuation.isActive) continuation.resume(false)
                 }
             })
@@ -147,7 +147,7 @@ class DashDownloadWorker(
             runCatching {
                 transformer.start(MediaItem.fromUri(manifestUrl), outputFile.absolutePath)
             }.getOrElse { e ->
-                GearslipLog.e("car browser DASH export FAILED to start: $manifestUrl - ${e.message}")
+                GearslipLog.e("car browser DASH export FAILED to start: ${GearslipLog.loggableUrl(manifestUrl)} - ${e.message}")
                 if (continuation.isActive) continuation.resume(false)
             }
         }

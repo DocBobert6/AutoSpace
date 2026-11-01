@@ -14,14 +14,14 @@ object ProjectedContent {
         val saved = AppSettings.startupUrl(context)
         if (saved.isNotEmpty()) {
             val url = normalize(saved)
-            GearslipLog.i("projecting startup URL from settings: $url")
+            GearslipLog.i("projecting startup URL from settings: ${GearslipLog.loggableUrl(url)}")
             return url
         }
         val legacy = context.getExternalFilesDir(null)?.let { File(it, "url.txt") }
         if (legacy != null && legacy.isFile) {
             val url = legacy.readText().trim()
             if (url.isNotEmpty()) {
-                GearslipLog.i("projecting url.txt override: $url")
+                GearslipLog.i("projecting url.txt override: ${GearslipLog.loggableUrl(url)}")
                 return url
             }
         }

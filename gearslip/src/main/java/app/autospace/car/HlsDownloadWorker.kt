@@ -142,7 +142,7 @@ class HlsDownloadWorker(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            GearslipLog.e("car browser HLS download FAILED: $playlistUrl - ${e.message}")
+            GearslipLog.e("car browser HLS download FAILED: ${GearslipLog.loggableUrl(playlistUrl)} - ${e.message}")
             markFailed(recordId)
             Result.failure()
         }

@@ -143,7 +143,7 @@ object WirelessLink {
     @SuppressLint("MissingPermission")
     private fun run(context: Context, device: BluetoothDevice) {
         val name = name(device)
-        log.i("--- wireless start-up with $name (${device.address}) ---")
+        log.i("--- wireless start-up with $name ---")
         SessionStatus.connecting("Bluetooth: reaching $name")
         val socket = try {
             // A running scan slows the connect, but stopping one needs BLUETOOTH_SCAN on Android
@@ -219,7 +219,7 @@ object WirelessLink {
                         val password = text(2)
                         val bssid = text(3)
                         val security = Wire.varint(f, 4) ?: -1
-                        log.i("<- InfoResponse: ssid=\"$ssid\" bssid=$bssid security=$security password=${if (password.isEmpty()) "none" else "(${password.length} chars)"}")
+                        log.i("<- InfoResponse: ssid=<redacted> bssid=<redacted> security=$security password=${if (password.isEmpty()) "none" else "(${password.length} chars)"}")
                         val join = { ip: String, port: Int -> joinWifi(context, output, name, ssid, password, bssid, ip, port) }
                         val known = target
                         if (known != null) {
@@ -314,7 +314,7 @@ object WirelessLink {
         val manager = context.getSystemService(ConnectivityManager::class.java)
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(net: Network) {
-                log.i("Wi-Fi: joined \"$ssid\"")
+                log.i("Wi-Fi: joined <redacted>")
                 // Real phones report the join over Bluetooth before opening TCP, and some cars
                 // only start listening once they hear it.
                 val phoneIp = manager.getLinkProperties(net)?.linkAddresses
@@ -329,7 +329,7 @@ object WirelessLink {
             }
 
             override fun onUnavailable() {
-                log.w("Wi-Fi: couldn't join \"$ssid\" (declined, out of range, or wrong password)")
+                log.w("Wi-Fi: couldn't join <redacted> (declined, out of range, or wrong password)")
                 runCatching { send(output, MSG_CONNECTION_STATUS, Protobuf.varintField(1, -1)) }
                 SessionStatus.failed(
                     "Couldn't join the car's Wi-Fi",
@@ -341,20 +341,20 @@ object WirelessLink {
             // Android can hold an app's traffic back on a network it has joined (battery or data
             // limits, local-network rules); the packets are then dropped without an error.
             override fun onBlockedStatusChanged(net: Network, blocked: Boolean) {
-                log.i("Wi-Fi: Android ${if (blocked) "BLOCKS" else "allows"} AutoSpace's traffic on \"$ssid\"")
+                log.i("Wi-Fi: Android ${if (blocked) "BLOCKS" else "allows"} AutoSpace's traffic on <redacted>")
             }
 
             private var capsLogged = false
             override fun onCapabilitiesChanged(net: Network, caps: NetworkCapabilities) {
                 if (capsLogged) return
                 capsLogged = true
-                log.i("Wi-Fi: \"$ssid\" capabilities $caps")
+                log.i("Wi-Fi: <redacted> capabilities ${if (ssid.isNotEmpty()) caps.toString().replace(ssid, "<redacted>") else caps}")
             }
 
             override fun onLost(net: Network) {
                 lostNetwork = net
                 log.w(
-                    "Wi-Fi: lost \"$ssid\" - Android dropped the car's network. Picking it by hand " +
+                    "Wi-Fi: lost <redacted> - Android dropped the car's network. Picking it by hand " +
                         "in the Wi-Fi list does this; the remaining tries go over the phone's own Wi-Fi",
                 )
             }

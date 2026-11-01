@@ -3288,7 +3288,7 @@ private class BrowserClient(
     }
 
     override fun onPageFinished(view: WebView?, url: String?) {
-        GearslipLog.i("car web page loaded: $url")
+        GearslipLog.i("car web page loaded: ${GearslipLog.loggableUrl(url ?: "")}")
         view?.evaluateJavascript(FOCUS_TRACKING_JS, null)
         view?.evaluateJavascript(focusRingJs(ring), null)
         view?.evaluateJavascript(EXTRACT_MEDIA_JS) { result ->
@@ -3328,14 +3328,14 @@ private class BrowserClient(
     // INTERNET permission, no network) looks like a successful one.
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
         if (request?.isForMainFrame == true) {
-            GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode} ${error?.description}")
+            GearslipLog.e("car web page FAILED: ${GearslipLog.loggableUrl(request.url.toString())} - ${error?.errorCode} ${error?.description}")
             onMainFrameError("Could not load ${request.url}. ${error?.description ?: "Check the connection and try again."}")
         }
     }
 
     override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
         if (request?.isForMainFrame == true) {
-            GearslipLog.w("car web page HTTP ${response?.statusCode} for ${request.url}")
+            GearslipLog.w("car web page HTTP ${response?.statusCode} for ${GearslipLog.loggableUrl(request.url.toString())}")
         }
     }
 }

@@ -95,7 +95,13 @@ object GearslipLog {
         val dir = File(context.cacheDir, "shared").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val out = File(dir, "gearslip-log.txt")
-        out.writeText(SessionReport.render() + "\n\n" + fullText())
+        // The shareable copy gets the same content filter as a crash-report tail (and the
+        // voice trace): a track title, a key-shaped token, a network identifier, or an
+        // app-usage line that sits in the full log never reaches the shared file.
+        val lines = CrashReporter.filterContentLines(
+            (SessionReport.render() + "\n\n" + fullText()).lines(),
+        )
+        out.writeText(lines.joinToString("\n"))
         return androidx.core.content.FileProvider.getUriForFile(
             context, "${context.packageName}.logshare", out,
         )
@@ -109,7 +115,11 @@ object GearslipLog {
     fun e(message: String, t: Throwable? = null, tag: String = "APP") {
         write("E", if (t == null) message else "$message: ${rootCause(t)}", tag)
         if (t != null) {
-            Log.e(TAG, message, t)
+            // The logcat copy used to carry the raw message AND the raw throwable, bypassing
+            // the scrub that write() applies to the file, the live buffer, and the sinks.
+            // The logcat copy now gets the scrubbed message only, with no throwable: the
+            // stack frames still reach the file and the live buffer through write() above.
+            Log.e(TAG, app.autospace.car.AiAssistant.AiRedaction.scrub(message))
             stackTrace(t).lines().forEach { write("E", "    $it", tag) }
         }
     }
@@ -124,6 +134,25 @@ object GearslipLog {
         fun hex(label: String, data: ByteArray, limit: Int = 256) = GearslipLog.hex(label, data, limit, tag)
         fun verdict(headline: String, detail: String) = GearslipLog.verdict(headline, detail)
         fun flush() = GearslipLog.flush()
+    }
+
+    /**
+     * A URL safe to log: scheme, host, and path only. The query string and fragment are
+     * stripped, as is any userinfo, so a signed or token-bearing URL can never leak through
+     * a log line. Non-URL text passes through with only its query/fragment cut, and the
+     * function never throws. Every browser URL log site uses this one helper.
+     */
+    fun loggableUrl(url: String): String {
+        val noQuery = url.substringBefore('?').substringBefore('#')
+        val schemeEnd = noQuery.indexOf("://")
+        if (schemeEnd < 0) return noQuery
+        val scheme = noQuery.substring(0, schemeEnd)
+        val rest = noQuery.substring(schemeEnd + 3)
+        val slash = rest.indexOf('/')
+        val authority = if (slash < 0) rest else rest.substring(0, slash)
+        val path = if (slash < 0) "" else rest.substring(slash)
+        val host = authority.substringAfterLast('@')
+        return "$scheme://$host$path"
     }
 
     /** "SSLHandshakeException: Received fatal alert: bad_certificate" - the deepest cause wins. */
