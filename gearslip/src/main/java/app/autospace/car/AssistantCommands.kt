@@ -199,6 +199,15 @@ object AssistantCommands {
             }
         }
 
+        // Audit §6 F2: two actions in one utterance get the preview's refusal, with no
+        // side effect, before the local chain can execute the first half of a batch.
+        // The pending-confirmation blocks above run first on purpose: a "yes" answering
+        // an open proposal or emergency window is never mistaken for a batch.
+        if (AssistantPreview.isAmbiguous(heard)) {
+            lastReplyWasBuiltin = true
+            return "That's two things. Say the first one on its own and confirm it, then the second."
+        }
+
         // r117: the local chain as one expression, so the built-in
         // flag is set in exactly one place. Evaluation order is
         // unchanged (lazy ?:, left to right), and the chain keeps
@@ -237,6 +246,16 @@ object AssistantCommands {
             lastReplyWasBuiltin = true
             return localReply
         }
+        // Audit §6 F1: vague emergency phrasing gets the LOCAL emergency offer even when
+        // AI is off, keyless, or offline — independent of the AI gates, which the fallback
+        // below checks first. This only arms the same 30-second confirmation window the
+        // exact commands arm; nothing dials here, and the dial path is untouched. The
+        // in-fallback check stays as belt-and-braces for any future fallback caller.
+        if (AiAssistant.isEmergencyLike(heard)) {
+            emergencyPendingUntil = SystemClock.elapsedRealtime() + EMERGENCY_CONFIRM_MS
+            return "Do you want me to start an emergency call? That needs your confirmation."
+        }
+
         // AI fallback (r25) sits LAST on purpose, after every exact built-in, keyword, and
         // fuzzy path: a local command must never take a network round-trip, and a keyword
         // or built-in must never lose to an AI guess. When AI is off, keyless, or offline,
@@ -274,6 +293,20 @@ object AssistantCommands {
     /** Clears a pending AI proposal silently (overlay dismiss, cancel) — never executes it. */
     fun clearPendingAiAction() {
         _aiPending.value = null
+    }
+
+    /**
+     * Audit §6 F5: clears every confirmation a DISCARDED turn may have armed — its AI
+     * proposal and its emergency window alike. Call only from the CarUi
+     * superseded-discard branch, where the turn's reply was never spoken: a question
+     * the driver never heard must leave nothing answerable behind. Any window or
+     * proposal from an EARLIER completed turn was already consumed by this turn's
+     * handle() call (both pending blocks run first and clear their state), so this
+     * can only remove state the discarded turn itself armed. Never executes anything.
+     */
+    fun clearDiscardedConfirmations() {
+        _aiPending.value = null
+        emergencyPendingUntil = 0L
     }
 
     /**

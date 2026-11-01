@@ -149,6 +149,11 @@ object AiKeyStore {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ENABLED, on).apply()
         enabledFlow.value = on
+        // Audit §6 F4: turning AI off ends the in-memory session immediately, so
+        // re-enabling starts from an empty session (the "ends on toggle-off" rule
+        // the session header already claimed). Timeout and process-death behavior
+        // are unchanged.
+        if (!on) ConversationSession.clear()
     }
 
     /** True only when the feature is on AND the active provider has a key stored (validity is a separate question). */
@@ -217,6 +222,9 @@ object AiKeyStore {
         if (providerFlow.value == provider) {
             editor.putBoolean(KEY_ENABLED, false)
             enabledFlow.value = false
+            // Audit §6 F4: this path turns the feature off without going through
+            // setEnabled, so it ends the session too.
+            ConversationSession.clear()
         }
         editor.apply()
         flow.value = KeyState.NO_KEY

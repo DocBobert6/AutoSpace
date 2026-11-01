@@ -77,6 +77,30 @@ object AssistantPreview {
     private fun after(text: String, triggers: List<String>): String? =
         triggers.firstOrNull { text.startsWith(it) }?.let { text.removePrefix(it).trim() }
 
+    /**
+     * Audit §6 F2, shared pure check: two action families joined by " and " need two
+     * confirmations, never one batch. The second action's trigger must begin at a word
+     * boundary after " and ": the utterance is split on " and " and each later segment
+     * must START with a trigger, so "and" inside a place or contact name ("navigate to
+     * fish and chips", "call dan and dave") is never ambiguous. Pure: no Android, no
+     * I/O, so the unit test pins it on the plain JVM. The live path calls this before
+     * its local chain; [classify] calls it here, so preview and live agree.
+     */
+    fun isAmbiguous(heard: String): Boolean {
+        val families = listOf(
+            CALL_TRIGGERS.any { heard.startsWith(it) },
+            NAVIGATE_TRIGGERS.any { heard.startsWith(it) },
+            heard.startsWith("text ") || heard.startsWith("message "),
+            heard.startsWith("search ") || heard.startsWith("search for "),
+        ).count { it }
+        if (families < 1 || !heard.contains(" and ")) return false
+        return heard.split(" and ").drop(1).any { segment ->
+            NAVIGATE_TRIGGERS.any { segment.startsWith(it) } ||
+                CALL_TRIGGERS.any { segment.startsWith(it) } ||
+                segment.startsWith("text ") || segment.startsWith("message ")
+        }
+    }
+
     // Trigger lists mirror AssistantCommands' (same words, same order where order matters).
     private val NAVIGATE_TRIGGERS = listOf(
         "navigate to ", "navigate me to ", "directions to ", "get directions to ", "give me directions to ",
@@ -154,18 +178,9 @@ object AssistantPreview {
             )
         }
         // Two action families joined by "and" need two confirmations, never one batch.
-        val families = listOf(
-            CALL_TRIGGERS.any { heard.startsWith(it) },
-            NAVIGATE_TRIGGERS.any { heard.startsWith(it) },
-            heard.startsWith("text ") || heard.startsWith("message "),
-            heard.startsWith("search ") || heard.startsWith("search for "),
-        ).count { it }
-        if (heard.contains(" and ") && families >= 1 && (
-                NAVIGATE_TRIGGERS.any { heard.contains(" and $it") } ||
-                    CALL_TRIGGERS.any { heard.contains(" and $it") } ||
-                    heard.contains(" and text ") || heard.contains(" and message ")
-                )
-        ) {
+        // Audit §6 F2: the live path calls the same [isAmbiguous] check before its
+        // local chain, so preview and live agree on every utterance.
+        if (isAmbiguous(heard)) {
             return Trace(
                 utterance, heard, handler = Handler.AMBIGUOUS, wouldConfirm = true,
                 detail = "Two actions in one utterance — each needs its own confirmation",
@@ -384,6 +399,8 @@ object AssistantPreview {
         Case("what was the score of the bengals game yesterday", Handler.AI, "Groq AI fallback sample — skipped when gates closed"),
         Case("will it rain in cincinnati tomorrow", Handler.AI, "Groq grounded path — place present, skipped when gates closed"),
         Case("call Mom and navigate home", Handler.AMBIGUOUS, "Two actions — two confirmations, never one batch"),
+        Case("navigate to fish and chips", Handler.BUILTIN, "and inside a place name is not a second action"),
+        Case("call dan and dave", Handler.BUILTIN, "and inside a contact name is not a second action"),
         Case("blorp glorp", Handler.AI, "No local match — AI fallback with gates open; unmatched when gates closed"),
         Case("open spotify", Handler.BUILTIN, "Generic open-app command"),
     )

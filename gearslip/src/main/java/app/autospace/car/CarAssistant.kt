@@ -196,6 +196,14 @@ object CarAssistant {
         // reply playing (SPEAKING falls through to here) or an answer still
         // streaming in. Its late callbacks die on the generation guard, and its
         // reply is discarded by the CarUi collector.
+        // Audit §6 F5, clear-on-supersede: a fresh listen that interrupts a reply in
+        // flight supersedes that turn, so any pending AI proposal goes with it,
+        // mirroring cancel(). An IDLE fresh turn supersedes nothing, so its clear is
+        // skipped on purpose: a proposal from an earlier turn stays answerable by the
+        // next utterance. (Stale LISTENING/THINKING entries already clear through
+        // cancel() above, and a live follow-up-window listen makes start() return
+        // early, so the normal answer flow is untouched either way.)
+        if (phase == Phase.SPEAKING) AssistantCommands.clearPendingAiAction()
         turnGate.beginTurn()
         // r98 nav-window exemption: the superseded turn's held navigation is
         // dropped here, never fired at a later turn's end — a navigation whose

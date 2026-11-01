@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            122, "0.4.111-alpha",
+            listOf(
+                "The assistant now offers emergency help even when AI is off, and turns that get interrupted no longer leave a stale reply behind.",
+            ),
+        ),
+        Release(
             121, "0.4.110-alpha",
             listOf(
                 "Bug reports and logs now scrub keys, network identifiers, and app-usage details before they leave the phone.",

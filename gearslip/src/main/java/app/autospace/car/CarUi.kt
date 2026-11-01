@@ -299,6 +299,12 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         ConversationSession.recordBuiltin(heard, reply)
                     }
                 } else {
+                    // Audit §6 F5, clear-on-supersede: this turn's reply was never
+                    // spoken, so anything its handle() armed — an AI proposal or an
+                    // emergency window — must not survive for a later "yes" to
+                    // execute unheard. See clearDiscardedConfirmations for why
+                    // earlier completed turns' state cannot be harmed here.
+                    AssistantCommands.clearDiscardedConfirmations()
                     GearslipLog.i("assistant: superseded turn discarded")
                 }
             }
