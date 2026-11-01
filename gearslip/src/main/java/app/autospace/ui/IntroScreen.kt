@@ -796,8 +796,6 @@ internal fun ShieldIcon(color: Color, tick: Color) {
     }
 }
 
-/** A speech bubble with three dots that pulse, like someone typing. */
-@Composable
 @Composable
 internal fun HeartIcon(color: Color) {
     val beat by rememberInfiniteTransition(label = "beat").animateFloat(

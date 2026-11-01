@@ -661,8 +661,6 @@ private fun AudioCard(title: String, tag: String?, body: String, selected: Boole
     }
 }
 
-/** One labeled switch in guide style, as the microphone pages use. */
-@Composable
 /**
  * The first-run guide, one page at a time: permissions, then removing Android Auto if it is still installed, then the optional extras. Nothing
  * here can be verified as done except a permission grant, so every other page is a "Next" a

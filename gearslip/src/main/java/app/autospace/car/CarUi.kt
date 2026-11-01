@@ -740,14 +740,6 @@ private fun DebugBuildBadge(modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * "Home > Apps > Settings", like a file manager's address bar: hidden at Home itself (nothing to
- * show yet), and grows by one crumb for every screen pushed from there. The back arrow undoes one
- * step; a crumb jumps straight to it, dropping everything after - this is the only on-screen way
- * back at all, since a car touchscreen has no hardware button for it.
- */
-@Composable
-
 /** r97: the rail reuses the old bar's 64dp width and 4dp elevation;
  * the bar itself is gone. */
 internal val NAV_BAR_HEIGHT = 64.dp
