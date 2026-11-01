@@ -9,7 +9,7 @@ composeBom = "2026.05.01"
 carApp = "1.7.0"
 material = "1.14.0"
 webkit = "1.16.0"
-androidxMedia = "1.6.0"
+androidxMedia = "1.8.0"
 media3 = "1.11.1"
 # WorkManager for the downloads worker (r159). work-runtime, not
 # work-runtime-ktx: since 2.9.0 the -ktx artifact is an empty shell
