@@ -789,7 +789,7 @@ private fun SideLyrics(now: NowPlaying, modifier: Modifier) {
                         maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
-                GsIconButton(Icons.Filled.Close, "Hide lyrics", navigator::closeSidePanel, size = 36.dp, iconSize = 20.dp)
+                GsIconButton(Icons.Filled.Close, "Hide lyrics", navigator::closeSidePanel, size = DismissTargetSize, iconSize = 20.dp)
             }
             Spacer(Modifier.height(12.dp))
             LyricsPanel(now, Modifier.weight(1f).fillMaxWidth(), lineStyle = MaterialTheme.typography.headlineSmall)

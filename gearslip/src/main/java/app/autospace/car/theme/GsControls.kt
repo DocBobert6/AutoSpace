@@ -1374,6 +1374,11 @@ fun GsButton(
     }
 }
 
+/** Minimum touch target for dismiss controls (Material's 48.dp floor; audit §5 5-11).
+ * Dismiss sites resolve through this constant so the floor is pinned by test, not by
+ * coincidence with [GsIconButton]'s default size. */
+val DismissTargetSize: Dp = 48.dp
+
 /** A themed square icon button. Pass a [modifier] size to override the default [size]. */
 @Composable
 fun GsIconButton(

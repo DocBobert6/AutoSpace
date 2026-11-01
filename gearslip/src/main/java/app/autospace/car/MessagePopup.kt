@@ -41,6 +41,7 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.LocalOledDark
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.DismissTargetSize
 import app.autospace.car.theme.GsProgressBar
 import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.gsButtonShape
@@ -110,7 +111,7 @@ fun NotificationPopup(showNew: Boolean, modifier: Modifier = Modifier) {
                 Text(n.heading(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(n.text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            GsIconButton(Icons.Filled.Close, "Dismiss", { CarNotifications.dismissPopup(n.id) }, size = 40.dp, iconSize = 20.dp)
+            GsIconButton(Icons.Filled.Close, "Dismiss", { CarNotifications.dismissPopup(n.id) }, size = DismissTargetSize, iconSize = 20.dp)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             GsButton(onClick = { VoiceReply.read(n) }, tone = GsTone.Neutral, modifier = Modifier.weight(1f)) {

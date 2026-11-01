@@ -36,6 +36,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -61,6 +63,8 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -83,9 +87,10 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.CompositionLocalProvider
 import app.autospace.car.CarSettings
 import app.autospace.car.theme.GsButton
-import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.GsTone
+import app.autospace.car.theme.gsColors
+import app.autospace.car.theme.gsSurface
 import app.autospace.car.theme.LocalGsTheme
 import app.autospace.speech.SpeechModels
 import app.autospace.stats.UsageStats
@@ -147,6 +152,11 @@ object Intro {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(KEY_STEP, step).apply()
     }
 }
+
+/** TalkBack description for the intro theme-preview row, which is decoration, not
+ * controls (audit §5 5-12). The row resolves through this constant so the
+ * description is pinned by test, and the row itself carries no click handlers. */
+internal const val INTRO_PREVIEW_DESCRIPTION = "Preview of the car screen"
 
 /** The intro's tones, taken from the phone's own Material You colours like the rest of the app. */
 internal class IntroColors(
@@ -618,19 +628,44 @@ private fun ThemePicker(c: IntroColors, cq: (Float) -> Dp, cqSp: (Float) -> Text
             }
         }
         // What the car shows: the player's controls and a full-width action.
+        // Decoration only (audit §5 5-12): these are pictures of controls, not
+        // controls — no click handlers anywhere in this row, and one preview
+        // description replaces the children's semantics so assistive
+        // technology skips inert buttons entirely.
         CompositionLocalProvider(LocalGsTheme provides chosen) {
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth()
+                    .clearAndSetSemantics { contentDescription = INTRO_PREVIEW_DESCRIPTION },
                 horizontalArrangement = Arrangement.spacedBy(cq(3f)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GsIconButton(Icons.Filled.Search, "Search", onClick = {}, size = cq(15f), iconSize = cq(7f))
-                GsIconButton(Icons.Filled.PlayArrow, "Play", onClick = {}, tone = GsTone.Primary, size = cq(15f), iconSize = cq(8f))
-                GsButton(
-                    onClick = {},
-                    modifier = Modifier.weight(1f).height(cq(15f)),
-                    tone = GsTone.Tonal,
-                ) { Text("Navigate", style = TextStyle(fontSize = cqSp(4.6f), fontWeight = FontWeight.Bold)) }
+                val searchColors = gsColors(GsTone.Neutral)
+                Box(
+                    Modifier.size(cq(15f)).gsSurface(searchColors.container, border = searchColors.border),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(LocalContentColor provides searchColors.content) {
+                        Icon(Icons.Filled.Search, null, Modifier.size(cq(7f)))
+                    }
+                }
+                val playColors = gsColors(GsTone.Primary)
+                Box(
+                    Modifier.size(cq(15f)).gsSurface(playColors.container, border = playColors.border),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(LocalContentColor provides playColors.content) {
+                        Icon(Icons.Filled.PlayArrow, null, Modifier.size(cq(8f)))
+                    }
+                }
+                val navColors = gsColors(GsTone.Tonal)
+                Box(
+                    Modifier.weight(1f).height(cq(15f)).gsSurface(navColors.container, border = navColors.border),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CompositionLocalProvider(LocalContentColor provides navColors.content) {
+                        Text("Navigate", style = TextStyle(fontSize = cqSp(4.6f), fontWeight = FontWeight.Bold))
+                    }
+                }
             }
         }
     }

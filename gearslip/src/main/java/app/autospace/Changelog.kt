@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            126, "0.4.115-alpha",
+            listOf(
+                "Dismiss buttons are now full touch size, and the intro theme preview is decoration only.",
+            ),
+        ),
+        Release(
             125, "0.4.114-alpha",
             listOf(
                 "Chrome, turn cards, rows, and badges now follow your chosen button style's shapes.",
