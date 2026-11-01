@@ -502,6 +502,134 @@ object BrowserStore {
     fun retriedWorker(record: DownloadRecord): DownloadRecord =
         record.copy(state = DownloadState.IN_PROGRESS, localSource = null)
 
+    // ---- Newsstand (r162): saved articles, in-browser only ----
+    // One record per saved article, stored as one line per record in
+    // SharedPreferences via AppSettings — the same line-codec pattern
+    // as encodePages/decodePages and the downloads codec, not org.json:
+    // the org.json framework classes return defaults under
+    // unitTests.isReturnDefaultValues, so a JSON codec cannot be
+    // pinned by a JVM test here (see the downloads comment above).
+    // The record IS the saved content: the extracted contentHtml is
+    // stored, so reopening needs no re-parse and no network. Images
+    // keep their original URLs and render best-effort online; fully
+    // offline they show broken until image caching lands. Saved
+    // articles are NEVER BookRecords and never land in the bookshelf
+    // or the downloads library: articles go to Newsstand only.
+    /** One saved article: the extracted content plus its origin. */
+    data class SavedArticle(
+        val id: String,
+        val title: String,
+        val siteName: String,
+        val byline: String,
+        val url: String,
+        val savedAtMs: Long,
+        val contentHtml: String,
+    )
+
+    /** Outcome of a Newsstand save, for the caller's toast. */
+    enum class SaveArticleResult { SAVED, ALREADY_SAVED, FAILED, PRIVATE_REFUSED }
+
+    private const val KEY_NEWSSTAND = "browser_newsstand"
+    private const val MAX_NEWSSTAND = 200
+
+    private fun encArticle(s: String): String = URLEncoder.encode(s, "UTF-8")
+
+    private fun decArticle(s: String): String =
+        runCatching { URLDecoder.decode(s, "UTF-8") }.getOrDefault(s)
+
+    /**
+     * Pure codec: one line per article, fields in fixed order —
+     * id | title | site | byline | url | saved ms | content html.
+     * URL-encoding keeps separators and newlines out of every field,
+     * so multi-paragraph contentHtml survives as one line.
+     */
+    fun encodeNewsstand(articles: List<SavedArticle>): String =
+        articles.joinToString("\n") { article ->
+            listOf(
+                encArticle(article.id),
+                encArticle(article.title),
+                encArticle(article.siteName),
+                encArticle(article.byline),
+                encArticle(article.url),
+                article.savedAtMs.toString(),
+                encArticle(article.contentHtml),
+            ).joinToString("|")
+        }
+
+    /** Pure codec: short rows are skipped, blank ids/urls are skipped. */
+    fun decodeNewsstand(raw: String): List<SavedArticle> {
+        if (raw.isBlank()) return emptyList()
+        return raw.lines().mapNotNull { line ->
+            val parts = line.split("|")
+            if (parts.size != 7) return@mapNotNull null
+            val id = decArticle(parts[0])
+            val url = decArticle(parts[4])
+            if (id.isBlank() || url.isBlank()) return@mapNotNull null
+            SavedArticle(
+                id = id,
+                title = decArticle(parts[1]),
+                siteName = decArticle(parts[2]),
+                byline = decArticle(parts[3]),
+                url = url,
+                savedAtMs = parts[5].toLongOrNull() ?: 0L,
+                contentHtml = decArticle(parts[6]),
+            )
+        }
+    }
+
+    /**
+     * Pure private-origin gate (Mariner bookSaveAllowed, verbatim):
+     * private-origin articles never save to Newsstand, because a save
+     * would persist past PrivateProfile.wipe() and defeat the whole
+     * private model. The button hides AND the save refuses.
+     */
+    fun newsstandSaveAllowed(isPrivate: Boolean): Boolean = !isPrivate
+
+    /**
+     * Pure save transition, so the cap, duplicate, and ordering rules
+     * are unit-testable without a Context: a duplicate URL refuses
+     * (browser-pins precedent — Mariner allows duplicates, this port
+     * does not), a new article goes first, and the 201st article ages
+     * out the oldest (bookmarks/downloads precedent: cap 200).
+     * Returns null when the URL is already saved.
+     */
+    fun addToNewsstand(existing: List<SavedArticle>, article: SavedArticle): List<SavedArticle>? {
+        if (existing.any { it.url == article.url }) return null
+        return (listOf(article) + existing).take(MAX_NEWSSTAND)
+    }
+
+    /** All saved articles, newest first. */
+    fun newsstand(context: Context): List<SavedArticle> =
+        decodeNewsstand(AppSettings.getString(context, KEY_NEWSSTAND, ""))
+
+    /**
+     * Saves [article] explicitly — the caller passes the in-memory
+     * article; nothing here reads any cache, and the deleted
+     * ArticleCache stays deleted. Private origin refuses outright.
+     */
+    fun saveArticle(context: Context, article: Article, isPrivate: Boolean): SaveArticleResult {
+        if (!newsstandSaveAllowed(isPrivate)) return SaveArticleResult.PRIVATE_REFUSED
+        if (article.url.isBlank()) return SaveArticleResult.FAILED
+        val record = SavedArticle(
+            id = java.util.UUID.randomUUID().toString(),
+            title = article.title,
+            siteName = article.siteName,
+            byline = article.byline,
+            url = article.url,
+            savedAtMs = System.currentTimeMillis(),
+            contentHtml = article.contentHtml,
+        )
+        val updated = addToNewsstand(newsstand(context), record)
+            ?: return SaveArticleResult.ALREADY_SAVED
+        AppSettings.putString(context, KEY_NEWSSTAND, encodeNewsstand(updated))
+        return SaveArticleResult.SAVED
+    }
+
+    fun removeNewsstandArticle(context: Context, id: String) {
+        val list = newsstand(context).filter { it.id != id }
+        AppSettings.putString(context, KEY_NEWSSTAND, encodeNewsstand(list))
+    }
+
     // ---- Text zoom (audit fix, 2026-10-25, A2) ----
     // WebView textZoom percent, persisted like the bar position
     // so a chosen size survives tab switches and sessions.

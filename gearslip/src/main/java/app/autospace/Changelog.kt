@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            120, "0.4.109-alpha",
+            listOf(
+                "Articles can now be saved to a Newsstand in the browser menu, and links inside the reader open in a browser tab.",
+            ),
+        ),
+        Release(
             119, "0.4.108-alpha",
             listOf(
                 "A bookshelf joins the launcher: open EPUB books, pick up where you left off, and listen with read-aloud.",

@@ -309,12 +309,6 @@ data class Article(
     val contentHtml: String,
 )
 
-/** The most recently extracted article, handed from the browser tab to the reader view. */
-object ArticleCache {
-    @Volatile
-    var current: Article? = null
-}
-
 object ArticleExtractor {
 
     @Volatile
@@ -440,6 +434,17 @@ object ArticleExtractor {
         if (current.isNotEmpty()) chunks += current.toString()
         return chunks
     }
+}
+
+/**
+ * Reader link routing (r162): an http(s) link tapped inside the reader
+ * opens in a browser tab; anything else keeps the WebView default
+ * (the reader WebView has JavaScript off, and non-http(s) taps were
+ * never routed anywhere). Pure so the rule is unit-testable.
+ */
+fun readerLinkOpensInTab(url: String): Boolean {
+    val scheme = runCatching { java.net.URI(url).scheme }.getOrNull()?.lowercase() ?: return false
+    return scheme == "http" || scheme == "https"
 }
 
 private fun escapeHtml(s: String): String = s

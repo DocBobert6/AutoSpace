@@ -555,6 +555,10 @@ fun WebApp(content: String) {
     var library by remember {
         mutableStateOf(BrowserStore.visibleLibrary(BrowserStore.downloads(context)))
     }
+    // r162: Newsstand — saved articles, newest first. Same refresh
+    // discipline as Downloads and the library: refreshed on list
+    // open and after every row action.
+    var newsstand by remember { mutableStateOf(BrowserStore.newsstand(context)) }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
     // Also (A2) applies the stored text zoom to the newly active
     // tab and re-runs an open find query on it, so zoom/find
@@ -623,6 +627,11 @@ fun WebApp(content: String) {
     // are persisted in BrowserStore and read fresh where they apply.
     var readerArticle by remember { mutableStateOf<Article?>(null) }
     var readerOpen by remember { mutableStateOf(false) }
+    // r162: whether the open reader came from a private tab — the Save
+    // button hides and the save refuses when true (Mariner
+    // bookSaveAllowed, verbatim). Saved articles reopen as
+    // non-private, since Newsstand never holds private-origin articles.
+    var readerPrivate by remember { mutableStateOf(false) }
     var readerNotice by remember { mutableStateOf<String?>(null) }
     var readingChunks by remember { mutableStateOf<List<String>>(emptyList()) }
     var readingIndex by remember { mutableStateOf(-1) }
@@ -698,6 +707,7 @@ fun WebApp(content: String) {
             } else {
                 stopReading()
                 readerArticle = article
+                readerPrivate = activeTab.isPrivate
                 readerOpen = true
             }
         }
@@ -836,6 +846,7 @@ fun WebApp(content: String) {
         historyList = BrowserStore.history(context)
         downloads = BrowserStore.visibleDownloads(BrowserStore.downloads(context))
         library = BrowserStore.visibleLibrary(BrowserStore.downloads(context))
+        newsstand = BrowserStore.newsstand(context)
         popupStrict = BrowserStore.popupStrict(context)
         popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
         recentlyClosed = BrowserStore.recentlyClosed(context)
@@ -843,6 +854,40 @@ fun WebApp(content: String) {
         adBlockOn = BrowserStore.adBlockEnabled(context)
         segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
         wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
+    }
+    /** r162: Newsstand save — an explicit handoff from the in-memory
+     *  article, never from any cache (the dead ArticleCache is
+     *  deleted). Private origin refuses with Mariner's note. */
+    fun saveReaderArticle() {
+        val article = readerArticle ?: return
+        when (BrowserStore.saveArticle(context, article, readerPrivate)) {
+            BrowserStore.SaveArticleResult.SAVED -> {
+                CarToasts.show(context, "Saved to Newsstand", CarToast.LENGTH_SHORT)
+                refreshLists()
+            }
+            BrowserStore.SaveArticleResult.ALREADY_SAVED ->
+                CarToasts.show(context, "Already in Newsstand", CarToast.LENGTH_SHORT)
+            BrowserStore.SaveArticleResult.PRIVATE_REFUSED ->
+                CarToasts.show(context, "Private tabs don't save to Newsstand", CarToast.LENGTH_LONG)
+            BrowserStore.SaveArticleResult.FAILED ->
+                CarToasts.show(context, "Couldn't save that article", CarToast.LENGTH_LONG)
+        }
+    }
+    /** r162: reopen a Newsstand article in the same reader overlay —
+     *  no re-extraction, no network, at the top, with the same shell
+     *  and the same read-aloud chain. Saved articles are never
+     *  private-origin, so the reader opens non-private. */
+    fun openSavedArticle(record: BrowserStore.SavedArticle) {
+        stopReading()
+        readerArticle = Article(
+            url = record.url,
+            title = record.title,
+            byline = record.byline,
+            siteName = record.siteName,
+            contentHtml = record.contentHtml,
+        )
+        readerPrivate = false
+        readerOpen = true
     }
     // r158: library Save-a-copy. The picker is the Storage Access
     // Framework create-document flow (no permission, no new provider):
@@ -2214,6 +2259,19 @@ fun WebApp(content: String) {
                     BrowserDownloads.cancelWorkerDownload(context, record)
                     refreshLists()
                 },
+                // r162: Newsstand. Open closes the sheet and reopens
+                // the saved article in the reader overlay; Delete drops
+                // the row and refreshes, so the sheet never shows a
+                // stale row. Live page rides the shared onLoad above.
+                newsstand = newsstand,
+                onOpenNewsstand = { record ->
+                    listsOpen = false
+                    openSavedArticle(record)
+                },
+                onDeleteNewsstand = { record ->
+                    BrowserStore.removeNewsstandArticle(context, record.id)
+                    refreshLists()
+                },
                 onClose = { listsOpen = false },
             )
         }
@@ -2370,6 +2428,13 @@ fun WebApp(content: String) {
                         } else {
                             GsButton(onClick = { startReading() }) { Text("Read aloud") }
                         }
+                        // r162: Save hides for private-origin readers
+                        // (Mariner bookSaveAllowed) and the save itself
+                        // refuses there too — a private article must
+                        // never persist past the profile wipe.
+                        if (!readerPrivate) {
+                            GsButton(onClick = { saveReaderArticle() }) { Text("Save") }
+                        }
                         GsIconButton(Icons.Filled.Close, "Close reader", {
                             stopReading()
                             readerOpen = false
@@ -2381,6 +2446,28 @@ fun WebApp(content: String) {
                             WebView(ctx).apply {
                                 settings.javaScriptEnabled = false
                                 applyWebHardening(settings)
+                                // r162: link routing (Mariner ArticleWebView
+                                // behavior). http(s) taps leave the reader
+                                // for a normal tab; anything else keeps the
+                                // WebView default, exactly as before.
+                                webViewClient = object : WebViewClient() {
+                                    override fun shouldOverrideUrlLoading(
+                                        view: WebView?,
+                                        request: WebResourceRequest?,
+                                    ): Boolean {
+                                        val url = request?.url?.toString() ?: return false
+                                        if (!readerLinkOpensInTab(url)) return false
+                                        stopReading()
+                                        readerOpen = false
+                                        val target = web
+                                        if (activeTab.isStartPage || target == null) {
+                                            openUrlInTab(activeTab, url)
+                                        } else {
+                                            target.loadUrl(url)
+                                        }
+                                        return true
+                                    }
+                                }
                                 loadDataWithBaseURL(
                                     article.url,
                                     buildReaderShell(article, bgHex, fgHex, linkHex),
@@ -2817,6 +2904,8 @@ private fun BrowserSettingsMenu(
                 MenuRow("Downloads", false) { onOpenLists(ListsSection.DOWNLOADS) }
                 // r158: the Offline library lives in the same sheet.
                 MenuRow("Offline library", false) { onOpenLists(ListsSection.LIBRARY) }
+                // r162: Newsstand lives in the same sheet.
+                MenuRow("Newsstand", false) { onOpenLists(ListsSection.NEWSSTAND) }
                 MenuSection("Address bar")
                 MenuRow("At the top", !barBottom) { onBarPosition(false) }
                 MenuRow("At the bottom", barBottom) { onBarPosition(true) }

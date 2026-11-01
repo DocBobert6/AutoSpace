@@ -60,10 +60,19 @@ import app.autospace.car.theme.GsTone
  * from the top (the bar star button and the old Saved & history row);
  * BOOKMARKS and HISTORY are the settings sheet's Library rows jumping
  * straight to their section; DOWNLOADS is the r157 Downloads row;
- * LIBRARY is the r158 Offline library row.
+ * LIBRARY is the r158 Offline library row; NEWSSTAND is the r162
+ * saved-articles row.
  */
-enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS, LIBRARY }
+enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS, LIBRARY, NEWSSTAND }
 
+/** r162: the caption under a Newsstand row — site name and saved date, either alone when the other is missing. */
+private fun newsstandCaption(article: BrowserStore.SavedArticle): String {
+    val date = if (article.savedAtMs > 0L) {
+        java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.US)
+            .format(java.util.Date(article.savedAtMs))
+    } else ""
+    return listOf(article.siteName, date).filter { it.isNotBlank() }.joinToString(" · ")
+}
 /** r157: the label on a Downloads row — state rides in the label itself. r159: worker rows show their reported percent while downloading, and paused rows say so. r160: a record waiting for Wi-Fi says so. */
 private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
     when (record.state) {
@@ -119,6 +128,14 @@ fun BrowserListsSheet(
     onPauseLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onResumeLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onCancelLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    // r162: Newsstand (saved articles only — the caller passes the
+    // stored list; the sheet itself never touches BrowserStore).
+    // Open reopens the saved article in the reader overlay; Delete
+    // drops the row only (no clear-all in v1). The live page opens
+    // through the shared onLoad below.
+    newsstand: List<BrowserStore.SavedArticle>,
+    onOpenNewsstand: (BrowserStore.SavedArticle) -> Unit,
+    onDeleteNewsstand: (BrowserStore.SavedArticle) -> Unit,
     onClose: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -145,12 +162,14 @@ fun BrowserListsSheet(
             var historyY by remember { mutableStateOf(-1) }
             var downloadsY by remember { mutableStateOf(-1) }
             var libraryY by remember { mutableStateOf(-1) }
-            LaunchedEffect(initialSection, bookmarksY, historyY, downloadsY, libraryY) {
+            var newsstandY by remember { mutableStateOf(-1) }
+            LaunchedEffect(initialSection, bookmarksY, historyY, downloadsY, libraryY, newsstandY) {
                 val target = when (initialSection) {
                     ListsSection.BOOKMARKS -> bookmarksY
                     ListsSection.HISTORY -> historyY
                     ListsSection.DOWNLOADS -> downloadsY
                     ListsSection.LIBRARY -> libraryY
+                    ListsSection.NEWSSTAND -> newsstandY
                     ListsSection.TOP -> -1
                 }
                 if (target >= 0) scrollState.scrollTo(target)
@@ -162,6 +181,7 @@ fun BrowserListsSheet(
             // on layout. r157: Downloads rides the same search (file name or
             // source URL), since it is now a list in this same sheet.
             // r158: the Offline library rides it too.
+            // r162: Newsstand rides it too (title, site name, or source URL).
             var listQuery by remember { mutableStateOf("") }
             var listSearching by remember { mutableStateOf(false) }
             val shownBookmarks = if (listQuery.isBlank()) bookmarks
@@ -178,6 +198,12 @@ fun BrowserListsSheet(
                     it.fileName.contains(listQuery, ignoreCase = true) ||
                         it.url.contains(listQuery, ignoreCase = true)
                 }
+            val shownNewsstand = if (listQuery.isBlank()) newsstand
+                else newsstand.filter {
+                    it.title.contains(listQuery, ignoreCase = true) ||
+                        it.siteName.contains(listQuery, ignoreCase = true) ||
+                        it.url.contains(listQuery, ignoreCase = true)
+                }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(scrollState).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -188,7 +214,7 @@ fun BrowserListsSheet(
                     fontWeight = FontWeight.Bold,
                 )
                 GsButton(onClick = { listSearching = !listSearching }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (listSearching) "Done searching" else "Search bookmarks, history, downloads, and library")
+                    Text(if (listSearching) "Done searching" else "Search bookmarks, history, downloads, library, and newsstand")
                 }
                 if (listSearching) {
                     CarKeyboard(
@@ -423,6 +449,57 @@ fun BrowserListsSheet(
                                     GsButton(onClick = { onCancelLibrary(record) }, tone = GsTone.Neutral) {
                                         Text("Cancel")
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+                // r162: Newsstand. Saved articles only — never downloads,
+                // never books. Open reopens the saved article in the same
+                // reader overlay (no re-extraction, no network, at the
+                // top); Live page opens the saved URL in a normal tab;
+                // Delete drops the row only (no clear-all in v1).
+                Text(
+                    "Newsstand",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.onGloballyPositioned { newsstandY = it.positionInParent().y.toInt() },
+                )
+                if (shownNewsstand.isEmpty()) {
+                    Text(
+                        if (listQuery.isBlank()) "No saved articles yet." else "No saved articles match \"$listQuery\".",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        shownNewsstand.forEach { article ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    GsButton(onClick = { onOpenNewsstand(article) }, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                                        Text(article.title.ifBlank { article.url }, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                    val caption = newsstandCaption(article)
+                                    if (caption.isNotBlank()) {
+                                        Text(
+                                            caption,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                GsButton(onClick = { onLoad(article.url) }, tone = GsTone.Neutral) {
+                                    Text("Live page")
+                                }
+                                GsButton(onClick = { onDeleteNewsstand(article) }, tone = GsTone.Neutral) {
+                                    Text("Delete")
                                 }
                             }
                         }

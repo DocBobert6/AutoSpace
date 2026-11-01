@@ -111,4 +111,17 @@ class BrowserExtrasTest {
         )
         assertEquals("Head\nFirst para.\nSecond para.", ArticleExtractor.plainText(article))
     }
+
+    @Test
+    fun readerLinkRoutingOpensOnlyHttpAndHttpsInATab() {
+        assertTrue(readerLinkOpensInTab("https://example.com/page"))
+        assertTrue(readerLinkOpensInTab("HTTP://EXAMPLE.COM/PAGE"))
+        assertFalse(readerLinkOpensInTab("mailto:someone@example.com"))
+        assertFalse(readerLinkOpensInTab("tel:+15551234567"))
+        assertFalse(readerLinkOpensInTab("javascript:evil()"))
+        assertFalse(readerLinkOpensInTab("data:text/html,hello"))
+        assertFalse(readerLinkOpensInTab("file:///sdcard/page.html"))
+        assertFalse(readerLinkOpensInTab("/relative/path"))
+        assertFalse(readerLinkOpensInTab(""))
+    }
 }
