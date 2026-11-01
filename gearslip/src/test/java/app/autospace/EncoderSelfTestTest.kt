@@ -12,9 +12,10 @@ import org.junit.Test
  * deleted outright.
  *
  * It CANNOT run on the JVM: the unit-test android.jar is stubs, so
- * MediaCodec creation throws there. The test therefore probes for a
- * real MediaCodec first and assumes away (skips, does not fail) on
- * JVM stubs. On a bench run with a real codec it exercises the full
+ * MediaCodec creation throws or, with unitTests.isReturnDefaultValues,
+ * returns null there. The test therefore probes for a real MediaCodec
+ * first and assumes away (skips, does not fail) on JVM stubs. On a
+ * bench run with a real codec it exercises the full
  * probe: bitstream produced, keyframe present, and requestSyncFrame()
  * honoured after a drop — the exact failure that used to present in
  * the car as "the head unit shows nothing".
@@ -23,11 +24,13 @@ class EncoderSelfTestTest {
 
     @Test
     fun `encoder produces a bitstream with a resync keyframe`() {
-        try {
-            MediaCodec.createEncoderByType("video/avc")?.release()
+        val codec = try {
+            MediaCodec.createEncoderByType("video/avc")
         } catch (t: Exception) {
-            Assume.assumeTrue("MediaCodec unavailable on JVM stubs", false)
+            null
         }
+        codec?.release()
+        Assume.assumeTrue("MediaCodec unavailable on JVM stubs", codec != null)
 
         var codecConfig: ByteArray? = null
         var frames = 0
