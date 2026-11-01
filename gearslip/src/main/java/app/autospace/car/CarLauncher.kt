@@ -186,6 +186,15 @@ internal fun rememberAllEntries(): List<Entry> {
 }
 
 /**
+ * Empty-catalog branch (r169, audit §5 5-17): keys on discovery ([all]), never on the
+ * filtered or hidden-filtered list — a fruitless search, or hiding every app, must not
+ * show the "no apps found" guide branch. In practice the eight built-in tiles mean [all]
+ * is never empty, so this branch is a safety net for a zero-app catalog, not a state
+ * a driver normally sees.
+ */
+internal fun launcherShowsEmptyCatalog(all: List<Entry>): Boolean = all.isEmpty()
+
+/**
  * The launcher's order, Phase 7 (Robert 2026-10-24 23:58): NO categories.
  * One flat list, alphabetical by label by default. The driver's own moves
  * from [custom] are kept as a stored order; an app installed later (or one
@@ -381,60 +390,80 @@ fun CarLauncher() {
                 showCaret = searching,
             )
         }
-        if (pinned.isNotEmpty()) {
-            Text(
-                "Pinned",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(horizontal = 20.dp),
-            )
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
+        if (launcherShowsEmptyCatalog(all)) {
+            // r169 (audit §5 5-17): a zero-app catalog gets its own branch with a
+            // guide button, reusing the notifications empty-state pattern, instead of
+            // rendering blank. The search pill above stays, so a driver can still type.
+            Column(
+                Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac, tileFrac) }
-            }
-        }
-        // Phase 9 pills: search at the top, then capsule pill rows
-        // (icon + label on one horizontal line), 2 columns on a wide
-        // car screen — no square tiles anywhere, except under Pitlane
-        // (r24), where gsButtonShape squares the tiles. Phase 7's flat list,
-        // no group headers, search and pinned behaviour are unchanged.
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 320.dp),
-            state = gridState,
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            items(filtered, key = { it.componentId ?: it.label }) { entry ->
-                val tile = tileOf(entry)
-                val id = entry.componentId
-                val dragging = drag.draggedId == id && id != null
-                AppTile(
-                    tile = tile,
-                    iconFrac = iconFrac,
-                    tileFrac = tileFrac,
-                    modifier = Modifier.animateItem(),
-                    dragEnabled = canDrag && id != null,
-                    dragOffset = if (dragging) drag.offset else Offset.Zero,
-                    dragAlpha = if (dragging) 0.85f else 1f,
-                    onDragStart = { if (id != null) { drag.draggedId = id; drag.offset = Offset.Zero; drag.moved = false } },
-                    onDrag = { amount ->
-                        drag.offset += amount
-                        if (drag.offset.getDistance() > dragThresholdPx) drag.moved = true
-                    },
-                    onDragEnd = {
-                        if (drag.moved) commitDrop()
-                        else {
-                            drag.reset()
-                            tile.onLongClick?.invoke()
-                        }
-                    },
-                    onDragCancel = { drag.reset() },
+                Text(
+                    "No car apps found — check the setup guide",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
+                Spacer(Modifier.height(12.dp))
+                GsButton(onClick = { openPhoneApp(context) }) { Text("Open on phone") }
+            }
+        } else {
+            if (pinned.isNotEmpty()) {
+                Text(
+                    "Pinned",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(pinned) { entry -> PinnedTile(tileOf(entry), iconFrac, tileFrac) }
+                }
+            }
+            // Phase 9 pills: search at the top, then capsule pill rows
+            // (icon + label on one horizontal line), 2 columns on a wide
+            // car screen — no square tiles anywhere, except under Pitlane
+            // (r24), where gsButtonShape squares the tiles. Phase 7's flat list,
+            // no group headers, search and pinned behaviour are unchanged.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 320.dp),
+                state = gridState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(filtered, key = { it.componentId ?: it.label }) { entry ->
+                    val tile = tileOf(entry)
+                    val id = entry.componentId
+                    val dragging = drag.draggedId == id && id != null
+                    AppTile(
+                        tile = tile,
+                        iconFrac = iconFrac,
+                        tileFrac = tileFrac,
+                        modifier = Modifier.animateItem(),
+                        dragEnabled = canDrag && id != null,
+                        dragOffset = if (dragging) drag.offset else Offset.Zero,
+                        dragAlpha = if (dragging) 0.85f else 1f,
+                        onDragStart = { if (id != null) { drag.draggedId = id; drag.offset = Offset.Zero; drag.moved = false } },
+                        onDrag = { amount ->
+                            drag.offset += amount
+                            if (drag.offset.getDistance() > dragThresholdPx) drag.moved = true
+                        },
+                        onDragEnd = {
+                            if (drag.moved) commitDrop()
+                            else {
+                                drag.reset()
+                                tile.onLongClick?.invoke()
+                            }
+                        },
+                        onDragCancel = { drag.reset() },
+                    )
+                }
             }
         }
         if (searching) {

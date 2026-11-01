@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            127, "0.4.116-alpha",
+            listOf(
+                "Empty and error states now say what happened: denied calendars, failed pages, unavailable browsing, and an empty launcher each get their own message.",
+            ),
+        ),
+        Release(
             126, "0.4.115-alpha",
             listOf(
                 "Dismiss buttons are now full touch size, and the intro theme preview is decoration only.",

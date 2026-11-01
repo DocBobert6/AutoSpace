@@ -149,6 +149,30 @@ class BrowseState(
 )
 
 /**
+ * A browse notice: the panel's title, an optional detail, and whether it offers a retry.
+ * Null means the list itself shows, not a notice.
+ */
+internal data class BrowseNotice(val title: String, val detail: String?, val showRetry: Boolean)
+
+/**
+ * Pure browse-notice mapping (r169, audit §5 5-16): the panel's four states, so a failed
+ * list can offer a retry and an empty list reads as yet-to-fill, not as unsupported.
+ * Unavailable keeps its own wording and detail — it is not a failure, and it must not
+ * be faked into looking like one.
+ */
+internal fun browseNoticeFor(state: BrowseState, appLabel: String): BrowseNotice? = when {
+    state.loading -> BrowseNotice("Loading…", null, false)
+    state.unavailable -> BrowseNotice(
+        "$appLabel keeps its library to itself.",
+        "Start music in the app on your phone. Play, pause, skip and seek work from here.",
+        false,
+    )
+    state.failed -> BrowseNotice("Couldn't load this library.", null, true)
+    state.entries.isEmpty() -> BrowseNotice("Nothing here yet.", null, false)
+    else -> null
+}
+
+/**
  * Talks to one media app the way Android Auto does: connect to its MediaBrowserService, browse
  * its tree, and drive playback through the session it publishes. The app decides what its
  * tree contains and what the buttons do; this only presents it.
@@ -471,6 +495,11 @@ class CarMedia(private val context: Context) {
     fun up() {
         if (path.isEmpty()) return
         path.removeLast()
+        open(path.lastOrNull()?.first ?: rootId ?: return)
+    }
+
+    /** Re-runs the current browse request (r169, audit §5 5-16): the failed list's Try again. */
+    fun retryBrowse() {
         open(path.lastOrNull()?.first ?: rootId ?: return)
     }
 

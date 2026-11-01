@@ -355,14 +355,14 @@ internal fun WidgetColumn(
     val history by CarNotifications.history.collectAsState()
     // Agenda: the dashboard's cache when warm, else one IO load (same
     // provider query as fetchAgenda — the dashboard's own source, not a
-    // second calendar read path). Empty means no permission or nothing
-    // scheduled; either way the chip hides.
-    val agenda by produceState<List<AgendaEvent>?>(cachedAgendaSnapshot()) {
+    // second calendar read path). Denied and Empty both hide the chip;
+    // only Events shows one.
+    val agenda by produceState<AgendaResult?>(cachedAgendaSnapshot()) {
         if (value == null) value = withContext(Dispatchers.IO) { fetchAgenda(context) }
     }
     val weatherReady = weatherState is WeatherState.Ready
     val digestOk = digestAvailable(listening, unread, history.isEmpty())
-    val event = agenda?.firstOrNull()
+    val event = (agenda as? AgendaResult.Events)?.events?.firstOrNull()
     val visible = visibleWidgets(frameWidthDp, moving, weatherReady, digestOk, event != null, hidden)
     // r58: the gates passed but nothing is visible — say why, instead of
     // vanishing. The dismiss row stays, so the explainer hides exactly

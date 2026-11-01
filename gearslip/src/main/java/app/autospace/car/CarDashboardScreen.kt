@@ -2,6 +2,7 @@ package app.autospace.car
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.provider.CalendarContract
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.BrightnessMedium
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.LocalOledDark
+import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.gsButtonShape
@@ -113,21 +115,32 @@ private fun WeatherCard(context: Context) {
 
 @Composable
 private fun AgendaCard(context: Context) {
-    val events by produceState<List<AgendaEvent>?>(cachedAgenda) {
+    val result by produceState<AgendaResult?>(cachedAgenda) {
         value = withContext(Dispatchers.IO) { fetchAgenda(context) }.also { cachedAgenda = it }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Coming up", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        val list = events
-        when {
-            list == null -> Text("Loading calendar…", style = MaterialTheme.typography.bodyMedium)
-            list.isEmpty() -> Text(
+        when (val r = result) {
+            null -> Text("Loading calendar…", style = MaterialTheme.typography.bodyMedium)
+            AgendaResult.Denied -> {
+                Text(
+                    "Calendar access is off — turn it on in the setup guide",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r169 (audit §5 5-14): the setup guide lives in the phone app and the
+                // car surface has no destination for it, so the button hands off to the
+                // phone app — the guide shows there when setup has not been seen, and
+                // otherwise Home, from which Settings grants the permission.
+                GsButton(onClick = { openPhoneApp(context) }) { Text("Open on phone") }
+            }
+            AgendaResult.Empty -> Text(
                 "Nothing in the next week.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            else -> list.forEach { EventRow(it) }
+            is AgendaResult.Events -> r.events.forEach { EventRow(it) }
         }
     }
 }
@@ -174,10 +187,40 @@ internal fun eventWhen(event: AgendaEvent): String {
 
 internal data class AgendaEvent(val title: String, val startMillis: Long, val allDay: Boolean)
 
-@Volatile private var cachedAgenda: List<AgendaEvent>? = null
+/**
+ * Opens AutoSpace on the phone (r169, audit §5 5-14/5-17): the setup guide lives in the
+ * phone app and the car surface has no destination for it, so the guide buttons hand
+ * off to the phone app instead of inventing a car-side guide page. A no-op when the
+ * phone app cannot be launched; it never requests a permission.
+ */
+internal fun openPhoneApp(context: Context) {
+    runCatching {
+        context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ?.let(context::startActivity)
+    }
+}
+
+/**
+ * Sealed agenda result (r169, audit §5 5-14): denial, empty, and events are distinct —
+ * the dashboard must not render "nothing scheduled" for a denied permission.
+ */
+internal sealed interface AgendaResult {
+    data object Denied : AgendaResult
+    data object Empty : AgendaResult
+    data class Events(val events: List<AgendaEvent>) : AgendaResult
+}
+
+/** Pure mapping behind [fetchAgenda]: denial beats everything, then empty, then events. */
+internal fun agendaResult(permissionGranted: Boolean, events: List<AgendaEvent>): AgendaResult =
+    if (!permissionGranted) AgendaResult.Denied
+    else if (events.isEmpty()) AgendaResult.Empty
+    else AgendaResult.Events(events)
+
+@Volatile private var cachedAgenda: AgendaResult? = null
 
 /** Widget layer (r37): the dashboard's cached agenda, if it was warmed. */
-internal fun cachedAgendaSnapshot(): List<AgendaEvent>? = cachedAgenda
+internal fun cachedAgendaSnapshot(): AgendaResult? = cachedAgenda
 
 /** Loads the weather and the agenda ahead of time, so the dashboard opens with both in place. */
 fun warmDashboard(context: Context) {
@@ -186,13 +229,15 @@ fun warmDashboard(context: Context) {
 }
 
 /**
- * Empty list means no permission or nothing scheduled. Looks from the start of today so an
+ * Denied means no permission, Empty means nothing scheduled. Looks from the start of today so an
  * event already under way still shows, a week ahead so tomorrow's does too, and skips ones
- * that have finished.
+ * that have finished. A failed query still reads as Empty, as before — only denial is newly
+ * distinct. Does not request the permission; it only reads it, so a denied calendar stays
+ * denied until the driver grants it.
  */
-internal fun fetchAgenda(context: Context): List<AgendaEvent> {
+internal fun fetchAgenda(context: Context): AgendaResult {
     if (context.checkSelfPermission(Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED) {
-        return emptyList()
+        return AgendaResult.Denied
     }
 
     val now = System.currentTimeMillis()
@@ -221,5 +266,5 @@ internal fun fetchAgenda(context: Context): List<AgendaEvent> {
                 }
             }
     }.onFailure { GearslipLog.w("calendar query failed: ${it.message}") }
-    return events
+    return agendaResult(true, events)
 }

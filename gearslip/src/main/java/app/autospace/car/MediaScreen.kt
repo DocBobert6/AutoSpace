@@ -614,15 +614,14 @@ private fun BrowsePanel(browse: app.autospace.media.BrowseState, media: CarMedia
                 }
             }
         }
-        when {
-            browse.loading -> Notice("Loading…", null)
-            browse.unavailable -> Notice(
-                "$appLabel keeps its library to itself.",
-                "Start music in the app on your phone. Play, pause, skip and seek work from here.",
+        val notice = app.autospace.media.browseNoticeFor(browse, appLabel)
+        if (notice != null) {
+            Notice(
+                notice.title, notice.detail,
+                if (notice.showRetry) "Try again" to media::retryBrowse else null,
             )
-            browse.failed -> Notice("Could not load this list.", null)
-            browse.entries.isEmpty() -> Notice("Nothing here.", null)
-            else -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(browse.entries, key = { it.id }) { entry -> EntryRow(entry, media) }
             }
         }

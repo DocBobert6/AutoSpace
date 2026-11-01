@@ -3193,6 +3193,14 @@ private fun TabSwitcherSheet(
 /** Which kind of rule the r85 rule editor is adding. */
 private enum class RuleEditType { BLOCK_HOST, BLOCK_URL, ALLOW_HOST }
 
+/**
+ * Pure main-frame HTTP error message (r169, audit §5 5-15): an HTTP error is its own
+ * error state, not a generic load failure — the status code is the message. Never a
+ * Proceed option: cert-proceed is permanently out (r21 scope cuts), and this path
+ * surfaces the error, it does not offer to go past it.
+ */
+internal fun httpErrorMessage(statusCode: Int): String = "This page answered $statusCode"
+
 private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
@@ -3336,6 +3344,12 @@ private class BrowserClient(
     override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
         if (request?.isForMainFrame == true) {
             GearslipLog.w("car web page HTTP ${response?.statusCode} for ${GearslipLog.loggableUrl(request.url.toString())}")
+            // r169 (audit §5 5-15): a main-frame HTTP error is a real error state, not a
+            // silent log line — it rides the same path as a load failure, with its own
+            // status-code message. Sub-frame HTTP errors stay log-only, as before.
+            val code = response?.statusCode
+            if (code != null) onMainFrameError(httpErrorMessage(code))
+            else onMainFrameError("Could not load ${request.url}.")
         }
     }
 }
