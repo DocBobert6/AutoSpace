@@ -186,16 +186,6 @@ class GameKeyRouter(
         store(bits)
     }
 
-    /** True when any game input is currently held. */
-    fun anyHeld(): Boolean =
-        heldKeys.isNotEmpty() || hatBits != 0 || stickBits != 0
-
-    companion object {
-        /** The two axes of a MotionEvent that carry a stick. */
-        fun stickAxes(event: MotionEvent): Pair<Float, Float> =
-            event.getAxisValue(MotionEvent.AXIS_X) to
-                event.getAxisValue(MotionEvent.AXIS_Y)
-    }
 }
 
 /** Per-console controller setup for the car screen. PlayStation is

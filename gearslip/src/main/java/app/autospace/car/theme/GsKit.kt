@@ -76,7 +76,6 @@ object GsKit {
     val SheetShape = RoundedCornerShape(28.dp)
     val CardShape = RoundedCornerShape(20.dp)
     val PillShape = RoundedCornerShape(50)
-    val DialogShape = RoundedCornerShape(28.dp)
 
     /**
      * The floating-bar gradient: near-solid, lighter at the top.
@@ -113,10 +112,6 @@ object GsKit {
     /** The grouped-card colour used on sheets and grouped lists. */
     @Composable
     fun cardColor(): Color = MaterialTheme.colorScheme.surfaceBright
-
-    /** The soft tinted backdrop grouped cards sit on. */
-    @Composable
-    fun backdropColor(): Color = MaterialTheme.colorScheme.surfaceContainerLow
 }
 
 /**
@@ -525,11 +520,6 @@ fun chromeSurfaceMode(toggleOn: Boolean, frosted: Boolean, insideFrosted: Boolea
 
 /** True while composing inside a frosted panel surface (see above). */
 val LocalInsideFrostedChrome = compositionLocalOf { false }
-
-/** r46: the frosted fill — the scheme's surfaceContainerLow at the pinned alpha. */
-@Composable
-fun frostedChromeColor(): Color =
-    MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
 
 /**
  * r46: the one frosted panel surface. The floating media card and the

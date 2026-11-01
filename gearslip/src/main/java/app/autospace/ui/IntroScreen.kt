@@ -798,25 +798,6 @@ internal fun ShieldIcon(color: Color, tick: Color) {
 
 /** A speech bubble with three dots that pulse, like someone typing. */
 @Composable
-private fun ChatIcon(color: Color, dots: Color) {
-    val t = rememberInfiniteTransition(label = "typing")
-    val pulse = (0..2).map { i ->
-        t.animateFloat(
-            0.35f, 1f,
-            infiniteRepeatable(tween(500, easing = FastOutSlowInEasing), RepeatMode.Reverse,
-                initialStartOffset = androidx.compose.animation.core.StartOffset(i * 170)),
-            label = "dot$i",
-        )
-    }
-    Canvas(Modifier.fillMaxSize()) {
-        inIconBox {
-            drawRoundRect(color, Offset(4f, 7f), Size(40f, 28f), CornerRadius(10f, 10f))
-            drawPath(Path().apply { moveTo(12f, 33f); lineTo(10f, 43f); lineTo(22f, 33f); close() }, color)
-            pulse.forEachIndexed { i, a -> drawCircle(dots.copy(alpha = a.value), 3.2f, Offset(15f + i * 9f, 21f)) }
-        }
-    }
-}
-
 @Composable
 internal fun HeartIcon(color: Color) {
     val beat by rememberInfiniteTransition(label = "beat").animateFloat(

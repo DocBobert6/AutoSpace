@@ -663,20 +663,6 @@ private fun AudioCard(title: String, tag: String?, body: String, selected: Boole
 
 /** One labeled switch in guide style, as the microphone pages use. */
 @Composable
-private fun GuideSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            style = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.SemiBold),
-            modifier = Modifier.weight(1f),
-        )
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
 /**
  * The first-run guide, one page at a time: permissions, then removing Android Auto if it is still installed, then the optional extras. Nothing
  * here can be verified as done except a permission grant, so every other page is a "Next" a

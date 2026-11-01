@@ -14,20 +14,6 @@ import java.security.MessageDigest
  */
 object KnownApps {
 
-    private val working = setOf(
-        "app.organicmaps",       // Organic Maps: map, search, routing, settings
-        "net.osmand.plus",       // OsmAnd: map, search, routing, settings
-        "in.krosbits.musicolet", // Musicolet: browse, play, seek, lyrics
-        "com.kododake.aabrowser", // Aardvark: browser template, starts, draws, takes touches
-        "com.vivi.vivimusic", // Vivi Music: browse, play, seek, works well
-        "com.metrolist.music", // Metrolist: browse, play, works
-        "nl.flitsmeister", // Flitsmeister: map, routing, alerts - works well
-        "com.mapquest.android.ace", // MapQuest: map, routing, navigation
-        "com.mapswithme.maps.pro", // MAPS.ME: map, search, place pages, navigation
-    )
-
-    fun works(packageName: String): Boolean = packageName in working
-
     /**
      * Apps whose media player works through Gearslip's own player even though their car screen
      * doesn't. Only the player tile gets the check, not the "· Browse" one.
@@ -94,15 +80,4 @@ object KnownApps {
         }
     }
 
-    /**
-     * Shown on the launcher with a yellow mark: starts and can be used, but not cleanly enough to
-     * call working. Wins over [works] and [playerWorks] for the badge.
-     */
-    private val partial = setOf(
-        "app.vela", // Vela Maps: connects and draws, but rough enough not to call it working yet
-        "com.spotify.music",        // Spotify: plays through Gearslip's player, but the app has to be opened on the phone first
-        "deezer.android.app",       // Deezer: the same - it has to be opened on the phone first
-    )
-
-    fun isPartial(packageName: String): Boolean = packageName in partial
 }

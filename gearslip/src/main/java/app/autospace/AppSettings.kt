@@ -29,7 +29,7 @@ object AppSettings {
         prefs(context).edit().putString(key, value).apply()
     }
 
-    /** Blank means "use the built-in test page". */
+    /** Blank means "use the default start page". */
     fun startupUrl(context: Context): String =
         prefs(context).getString(KEY_STARTUP_URL, "").orEmpty()
 

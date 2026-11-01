@@ -60,17 +60,6 @@ object WorkedPrompt {
 
     fun celebrated() { celebrateFlow.value = false }
 
-    /** The driver answered on Home. Either way it's never asked again. */
-    fun answer(context: Context, share: Boolean) {
-        if (share) {
-            // Turning sharing on lands in [onSharingOn], which clears the ask.
-            UsageStats.set(context, true)
-            return
-        }
-        clear(context)
-        GearslipLog.i("worked prompt: not now")
-    }
-
     /**
      * Usage notes were just turned on, from the ask or anywhere else. With the ask still waiting,
      * that answers it, and the car it was about goes in the first note.
@@ -111,5 +100,4 @@ object WorkedPrompt {
         }
     }
 
-    const val TITLE_START = "AutoSpace worked with "
 }

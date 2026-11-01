@@ -44,7 +44,6 @@ object GameSaves {
     data class SlotInfo(
         val slot: Int,
         val exists: Boolean,
-        val modifiedAt: Long,
         val hasThumb: Boolean
     )
 
@@ -53,13 +52,9 @@ object GameSaves {
         return SlotInfo(
             slot,
             state.exists(),
-            if (state.exists()) state.lastModified() else 0L,
             thumbFile(context, gameId, slot).exists()
         )
     }
-
-    fun autoExists(context: Context, gameId: String): Boolean =
-        stateFile(context, gameId, AUTO_SLOT).exists()
 
     fun delete(context: Context, gameId: String, slot: Int): Boolean =
         stateFile(context, gameId, slot).delete() or
@@ -75,47 +70,6 @@ object GameSaves {
 
     fun archiveMillis(name: String): Long? =
         name.removePrefix("auto-").removeSuffix(".state").toLongOrNull()
-
-    data class AutoArchive(val file: File, val millis: Long)
-
-    /** Auto-save archives, newest first. Archives are never deleted
-     * automatically. */
-    fun autoArchives(context: Context, gameId: String): List<AutoArchive> {
-        val dir = dirFor(context.filesDir, gameId)
-        if (!dir.exists()) return emptyList()
-        return dir.listFiles()
-            ?.filter { isArchiveName(it.name) }
-            ?.mapNotNull { file ->
-                archiveMillis(file.name)?.let { AutoArchive(file, it) }
-            }
-            ?.sortedByDescending { it.millis }
-            ?: emptyList()
-    }
-
-    /** Copy the current auto save into a timestamped archive. */
-    fun archiveAuto(context: Context, gameId: String): Boolean {
-        val auto = stateFile(context, gameId, AUTO_SLOT)
-        if (!auto.exists()) return false
-        val millis = System.currentTimeMillis()
-        val target = File(
-            dirFor(context.filesDir, gameId),
-            archiveFileName(millis)
-        )
-        val thumb = thumbFile(context, gameId, AUTO_SLOT)
-        return runCatching {
-            target.parentFile?.mkdirs()
-            auto.copyTo(target, overwrite = true)
-            if (thumb.exists()) {
-                thumb.copyTo(
-                    File(dirFor(context.filesDir, gameId), archiveThumbName(millis)),
-                    overwrite = true
-                )
-            }
-            true
-        }.getOrDefault(false)
-    }
-
-    fun deleteArchive(archive: AutoArchive): Boolean = archive.file.delete()
 
     /**
      * Save through the engine into a temp file, then rename over the

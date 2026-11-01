@@ -95,15 +95,6 @@ fun ContentTemplate(
     }
 }
 
-/** True when this template is one [ContentTemplate] knows how to draw. */
-fun isContentTemplate(template: Template?): Boolean = when (template) {
-    is ListTemplate, is GridTemplate, is PaneTemplate, is MessageTemplate,
-    is LongMessageTemplate, is SearchTemplate, is SignInTemplate, is TabTemplate,
-    is SectionedItemTemplate, is MediaPlaybackTemplate,
-    -> true
-    else -> false
-}
-
 // --- lists, grids and panes ---------------------------------------------------------------------
 
 @Composable

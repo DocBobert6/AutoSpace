@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            124, "0.4.113-alpha",
+            listOf(
+                "Dead code removed: unused helpers, the old known-apps list, and the lyrics data file are gone, with no change to anything you see.",
+            ),
+        ),
+        Release(
             123, "0.4.112-alpha",
             listOf(
                 "Weather questions are matched more carefully, held directions only fire when their own reply finishes, and slow weather lookups stop hanging.",

@@ -1,14 +1,6 @@
 package app.autospace.car
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import app.autospace.ProjectedContent
 
@@ -16,7 +8,6 @@ import app.autospace.ProjectedContent
 class CarApp(
     val id: String,
     val label: String,
-    val icon: ImageVector,
     val content: @Composable () -> Unit,
 )
 
@@ -24,22 +15,22 @@ class CarApp(
 object CarApps {
 
     val all: List<CarApp> = listOf(
-        CarApp("web", "Browser", Icons.Filled.Search) {
+        CarApp("web", "Browser") {
             WebApp(content = ProjectedContent.resolve(LocalContext.current))
         },
-        CarApp("phone", "Screen sharing", Icons.Filled.Share) {
+        CarApp("phone", "Screen sharing") {
             PhoneAppsScreen()
         },
-        CarApp("dialer", "Phone", Icons.Filled.Call) {
+        CarApp("dialer", "Phone") {
             PhoneDialerScreen()
         },
-        CarApp("settings", "Settings", Icons.Filled.Settings) {
+        CarApp("settings", "Settings") {
             CarSettingsScreen()
         },
-        CarApp("games", "Games", Icons.Filled.SportsEsports) {
+        CarApp("games", "Games") {
             GamesScreen()
         },
-        CarApp("books", "Bookshelf", Icons.Filled.MenuBook) {
+        CarApp("books", "Bookshelf") {
             BookshelfScreen()
         },
     )

@@ -194,9 +194,6 @@ object KeyboardSuggestions {
         AppSettings.setKeyboardSuggestionsEnabled(context, enabled)
     }
 
-    fun learnedWords(context: Context): List<String> =
-        learnedEntries(context).map { it.word }
-
     /**
      * Learned words in stored order (oldest last-use first), with use
      * counts. A legacy bare `word` line decodes as count 1, so installs

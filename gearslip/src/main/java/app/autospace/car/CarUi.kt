@@ -29,7 +29,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.layout.BoxScope
 import androidx.car.app.model.CarIcon
 import androidx.car.app.navigation.model.NavigationTemplate
@@ -516,8 +515,6 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         CarSafetyWizard(onDone = CarSettings::markSafetyWarningSeen)
                         return@Column
                     }
-                    // Header navigation (breadcrumb trail) - off for now, kept to tweak later.
-                    // BreadcrumbBar(navigator)
                     // r97: the content box is always the full frame —
                     // the rail is a scaffold sibling in its own strip,
                     // never a row below the content.
@@ -750,43 +747,6 @@ private fun DebugBuildBadge(modifier: Modifier = Modifier) {
  * back at all, since a car touchscreen has no hardware button for it.
  */
 @Composable
-private fun BreadcrumbBar(navigator: CarNavigator) {
-    val trail = navigator.trail
-    if (trail.size <= 1) return
-    // Audit fix (2026-10-25, F4): the only on-screen back path
-    // was 32dp, below the 44dp car target floor. Bar and button
-    // are 44dp now, with larger crumb touch padding.
-    Row(
-        Modifier.fillMaxWidth().height(44.dp).padding(start = 2.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        GsIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", navigator::back, size = 44.dp, iconSize = 24.dp)
-        Spacer(Modifier.width(2.dp))
-        trail.forEachIndexed { index, crumb ->
-            val isLast = index == trail.lastIndex
-            Text(
-                crumb.label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isLast) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = if (isLast) Modifier else Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .clickable { navigator.jumpTo(index) }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            )
-            if (!isLast) {
-                Text(
-                    "›",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 2.dp),
-                )
-            }
-        }
-    }
-}
 
 /** r97: the rail reuses the old bar's 64dp width and 4dp elevation;
  * the bar itself is gone. */

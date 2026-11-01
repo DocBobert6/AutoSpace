@@ -134,12 +134,6 @@ object BrowserStore {
         writePopupSiteMap(context, map)
     }
 
-    fun popupAllow(context: Context, host: String): Boolean =
-        popupSetting(context, host) == PopupSetting.ALLOW
-
-    fun popupBlockAlways(context: Context, host: String): Boolean =
-        popupSetting(context, host) == PopupSetting.BLOCK
-
     // ---- Address bar position (audit/browser build, Notscape's barPosition) ----
     // Default "top" (the position AutoSpace has always used); "bottom" moves
     // the bar below the page, and the WebApp column order (page, bar,

@@ -118,8 +118,6 @@ class NowPlaying(
         }
 
     val playing get() = state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING
-    val hasTrack get() = title.isNotEmpty() || state != PlaybackState.STATE_NONE
-
     /**
      * Something is actually playing or paused mid-track. A stopped, errored or empty session, or one
      * that has not named a track yet, must not keep the player on screen.

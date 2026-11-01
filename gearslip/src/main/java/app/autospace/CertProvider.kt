@@ -182,28 +182,6 @@ object CertProvider {
         context.getExternalFilesDir(null)?.let { File(it, P12_NAME).isFile } == true
 
     /**
-     * Validates raw PKCS#12 bytes with [password] and, if good, writes them as the imported
-     * identity. Used when the app assembles a certificate in memory (e.g. from a download)
-     * rather than importing from a file picker.
-     */
-    fun importFromBytes(context: Context, p12Bytes: ByteArray, password: String): Identity {
-        val staging = File(context.cacheDir, "import-$P12_NAME")
-        try {
-            staging.writeBytes(p12Bytes)
-            val identity = loadP12(staging, password, "imported certificate", Kind.IMPORTED)
-
-            val target = importedFile(context, P12_NAME)
-            target.parentFile?.mkdirs()
-            staging.copyTo(target, overwrite = true)
-            importedFile(context, PASS_NAME).writeText(password)
-            log.i("imported a certificate from bytes: ${identity.certificate.subjectX500Principal}")
-            return identity
-        } finally {
-            staging.delete()
-        }
-    }
-
-    /**
      * Downloads the publicly available head unit certificate from the opencardev/aasdk
      * repository, converts it from PEM to PKCS#12, and stores it ready for use.
      * Runs synchronously (caller is responsible for threading). Throws on any failure.

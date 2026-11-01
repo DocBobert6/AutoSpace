@@ -116,9 +116,6 @@ object GameCoreDownload {
         }
     }
 
-    fun isDownloaded(context: Context, system: String): Boolean =
-        status(context, system) == Status.DOWNLOADED
-
     /** The installed path when the core is verified, or null. A
      * corrupt pair is deleted on the way out. */
     fun downloadedPath(context: Context, system: String): String? {

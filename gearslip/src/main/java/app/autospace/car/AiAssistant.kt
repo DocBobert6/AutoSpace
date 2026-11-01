@@ -217,22 +217,6 @@ object AiAssistant {
         }
     }
 
-    /** The "Would do:" line the phone preview shows for a proposal (dry run — never executed). */
-    fun wouldDoText(action: AiAction): String = when (action) {
-        is AiAction.Navigate -> "Would do: navigate to ${action.destination}"
-        is AiAction.OpenApp -> "Would do: open ${action.appLabel}"
-        is AiAction.BrowserSearch -> "Would do: search for ${action.term}"
-        is AiAction.Call -> "Would do: call ${action.contactName}"
-        is AiAction.ReplyMessage -> "Would do: send message to ${action.contactName}: '${action.text}'"
-        is AiAction.Media -> "Would do: media ${action.command}"
-        is AiAction.Volume -> "Would do: volume ${action.mode}"
-        is AiAction.Brightness -> "Would do: set brightness to ${action.percent} percent"
-        is AiAction.BrightnessDirection -> "Would do: brightness ${action.direction}"
-        is AiAction.Toggle -> "Would do: turn ${action.setting} ${if (action.on) "on" else "off"}"
-        is AiAction.Timer -> "Would do: set a timer for ${action.minutes} minutes"
-        is AiAction.Readout -> "Would do: read ${action.what}"
-    }
-
     // --- Model reply parsing ---
 
     sealed class ParsedReply {
