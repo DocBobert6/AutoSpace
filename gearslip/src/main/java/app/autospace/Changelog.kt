@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            131, "0.4.120-alpha",
+            listOf(
+                "Settings cleanup: tidier settings code with no change to what any setting does.",
+            ),
+        ),
+        Release(
             130, "0.4.119-alpha",
             listOf(
                 "Updater hardening: deferred installs survive restarts, drive-end updates notify once, rate limits are honored, and downloads refuse unsigned or non-secure sources.",

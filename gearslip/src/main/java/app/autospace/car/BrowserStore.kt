@@ -214,7 +214,10 @@ object BrowserStore {
     /** The driver's own cosmetic rules, one UserBlockRules line per line.
      *  Parsed by the engine when present; no add-UI in v1 (there is no
      *  element picker on the car surface), so this key only ever fills
-     *  if a future round adds one. */
+     *  if a future round adds one.
+     *  INTENTIONAL PLACEHOLDER (r173 audit §5 5-29): read-only key —
+     *  read by userCosmeticRaw(), never written; do not sweep as dead
+     *  code. */
     private const val KEY_USER_COSMETIC = "browser_user_cosmetic"
 
     fun userNetRaw(context: Context): String =
@@ -266,7 +269,7 @@ object BrowserStore {
 
     /** When the stored session was last saved, 0 when never saved or legacy. */
     fun sessionSavedAt(context: Context): Long =
-        AppSettings.getString(context, KEY_SESSION_SAVED_AT, "0").toLongOrNull() ?: 0L
+        CarSettings.lenientParse(KEY_SESSION_SAVED_AT, AppSettings.getString(context, KEY_SESSION_SAVED_AT, "0"), 0L, { it.toLongOrNull() }, "BrowserStore")
 
     fun clearSession(context: Context) {
         AppSettings.putString(context, KEY_SESSION, "")
@@ -630,7 +633,7 @@ object BrowserStore {
     // 100 is the WebView default; 50..200 keeps pages readable
     // without breaking layouts that assume near-default sizes.
     fun textZoom(context: Context): Int =
-        AppSettings.getString(context, KEY_TEXT_ZOOM, "100").toIntOrNull()?.coerceIn(50, 200) ?: 100
+        CarSettings.lenientParse(KEY_TEXT_ZOOM, AppSettings.getString(context, KEY_TEXT_ZOOM, "100"), 100, { it.toIntOrNull()?.coerceIn(50, 200) }, "BrowserStore")
 
     fun setTextZoom(context: Context, zoom: Int) {
         AppSettings.putString(context, KEY_TEXT_ZOOM, zoom.coerceIn(50, 200).toString())

@@ -2,6 +2,7 @@ package app.autospace.car
 
 import android.content.Context
 import app.autospace.AppSettings
+import app.autospace.GearslipLog
 import app.autospace.audio.CarAudio
 import app.autospace.car.theme.GsTheme
 import app.autospace.car.theme.GsThemes
@@ -56,64 +57,64 @@ enum class MirrorFit { FILL, FIT }
  */
 object CarSettings {
 
-    private const val KEY_SCALE = "car_scale"
-    private const val KEY_ICON_SIZE = "car_icon_size"
-    private const val KEY_OPEN = "car_open_on_connect"
-    private const val KEY_NIGHT = "car_night_mode"
-    private const val KEY_PIPE_AUDIO = "car_pipe_audio"
-private const val KEY_SPEAK_DIRECTIONS = "car_speak_directions"
-private const val KEY_BLUETOOTH_WARNING = "car_bluetooth_warning"
-private const val KEY_LOCATION_WARNING = "car_location_warning"
-    private const val KEY_AUDIO_CHOICE_ASKED = "car_audio_choice_asked"
-    private const val KEY_LAST_NAV = "car_last_nav"
-    private const val KEY_LAST_MEDIA = "car_last_media"
-    private const val KEY_AUTOPLAY = "car_autoplay"
-    private const val KEY_LAST_MEDIA_USED_MS = "car_last_media_used_ms"
-    private const val KEY_AUTOPLAY_STOPS = "car_autoplay_stops"
+    internal const val KEY_SCALE = "car_scale"
+    internal const val KEY_ICON_SIZE = "car_icon_size"
+    internal const val KEY_OPEN = "car_open_on_connect"
+    internal const val KEY_NIGHT = "car_night_mode"
+    internal const val KEY_PIPE_AUDIO = "car_pipe_audio"
+internal const val KEY_SPEAK_DIRECTIONS = "car_speak_directions"
+internal const val KEY_BLUETOOTH_WARNING = "car_bluetooth_warning"
+internal const val KEY_LOCATION_WARNING = "car_location_warning"
+    internal const val KEY_AUDIO_CHOICE_ASKED = "car_audio_choice_asked"
+    internal const val KEY_LAST_NAV = "car_last_nav"
+    internal const val KEY_LAST_MEDIA = "car_last_media"
+    internal const val KEY_AUTOPLAY = "car_autoplay"
+    internal const val KEY_LAST_MEDIA_USED_MS = "car_last_media_used_ms"
+    internal const val KEY_AUTOPLAY_STOPS = "car_autoplay_stops"
     // KEY_PLAYER_TITLE retired with playerTitle (see above); the stored
     // value is simply never read again.
     // KEY_APP_THEME retired in r35 with the scheme/mode split (see
     // SchemeMode.kt): the stored value migrates once to KEY_SCHEME +
     // KEY_APPEARANCE_MODE and is then never read again.
-    private const val KEY_THEME = "car_app_theme"
-    private const val KEY_SCHEME = "car_scheme"
-    private const val KEY_APPEARANCE_MODE = "car_appearance_mode"
-    private const val KEY_BRIGHTNESS = "car_brightness"
-    private const val KEY_MIRROR_FIT = "car_mirror_fit"
-    private const val KEY_UI_THEME = "car_ui_theme"
-    private const val KEY_PINNED = "car_pinned_apps"
-    private const val KEY_APP_ORDER = "car_app_order"
-    private const val KEY_SYSTEM_SPEECH = "car_system_speech"
-    private const val KEY_PHONE_MIC = "car_phone_mic_voice"
-    private const val KEY_HOTWORD = "car_hotword"
-    private const val KEY_HOTWORD_PHONE_MIC = "car_hotword_phone_mic"
-    private const val KEY_BARGE_IN = "car_barge_in"
-    private const val KEY_CALL_SPEAKER = "car_call_speaker"
-    private const val KEY_DARK_TYPE = "car_dark_type"
-    private const val KEY_AUTO_NIGHT_MODE = "car_auto_night_mode"
-    private const val KEY_AUTO_NIGHT_START = "car_auto_night_start"
-    private const val KEY_AUTO_NIGHT_END = "car_auto_night_end"
-    private const val KEY_TILE_SIZE = "car_tile_size"
-    private const val KEY_PLAYER_SPEED = "car_player_speed"
-    private const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
-    private const val KEY_SUB_FONT = "car_sub_font"
-    private const val KEY_SUB_SIZE = "car_sub_size"
-    private const val KEY_SUB_COLOR = "car_sub_color"
-    private const val KEY_SUB_BG = "car_sub_bg"
-    private const val KEY_SUB_EDGE = "car_sub_edge"
-    private const val KEY_MEDIA_CARD_DOCK = "car_media_card_dock"
-    private const val KEY_MEDIA_CARD_DOCK_ENABLED = "car_media_card_dock_enabled"
-    private const val KEY_MAP_THEME = "car_map_theme"
-    private const val KEY_ICON_PACK = "car_icon_pack"
-    private const val KEY_ICON_OVERRIDES = "car_icon_overrides"
-    private const val KEY_ICON_MANUAL_PACKS = "car_icon_manual_packs"
-    private const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
-    private const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
-    private const val KEY_APPS_HIDDEN = "car_apps_hidden"
-    private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
-    private const val KEY_UNITS = "car_units"
-    private const val KEY_WHATS_NEW = "car_whats_new_after_updates"
-    private const val KEY_WHATS_NEW_SEEN = "car_whats_new_seen_code"
+    internal const val KEY_THEME = "car_app_theme"
+    internal const val KEY_SCHEME = "car_scheme"
+    internal const val KEY_APPEARANCE_MODE = "car_appearance_mode"
+    internal const val KEY_BRIGHTNESS = "car_brightness"
+    internal const val KEY_MIRROR_FIT = "car_mirror_fit"
+    internal const val KEY_UI_THEME = "car_ui_theme"
+    internal const val KEY_PINNED = "car_pinned_apps"
+    internal const val KEY_APP_ORDER = "car_app_order"
+    internal const val KEY_SYSTEM_SPEECH = "car_system_speech"
+    internal const val KEY_PHONE_MIC = "car_phone_mic_voice"
+    internal const val KEY_HOTWORD = "car_hotword"
+    internal const val KEY_HOTWORD_PHONE_MIC = "car_hotword_phone_mic"
+    internal const val KEY_BARGE_IN = "car_barge_in"
+    internal const val KEY_CALL_SPEAKER = "car_call_speaker"
+    internal const val KEY_DARK_TYPE = "car_dark_type"
+    internal const val KEY_AUTO_NIGHT_MODE = "car_auto_night_mode"
+    internal const val KEY_AUTO_NIGHT_START = "car_auto_night_start"
+    internal const val KEY_AUTO_NIGHT_END = "car_auto_night_end"
+    internal const val KEY_TILE_SIZE = "car_tile_size"
+    internal const val KEY_PLAYER_SPEED = "car_player_speed"
+    internal const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
+    internal const val KEY_SUB_FONT = "car_sub_font"
+    internal const val KEY_SUB_SIZE = "car_sub_size"
+    internal const val KEY_SUB_COLOR = "car_sub_color"
+    internal const val KEY_SUB_BG = "car_sub_bg"
+    internal const val KEY_SUB_EDGE = "car_sub_edge"
+    internal const val KEY_MEDIA_CARD_DOCK = "car_media_card_dock"
+    internal const val KEY_MEDIA_CARD_DOCK_ENABLED = "car_media_card_dock_enabled"
+    internal const val KEY_MAP_THEME = "car_map_theme"
+    internal const val KEY_ICON_PACK = "car_icon_pack"
+    internal const val KEY_ICON_OVERRIDES = "car_icon_overrides"
+    internal const val KEY_ICON_MANUAL_PACKS = "car_icon_manual_packs"
+    internal const val KEY_WIDGETS_DISMISSED = "car_widgets_dismissed"
+    internal const val KEY_WIDGETS_HIDDEN = "car_widgets_hidden"
+    internal const val KEY_APPS_HIDDEN = "car_apps_hidden"
+    internal const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
+    internal const val KEY_UNITS = "car_units"
+    internal const val KEY_WHATS_NEW = "car_whats_new_after_updates"
+    internal const val KEY_WHATS_NEW_SEEN = "car_whats_new_seen_code"
 
     /** How many shortcuts the nav bar makes room for; a driver reaching for one needs it to
      * still be on the bar, not off the edge of a long list. */
@@ -428,14 +429,33 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_SEEN_SAFETY_WARNING, "true")
     }
 
+    /**
+     * Lenient stored-value parse (r173 audit §5 5-28): returns [fallback]
+     * when [stored] does not parse, logging the key + rejected value
+     * first so a corrupted stored value is visible instead of silently
+     * falling back. A blank stored value is not rejected — it means
+     * "never set" — and falls back silently. Fallback behavior is
+     * unchanged; only the log line is new. Internal (not private) so
+     * the settings-hygiene test can pin its parse semantics; the log
+     * line itself is code-review verified, not unit-pinned.
+     */
+    internal fun <T> lenientParse(key: String, stored: String, fallback: T, parse: (String) -> T?, tag: String = "CarSettings"): T {
+        val parsed = parse(stored)
+        if (parsed != null) return parsed
+        if (stored.isNotBlank()) {
+            GearslipLog.w("Ignoring invalid stored value for $key: $stored", tag)
+        }
+        return fallback
+    }
+
     fun init(context: Context) {
         app = context.applicationContext
-        scaleFlow.value = AppSettings.getString(app, KEY_SCALE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
-        iconSizeFlow.value = AppSettings.getString(app, KEY_ICON_SIZE, "1.0").toFloatOrNull()?.coerceIn(0f, 1f) ?: 1f
+        scaleFlow.value = lenientParse(KEY_SCALE, AppSettings.getString(app, KEY_SCALE, "1.0"), 1f) { it.toFloatOrNull()?.coerceIn(0.5f, 1.5f) }
+        iconSizeFlow.value = lenientParse(KEY_ICON_SIZE, AppSettings.getString(app, KEY_ICON_SIZE, "1.0"), 1f) { it.toFloatOrNull()?.coerceIn(0f, 1f) }
         openFlow.value = AppSettings.getString(app, KEY_OPEN, HOME)
         lastNavFlow.value = AppSettings.getString(app, KEY_LAST_NAV, "").ifEmpty { null }
         lastMediaFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA, "").ifEmpty { null }
-        lastMediaUsedMsFlow.value = AppSettings.getString(app, KEY_LAST_MEDIA_USED_MS, "0").toLongOrNull() ?: 0L
+        lastMediaUsedMsFlow.value = lenientParse(KEY_LAST_MEDIA_USED_MS, AppSettings.getString(app, KEY_LAST_MEDIA_USED_MS, "0"), 0L) { it.toLongOrNull() }
         // r35 migration, same one-time pattern as PHONE -> MATERIAL_YOU
         // above: the old car_app_theme value mixed a palette with a mode,
         // so it splits into car_scheme + car_appearance_mode via
@@ -461,20 +481,22 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             AppSettings.putString(app, KEY_APPEARANCE_MODE, mode.name)
             if (legacy.isNotEmpty()) AppSettings.putString(app, KEY_THEME, "")
         } else {
-            schemeFlow.value = runCatching { ColorScheme.valueOf(storedScheme) }
-                .getOrDefault(ColorScheme.NEUTRAL)
-            modeFlow.value = runCatching { AppearanceMode.valueOf(storedMode) }
-                .getOrDefault(AppearanceMode.SYSTEM)
+            schemeFlow.value = lenientParse(KEY_SCHEME, storedScheme, ColorScheme.NEUTRAL) {
+                runCatching { ColorScheme.valueOf(it) }.getOrNull()
+            }
+            modeFlow.value = lenientParse(KEY_APPEARANCE_MODE, storedMode, AppearanceMode.SYSTEM) {
+                runCatching { AppearanceMode.valueOf(it) }.getOrNull()
+            }
         }
-        darkTypeFlow.value = runCatching {
-            DarkModeType.valueOf(AppSettings.getString(app, KEY_DARK_TYPE, DarkModeType.OLED.name))
-        }.getOrDefault(DarkModeType.OLED)
-        autoNightModeFlow.value = runCatching {
-            AutoNightMode.valueOf(AppSettings.getString(app, KEY_AUTO_NIGHT_MODE, AutoNightMode.OFF.name))
-        }.getOrDefault(AutoNightMode.OFF)
-        autoNightStartFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_START, "${21 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 21 * 60
-        autoNightEndFlow.value = AppSettings.getString(app, KEY_AUTO_NIGHT_END, "${7 * 60}").toIntOrNull()?.coerceIn(0, 1439) ?: 7 * 60
-        tileSizeFlow.value = AppSettings.getString(app, KEY_TILE_SIZE, "1.0").toFloatOrNull()?.coerceIn(0.5f, 1.5f) ?: 1f
+        darkTypeFlow.value = lenientParse(KEY_DARK_TYPE, AppSettings.getString(app, KEY_DARK_TYPE, DarkModeType.OLED.name), DarkModeType.OLED) {
+            runCatching { DarkModeType.valueOf(it) }.getOrNull()
+        }
+        autoNightModeFlow.value = lenientParse(KEY_AUTO_NIGHT_MODE, AppSettings.getString(app, KEY_AUTO_NIGHT_MODE, AutoNightMode.OFF.name), AutoNightMode.OFF) {
+            runCatching { AutoNightMode.valueOf(it) }.getOrNull()
+        }
+        autoNightStartFlow.value = lenientParse(KEY_AUTO_NIGHT_START, AppSettings.getString(app, KEY_AUTO_NIGHT_START, "${21 * 60}"), 21 * 60) { it.toIntOrNull()?.coerceIn(0, 1439) }
+        autoNightEndFlow.value = lenientParse(KEY_AUTO_NIGHT_END, AppSettings.getString(app, KEY_AUTO_NIGHT_END, "${7 * 60}"), 7 * 60) { it.toIntOrNull()?.coerceIn(0, 1439) }
+        tileSizeFlow.value = lenientParse(KEY_TILE_SIZE, AppSettings.getString(app, KEY_TILE_SIZE, "1.0"), 1f) { it.toFloatOrNull()?.coerceIn(0.5f, 1.5f) }
         // r20 migration, same pattern as PHONE -> MATERIAL_YOU above: Keycap was
         // replaced by Edge, so a stored "keycap" becomes "edge" (and the migrated
         // value is persisted) instead of falling through byId to Frost.
@@ -484,7 +506,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         } else {
             storedUiTheme
         }
-        brightnessFlow.value = AppSettings.getString(app, KEY_BRIGHTNESS, "1.0").toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 1f
+        brightnessFlow.value = lenientParse(KEY_BRIGHTNESS, AppSettings.getString(app, KEY_BRIGHTNESS, "1.0"), 1f) { it.toFloatOrNull()?.coerceIn(0.05f, 1f) }
         // 2026-10-25: the default is FIT, reversing the earlier
         // Fill default — Fill on a portrait phone crops the top and
         // bottom off, which is the "way too zoomed in" complaint. A
@@ -499,16 +521,16 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
             else -> MirrorFit.FIT
         }
         autoplayFlow.value = AppSettings.getString(app, KEY_AUTOPLAY, "false") == "true"
-        autoplayStopsFlow.value = AppSettings.getString(app, KEY_AUTOPLAY_STOPS, "0").toIntOrNull() ?: 0
+        autoplayStopsFlow.value = lenientParse(KEY_AUTOPLAY_STOPS, AppSettings.getString(app, KEY_AUTOPLAY_STOPS, "0"), 0) { it.toIntOrNull() }
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
         // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
         // own voice already reaches the car.
         speakDirectionsFlow.value = AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, pipeAudioFlow.value.toString()) == "true"
         bluetoothWarningFlow.value = AppSettings.getString(app, KEY_BLUETOOTH_WARNING, "true") == "true"
         locationWarningFlow.value = AppSettings.getString(app, KEY_LOCATION_WARNING, "true") == "true"
-        nightFlow.value = runCatching {
-            NightMode.valueOf(AppSettings.getString(app, KEY_NIGHT, NightMode.AUTO.name))
-        }.getOrDefault(NightMode.AUTO)
+        nightFlow.value = lenientParse(KEY_NIGHT, AppSettings.getString(app, KEY_NIGHT, NightMode.AUTO.name), NightMode.AUTO) {
+            runCatching { NightMode.valueOf(it) }.getOrNull()
+        }
         pinnedFlow.value = AppSettings.getString(app, KEY_PINNED, "")
             .split(",").filter { it.isNotEmpty() }.toSet()
         appOrderFlow.value = AppSettings.getString(app, KEY_APP_ORDER, "")
@@ -522,8 +544,8 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         hotwordPhoneMicFlow.value = AppSettings.getString(app, KEY_HOTWORD_PHONE_MIC, "false") == "true"
         bargeInFlow.value = AppSettings.getString(app, KEY_BARGE_IN, "true") == "true"
         callSpeakerFlow.value = AppSettings.getString(app, KEY_CALL_SPEAKER, "false") == "true"
-        playerSpeedFlow.value = AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0").toFloatOrNull() ?: 1f
-        playerSkipSecFlow.value = AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10").toIntOrNull() ?: 10
+        playerSpeedFlow.value = lenientParse(KEY_PLAYER_SPEED, AppSettings.getString(app, KEY_PLAYER_SPEED, "1.0"), 1f) { it.toFloatOrNull() }
+        playerSkipSecFlow.value = lenientParse(KEY_PLAYER_SKIP_SEC, AppSettings.getString(app, KEY_PLAYER_SKIP_SEC, "10"), 10) { it.toIntOrNull() }
         mediaCardDockFlow.value = mediaCardDockFromStored(AppSettings.getString(app, KEY_MEDIA_CARD_DOCK, ""))
         // r97 graduation migrations, same one-time pattern as the
         // retired r65/r83 blocks: a missing new key means first run
@@ -564,17 +586,28 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
         } else {
             mapChromeFromStored(storedMapTheme)
         }
+        // r173 (audit §5 5-27): the retired seed keys are cleared once
+        // the new keys exist, so they can never re-run a migration.
+        // This sits after BOTH branches, not inside the map-theme
+        // branch alone: a user already migrated on r97–r172 has both
+        // new keys present, so neither branch runs, and an in-branch
+        // clear would never fire for them. The clear is behavior-free:
+        // the seeds are only read inside the two branches above, which
+        // have already run by this point on a first-run load, and a
+        // later load never reads them at all.
+        AppSettings.putString(app, "car_experimental_features", "")
+        AppSettings.putString(app, "car_meridian_chrome", "")
         widgetsDismissedFlow.value = AppSettings.getString(app, KEY_WIDGETS_DISMISSED, "false") == "true"
         hiddenWidgetsFlow.value = AppSettings.getString(app, KEY_WIDGETS_HIDDEN, "")
             .split(",").mapNotNull { runCatching { WidgetKind.valueOf(it) }.getOrNull() }.toSet()
         hiddenAppsFlow.value = AppSettings.getString(app, KEY_APPS_HIDDEN, "")
             .split(",").filter { it.isNotEmpty() }.toSet()
         seenSafetyWarningFlow.value = AppSettings.getString(app, KEY_SEEN_SAFETY_WARNING, "false") == "true"
-        unitsFlow.value = runCatching {
-            Units.valueOf(AppSettings.getString(app, KEY_UNITS, Units.AUTO.name))
-        }.getOrDefault(Units.AUTO)
+        unitsFlow.value = lenientParse(KEY_UNITS, AppSettings.getString(app, KEY_UNITS, Units.AUTO.name), Units.AUTO) {
+            runCatching { Units.valueOf(it) }.getOrNull()
+        }
         whatsNewFlow.value = AppSettings.getString(app, KEY_WHATS_NEW, "true") == "true"
-        whatsNewSeenFlow.value = AppSettings.getString(app, KEY_WHATS_NEW_SEEN, "0").toIntOrNull() ?: 0
+        whatsNewSeenFlow.value = lenientParse(KEY_WHATS_NEW_SEEN, AppSettings.getString(app, KEY_WHATS_NEW_SEEN, "0"), 0) { it.toIntOrNull() }
         // Voice shortcuts (r19) live in the same prefs; loading them here means the car
         // assistant sees phone-side edits on the next connection.
         VoiceShortcuts.ensureLoaded(app)
