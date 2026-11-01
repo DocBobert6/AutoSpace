@@ -54,6 +54,41 @@ object GameMotionSink {
 }
 
 /**
+ * r155: the one registered consumer of phone-side controller key
+ * presses while the mapping screen is capturing a button. The
+ * mapping screen sets this while exactly one row waits for a
+ * button (and clears it on capture, cancel, leaving the screen,
+ * or timeout); GearslipActivity hands a gamepad-class key down to
+ * it instead of swallowing it. It never forwards into the
+ * projector root or Compose focus: the handler applies the press
+ * to the mapping itself and returns true. Precedence in the
+ * activity is sink (game) > capture handler > swallow.
+ */
+object GamePadCaptureSink {
+    @Volatile
+    var handler: ((Int) -> Boolean)? = null
+}
+
+/** What a key press means while a mapping row waits for a button. */
+enum class CaptureOutcome { CANCEL, APPLY, IGNORE }
+
+/** r155: a capture that hears nothing ends on its own after this long. */
+const val CAPTURE_TIMEOUT_MS = 15_000L
+
+/**
+ * Pure capture decision, so the state machine is testable without
+ * a Context: Back cancels (Back is never a candidate code),
+ * a candidate button applies, anything else is ignored and the
+ * row keeps waiting. Repeat suppression lives in the activity,
+ * which never calls the handler for a repeat.
+ */
+fun decideCapture(keyCode: Int): CaptureOutcome = when {
+    keyCode == KeyEvent.KEYCODE_BACK -> CaptureOutcome.CANCEL
+    keyCode in GamePadMapping.CANDIDATE_CODES -> CaptureOutcome.APPLY
+    else -> CaptureOutcome.IGNORE
+}
+
+/**
  * Routes controller input into a libretro button mask. The router
  * remembers which D-pad bits the hat and stick set, so returning to
  * center clears exactly what was set and never a held D-pad key.

@@ -121,6 +121,22 @@ class GameInputTest {
     }
 
     @Test
+    fun captureDecidesBackAsCancelCandidatesAsApplyAndOthersAsIgnore() {
+        assertEquals(CaptureOutcome.CANCEL, decideCapture(KeyEvent.KEYCODE_BACK))
+        for (code in GamePadMapping.CANDIDATE_CODES) {
+            assertEquals("code $code", CaptureOutcome.APPLY, decideCapture(code))
+        }
+        assertEquals(CaptureOutcome.IGNORE, decideCapture(KeyEvent.KEYCODE_UNKNOWN))
+        assertEquals(CaptureOutcome.IGNORE, decideCapture(KeyEvent.KEYCODE_VOLUME_UP))
+        assertEquals(CaptureOutcome.IGNORE, decideCapture(KeyEvent.KEYCODE_BUTTON_THUMBL))
+    }
+
+    @Test
+    fun captureTimeoutIsFifteenSeconds() {
+        assertEquals(15_000L, CAPTURE_TIMEOUT_MS)
+    }
+
+    @Test
     fun controllerDeviceIsDualShockOnlyForPlayStation() {
         assertEquals(261, GameInput.controllerDeviceFor("ps1"))
         assertTrue(GameInput.analogCapable("ps1"))

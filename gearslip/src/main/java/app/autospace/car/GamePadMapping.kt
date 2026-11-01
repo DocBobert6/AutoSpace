@@ -24,16 +24,14 @@ import app.autospace.AppSettings
  *   through GameKeyRouter.onAxes exactly as today, and the PS1
  *   analog vectors keep flowing through onAnalog unmapped. This
  *   round remaps the 12 joypad buttons, not the axes.
- * - Assignment is a touchscreen picker, not press-to-capture. The
- *   r95 scope lock swallows controller keys while no game is open
- *   (GearslipActivity forwards them only while the playback
- *   screen's motion sink is registered), so a menu cannot hear a
- *   button press to capture it. Weakening that lock to capture
- *   presses was not ordered, so the mapping screen lists the
- *   physical buttons and the user taps one. A mapping changed
- *   while a game is open applies the next time that console's
- *   game launches, like core options: the playback screen reads
- *   the stored mapping once, at launch.
+ * - Assignment is press-to-capture (r155), not the r147
+ *   touchscreen picker: tapping a mapping row waits for a button
+ *   press, and the activity hands that press to the mapping
+ *   screen's GamePadCaptureSink handler instead of swallowing it
+ *   (game > capture > swallow). A mapping changed while a game
+ *   is open applies the next time that console's game launches,
+ *   like core options: the playback screen reads the stored
+ *   mapping once, at launch.
  */
 object GamePadMapping {
 

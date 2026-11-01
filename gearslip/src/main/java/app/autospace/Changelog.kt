@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            113, "0.4.102-alpha",
+            listOf(
+                "Controller buttons no longer reach the phone's interface while AutoSpace is open, and controller mapping now captures a button press on the mapping row.",
+            ),
+        ),
+        Release(
             112, "0.4.101-alpha",
             listOf(
                 "The car keyboard now capitalizes sentence starts and turns a double space into a period, except in web addresses, and gains a microphone key for voice dictation with the assistant's breathing band.",

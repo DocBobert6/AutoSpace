@@ -804,26 +804,32 @@ class GearslipActivity : ComponentActivity(), Projection {
         }
     }
 
-    // --- Phone-paired controller input (r93) -------------------------------
+    // --- Phone-paired controller input (r93, swallow widened r155) --------
     //
     // A Bluetooth controller pairs with the PHONE, so its keys and
     // motion arrive at this activity's window, not at the virtual
     // display's: the car composition never sees them on its own.
-    // While a car session is projecting, gamepad-class input is
-    // forwarded to the projector, where keys reach the focused row
-    // or the playback screen and motion reaches the playback
-    // screen's registered handler. Gated on a live projector, so
-    // controller input on the phone's own screens is untouched,
-    // and a session with no projector never forwards anything.
     //
     // Scope lock (r95): the controller only ever drives a game
     // that is actually open. The playback screen registers its
     // motion sink while it is up and clears it on leave, so the
     // sink's presence is the "a game is open" signal: with it,
-    // keys and motion go to the playback screen; without it, the
-    // events are swallowed here, so the controller never moves
-    // UI focus, backs out of Games, or closes anything. With no
-    // projector, phone screens are untouched exactly as before.
+    // keys and motion go to the playback screen.
+    //
+    // r155: for gamepad-class input delivered to this activity's
+    // window, the overrides below NEVER fall through to super
+    // while the activity is focused, projecting or not.
+    // Precedence is: a live game sink forwards to the projector;
+    // a mapping capture (GamePadCaptureSink, set only by the
+    // mapping screen while one row waits for a button) takes the
+    // key down; anything else is swallowed here, so the
+    // controller never moves phone UI focus, backs out of Games,
+    // or closes anything while AutoSpace is open. Forwarding
+    // still needs a live projector plus a set sink. This can only
+    // cover this activity's own window: input aimed at another
+    // app's window never reaches these overrides, and pads in
+    // keyboard/HID mode fail isGamepadInput and still fall to
+    // super, exactly as before.
     private fun isGamepadInput(source: Int): Boolean =
         source and android.view.InputDevice.SOURCE_GAMEPAD ==
             android.view.InputDevice.SOURCE_GAMEPAD ||
@@ -833,36 +839,40 @@ class GearslipActivity : ComponentActivity(), Projection {
                 android.view.InputDevice.SOURCE_DPAD
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (!isGamepadInput(event.source)) return super.onKeyDown(keyCode, event)
         val projector = screenProjector
-        if (projector != null && isGamepadInput(event.source)) {
-            if (app.autospace.car.GameMotionSink.handler != null) {
-                projector.dispatchControllerKey(keyCode, true, event.source)
-            }
+        if (app.autospace.car.GameMotionSink.handler != null && projector != null) {
+            projector.dispatchControllerKey(keyCode, true, event.source)
             return true
         }
-        return super.onKeyDown(keyCode, event)
+        val capture = app.autospace.car.GamePadCaptureSink.handler
+        if (capture != null) {
+            // Key-DOWN only: a repeat never re-fires a capture,
+            // and a key up during capture is just swallowed below.
+            if (event.repeatCount == 0) return capture(keyCode)
+            return true
+        }
+        return true
     }
 
     override fun onKeyUp(keyCode: Int, event: android.view.KeyEvent): Boolean {
+        if (!isGamepadInput(event.source)) return super.onKeyUp(keyCode, event)
         val projector = screenProjector
-        if (projector != null && isGamepadInput(event.source)) {
-            if (app.autospace.car.GameMotionSink.handler != null) {
-                projector.dispatchControllerKey(keyCode, false, event.source)
-            }
+        if (app.autospace.car.GameMotionSink.handler != null && projector != null) {
+            projector.dispatchControllerKey(keyCode, false, event.source)
             return true
         }
-        return super.onKeyUp(keyCode, event)
+        return true
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if (!isGamepadInput(event.source)) return super.onGenericMotionEvent(event)
         val projector = screenProjector
-        if (projector != null && isGamepadInput(event.source)) {
-            if (app.autospace.car.GameMotionSink.handler != null) {
-                projector.dispatchMotion(event)
-            }
+        if (app.autospace.car.GameMotionSink.handler != null && projector != null) {
+            projector.dispatchMotion(event)
             return true
         }
-        return super.onGenericMotionEvent(event)
+        return true
     }
 
     override fun onProjectionStopped() {

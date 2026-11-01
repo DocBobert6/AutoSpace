@@ -562,7 +562,12 @@ private fun ConsolePage(
     // recomposes the rows with the fresh stored values after an
     // assignment or reset.
     var mappingVersion by remember { mutableStateOf(0) }
-    var expandedAction by remember { mutableStateOf<Int?>(null) }
+    // r155: press-to-capture replaces the r147 in-place picker.
+    // Tapping a mapping row waits for a button press instead of
+    // opening a list: the row shows "Press a button…" until a
+    // button is captured, the row is tapped again, Back cancels,
+    // the screen is left, or the timeout below fires.
+    var capturingAction by remember { mutableStateOf<Int?>(null) }
     // r149: display state lives here too, in the @Composable
     // body - the tick remounts the rows below with the fresh
     // stored values after a toggle, reset, or amount step.
@@ -586,6 +591,43 @@ private fun ConsolePage(
     }
     val padMapping = remember(consoleKey, mappingVersion) {
         GamePadMapping.storedMapping(context, consoleKey)
+    }
+    // r155: while one row waits, the activity's controller path
+    // hands gamepad-class key downs to this handler instead of
+    // swallowing them. The handler never forwards into the
+    // projector root or Compose focus: it applies the press to
+    // the mapping itself. Leaving the console page (including
+    // the parked gate swapping the content away) leaves this
+    // composition, so onDispose always clears the handler.
+    DisposableEffect(capturingAction) {
+        val bit = capturingAction
+        if (bit != null) {
+            GamePadCaptureSink.handler = { code ->
+                when (decideCapture(code)) {
+                    CaptureOutcome.CANCEL -> {
+                        capturingAction = null
+                        true
+                    }
+                    CaptureOutcome.APPLY -> {
+                        GamePadMapping.setKeyCode(context, consoleKey, bit, code)
+                        mappingVersion++
+                        capturingAction = null
+                        true
+                    }
+                    CaptureOutcome.IGNORE -> true
+                }
+            }
+        }
+        onDispose { GamePadCaptureSink.handler = null }
+    }
+    // r155: a capture that hears nothing ends on its own after
+    // 15 seconds. Retapping another row restarts the clock: the
+    // effect restarts with the new capturing action.
+    LaunchedEffect(capturingAction) {
+        if (capturingAction != null) {
+            delay(CAPTURE_TIMEOUT_MS)
+            capturingAction = null
+        }
     }
     ScreenHeader(console?.label ?: consoleKey)
     Text(
@@ -630,10 +672,10 @@ private fun ConsolePage(
         }
         item(key = "mapping-note") {
             Text(
-                "Remap this console's buttons. The mapping is stored " +
-                    "for this console only, and applies the next time " +
-                    "you launch one of its games. Buttons you don't " +
-                    "remap keep today's behavior.",
+                "Tap a row, then press the button you want for it. " +
+                    "The mapping is stored for this console only, and " +
+                    "applies the next time you launch one of its games. " +
+                    "Buttons you don't remap keep today's behavior.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -643,28 +685,16 @@ private fun ConsolePage(
             item(key = "mapping-${action.bit}") {
                 GameMenuRow(
                     title = action.label,
-                    caption = "Assigned: " + GamePadMapping.buttonLabel(assigned),
+                    caption = if (capturingAction == action.bit) {
+                        "Press a button…"
+                    } else {
+                        "Assigned: " + GamePadMapping.buttonLabel(assigned)
+                    },
                     trailing = {
                         Icon(Icons.Filled.ChevronRight, contentDescription = null)
                     },
                 ) {
-                    expandedAction = if (expandedAction == action.bit) null else action.bit
-                }
-            }
-            if (expandedAction == action.bit) {
-                items(GamePadMapping.CANDIDATE_CODES, key = { "mapping-${action.bit}-$it" }) { code ->
-                    GameMenuRow(
-                        title = GamePadMapping.buttonLabel(code),
-                        caption = if (code == assigned) {
-                            "Currently assigned to " + action.label
-                        } else {
-                            null
-                        },
-                    ) {
-                        GamePadMapping.setKeyCode(context, consoleKey, action.bit, code)
-                        mappingVersion++
-                        expandedAction = null
-                    }
+                    capturingAction = if (capturingAction == action.bit) null else action.bit
                 }
             }
         }
@@ -675,7 +705,7 @@ private fun ConsolePage(
             ) {
                 GamePadMapping.resetConsole(context, consoleKey)
                 mappingVersion++
-                expandedAction = null
+                capturingAction = null
             }
         }
         item(key = "display-header") {
