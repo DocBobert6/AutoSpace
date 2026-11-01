@@ -188,6 +188,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     val iconSize by CarSettings.iconSize.collectAsState()
     val tileSize by CarSettings.tileSize.collectAsState()
     val scheme by CarSettings.colorScheme.collectAsState()
+    val renderedScheme by CarSettings.effectiveColorScheme.collectAsState()
     val appearanceMode by CarSettings.appearanceMode.collectAsState()
     val darkType by CarSettings.darkModeType.collectAsState()
     val uiTheme by CarSettings.uiTheme.collectAsState()
@@ -420,17 +421,31 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     // r97 graduation, renamed r107: the navigation style. Themed
     // follows the button style and color scheme and is the default;
     // Meridian wears its fixed colors. Meridian never replaces themed
-    // chrome — it is one choice beside it.
+    // chrome — it is one choice beside it. r179: while the rendered
+    // color scheme is Meridian, the style is locked to Meridian — the
+    // row below is disabled and the stored choice is preserved
+    // underneath, returning when the scheme leaves Meridian. The row
+    // keeps showing the stored choice while locked, and the note below
+    // explains why the chrome differs.
+    val meridianLocked = renderedScheme == ColorScheme.MERIDIAN
     ChoiceRow(
         "Navigation style",
         listOf(MapChrome.THEMED to "Themed", MapChrome.MERIDIAN to "Meridian"),
         mapTheme,
+        enabled = !meridianLocked,
     ) { CarSettings.setMapTheme(it) }
     Text(
         "Themed follows your style and color scheme; Meridian wears fixed colors.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    if (meridianLocked) {
+        Text(
+            "Locked to Meridian while the Meridian color scheme is active. Your saved navigation style returns when you leave the Meridian scheme.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 
     // r97 graduation: the Home widget column is regular now. These
     // rows hide individual widgets, and the button below brings the

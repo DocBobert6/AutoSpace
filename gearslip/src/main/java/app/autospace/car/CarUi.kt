@@ -478,7 +478,14 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                 // before. The two forms are exclusive, so the side strip and
                 // the bottom strip are never both nonzero.
                 val mapTheme by CarSettings.mapTheme.collectAsState()
-                val meridianBar = mapTheme == MapChrome.MERIDIAN
+                // r179: the same scheme-keyed lock as the chrome (see
+                // [effectiveMapChrome]) — the rail/pill form follows
+                // the chrome, so the two can never disagree. The
+                // rendered scheme is collected explicitly (rather
+                // than reusing effScheme) so preview overrides change
+                // nothing about the lock.
+                val renderedScheme by CarSettings.effectiveColorScheme.collectAsState()
+                val meridianBar = effectiveMapChrome(mapTheme, renderedScheme) == MapChrome.MERIDIAN
                 val frame by CarEnvironment.frame.collectAsState()
                 val barForm = if (meridianBar) {
                     meridianBarForm(frame.width, frame.height, frame.densityDpi)

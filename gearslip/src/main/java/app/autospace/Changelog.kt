@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            137, "0.4.126-alpha",
+            listOf(
+                "While the Meridian color scheme is active, navigation always wears the Meridian look, and the navigation style row is locked with a note. Your saved style returns when you leave the Meridian scheme.",
+            ),
+        ),
+        Release(
             132, "0.4.121-alpha",
             listOf(
                 "Final audit cleanup: deduped helpers, module-map comments, and contributor docs. No behavior change.",

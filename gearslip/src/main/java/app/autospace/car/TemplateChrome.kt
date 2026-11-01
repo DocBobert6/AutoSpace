@@ -141,13 +141,16 @@ fun visibleAreaFor(template: Template?, width: Int, height: Int, coveredStartPx:
  * r97 graduation: the single Meridian computation. Every Meridian site
  * in this file — the turn card, the trip pill, the panes, the edge
  * controls — calls this one helper, so they can never disagree about
- * which look they wear. Meridian renders exactly when the regular
- * map-theme choice says Meridian; Themed is the default.
+ * which look they wear. r179: Meridian renders when the regular
+ * map-theme choice says Meridian OR the rendered color scheme is
+ * Meridian (the scheme-keyed lock, see [effectiveMapChrome]); Themed
+ * is the default. The stored choice is never rewritten here.
  */
 @Composable
 private fun meridianChromeNow(): Boolean {
     val mapTheme by CarSettings.mapTheme.collectAsState()
-    return mapTheme == MapChrome.MERIDIAN
+    val renderedScheme by CarSettings.effectiveColorScheme.collectAsState()
+    return effectiveMapChrome(mapTheme, renderedScheme) == MapChrome.MERIDIAN
 }
 
 @Composable

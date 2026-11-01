@@ -91,4 +91,26 @@ class MapChromeTest {
     fun stripTextNullWhenNeither() {
         assertNull(nextStripText("", ""))
     }
+
+    /** r179: the Meridian theme lock, scheme-keyed and one-directional. */
+    @Test
+    fun lockMeridianSchemeForcesMeridianChrome() {
+        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(MapChrome.THEMED, ColorScheme.MERIDIAN))
+    }
+
+    @Test
+    fun lockKeepsStoredMeridianOnMeridianScheme() {
+        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(MapChrome.MERIDIAN, ColorScheme.MERIDIAN))
+    }
+
+    @Test
+    fun lockLeavesStoredChoiceAloneOffMeridianScheme() {
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, ColorScheme.NEUTRAL))
+        assertEquals(MapChrome.MERIDIAN, effectiveMapChrome(MapChrome.MERIDIAN, ColorScheme.NEUTRAL))
+    }
+
+    @Test
+    fun lockNeverFiresForNightScheme() {
+        assertEquals(MapChrome.THEMED, effectiveMapChrome(MapChrome.THEMED, ColorScheme.NIGHT))
+    }
 }

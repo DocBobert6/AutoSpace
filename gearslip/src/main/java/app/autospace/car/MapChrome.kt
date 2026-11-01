@@ -70,6 +70,22 @@ fun mapChromeFromStored(stored: String): MapChrome = when (stored) {
     else -> MapChrome.THEMED
 }
 
+/**
+ * r179: the Meridian theme lock, scheme-keyed and one-directional.
+ * While the rendered color scheme is Meridian, navigation chrome is
+ * Meridian regardless of the stored map-theme choice; otherwise the
+ * stored choice rules. Pure so the rule is JVM-testable, and it never
+ * writes state: the stored choice is preserved underneath and renders
+ * again when the scheme leaves Meridian. A stored Meridian choice on
+ * another scheme is untouched, so the lock never removes a Meridian
+ * look anyone chose directly. Callers pass the RENDERED scheme
+ * ([CarSettings.effectiveColorScheme]), not the stored preference, so
+ * an active Auto night — which renders NIGHT — releases the lock and
+ * Auto night's own switch is unchanged.
+ */
+fun effectiveMapChrome(stored: MapChrome, renderedScheme: ColorScheme): MapChrome =
+    if (renderedScheme == ColorScheme.MERIDIAN) MapChrome.MERIDIAN else stored
+
 
 
 /** The next-step strip exists only in Meridian mode, and only when a next step exists. */
