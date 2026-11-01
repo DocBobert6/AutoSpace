@@ -51,8 +51,12 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * Whether an app will talk to us at all is decided by its HostValidator, which accepts a host
  * that either holds android.car.permission.TEMPLATE_RENDERER or is signed by a key on its
- * allow-list. Gearslip declares that permission in its manifest, which is the whole reason
- * this can work from an ordinary app - see AndroidManifest.xml.
+ * allow-list. That permission is discovery, not trust: it is normal-level, so any app can
+ * hold it, and the allow-list is the app's own decision, not ours. AutoSpace is not on any
+ * templated app's allow-list, so the permission branch is how apps accept it as a host —
+ * and the check itself runs in each app's process, inside the car-app library, so there is
+ * no host-side check here to reorder. Gearslip declares that permission in its manifest,
+ * which is the whole reason this can work from an ordinary app - see AndroidManifest.xml.
  *
  * Every binder callback lands on a binder thread and is hopped to the main thread, because
  * the state here feeds Compose.

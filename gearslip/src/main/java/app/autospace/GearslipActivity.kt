@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.usb.UsbAccessory
 import android.hardware.usb.UsbManager
 import android.media.projection.MediaProjection
@@ -690,6 +691,13 @@ class GearslipActivity : ComponentActivity(), Projection {
             return
         }
         if (intent?.action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED) return
+        // No USB-accessory feature on this device: the system should never deliver this
+        // intent here, but refuse explicitly rather than opening an accessory that cannot
+        // exist (audit 5-03). The Settings switch is untouched: it also gates wireless.
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY)) {
+            GearslipLog.i("accessory attached, but this device has no USB accessory support - not connecting")
+            return
+        }
         // Switched off in Settings: the system shouldn't route the car here at all, but if it
         // does, leave the accessory alone.
         if (!AppSettings.gearslipEnabled(this)) {

@@ -104,6 +104,14 @@ object AppSettings {
     }
 
     /**
+     * Pure rule for the USB connection option (audit 5-03): the saved switch AND the device
+     * feature. The switch alone also gates wireless, so it must never be hidden or disabled
+     * on a feature-less device — only the USB alias follows this rule.
+     */
+    fun usbConnectionAllowed(switchOn: Boolean, hasUsbAccessoryFeature: Boolean): Boolean =
+        switchOn && hasUsbAccessoryFeature
+
+    /**
      * Makes the USB alias match the saved switch. Called at every launch as well, so a switch
      * saved without the alias following it (an older build crashed right there) heals itself.
      * Only the alias changes: the driver's "always open with Gearslip" choice for the car is kept.
@@ -114,12 +122,14 @@ object AppSettings {
         // The class name comes from the code's namespace, not the package: a debug build installs
         // as ".dev", but the alias is still app.autospace.GearslipUsbAccessory.
         val component = ComponentName(appContext.packageName, "${GearslipActivity::class.java.`package`!!.name}.GearslipUsbAccessory")
-        val state = if (value) {
+        val pm = appContext.packageManager
+        // A device without the USB-accessory feature never gets the alias, whatever the
+        // switch says: the switch still gates wireless, so it stays visible and untouched.
+        val state = if (usbConnectionAllowed(value, pm.hasSystemFeature(PackageManager.FEATURE_USB_ACCESSORY))) {
             PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
         } else {
             PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         }
-        val pm = appContext.packageManager
         if (pm.getComponentEnabledSetting(component) == state) return
         runCatching { pm.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP) }
             .onFailure { GearslipLog.e("could not switch the USB connection ${if (value) "on" else "off"}", it) }

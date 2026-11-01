@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            129, "0.4.118-alpha",
+            listOf(
+                "Manifest and dependency cleanup: unused entries removed, the USB accessory is optional, and release builds fail fast without a signing key.",
+            ),
+        ),
+        Release(
             128, "0.4.117-alpha",
             listOf(
                 "Onboarding wording is clearer: the intro pages now say exactly what each step does.",

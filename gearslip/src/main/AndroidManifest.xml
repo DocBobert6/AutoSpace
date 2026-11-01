@@ -37,10 +37,10 @@
         android:usesPermissionFlags="neverForLocation" />
     <!-- Android 17 drops an app's traffic to the car's Wi-Fi without this. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Kept: ConnectivityManager.getNetworkCapabilities(activeNetwork) needs it
+         (GeminiClient, WorkerDownloadSupport, WirelessLink). The other three network lines
+         the audit flagged had no code use and are deleted, not commented. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
     <!-- The dashboard opened from the car clock: today's agenda and current weather. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
@@ -80,17 +80,23 @@
 
     <!--
       Declared, not just requested. Templated apps decide whether to talk to a host by asking
-      whether it holds this permission (HostValidator.isValidHost checks it before falling back
-      to a signature allow-list containing Android Auto's). It is defined by the car framework
-      on Android Automotive, which does not exist on a phone, so nothing else defines it here
-      and Gearslip has to define it to be able to hold it.
+      whether it holds this permission — but that is discovery, not trust: the permission is
+      normal-level, so any app can hold it, and the signature allow-list is the app's own
+      decision, not this host's. AutoSpace is not on any templated app's allow-list, so the
+      permission branch is how apps accept it as a host; dropping the declaration would break
+      templated apps, not harden them. It is defined by the car framework on Android
+      Automotive, which does not exist on a phone, so nothing else defines it here and
+      Gearslip has to define it to be able to hold it.
     -->
     <permission
         android:name="android.car.permission.TEMPLATE_RENDERER"
         android:protectionLevel="normal" />
     <uses-permission android:name="android.car.permission.TEMPLATE_RENDERER" />
 
-    <uses-feature android:name="android.hardware.usb.accessory" android:required="true" />
+    <!-- Not required: the app also works wirelessly and in test mode, so a device without
+         the USB-accessory feature can still install and run; the USB attach path refuses
+         explicitly when the feature is absent (see AppSettings.usbConnectionAllowed). -->
+    <uses-feature android:name="android.hardware.usb.accessory" android:required="false" />
 
     <queries>
     <!-- Named directly: current builds have no launcher-category entry point for the MAIN/

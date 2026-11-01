@@ -78,7 +78,7 @@ android {
             keyPassword = "android"
         }
         // Declared only when the properties file is present, so a clone without the key still
-        // builds debug; assembleRelease then falls back to unsigned rather than failing here.
+        // builds debug; assembleRelease fails fast below instead of producing an unsigned APK.
         if (keystoreProperties.getProperty("storeFile") != null) {
             create("release") {
                 storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
@@ -149,6 +149,23 @@ android {
 
 }
 
+// Audit 5-09: a release build without the signing key used to come out unsigned, and an
+// unsigned release APK cannot install as an update. Fail fast on assembleRelease only, so
+// keyless clones still build debug and run tests. Safe for CI: release.yml writes
+// keystore.properties before assembleRelease, and no other workflow runs assembleRelease.
+tasks.named("assembleRelease") {
+    doFirst {
+        val storeFile = keystoreProperties.getProperty("storeFile")
+        if (storeFile == null || !rootProject.file(storeFile).exists()) {
+            throw GradleException(
+                "Release signing key missing: no keystore.properties with a storeFile that exists " +
+                "(checked beside gearslip/build.gradle.kts and at the repository root). " +
+                "Refusing to produce an unsigned release APK."
+            )
+        }
+    }
+}
+
 // Renames the produced APK and moves it to the root build/ folder (<root>/build/Gearslip-debug.apk)
 // after the fact rather than fighting AGP's variant-output API across versions - simpler and
 // doesn't break when that API moves again.
@@ -179,6 +196,9 @@ dependencies {
     // guesses for this button failed CI before this line was added.
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.activity.compose)
+    // Direct use in 15 files (androidx.core.app, content, graphics) — declared explicitly
+    // (audit 5-06) instead of arriving transitively via compose/car-app.
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     // Used from the host side, not the app side: Gearslip renders other apps' templates rather
     // than publishing its own, so this is here for the AIDL interfaces and the model classes
