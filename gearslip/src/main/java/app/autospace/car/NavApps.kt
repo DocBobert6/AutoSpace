@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -110,10 +111,13 @@ internal object BuiltInApps {
     /** r89: the Games library — a launcher tile that opens the Games section. */
     val Games = BuiltInApp("games", "Games", Icons.Filled.SportsEsports, CarScreen.App("games")) { it.open("games") }
 
+    /** r161: the Bookshelf — a launcher tile that opens the EPUB reader section. */
+    val Books = BuiltInApp("books", "Bookshelf", Icons.Filled.MenuBook, CarScreen.App("books")) { it.open("books") }
+
     /** Hands the screen back to the car's own interface, like Android Auto's Exit. */
     val Exit = BuiltInApp("exit", "Exit", CarGlyph, screen = null) { CarFocus.exitToCar() }
 
-    val all = listOf(Web, ScreenSharing, Phone, VehicleData, Settings, Games, Exit)
+    val all = listOf(Web, ScreenSharing, Phone, VehicleData, Settings, Games, Books, Exit)
     val entries: List<Entry> = all.map { Entry(it.label, icon = null, builtIn = it) }
 }
 

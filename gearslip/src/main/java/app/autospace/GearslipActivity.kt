@@ -17,6 +17,7 @@ import android.provider.Settings
 import android.view.MotionEvent
 import android.view.Surface
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
@@ -678,6 +679,16 @@ class GearslipActivity : ComponentActivity(), Projection {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // r161: Open-with for EPUB books. The car navigator lives in
+        // composition and is not reachable from this activity, so an
+        // opened book is imported and toasted here; it waits on the
+        // bookshelf the next time that section opens. The import runs
+        // off the main thread (a big EPUB must never stall the
+        // activity), and only the toast posts back to it.
+        if (intent?.action == Intent.ACTION_VIEW) {
+            handleEpubView(intent)
+            return
+        }
         if (intent?.action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED) return
         // Switched off in Settings: the system shouldn't route the car here at all, but if it
         // does, leave the accessory alone.
@@ -693,6 +704,25 @@ class GearslipActivity : ComponentActivity(), Projection {
         }
         GearslipLog.i("accessory attached by the system - permission is implicit on this path")
         start(accessory)
+    }
+
+    private fun handleEpubView(intent: Intent) {
+        val uri = intent.data ?: return
+        val looksEpub = intent.type == "application/epub+zip" ||
+            uri.toString().endsWith(".epub", ignoreCase = true) ||
+            uri.lastPathSegment?.endsWith(".epub", ignoreCase = true) == true
+        if (!looksEpub) return
+        Thread {
+            val result = app.autospace.car.BookImport.importFromUri(this, uri, allowDuplicate = true)
+            runOnUiThread {
+                val text = when (result) {
+                    is app.autospace.car.BookImportResult.Added -> "Added to your bookshelf"
+                    is app.autospace.car.BookImportResult.Refused -> result.reason
+                    is app.autospace.car.BookImportResult.Failed -> result.reason
+                }
+                Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+            }
+        }.start()
     }
 
     private fun start(accessory: UsbAccessory) {

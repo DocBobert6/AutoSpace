@@ -22,6 +22,13 @@ class DownloadCompleteReceiver : BroadcastReceiver() {
         if (dmId < 0L) return
         val record = BrowserStore.downloadByManagerId(context, dmId) ?: return
         if (record.state != BrowserStore.DownloadState.IN_PROGRESS) return
-        BrowserDownloads.refreshRecord(context, record)
+        val updated = BrowserDownloads.refreshRecord(context, record)
+        // r161: a download that has just completed may be an EPUB for
+        // the bookshelf. Only the completion transition auto-shelves:
+        // the list-open refresh never re-fires it, so a shelved name
+        // can never toast twice.
+        if (updated.state == BrowserStore.DownloadState.COMPLETE) {
+            BookAutoShelf.maybeAutoShelf(context, updated)
+        }
     }
 }

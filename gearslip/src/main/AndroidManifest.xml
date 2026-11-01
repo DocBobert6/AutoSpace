@@ -378,6 +378,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- r161: Open-with for EPUB books only. This is the one
+                 VIEW filter AutoSpace declares: an EPUB opened from
+                 another app imports into the bookshelf. No other file
+                 type is claimed, and nothing here opens a browser. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" android:mimeType="application/epub+zip" />
+                <data android:scheme="file" android:mimeType="application/epub+zip" />
+                <data android:scheme="content" android:host="*" android:pathPattern=".*\\.epub" />
+                <data android:scheme="file" android:host="*" android:pathPattern=".*\\.epub" />
+            </intent-filter>
+
         </activity>
 
         <!--

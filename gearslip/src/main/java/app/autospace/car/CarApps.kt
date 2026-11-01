@@ -2,6 +2,7 @@ package app.autospace.car
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Settings
@@ -37,6 +38,9 @@ object CarApps {
         },
         CarApp("games", "Games", Icons.Filled.SportsEsports) {
             GamesScreen()
+        },
+        CarApp("books", "Bookshelf", Icons.Filled.MenuBook) {
+            BookshelfScreen()
         },
     )
 

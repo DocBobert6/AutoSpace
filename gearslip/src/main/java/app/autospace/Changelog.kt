@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            119, "0.4.108-alpha",
+            listOf(
+                "A bookshelf joins the launcher: open EPUB books, pick up where you left off, and listen with read-aloud.",
+            ),
+        ),
+        Release(
             118, "0.4.107-alpha",
             listOf(
                 "Downloads are complete: DASH videos save into the Offline library too, with Wi-Fi-only and segmented-download settings.",
