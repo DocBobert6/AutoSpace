@@ -67,6 +67,8 @@ import app.autospace.SessionStatus
 import app.autospace.notify.TestMessage
 import app.autospace.car.AutoNightMode
 import app.autospace.car.CarSettings
+import app.autospace.car.ColorScheme
+import app.autospace.car.displayName
 import app.autospace.car.NightAuto
 import app.autospace.car.SunResult
 import kotlinx.coroutines.Dispatchers
@@ -304,11 +306,14 @@ private fun NightSection() {
             delay(60_000)
         }
     }
+    // r177: the scheme name comes from displayName, never a hardcoded
+    // string — the old footer said "Night" after the scheme was renamed.
+    val nocturneName = ColorScheme.NIGHT.displayName
     SettingsSection(
         "Night",
-        footer = "At night, Auto night switches the color scheme to Night. Your chosen scheme " +
-            "returns in the morning. If you pick Night yourself, it stays Night all the time. " +
-            "To stop the switching, turn Auto night off. While Night is active, the background " +
+        footer = "At night, Auto night switches the color scheme to $nocturneName. Your chosen scheme " +
+            "returns in the morning. If you pick $nocturneName yourself, it stays $nocturneName all the time. " +
+            "To stop the switching, turn Auto night off. While $nocturneName is active, the background " +
             "is pure black no matter which dark type is picked.",
     ) {
         NightModeRow("Off", "No automatic switching", mode == AutoNightMode.OFF) {

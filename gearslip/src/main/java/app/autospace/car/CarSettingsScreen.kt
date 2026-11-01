@@ -304,6 +304,30 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         Text("Reset sizes")
     }
 
+    // r177: Pairs sits above the two pickers it sets (moved from below
+    // Button style) — one tap sets style + scheme together.
+    // r80 Pairs: one tap sets the button style and the color scheme
+    // together. The tap writes exactly those two keys — nothing else —
+    // so the two pickers below keep working on their own afterward and
+    // no pair ever locks. The highlighted chip is derived from the two
+    // current values (themePairFor), never stored: a combination no
+    // pair names simply highlights nothing.
+    ChoiceRow(
+        "Pairs",
+        themePairs.map { it to it.label },
+        themePairFor(uiTheme, scheme),
+    ) {
+        CarSettings.setUiTheme(it.styleId)
+        CarSettings.setColorScheme(it.scheme)
+    }
+    Text(
+        "One tap sets the button style and the color scheme together. " +
+            "Picking either one on its own afterward still works — " +
+            "pairs never lock.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     ChoiceRow(
         "Color scheme",
         colorSchemes.map { it to it.displayName },
@@ -367,29 +391,8 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
         uiTheme,
     ) { CarSettings.setUiTheme(it) }
 
-    // r80 Pairs: one tap sets the button style and the color scheme
-    // together. The tap writes exactly those two keys — nothing else —
-    // so the two pickers above keep working on their own afterward and
-    // no pair ever locks. The highlighted chip is derived from the two
-    // current values (themePairFor), never stored: a combination no
-    // pair names simply highlights nothing.
-    ChoiceRow(
-        "Pairs",
-        themePairs.map { it to it.label },
-        themePairFor(uiTheme, scheme),
-    ) {
-        CarSettings.setUiTheme(it.styleId)
-        CarSettings.setColorScheme(it.scheme)
-    }
-    Text(
-        "One tap sets the button style and the color scheme together. " +
-            "Picking either one on its own afterward still works — " +
-            "pairs never lock.",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 
-    // r81 icon packs: after Pairs, before Map day/night — the other
+    // r81 icon packs: below the theme pickers — the other
     // appearance choice that changes how apps look.
     IconPackSection(keyboardSlot)
 
