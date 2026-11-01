@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            116, "0.4.105-alpha",
+            listOf(
+                "Downloaded videos and audio now live in an Offline library in the browser menu, where you can play, share, or save a copy.",
+            ),
+        ),
+        Release(
             115, "0.4.104-alpha",
             listOf(
                 "Downloads now keep a list: open, delete, or retry them from the browser menu.",

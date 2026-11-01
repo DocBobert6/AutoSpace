@@ -42,9 +42,13 @@ data class FoundMedia(val url: String, val title: String? = null) {
  * row — the precise per-item alternative to the browser bar button's
  * most-recent heuristic. Null (the default) renders exactly today's
  * sheet: the feature does not exist while its gate is off.
+ * r158: onDownload, when non-null, adds a "Download" button beside
+ * each row in the same style. A finder download is always a media
+ * download (it lands in the Offline library); the sheet stays open
+ * after tapping it, so more than one item can be downloaded.
  */
 @Composable
-fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit, onPopOut: ((FoundMedia) -> Unit)? = null) {
+fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit, onPopOut: ((FoundMedia) -> Unit)? = null, onDownload: ((FoundMedia) -> Unit)? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(
@@ -133,6 +137,14 @@ fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onCl
                                         tone = GsTone.Tonal,
                                     ) {
                                         Text("Pop out")
+                                    }
+                                }
+                                if (onDownload != null) {
+                                    GsButton(
+                                        onClick = { onDownload(item) },
+                                        tone = GsTone.Tonal,
+                                    ) {
+                                        Text("Download")
                                     }
                                 }
                             }

@@ -305,11 +305,11 @@ object BrowserStore {
     // framework classes return defaults under
     // unitTests.isReturnDefaultValues, so a JSON codec cannot be
     // pinned by a JVM test here). The record shape is deliberately
-    // minimal but forward-compatible: slice 2 adds the media flag and
-    // the Offline library section on top of these records without
-    // changing this codec. HLS (.m3u8), DASH (.mpd), and segmented
-    // downloads get records only in slices 3–4; until then this
-    // list covers plain DownloadManager downloads only.
+    // minimal but forward-compatible: r158 (slice 2) added the media
+    // flag and the Offline library section on top of these records
+    // without changing the store key. HLS (.m3u8), DASH (.mpd), and
+    // segmented downloads get records only in slices 3–4; until then
+    // this list covers plain DownloadManager downloads only.
     /** Plain-download lifecycle: in progress, finished, or failed. */
     enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED }
 
@@ -319,8 +319,11 @@ object BrowserStore {
      * created without one, but the codec tolerates it); [localSource] is
      * the DownloadManager local URI once the download completes, null
      * until then. [isPrivate] marks a private-tab origin: such records
-     * are stored but never shown in the Downloads list, and their bytes
+     * are stored but never shown in either list, and their bytes
      * are deleted with the private profile (see BrowserDownloads).
+     * [isMedia] (r158, slice 2) marks a video/audio download: such
+     * records live in the Offline library, not in Downloads. It
+     * defaults to false so pre-flag rows decode unchanged.
      */
     data class DownloadRecord(
         val id: String,
@@ -331,6 +334,7 @@ object BrowserStore {
         val localSource: String?,
         val isPrivate: Boolean,
         val createdAtMs: Long,
+        val isMedia: Boolean = false,
     )
 
     private const val KEY_DOWNLOADS = "browser_downloads"
@@ -345,7 +349,9 @@ object BrowserStore {
 
     /**
      * Pure codec: one line per record, fields in fixed order —
-     * id | url | file | state | manager id | local source | private 1/0 | created ms.
+     * id | url | file | state | manager id | local source | private 1/0 | created ms
+     * | media 1/0 (r158; pre-flag rows have no ninth field and decode
+     * with media false).
      */
     fun encodeDownloads(records: List<DownloadRecord>): String =
         records.joinToString("\n") { record ->
@@ -358,6 +364,7 @@ object BrowserStore {
                 encDownload(record.localSource ?: ""),
                 if (record.isPrivate) "1" else "0",
                 record.createdAtMs.toString(),
+                if (record.isMedia) "1" else "0",
             ).joinToString("|")
         }
 
@@ -366,7 +373,7 @@ object BrowserStore {
         if (raw.isBlank()) return emptyList()
         return raw.lines().mapNotNull { line ->
             val parts = line.split("|")
-            if (parts.size != 8) return@mapNotNull null
+            if (parts.size != 8 && parts.size != 9) return@mapNotNull null
             val id = decDownload(parts[0])
             val url = decDownload(parts[1])
             if (id.isBlank() || url.isBlank()) return@mapNotNull null
@@ -382,6 +389,7 @@ object BrowserStore {
                 localSource = decDownload(parts[5]).takeIf { it.isNotBlank() },
                 isPrivate = parts[6] == "1",
                 createdAtMs = parts[7].toLongOrNull() ?: 0L,
+                isMedia = parts.getOrNull(8) == "1",
             )
         }
     }
@@ -390,9 +398,17 @@ object BrowserStore {
     fun downloads(context: Context): List<DownloadRecord> =
         decodeDownloads(AppSettings.getString(context, KEY_DOWNLOADS, ""))
 
-    /** The records the Downloads list shows: private-origin records never appear. */
+    /**
+     * The records the Downloads list shows (r158): ordinary files only.
+     * Private-origin records never appear, and media records live in
+     * the Offline library instead of here.
+     */
     fun visibleDownloads(records: List<DownloadRecord>): List<DownloadRecord> =
-        records.filter { !it.isPrivate }
+        records.filter { !it.isPrivate && !it.isMedia }
+
+    /** The records the Offline library shows (r158): media, non-private, any state. */
+    fun visibleLibrary(records: List<DownloadRecord>): List<DownloadRecord> =
+        records.filter { it.isMedia && !it.isPrivate }
 
     fun addDownload(context: Context, record: DownloadRecord) {
         val list = (listOf(record) + downloads(context))

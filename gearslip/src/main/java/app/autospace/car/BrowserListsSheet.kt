@@ -59,9 +59,10 @@ import app.autospace.car.theme.GsTone
  * Which section the lists sheet opens at (r130). TOP is the whole sheet
  * from the top (the bar star button and the old Saved & history row);
  * BOOKMARKS and HISTORY are the settings sheet's Library rows jumping
- * straight to their section; DOWNLOADS is the r157 Downloads row.
+ * straight to their section; DOWNLOADS is the r157 Downloads row;
+ * LIBRARY is the r158 Offline library row.
  */
-enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS }
+enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS, LIBRARY }
 
 /** r157: the label on a Downloads row — state rides in the label itself. */
 private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
@@ -75,10 +76,15 @@ private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
 fun BrowserListsSheet(
     bookmarks: List<String>,
     history: List<String>,
-    // r157: the Downloads list (non-private records only — the caller
-    // filters) plus its row actions; the sheet itself never touches
-    // BrowserStore or DownloadManager directly.
+    // r157: the Downloads list (non-private, non-media records only —
+    // the caller filters) plus its row actions; the sheet itself never
+    // touches BrowserStore or DownloadManager directly.
     downloads: List<BrowserStore.DownloadRecord>,
+    // r158: the Offline library (media, non-private records only — the
+    // caller filters) plus its row actions. Play hands the verified
+    // local source to the existing video player; Share and Save-a-copy
+    // never touch the record itself.
+    library: List<BrowserStore.DownloadRecord>,
     initialSection: ListsSection = ListsSection.TOP,
     currentUrl: String,
     currentHost: String,
@@ -96,6 +102,9 @@ fun BrowserListsSheet(
     onOpenDownload: (BrowserStore.DownloadRecord) -> Unit,
     onDeleteDownload: (BrowserStore.DownloadRecord) -> Unit,
     onRetryDownload: (BrowserStore.DownloadRecord) -> Unit,
+    onPlayLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onShareLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    onSaveLibraryCopy: (BrowserStore.DownloadRecord) -> Unit,
     onClose: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -121,11 +130,13 @@ fun BrowserListsSheet(
             var bookmarksY by remember { mutableStateOf(-1) }
             var historyY by remember { mutableStateOf(-1) }
             var downloadsY by remember { mutableStateOf(-1) }
-            LaunchedEffect(initialSection, bookmarksY, historyY, downloadsY) {
+            var libraryY by remember { mutableStateOf(-1) }
+            LaunchedEffect(initialSection, bookmarksY, historyY, downloadsY, libraryY) {
                 val target = when (initialSection) {
                     ListsSection.BOOKMARKS -> bookmarksY
                     ListsSection.HISTORY -> historyY
                     ListsSection.DOWNLOADS -> downloadsY
+                    ListsSection.LIBRARY -> libraryY
                     ListsSection.TOP -> -1
                 }
                 if (target >= 0) scrollState.scrollTo(target)
@@ -136,6 +147,7 @@ fun BrowserListsSheet(
             // section-jump offsets below keep working because they re-capture
             // on layout. r157: Downloads rides the same search (file name or
             // source URL), since it is now a list in this same sheet.
+            // r158: the Offline library rides it too.
             var listQuery by remember { mutableStateOf("") }
             var listSearching by remember { mutableStateOf(false) }
             val shownBookmarks = if (listQuery.isBlank()) bookmarks
@@ -144,6 +156,11 @@ fun BrowserListsSheet(
                 else history.filter { it.contains(listQuery, ignoreCase = true) }
             val shownDownloads = if (listQuery.isBlank()) downloads
                 else downloads.filter {
+                    it.fileName.contains(listQuery, ignoreCase = true) ||
+                        it.url.contains(listQuery, ignoreCase = true)
+                }
+            val shownLibrary = if (listQuery.isBlank()) library
+                else library.filter {
                     it.fileName.contains(listQuery, ignoreCase = true) ||
                         it.url.contains(listQuery, ignoreCase = true)
                 }
@@ -157,7 +174,7 @@ fun BrowserListsSheet(
                     fontWeight = FontWeight.Bold,
                 )
                 GsButton(onClick = { listSearching = !listSearching }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (listSearching) "Done searching" else "Search bookmarks, history, and downloads")
+                    Text(if (listSearching) "Done searching" else "Search bookmarks, history, downloads, and library")
                 }
                 if (listSearching) {
                     CarKeyboard(
@@ -281,8 +298,9 @@ fun BrowserListsSheet(
                 // on failed rows (retrying a finished download would be
                 // a duplicate, so it is a no-op by design); Delete drops
                 // the record and the bytes, and is success even when the
-                // file is already gone. Private-origin downloads never
-                // reach this list — the caller filters them out.
+                // file is already gone. Private-origin and media
+                // downloads never reach this list — the caller filters
+                // them out (media lives in the Offline library below).
                 Text(
                     "Downloads",
                     style = MaterialTheme.typography.titleMedium,
@@ -316,6 +334,52 @@ fun BrowserListsSheet(
                                 }
                                 GsButton(onClick = { onDeleteDownload(record) }, tone = GsTone.Neutral) {
                                     Text("Delete")
+                                }
+                            }
+                        }
+                    }
+                }
+                // r158: Offline library. Media downloads only — video
+                // and audio, non-private, any state (a row still
+                // downloading or failed toasts instead of playing).
+                // Play hands the verified local source to the existing
+                // video player (audio plays there too, by decision);
+                // Share sends the file out; Save-a-copy copies it to a
+                // user-chosen location and never touches the record.
+                // Private-origin media never reaches this list — the
+                // caller filters it out, and its bytes die with the
+                // private profile exactly like any private download.
+                Text(
+                    "Offline library",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.onGloballyPositioned { libraryY = it.positionInParent().y.toInt() },
+                )
+                if (shownLibrary.isEmpty()) {
+                    Text(
+                        if (listQuery.isBlank()) "No offline media yet." else "No offline media matches \"$listQuery\".",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        shownLibrary.forEach { record ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                GsButton(onClick = { onPlayLibrary(record) }, tone = GsTone.Neutral, modifier = Modifier.weight(1f)) {
+                                    Text(downloadRowLabel(record), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                GsButton(onClick = { onShareLibrary(record) }, tone = GsTone.Neutral) {
+                                    Text("Share")
+                                }
+                                GsButton(onClick = { onSaveLibraryCopy(record) }, tone = GsTone.Neutral) {
+                                    Text("Save a copy")
                                 }
                             }
                         }

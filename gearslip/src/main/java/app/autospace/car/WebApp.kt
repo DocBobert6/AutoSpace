@@ -18,6 +18,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.car.app.CarToast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -64,6 +66,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,7 +87,10 @@ import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.frostBar
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.notify.CarMotion
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -488,12 +494,15 @@ fun WebApp(content: String) {
      * long-press menu both come here, and the record it writes is what
      * the Downloads list shows. [isPrivate] marks a private-tab origin:
      * the record is stored but never listed, and its bytes die with the
-     * private profile (see the wipe call sites). Start/failure toasts
-     * match the old listener behaviour, so the long-press row gains the
+     * private profile (see the wipe call sites). [isMedia], when given,
+     * wins outright (the media-finder Download row passes true); when
+     * null, the MIME type decides (the listener path), and a null MIME
+     * type — the long-press path — is not media. Start/failure toasts
+     * match the old listener behavior, so the long-press row gains the
      * same notices the listener always showed.
      */
-    fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null) {
-        val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate)
+    fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null, isMedia: Boolean? = null) {
+        val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate, isMedia)
         if (record != null) {
             CarToasts.show(context, "Download started: ${record.fileName}", CarToast.LENGTH_SHORT)
         } else {
@@ -529,10 +538,18 @@ fun WebApp(content: String) {
     var pins by remember { mutableStateOf(BrowserStore.pins(context)) }
     var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
     var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
-    // r157: the Downloads list shows non-private records only — private-origin
-    // records are stored but filtered here, never reaching the sheet.
+    // r157: the Downloads list shows non-private, non-media records
+    // only — private-origin records are stored but filtered here,
+    // never reaching the sheet, and media records live in the
+    // Offline library below (r158).
     var downloads by remember {
         mutableStateOf(BrowserStore.visibleDownloads(BrowserStore.downloads(context)))
+    }
+    // r158: the Offline library — media, non-private records, any
+    // state. Same refresh discipline as Downloads: refreshed on list
+    // open and after every row action.
+    var library by remember {
+        mutableStateOf(BrowserStore.visibleLibrary(BrowserStore.downloads(context)))
     }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
     // Also (A2) applies the stored text zoom to the newly active
@@ -810,11 +827,46 @@ fun WebApp(content: String) {
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
         downloads = BrowserStore.visibleDownloads(BrowserStore.downloads(context))
+        library = BrowserStore.visibleLibrary(BrowserStore.downloads(context))
         popupStrict = BrowserStore.popupStrict(context)
         popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
         adBlockOn = BrowserStore.adBlockEnabled(context)
+    }
+    // r158: library Save-a-copy. The picker is the Storage Access
+    // Framework create-document flow (no permission, no new provider):
+    // the sheet's Save-a-copy row stashes its record here and launches
+    // the picker with the file name; the copy itself runs on IO, and
+    // the original record is untouched on every outcome. Declared
+    // after refreshLists because a local function cannot be referenced
+    // before its declaration, even from a callback that runs later.
+    val scope = rememberCoroutineScope()
+    var pendingSaveCopy by remember { mutableStateOf<BrowserStore.DownloadRecord?>(null) }
+    val saveCopyLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("*/*"),
+    ) { uri ->
+        val record = pendingSaveCopy
+        pendingSaveCopy = null
+        if (uri == null || record == null) return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val result = BrowserDownloads.copyDownload(context, record, uri)
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    BrowserDownloads.LibraryResult.READY ->
+                        CarToasts.show(context, "Saved a copy", CarToast.LENGTH_SHORT)
+                    BrowserDownloads.LibraryResult.NOT_READY ->
+                        CarToasts.show(context, "Still downloading", CarToast.LENGTH_SHORT)
+                    BrowserDownloads.LibraryResult.FAILED ->
+                        CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                    BrowserDownloads.LibraryResult.NO_FILE ->
+                        CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                    BrowserDownloads.LibraryResult.COPY_FAILED ->
+                        CarToasts.show(context, "Couldn't save that copy", CarToast.LENGTH_LONG)
+                }
+                refreshLists()
+            }
+        }
     }
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
@@ -1930,8 +1982,9 @@ fun WebApp(content: String) {
                     settingsMenuOpen = false
                     // r157: opening Downloads re-queries DownloadManager
                     // first, so finished downloads show finished even if
-                    // the completion broadcast was missed.
-                    if (section == ListsSection.DOWNLOADS) BrowserDownloads.refreshDownloads(context)
+                    // the completion broadcast was missed. r158: the
+                    // Offline library gets the same refresh.
+                    if (section == ListsSection.DOWNLOADS || section == ListsSection.LIBRARY) BrowserDownloads.refreshDownloads(context)
                     refreshLists()
                     listsSection = section
                     listsOpen = true
@@ -2064,6 +2117,51 @@ fun WebApp(content: String) {
                     }
                     refreshLists()
                 },
+                // r158: the Offline library. Play closes the sheet and
+                // hands the verified local source to the existing video
+                // player (no player change — it takes URL strings, and
+                // audio plays there too by decision); a vanished file
+                // toasts instead of opening the player. Share sends the
+                // file out; Save-a-copy launches the picker above.
+                library = library,
+                onPlayLibrary = { record ->
+                    val (result, source) = BrowserDownloads.librarySource(context, record)
+                    when (result) {
+                        BrowserDownloads.LibraryResult.READY -> {
+                            listsOpen = false
+                            if (source != null) {
+                                navigator.videoPlayer(listOf(source), listOf(record.fileName), 0)
+                            }
+                        }
+                        BrowserDownloads.LibraryResult.NOT_READY ->
+                            CarToasts.show(context, "Still downloading", CarToast.LENGTH_SHORT)
+                        BrowserDownloads.LibraryResult.FAILED ->
+                            CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                        BrowserDownloads.LibraryResult.NO_FILE ->
+                            CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                        BrowserDownloads.LibraryResult.COPY_FAILED ->
+                            CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                    }
+                    refreshLists()
+                },
+                onShareLibrary = { record ->
+                    when (BrowserDownloads.shareDownload(context, record)) {
+                        BrowserDownloads.LibraryResult.READY -> Unit
+                        BrowserDownloads.LibraryResult.NOT_READY ->
+                            CarToasts.show(context, "Still downloading", CarToast.LENGTH_SHORT)
+                        BrowserDownloads.LibraryResult.FAILED ->
+                            CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                        BrowserDownloads.LibraryResult.NO_FILE ->
+                            CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                        BrowserDownloads.LibraryResult.COPY_FAILED ->
+                            CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                    }
+                    refreshLists()
+                },
+                onSaveLibraryCopy = { record ->
+                    pendingSaveCopy = record
+                    saveCopyLauncher.launch(record.fileName)
+                },
                 onClose = { listsOpen = false },
             )
         }
@@ -2157,6 +2255,12 @@ fun WebApp(content: String) {
                     sheetOpen = false
                     popOut(item)
                 } } else null,
+                // r158: per-row Download — always a media download, so
+                // it lands in the Offline library. The sheet stays open
+                // so more than one item can be downloaded.
+                onDownload = { item ->
+                    downloadUrl(item.url, activeTab.isPrivate, isMedia = true)
+                },
                 onClose = { sheetOpen = false },
             )
         }
@@ -2653,6 +2757,8 @@ private fun BrowserSettingsMenu(
                 MenuRow("Bookmarks", false) { onOpenLists(ListsSection.BOOKMARKS) }
                 // r157: the Downloads list lives in the same sheet.
                 MenuRow("Downloads", false) { onOpenLists(ListsSection.DOWNLOADS) }
+                // r158: the Offline library lives in the same sheet.
+                MenuRow("Offline library", false) { onOpenLists(ListsSection.LIBRARY) }
                 MenuSection("Address bar")
                 MenuRow("At the top", !barBottom) { onBarPosition(false) }
                 MenuRow("At the bottom", barBottom) { onBarPosition(true) }

@@ -24,7 +24,12 @@ import java.util.UUID
  *
  * Scope boundary, stated plainly: this is plain DownloadManager downloads
  * only. HLS (.m3u8), DASH (.mpd), and segmented downloads get records,
- * progress, pause/resume, and library membership only in slices 3–4 / 2.
+ * progress, pause/resume, and library membership only in slices 3–4.
+ * r158 (slice 2) adds the media flag and the Offline library actions on
+ * top of these records: a download counts as media when its MIME type
+ * is video/* or audio/* (DownloadListener path), or when the caller
+ * says so outright (media-finder path); the long-press path passes no
+ * MIME type, so it stays an ordinary file even for a media-looking URL.
  * Completion is tracked two ways: the manifest receiver
  * (DownloadCompleteReceiver) updates the record when DownloadManager
  * reports completion, and [refreshDownloads]/[refreshRecord] re-query
@@ -40,6 +45,38 @@ object BrowserDownloads {
 
     /** What [openDownload] did, so callers can toast honestly. */
     enum class DownloadOpenResult { OPENED, NOT_READY, FAILED, NO_FILE }
+
+    /** What a library row action resolved to, so callers can toast honestly. */
+    enum class LibraryResult { READY, NOT_READY, FAILED, NO_FILE, COPY_FAILED }
+
+    /**
+     * Pure MIME classification (r158): video/* and audio/* count as
+     * media. Parameters ("; charset=…") are stripped and the match is
+     * case-insensitive; null, blank, and anything else are not media.
+     * The long-press path passes no MIME type, so it lands here as
+     * null and stays an ordinary file by construction.
+     */
+    fun isMediaMime(mimeType: String?): Boolean {
+        val type = mimeType?.substringBefore(';')?.trim()?.lowercase() ?: return false
+        return type.startsWith("video/") || type.startsWith("audio/")
+    }
+
+    /**
+     * Pure library-play decision (r158): the state gate, the source
+     * gate, and the file-exists gate, in that order. The Android side
+     * ([librarySource]) supplies [hasSource] and [fileExists]; this
+     * decision itself needs no framework, so a JVM test pins it.
+     */
+    fun libraryPlayDecision(
+        state: BrowserStore.DownloadState,
+        hasSource: Boolean,
+        fileExists: Boolean,
+    ): LibraryResult = when {
+        state == BrowserStore.DownloadState.FAILED -> LibraryResult.FAILED
+        state != BrowserStore.DownloadState.COMPLETE -> LibraryResult.NOT_READY
+        !hasSource || !fileExists -> LibraryResult.NO_FILE
+        else -> LibraryResult.READY
+    }
 
     /**
      * The one plain-download request builder, shared by enqueue and
@@ -58,7 +95,10 @@ object BrowserDownloads {
      * Enqueue one plain download and record it, or null when enqueue
      * failed (the caller toasts and logs). The request is exactly the
      * one the two old blocks built: phone Downloads folder, completed
-     * notification, description naming the car browser.
+     * notification, description naming the car browser. [isMedia], when
+     * given, wins outright (the media-finder Download row passes true);
+     * when null, the MIME type decides (the DownloadListener path), and
+     * a null MIME type — the long-press path — is not media.
      */
     fun enqueueDownload(
         context: Context,
@@ -66,6 +106,7 @@ object BrowserDownloads {
         contentDisposition: String?,
         mimeType: String?,
         isPrivate: Boolean,
+        isMedia: Boolean? = null,
     ): BrowserStore.DownloadRecord? {
         return runCatching {
             val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -81,6 +122,7 @@ object BrowserDownloads {
                 localSource = null,
                 isPrivate = isPrivate,
                 createdAtMs = System.currentTimeMillis(),
+                isMedia = isMedia ?: isMediaMime(mimeType),
             )
             BrowserStore.addDownload(context, record)
             GearslipLog.i("car browser download started: $fileName")
@@ -221,6 +263,98 @@ object BrowserDownloads {
         }.getOrElse { e ->
             GearslipLog.e("car browser download open FAILED: ${current.fileName} - ${e.message}")
             DownloadOpenResult.NO_FILE
+        }
+    }
+
+    /**
+     * Library Play (r158, slice 2): refresh the record, then verify
+     * the local file still exists before handing anything to the
+     * player. A vanished file resolves to NO_FILE and the caller
+     * toasts "Download file is gone" instead of opening the player —
+     * the slice-1 vanished-file pattern, extended to library rows.
+     * The caller plays [String] through the existing video player
+     * (which takes URL strings); this function never touches the
+     * player itself. No MediaStore backfill here: the refresh covers
+     * completion-state staleness, not a file moved out from under
+     * DownloadManager — that heuristic stays unbuilt for the worker
+     * slices if still needed.
+     */
+    fun librarySource(
+        context: Context,
+        record: BrowserStore.DownloadRecord,
+    ): Pair<LibraryResult, String?> {
+        val current = refreshRecord(context, record)
+        val raw = current.localSource
+        val exists = raw != null && localFileExists(context, raw)
+        val decision = libraryPlayDecision(current.state, raw != null, exists)
+        return decision to (raw.takeIf { decision == LibraryResult.READY })
+    }
+
+    /** True when [raw] (a DownloadManager local URI) still resolves to bytes. */
+    private fun localFileExists(context: Context, raw: String): Boolean {
+        val uri = Uri.parse(raw)
+        if (uri.scheme == "file") {
+            val path = uri.path ?: return false
+            return File(path).exists()
+        }
+        return runCatching {
+            context.contentResolver.openInputStream(uri)?.use { true } ?: false
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Library Share (r158): the same verified source as Play, sent
+     * out as a system share of the file (chooser, read grant) instead
+     * of a view intent. READY means the chooser opened; anything else
+     * means nothing was shared and the caller toasts the reason.
+     */
+    fun shareDownload(context: Context, record: BrowserStore.DownloadRecord): LibraryResult {
+        val (decision, raw) = librarySource(context, record)
+        if (decision != LibraryResult.READY || raw == null) return decision
+        return runCatching {
+            val uri = shareableUri(context, raw) ?: return@runCatching LibraryResult.NO_FILE
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = mimeFor(record.fileName)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(send, "Share file"))
+            LibraryResult.READY
+        }.getOrElse { e ->
+            GearslipLog.e("car browser download share FAILED: ${record.fileName} - ${e.message}")
+            LibraryResult.NO_FILE
+        }
+    }
+
+    /**
+     * Library Save-a-copy (r158): copy the verified file to the
+     * user-chosen Storage Access Framework destination. The original
+     * record is untouched on every outcome, including a failed copy.
+     * The copy runs on the caller's thread — the WebApp launcher
+     * callback puts it on Dispatchers.IO, never the main thread.
+     */
+    fun copyDownload(
+        context: Context,
+        record: BrowserStore.DownloadRecord,
+        destUri: Uri,
+    ): LibraryResult {
+        val (decision, raw) = librarySource(context, record)
+        if (decision != LibraryResult.READY || raw == null) return decision
+        return runCatching {
+            val input = context.contentResolver.openInputStream(Uri.parse(raw))
+                ?: return@runCatching LibraryResult.NO_FILE
+            val output = context.contentResolver.openOutputStream(destUri)
+                ?: return@runCatching LibraryResult.COPY_FAILED
+            input.use { inputStream ->
+                output.use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+            LibraryResult.READY
+        }.getOrElse { e ->
+            GearslipLog.e("car browser download copy FAILED: ${record.fileName} - ${e.message}")
+            LibraryResult.COPY_FAILED
         }
     }
 
