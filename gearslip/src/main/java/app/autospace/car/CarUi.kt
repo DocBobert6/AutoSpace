@@ -269,15 +269,42 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     AssistantCommands.handle(appContext, navigator, frameForAssistant, heard)
                 } catch (t: Throwable) {
                     GearslipLog.e("assistant: command failed", t)
+                    // Audit §6 N5 (strict): a failed turn must not fire
+                    // navigation — a hold its handle() armed before throwing
+                    // drops here, before the error reply is spoken. (Any
+                    // earlier turn's hold was already fired or dropped at
+                    // that turn's end, so only this turn's hold can be
+                    // pending here.)
+                    CarAssistant.dropHeldNavigation()
                     "Sorry, that command failed."
                 }
                 if (CarAssistant.turnGeneration == generation) {
+                    // Audit §6 N3: the session records only when playback
+                    // actually starts. The flags and the AI utterance are
+                    // captured BEFORE reply(), because the start callback
+                    // fires asynchronously — by then a later turn's handle()
+                    // may already have overwritten them. A barged-during-
+                    // speech turn stays recorded (its start already fired);
+                    // an onSilent/ERROR turn never records, because its
+                    // start callback never fires.
+                    val wasAi = AssistantCommands.lastReplyWasAi
+                    val wasBuiltin = AssistantCommands.lastReplyWasBuiltin
+                    val aiUtterance = AssistantCommands.lastAiUtterance
                     CarAssistant.reply(
                         reply,
-                        fromAi = AssistantCommands.lastReplyWasAi,
+                        fromAi = wasAi,
                         grounded = AssistantCommands.lastReplyGrounded,
                         sourceCount = AssistantCommands.lastReplySourceCount,
                         provider = AssistantCommands.lastReplyProvider,
+                        onPlaybackStarted = {
+                            if (wasAi) {
+                                ConversationSession.record(
+                                    aiUtterance ?: heard, reply, fromAi = true,
+                                )
+                            } else if (wasBuiltin) {
+                                ConversationSession.recordBuiltin(heard, reply)
+                            }
+                        },
                     )
                     // r97 graduation: multi-turn session record — only
                     // a completed AI turn. A superseded
@@ -291,13 +318,8 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                     // badge it; a built-in turn joins only through
                     // the multi-turn gate (an existing session), and
                     // a superseded turn still never reaches here.
-                    if (AssistantCommands.lastReplyWasAi) {
-                        ConversationSession.record(
-                            AssistantCommands.lastAiUtterance ?: heard, reply, fromAi = true,
-                        )
-                    } else if (AssistantCommands.lastReplyWasBuiltin) {
-                        ConversationSession.recordBuiltin(heard, reply)
-                    }
+                    // (The record itself now happens in the
+                    // onPlaybackStarted callback above, per §6 N3.)
                 } else {
                     // Audit §6 F5, clear-on-supersede: this turn's reply was never
                     // spoken, so anything its handle() armed — an AI proposal or an

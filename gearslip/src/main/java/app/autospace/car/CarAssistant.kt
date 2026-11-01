@@ -231,7 +231,11 @@ object CarAssistant {
             },
             onError = { message ->
                 _state.value = State(Phase.ERROR, reply = message)
-                fireHeldNavigation()
+                // Audit §6 N5 (strict): a fresh-listen error is not a
+                // turn's own successful completion — and the hold was
+                // already dropped above when the fresh listen started —
+                // so this drops, never fires.
+                dropHeldNavigation()
             },
         )
     }
@@ -282,10 +286,13 @@ object CarAssistant {
     // every partial, so it can never cut off a live utterance:
     // only five seconds with no partials at all ends the window,
     // by which point the engine's own endpointing has already
-    // ended any real utterance. Single-turn semantics are
-    // preserved: a result lands in pendingCommand exactly like any
-    // other turn, with no history carried over (conversational
-    // memory is the later A59 multi-turn round, not this one).
+    // ended any real utterance. Audit §6 T5: the current rule is
+    // that the 5-second window chains turns, and the 10-minute
+    // session ([ConversationSession]) supplies their memory — a
+    // result lands in pendingCommand exactly like any other turn,
+    // and its follow-up sees the session's history. (The old
+    // comment here described the pre-r73 single-turn design and
+    // contradicted the shipped multi-turn behavior.)
     private const val FOLLOW_UP_LISTEN_MS = 5_000L
     private var followUpGeneration = 0
     private var followUpExpiry: Runnable? = null
@@ -295,36 +302,49 @@ object CarAssistant {
     // guidance speech cannot land in the post-reply listen window and be
     // heard as a follow-up (there is no AEC: the mic is VOICE_RECOGNITION
     // and TTS plays through the car speakers). The hold fires exactly once,
-    // at the first turn-ending moment after its window: window expiry, the
-    // window bailing (call active), a window listen error, or a turn end
-    // that opens no window (blank, failed, or unplayable reply; fresh-listen
-    // error). It is dropped only by an explicit cancel: cancel(), cancel
-    // words, or "stop navigation". A fresh listen disarms the window expiry
-    // but NOT the hold, so the request rides the new turn: a new navigate
-    // supersedes it, a non-navigation follow-up leaves it to fire at the new
-    // turn's window end, a cancel drops it. Tap paths call
-    // CarServices.connectNav directly and never touch the hold, so they
-    // still fire at once. All access is main-thread only, matching every
-    // caller (the CarUi collector, the window expiry runnable, cancel()).
-    // The destination is never logged, only held/fired/dropped.
+    // and only on the successful speech completion of the turn that armed
+    // it (see onReplySpeechDone). It is dropped by an explicit cancel
+    // (cancel(), cancel words, or "stop navigation"), by a fresh listen
+    // superseding the turn, or by any failure path below — a confirmation
+    // that could not be spoken at all must not strand the navigation into
+    // starting unheard, and a hold never rides across turns.
+    // Audit §6 N5 (strict) replaces the r96 ride-across rule outright:
+    // the old "a non-navigation follow-up leaves it to fire at the new
+    // turn's window end" behavior is rejected. A fresh listen disarms the
+    // window expiry but NOT the hold's ownership rule: a new navigate
+    // supersedes it, a non-navigation follow-up completing drops it, a
+    // cancel drops it. Tap paths call CarServices.connectNav directly and
+    // never touch the hold, so they still fire at once. All access is
+    // main-thread only, matching every caller (the CarUi collector, the
+    // window expiry runnable, cancel()). The destination is never logged,
+    // only held/fired/dropped.
     // r98 nav-window exemption: a navigation turn opens no post-response
     // listen window. Its hold fires at the turn's own reply completion (see
     // onReplySpeechDone), and a fresh listen supersedes the turn and drops
     // the hold (see startOnMainThread) — a superseded navigation never fires
     // at a later turn's end. Non-navigation turns open the window exactly as
-    // before. The failure paths below still fire a held request directly, as
-    // in r96: a confirmation that could not be spoken at all must not strand
-    // the navigation, and firing there clears the hold either way.
+    // before.
     private val navHold = NavHold()
+
+    /**
+     * Audit §6 N5: whether the pending hold (if any) was armed by the turn
+     * now completing. [holdNavigation] sets it; [fireHeldNavigation] and
+     * [dropHeldNavigation] clear it. Only a completing turn that armed the
+     * hold may fire it — a hold left over from an earlier turn is dropped
+     * at completion, never carried.
+     */
+    private var navHoldForCurrentTurn = false
 
     /** Holds a voice navigate request until its confirmation finishes speaking. Replaces any request still held. */
     fun holdNavigation(action: () -> Unit) {
         navHold.hold(action)
+        navHoldForCurrentTurn = true
         GearslipLog.i("assistant: nav held until confirmation finishes")
     }
 
     /** Drops a held navigate request, if any; true when one was dropped. */
     fun dropHeldNavigation(): Boolean {
+        navHoldForCurrentTurn = false
         val dropped = navHold.drop()
         if (dropped) GearslipLog.i("assistant: held nav dropped")
         return dropped
@@ -333,6 +353,7 @@ object CarAssistant {
     /** Fires the held navigate request once, if any. */
     private fun fireHeldNavigation() {
         if (!navHold.hasPending) return
+        navHoldForCurrentTurn = false
         GearslipLog.i("assistant: held nav fired")
         navHold.fire()
     }
@@ -345,11 +366,21 @@ object CarAssistant {
      * window exactly as before. Both speech-completion sites (normal play in
      * reply() and the streamed session in streamSentence()) end here, so a
      * streamed navigation confirmation would take the same path.
+     * Audit §6 N5 (strict): firing additionally requires the hold to belong
+     * to this completing turn. A hold pending here from an earlier turn is
+     * dropped and the completing turn opens its window normally — it never
+     * rides across turns.
      */
     private fun onReplySpeechDone() {
         if (skipFollowUpWindow(navHold.hasPending)) {
-            _state.value = State(Phase.IDLE)
-            fireHeldNavigation()
+            if (heldNavFiresOnCompletion(navHold.hasPending, navHoldForCurrentTurn, true)) {
+                _state.value = State(Phase.IDLE)
+                fireHeldNavigation()
+            } else {
+                GearslipLog.i("assistant: held nav dropped (not this turn's)")
+                dropHeldNavigation()
+                openFollowUpWindow()
+            }
         } else {
             openFollowUpWindow()
         }
@@ -373,7 +404,10 @@ object CarAssistant {
     private fun openFollowUpWindow() {
         if (appContext == null || CarCalls.state.value is CallUiState.Active) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
-            fireHeldNavigation()
+            // Audit §6 N5 (strict): only a turn's own successful completion
+            // fires a hold, so a hold pending at a window bail is stale by
+            // construction and drops — it never fires here.
+            dropHeldNavigation()
             return
         }
         val generation = ++followUpGeneration
@@ -389,7 +423,9 @@ object CarAssistant {
             followUpExpiry = null
             releaseRecognizer()
             _state.value = State(Phase.IDLE)
-            fireHeldNavigation()
+            // Audit §6 N5 (strict): window expiry is not a turn's own
+            // successful completion, so a hold pending here drops.
+            dropHeldNavigation()
         }
         followUpExpiry = expiry
         mainHandler.postDelayed(expiry, FOLLOW_UP_LISTEN_MS)
@@ -421,7 +457,10 @@ object CarAssistant {
                 clearFollowUpExpiry()
                 releaseRecognizer()
                 _state.value = State(Phase.IDLE)
-                fireHeldNavigation()
+                // Audit §6 N5 (strict): a window listen error is not a
+                // turn's own successful completion, so a hold pending
+                // here drops.
+                dropHeldNavigation()
             },
         )
     }
@@ -431,6 +470,20 @@ object CarAssistant {
      * that actually has a [CarNavigator] to have acted on it with. With no
      * voice model downloaded, the overlay says so and points at Settings
      * instead of leaving the driver waiting on silence.
+     *
+     * Audit §6 N3: returns whether playback actually started, and runs
+     * [onPlaybackStarted] (on the main thread, at most once, via
+     * [PlaybackStartGate]) when audio really starts — a failed render, a
+     * refused track, or a superseded generation never runs it. The session
+     * record hangs on that callback, not on this return: the Boolean can
+     * only report acceptance (an engine was Ready), while the callback
+     * proves the driver heard the start. A barged-during-speech turn stays
+     * recorded (its start already fired); an onSilent/ERROR turn never
+     * records. A streamed turn that already spoke its sentences counts as
+     * started at its finish call.
+     * Audit §6 N5 (strict): every failure path below DROPS a held
+     * navigation instead of firing it — only a turn's own successful
+     * speech completion ([onReplySpeechDone]) may fire one.
      */
     fun reply(
         text: String,
@@ -438,14 +491,16 @@ object CarAssistant {
         grounded: Boolean = false,
         sourceCount: Int = 0,
         provider: AiAssistant.Provider = AiAssistant.Provider.GEMINI,
-    ) {
+        onPlaybackStarted: () -> Unit = {},
+    ): Boolean {
         _pendingCommand.value = null
         val context = appContext
         if (text.isBlank() || context == null) {
             _state.value = _state.value.copy(phase = Phase.IDLE)
-            fireHeldNavigation()
-            return
+            dropHeldNavigation()
+            return false
         }
+        val startGate = PlaybackStartGate { mainHandler.post(onPlaybackStarted) }
         // r55 streamed finish: this turn already spoke its sentences
         // as they arrived. When the final text is exactly the capped
         // streamed content, finish the stream (speaking any cap
@@ -460,7 +515,10 @@ object CarAssistant {
             is StreamFinish.Done -> {
                 _state.value = _state.value.copy(phase = Phase.SPEAKING, reply = text, fromAi = fromAi, grounded = grounded, sourceCount = sourceCount, provider = provider)
                 lastAssistantReply = text
-                return
+                // The stream already spoke its sentences, so speech
+                // started before this finish call.
+                startGate.onAudioStarted()
+                return true
             }
             is StreamFinish.Failed -> {
                 _state.value = State(
@@ -471,8 +529,8 @@ object CarAssistant {
                         speechFailureMessage()
                     },
                 )
-                fireHeldNavigation()
-                return
+                dropHeldNavigation()
+                return false
             }
             is StreamFinish.Mismatch -> Unit // Falls through to normal play below.
             is StreamFinish.None -> Unit // No stream session: normal play below.
@@ -494,8 +552,8 @@ object CarAssistant {
             // (r55: the message itself lives in speechFailureMessage,
             // shared with the streamed session's onSilent.)
             _state.value = State(Phase.ERROR, reply = speechFailureMessage())
-            fireHeldNavigation()
-        })
+            dropHeldNavigation()
+        }, onPlaybackStart = { startGate.onAudioStarted() })
         if (started) {
             // Audit fix (2026-10-25, A1): the last reply that
             // actually started playing, for "say that again".
@@ -505,12 +563,14 @@ object CarAssistant {
             // above and never overwrites this.
             lastAssistantReply = text
             acquireSpeechFocus(context)
+            return true
         } else {
             _state.value = State(
                 Phase.ERROR,
                 reply = "No voice downloaded yet. Download Kokoro or Piper in Settings first.",
             )
-            fireHeldNavigation()
+            dropHeldNavigation()
+            return false
         }
     }
 
@@ -758,6 +818,10 @@ object CarAssistant {
     ) {
         // Same flag the sherpa path sets in SpeechEngine.listen: the hotword loop
         // closes its microphone on it, so the two never hold the car mic at once.
+        // Audit §6 T2: endpointing here is the platform's, NOT the bundled
+        // sherpa engine's 1s/6s/15s values — the system recognizer sets no
+        // endpointing parameters, and this path is bounded only by the
+        // 60-second system-listen watchdog (ListenWatchdogPolicy).
         // (The sherpa path's worker waits for the release; this path relies on the
         // recognizer opening its microphone after the hotword loop's next chunk.)
         SpeechEngine.markListeningStart()

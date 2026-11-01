@@ -50,8 +50,10 @@ class AiAssistantTest {
     @Test fun cannedSuiteSkipsAiCasesWithGatesClosed() {
         val result = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
         assertEquals(0, result.failed)
-        assertEquals(8, result.skipped)
-        assertEquals(AssistantPreview.CANNED_CASES.size - 8, result.passed)
+        // Audit §6 N7: the two weather cases are BUILTIN now, not AI, so
+        // they run with gates closed — 6 AI cases skip, not 8.
+        assertEquals(6, result.skipped)
+        assertEquals(AssistantPreview.CANNED_CASES.size - 6, result.passed)
     }
 
     // --- Confirmation defaults: silence / timeout / ambiguity / unknown = DECLINE ---
@@ -251,20 +253,27 @@ class AiAssistantTest {
     }
 
     @Test fun previewPlaceGuardAndGroundedFlags() {
+        // Audit §6 N7: weather mirrors live infoCommand — BUILTIN with the
+        // place rule in params, never an AI call. The place guard still
+        // holds for genuinely place-dependent AI questions (news below
+        // keeps its grounded flag; the weather branch never sets it).
         val withPlace = AssistantPreview.classify("weather in dry ridge", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
-        assertEquals(AssistantPreview.Handler.AI, withPlace.handler)
-        assertTrue(withPlace.grounded)
+        assertEquals(AssistantPreview.Handler.BUILTIN, withPlace.handler)
+        assertEquals("dry ridge", withPlace.params)
+        assertFalse(withPlace.grounded)
+        assertFalse(withPlace.wouldConfirm)
         val noPlace = AssistantPreview.classify("what is the weather today", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
-        assertEquals(AssistantPreview.Handler.AI, noPlace.handler)
+        assertEquals(AssistantPreview.Handler.BUILTIN, noPlace.handler)
+        assertEquals("", noPlace.params)
         assertFalse(noPlace.grounded)
-        assertEquals("For which place?", noPlace.spoken)
         val news = AssistantPreview.classify("what is the latest news", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
         assertTrue(news.grounded)
         val general = AssistantPreview.classify("what is the capital of france", AssistantPreview.FIXTURE_KEYWORDS, aiGates = true)
         assertFalse(general.grounded)
-        // Gates closed: place-less weather is unmatched, never a guessed forecast.
+        // Gates closed: local weather is still BUILTIN, never unmatched —
+        // it needs no AI gate, exactly like live infoCommand.
         val closed = AssistantPreview.classify("what is the weather today", AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
-        assertEquals(AssistantPreview.Handler.UNMATCHED, closed.handler)
+        assertEquals(AssistantPreview.Handler.BUILTIN, closed.handler)
     }
 
     @Test fun privacyNoticeNamesGroundingWithoutNewParty() {

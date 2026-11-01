@@ -1308,8 +1308,11 @@ object AssistantCommands {
     private suspend fun infoCommand(context: Context, heard: String): String? = when {
         "what time" in heard || "what's the time" in heard || heard == "time" || "the time" in heard ->
             "It's ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())}."
-        "weather" in heard || "going to rain" in heard || "gonna rain" in heard || "how hot" in heard ||
-            "how cold" in heard || "temperature outside" in heard -> {
+        // Audit §6 N1 (guarded): the weather branch uses the shared
+        // isLocalWeatherTrigger rule — how-hot/how-cold need an outside/out
+        // token, "weather" must be a whole token. Bare-weather behavior is
+        // unchanged (see that function's KDoc for the honest limit).
+        AiAssistant.isLocalWeatherTrigger(heard) -> {
             // r117: weather honors a place — from the utterance first, then from the
             // session (same lookup as the AI place rule), and always announces the
             // place it answers for, so a forecast for somewhere else never reads
@@ -1318,7 +1321,12 @@ object AssistantCommands {
             val place = AiAssistant.placePhrase(heard)
                 ?: AiAssistant.placeFromSession(ConversationSession.historyForRequest())
             if (place != null) {
-                val data = withContext(Dispatchers.IO) { Weather.fetchForPlace(context, place) }
+                // Audit §6 N8: a hung device Geocoder must not stall the turn
+                // indefinitely — the timeout degrades to exactly the honest
+                // unresolvable-place reply below, never a substituted place.
+                val data = withContext(Dispatchers.IO) {
+                    withTimeoutOrNull(WEATHER_FETCH_TIMEOUT_MS) { Weather.fetchForPlace(context, place) }
+                }
                 if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
                 else "I couldn't find weather for $place."
             } else {
@@ -1412,6 +1420,9 @@ object AssistantCommands {
     private val TAIL_FILLERS = listOf("thank you very much", "thank you", "right now", "for me", "please", "thanks", "now")
 
     private const val APP_CONNECT_MS = 5_000L
+
+    /** Audit §6 N8: Geocoder-plus-fetch budget for a place weather lookup (~10s). */
+    private const val WEATHER_FETCH_TIMEOUT_MS = 10_000L
 
     /** Assistant-cancel words: a bare "stop" is deliberately NOT here — it stays the music's. */
     private val CANCEL_PHRASES = setOf("cancel", "never mind", "cancel that", "stop speaking", "stop talking")

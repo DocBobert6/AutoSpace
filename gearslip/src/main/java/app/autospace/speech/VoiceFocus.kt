@@ -52,6 +52,11 @@ object VoiceFocus {
 
     /** Pauses the music until a matching [release]. Safe from any thread. */
     fun acquire(context: Context) {
+        // Audit §6 T3: USAGE_ASSISTANT below is the audio-FOCUS request,
+        // not the playback usage — it is what pauses the music. TTS
+        // playback itself is USAGE_MEDIA (see VoiceEngine); a reader
+        // tracing "the TTS audio path" must not mistake this focus
+        // attribute for the playback path.
         val app = context.applicationContext
         main.post {
             holders++

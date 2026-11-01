@@ -448,8 +448,19 @@ object VoiceEngine {
      * thread when it finishes, is stopped, or can't be spoken at all.
      * Returns false straight away when no engine can speak, so the caller
      * can say that instead of leaving the driver waiting on silence.
+     * Audit §6 N3: [onPlaybackStart] runs when the track actually starts
+     * playing (never on a failed render, a refused track, or a superseded
+     * generation) — the caller that records a turn only on playback start
+     * hangs its record on this, not on the Boolean return, which can only
+     * report acceptance.
      */
-    fun play(context: Context, text: String, onDone: () -> Unit, onSilent: () -> Unit = {}): Boolean {
+    fun play(
+        context: Context,
+        text: String,
+        onDone: () -> Unit,
+        onSilent: () -> Unit = {},
+        onPlaybackStart: () -> Unit = {},
+    ): Boolean {
         if (text.isBlank()) {
             main.post(onDone)
             return true
@@ -475,7 +486,7 @@ object VoiceEngine {
                 }
                 return@execute
             }
-            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = false, onSilent = onSilent)
+            playAudio(audio, myGeneration, onDone, notifyOnInterrupt = false, onSilent = onSilent, onPlaybackStart = onPlaybackStart)
         }
         return true
     }

@@ -30,6 +30,16 @@ import android.os.SystemClock
  * the earlier exchanges. The session ends only on timeout, on
  * toggle-off, or with the process.
  *
+ * Audit §6 T7, decided rule, stated so a future round does not
+ * "fix" it: accepted-action results NEVER record. A proposal-acceptance
+ * reply (the user saying yes to a confirmed AI action) is not
+ * session-recorded, while the identical direct local command IS
+ * recorded via [ConversationHistory.recordBuiltin] — the asymmetry is
+ * deliberate (action proposals and confirmations are never recorded),
+ * not a bug. The cost is honest: a follow-up that refers to a
+ * proposed action's target may dangle, exactly as the v1 boundary
+ * above already states for plain answers.
+ *
  * r117: [ConversationTurn.fromAi] marks which turns were AI
  * answers, so surfaces that render the session (the live widget)
  * can show the AI badge on AI turns exactly like the overlay
@@ -48,7 +58,12 @@ class ConversationHistory {
         /** Turns kept: 8 exchanges = 16 messages, well inside the model context. */
         const val MAX_TURNS = 8
 
-        /** Total history characters kept, about 3k tokens — room left for system, reply, and search results. */
+        /**
+         * Total history characters kept, about 3k tokens — room left for system, reply, and search results.
+         * Audit §6 T6, decided: an oversized single turn TRUNCATES to this cap (assistant text
+         * first, then the user text) instead of dropping whole — the old cap loop dropped a
+         * lone over-cap turn entirely while still advancing the activity timestamp.
+         */
         const val MAX_HISTORY_CHARS = 12_000
 
         /** Silence between AI turns that ends the session. Judgment call: 10 minutes. */
@@ -58,15 +73,34 @@ class ConversationHistory {
     private val turns = mutableListOf<ConversationTurn>()
     private var lastActivityMs: Long = 0L
 
-    /** Appends a completed turn, dropping oldest turns first until both caps hold. Blank turns are ignored. */
-    fun record(user: String, assistant: String, nowMs: Long, fromAi: Boolean = false) {
-        if (user.isBlank() || assistant.isBlank()) return
+    /**
+     * Appends a completed turn, dropping oldest turns first until both caps hold.
+     * Blank turns are ignored. Audit §6 N4: the same expiry check as [snapshot] /
+     * [recordBuiltin] runs here, judged at the single [nowMs] this call supplies
+     * for both the check and the activity stamp — so a turn landing past the
+     * boundary clears the stale session and starts a fresh one instead of
+     * resurrecting it. Audit §6 T6: returns whether a turn was actually
+     * appended, so [recordBuiltin] no longer reports success for a blank turn
+     * [record] ignored; an oversized single turn truncates to the cap instead
+     * of dropping whole.
+     */
+    fun record(user: String, assistant: String, nowMs: Long, fromAi: Boolean = false): Boolean {
+        if (user.isBlank() || assistant.isBlank()) return false
+        if (turns.isNotEmpty() && nowMs - lastActivityMs > SESSION_TIMEOUT_MS) {
+            turns.clear()
+        }
         turns.add(ConversationTurn(user, assistant, fromAi))
         lastActivityMs = nowMs
-        while (turns.size > MAX_TURNS || totalChars() > MAX_HISTORY_CHARS) {
-            if (turns.isEmpty()) break
+        while (turns.size > 1 && (turns.size > MAX_TURNS || totalChars() > MAX_HISTORY_CHARS)) {
             turns.removeAt(0)
         }
+        if (turns.size == 1 && totalChars() > MAX_HISTORY_CHARS) {
+            val only = turns[0]
+            val keptUser = only.user.take(MAX_HISTORY_CHARS)
+            val keptAssistant = only.assistant.take((MAX_HISTORY_CHARS - keptUser.length).coerceAtLeast(0))
+            turns[0] = ConversationTurn(keptUser, keptAssistant, only.fromAi)
+        }
+        return true
     }
 
     /**
@@ -76,6 +110,10 @@ class ConversationHistory {
      * records nothing and returns false, so a lone command never
      * starts a session. A recorded built-in counts toward the
      * caps and refreshes the timeout exactly like an AI turn.
+     * The expiry check stays here, before delegating to [record]:
+     * [record]'s own clear-then-append would otherwise let an
+     * expired session's built-in turn start a new session, which
+     * is exactly what this gate refuses.
      */
     fun recordBuiltin(user: String, assistant: String, nowMs: Long): Boolean {
         if (turns.isEmpty()) return false
@@ -83,8 +121,7 @@ class ConversationHistory {
             turns.clear()
             return false
         }
-        record(user, assistant, nowMs, fromAi = false)
-        return true
+        return record(user, assistant, nowMs, fromAi = false)
     }
 
     /** The turns to send, oldest first; an expired session clears itself and reads empty. */
@@ -97,6 +134,9 @@ class ConversationHistory {
 
     fun clear() {
         turns.clear()
+        // Audit §6 T6: the activity timestamp resets with the turns, so no
+        // future check can read a stale timestamp off an emptied session.
+        lastActivityMs = 0L
     }
 
     fun isEmpty(): Boolean = turns.isEmpty()

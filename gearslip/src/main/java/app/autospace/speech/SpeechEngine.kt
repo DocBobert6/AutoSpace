@@ -461,6 +461,12 @@ object SpeechEngine {
                         numThreads = threads(),
                         modelType = model.modelType,
                     ),
+                    // Audit §6 T2: these 1s/6s/15s values are the BUNDLED
+                    // sherpa engine's endpointing only. The system-recognizer
+                    // path (CarAssistant.systemListen) sets no endpointing
+                    // parameters and uses the platform's endpointing, bounded
+                    // by the 60-second system-listen watchdog — so any claim
+                    // about "the" endpointing values means this engine only.
                     endpointConfig = EndpointConfig(
                         rule1 = EndpointRule(false, NO_SPEECH_S, 0f),
                         rule2 = EndpointRule(true, END_SILENCE_S, 0f),
@@ -604,6 +610,11 @@ object SpeechEngine {
 
     @SuppressLint("MissingPermission") // checked in listen()
     private fun phoneMic(): Mic {
+        // Audit §6 T3: VOICE_RECOGNITION applies to the PHONE microphone
+        // only. The car microphone below reads a projected stream that
+        // carries no AudioSource, so no platform AEC/NS processing
+        // applies to it — a reader tracing "the microphone uses
+        // VOICE_RECOGNITION" must not extend that claim to the car mic.
         val min = AudioRecord.getMinBufferSize(RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val recorder = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION, RATE,
@@ -650,6 +661,9 @@ object SpeechEngine {
      * The car's microphone, which hears the driver better than a phone in a cup holder. The car
      * sends audio in its own sized pieces; they're cut to [CHUNK]s here. Null when there's no car
      * microphone, or it sends nothing at first, so the phone's is used instead.
+     * Audit §6 T3: this projected stream carries no AudioSource and therefore
+     * no platform audio processing — VOICE_RECOGNITION (and its AEC/NS)
+     * belongs to the phone mic above, not to this stream.
      */
     private fun carMic(): Mic? {
         val car = CarMic.current ?: return null

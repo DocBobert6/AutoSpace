@@ -101,6 +101,13 @@ object AiAssistant {
      * The AI providers (r40). Groq is the default; Gemini is kept as an experimental
      * option, never removed. Fresh installs default to Groq; users with a stored
      * Gemini key stay on Gemini until they switch (see [AiKeyStore]).
+     *
+     * Audit §6 N6, deliberate user-choice reading, restated so a future round
+     * does not "fix" it: there is NO automatic cross-provider fallback. A Groq
+     * failure never tries Gemini, even when a valid Gemini key is stored.
+     * "Gemini is the fallback" means only the alternative provider the user
+     * can switch to, not an automatic retry. Changing that needs a product
+     * decision, not a bug fix.
      */
     enum class Provider(val displayName: String, val isExperimental: Boolean) {
         GROQ("Groq", false),
@@ -333,7 +340,13 @@ object AiAssistant {
                 if (setting !in setOf("speak_directions", "phone_mic", "screen_sharing")) {
                     ParsedReply.Refused("I can't change that setting from here.")
                 } else {
-                    ParsedReply.Proposal(AiAction.Toggle(setting, boolField("on") ?: true))
+                    // Audit §2 CLEAN-N13: refuse when the model omits the "on" field,
+                    // matching the sibling branches — never invent the activating
+                    // default (the old `?: true` made the confirmation read as if
+                    // the user had asked for "on"). The confirmation sheet stays
+                    // as mitigation for a parsed proposal, as before.
+                    boolField("on")?.let { ParsedReply.Proposal(AiAction.Toggle(setting, it)) }
+                        ?: ParsedReply.Refused("I couldn't understand whether to turn that on or off.")
                 }
             }
             "timer" -> {
@@ -485,6 +498,37 @@ object AiAssistant {
         val joined = tokens.joinToString(" ")
         return (joined.contains("how hot") || joined.contains("how cold")) &&
             ("outside" in tokens || "out" in tokens)
+    }
+
+    /**
+     * Audit §6 N1 (guarded): the LOCAL weather branch's trigger, shared by
+     * [AssistantCommands.infoCommand] and [AssistantPreview] so preview and live
+     * agree. Narrower than the old substring branch in exactly two ways: how-hot /
+     * how-cold require an "outside"/"out" token (the [isPlaceDependentQuestion]
+     * rule, so "how hot is the oven" falls through), and "weather" must be a
+     * whole token, not a substring (so "weathering" no longer claims the
+     * branch). Everything else keeps the old coverage: the "going to rain" /
+     * "gonna rain" phrases and "temperature" + "outside" still claim, and a
+     * bare weather question ("what's the weather", "weather in dry ridge")
+     * behaves exactly as before — that boundary stays until §6 N2 is blessed.
+     * Honest limit, stated rather than papered over: a standalone "weather"
+     * token still claims idioms and product names that contain one ("under
+     * the weather", "weather stripping"). Excluding those would need a
+     * content-purity rule that would also break genuine bare questions
+     * ("tell me the weather"), so they stay claimed under this rule.
+     */
+    fun isLocalWeatherTrigger(normalized: String): Boolean {
+        val tokens = normalized.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        if ("weather" in tokens) return true
+        val joined = tokens.joinToString(" ")
+        if (joined.contains("going to rain") || joined.contains("gonna rain")) return true
+        if ((joined.contains("how hot") || joined.contains("how cold")) &&
+            ("outside" in tokens || "out" in tokens)
+        ) {
+            return true
+        }
+        if ("temperature" in tokens && "outside" in tokens) return true
+        return false
     }
 
     /**

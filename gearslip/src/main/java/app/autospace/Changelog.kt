@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            123, "0.4.112-alpha",
+            listOf(
+                "Weather questions are matched more carefully, held directions only fire when their own reply finishes, and slow weather lookups stop hanging.",
+            ),
+        ),
+        Release(
             122, "0.4.111-alpha",
             listOf(
                 "The assistant now offers emergency help even when AI is off, and turns that get interrupted no longer leave a stale reply behind.",
