@@ -111,6 +111,20 @@
         <action android:name="android.intent.action.MAIN" />
         <category android:name="android.intent.category.LAUNCHER" />
     </intent>
+    <!-- r183: open-in-app handler checks — without a VIEW query,
+         package visibility returns nothing for implicit VIEW
+         intents, so the "Open in app" rows could never appear.
+         Narrow on purpose: only VIEW handlers for web links and
+         Play Store links, never QUERY_ALL_PACKAGES. -->
+    <intent>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="http" />
+        <data android:scheme="https" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.VIEW" />
+        <data android:scheme="market" />
+    </intent>
     <!-- Templated apps are invisible to us without this, and the catalog comes back empty. -->
     <intent>
         <action android:name="androidx.car.app.CarAppService" />

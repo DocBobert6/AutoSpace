@@ -1519,6 +1519,10 @@ fun WebApp(content: String) {
                                     // r85: the tab's current page host,
                                     // read per request for scoped rules.
                                     pageHost = { hostOf(tab.currentUrl) },
+                                    // r183: tapped non-http(s) links — the
+                                    // gate + privacy state, read per tap.
+                                    openInAppAllowed = { !CarMotion.moving || latestPassengerAllowed.value },
+                                    isPrivateTab = { tab.isPrivate },
                                 )
                                 // Document-start cosmetics (r85): the
                                 // generic hiding sheet is registered
@@ -2066,6 +2070,26 @@ fun WebApp(content: String) {
                     settingsMenuOpen = false
                     shareUrl(activeTab.currentUrl)
                 },
+                // r183: computed when the menu opens (or the page,
+                // privacy, or allowance changes), never on every
+                // progress recomposition; the fire path re-checks
+                // the gate at click time.
+                canOpenInApp = remember(
+                    activeTab.currentUrl, activeTab.isPrivate, passengerAllowed, settingsMenuOpen,
+                ) {
+                    !activeTab.isStartPage &&
+                        OpenInApp.viewOfferable(
+                            activeTab.currentUrl, activeTab.isPrivate,
+                            !CarMotion.moving || passengerAllowed,
+                        ) &&
+                        OpenInApp.hasAppHandler(context, activeTab.currentUrl)
+                },
+                onOpenInApp = {
+                    settingsMenuOpen = false
+                    if (!activeTab.isPrivate && (!CarMotion.moving || passengerAllowed)) {
+                        OpenInApp.openInApp(context, activeTab.currentUrl)
+                    }
+                },
                 adBlockOn = adBlockOn,
                 onAdBlock = { on ->
                     BrowserStore.setAdBlockEnabled(context, on)
@@ -2548,6 +2572,17 @@ fun WebApp(content: String) {
                                 longPressTarget = null
                                 newUrlTab(longPress.url)
                             }, modifier = Modifier.fillMaxWidth()) { Text("Open in new tab") }
+                            // r183: "Open in app" for a link another app
+                            // handles — host-specific handlers only, so
+                            // a generic browser never earns this row.
+                            if (OpenInApp.viewOfferable(longPress.url, activeTab.isPrivate, !CarMotion.moving || passengerAllowed) &&
+                                OpenInApp.hasAppHandler(context, longPress.url)
+                            ) {
+                                GsButton(onClick = {
+                                    longPressTarget = null
+                                    if (!CarMotion.moving || passengerAllowed) OpenInApp.openInApp(context, longPress.url)
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Open in app") }
+                            }
                         } else {
                             GsButton(onClick = {
                                 longPressTarget = null
@@ -2800,6 +2835,10 @@ private fun BrowserSettingsMenu(
     onTextZoom: (Int) -> Unit,
     onFindInPage: () -> Unit,
     onOpenOnPhone: () -> Unit,
+    // r183: current-page "Open in app" — shown only when a handler
+    // exists, computed by the caller when the menu opens.
+    canOpenInApp: Boolean,
+    onOpenInApp: () -> Unit,
     // Browser batch (r21).
     adBlockOn: Boolean,
     onAdBlock: (Boolean) -> Unit,
@@ -2976,6 +3015,14 @@ private fun BrowserSettingsMenu(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (canOpenInApp) {
+                    MenuRow("Open in app", false) { onOpenInApp() }
+                    Text(
+                        "Open in app opens this page in an app on the phone screen, when one handles it; the car tab stays open.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 MenuSection("Ads & trackers")
                 MenuRow("Block ads & trackers", adBlockOn) { onAdBlock(!adBlockOn) }
                 Text(
@@ -3212,6 +3259,11 @@ private class BrowserClient(
     // third-party scoped rules. Read per request, never cached: a
     // tab's URL changes without the client being rebuilt.
     private val pageHost: () -> String = { "" },
+    // r183: open-in-app tap gating, read per tap, never cached: the
+    // car must be parked (or a passenger allowance live) and the tab
+    // must not be private, or a tapped link keeps today's dead-end.
+    private val openInAppAllowed: () -> Boolean = { true },
+    private val isPrivateTab: () -> Boolean = { false },
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -3267,6 +3319,50 @@ private class BrowserClient(
     // behaviour exactly (WebView handles http(s) itself).
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val url = request?.url?.toString()
+        // r183: a tapped non-http(s) link gets the open treatment
+        // instead of the bare "Could not load" dead-end. Only a real
+        // tap may hand a URL to another app, ask to place a call, or
+        // load a fallback page — script-driven hops (no gesture)
+        // fall through untouched, and http(s) taps are never hijacked
+        // here: they load in the tab as before. A closed gate or a
+        // private tab returns false, which is exactly today's dead-end.
+        if (request?.isForMainFrame == true && request.hasGesture() && url != null) {
+            when (OpenInApp.tapAction(url)) {
+                OpenInApp.TapAction.VIEW -> {
+                    if (openInAppAllowed() && !isPrivateTab() &&
+                        OpenInApp.hasAppHandler(view?.context, url)
+                    ) {
+                        view?.context?.let { OpenInApp.openInApp(it, url) }
+                        return true
+                    }
+                    return false
+                }
+                OpenInApp.TapAction.CALL -> {
+                    val number = url.substringAfter(':').substringBefore(';').substringBefore('?')
+                    if (openInAppAllowed() && !isPrivateTab() && number.isNotBlank() &&
+                        OpenInApp.canCall(view?.context)
+                    ) {
+                        // The existing call confirmation, not a blind
+                        // dial: the overlay in the root composition
+                        // asks first, then dials through placeCall.
+                        CallPrompt.ask(number, number)
+                        return true
+                    }
+                    return false
+                }
+                OpenInApp.TapAction.FALLBACK -> {
+                    if (openInAppAllowed() && !isPrivateTab()) {
+                        val fallback = OpenInApp.fallbackUrl(url)
+                        if (fallback != null) {
+                            view?.loadUrl(fallback)
+                            return true
+                        }
+                    }
+                    return false
+                }
+                OpenInApp.TapAction.NONE -> Unit
+            }
+        }
         if (request?.isForMainFrame == true && request.hasGesture() == false && url != null &&
             (url.startsWith("http://") || url.startsWith("https://"))
         ) {

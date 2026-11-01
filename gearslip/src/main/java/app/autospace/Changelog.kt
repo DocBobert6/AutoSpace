@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            141, "0.4.130-alpha",
+            listOf(
+                "Open in app: links and pages that another app handles can now open in that app instead of hitting a dead end, and tapped phone numbers ask before dialing.",
+            ),
+        ),
+        Release(
             140, "0.4.129-alpha",
             listOf(
                 "Settings tidying: the hotword rows sit in a more sensible order, and the map day/night setting now uses the same label in both places it appears.",
