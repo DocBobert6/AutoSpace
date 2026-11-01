@@ -355,17 +355,18 @@ internal fun RightEdgeControls(
         horizontalAlignment = Alignment.End,
         // Audit (second video): the map's edge controls read ~24dp in
         // the video and are hard to hit while driving. The row/column
-        // gaps widen to 12dp and the icon-only buttons grow to 64dp
-        // with 34dp glyphs (ActionButton's size params, below) — the
+        // gaps widen to 14dp and the icon-only buttons grow to 72dp
+        // with 38dp glyphs (ActionButton's size params, below) — the
         // titled Search pill keeps its own padding and is untouched.
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        // r178: buttons 64dp -> 72dp, glyphs 34dp -> 38dp, gaps 12dp -> 14dp.
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         if (actions.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                actions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp, frosted = true) }
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                actions.forEach { ActionButton(it, buttonSize = 72.dp, glyphSize = 38.dp, frosted = true) }
             }
         }
-        mapActions.forEach { ActionButton(it, buttonSize = 64.dp, glyphSize = 34.dp, frosted = true) }
+        mapActions.forEach { ActionButton(it, buttonSize = 72.dp, glyphSize = 38.dp, frosted = true) }
     }
 }
 
@@ -406,9 +407,9 @@ internal fun ActionButton(
     action: Action,
     large: Boolean = false,
     modifier: Modifier = Modifier,
-    /** Icon-only button size; the map's edge controls pass 64dp. Everywhere else keeps 54dp. */
+    /** Icon-only button size; the map's edge controls pass 72dp. Everywhere else keeps 54dp. */
     buttonSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_SIZE,
-    /** Icon-only glyph size; the map's edge controls pass 34dp. Everywhere else keeps 30dp. */
+    /** Icon-only glyph size; the map's edge controls pass 38dp. Everywhere else keeps 30dp. */
     glyphSize: androidx.compose.ui.unit.Dp = ICON_BUTTON_GLYPH,
     /** r46: this button is map-edge chrome eligible for the frosted treatment (RightEdgeControls only). */
     frosted: Boolean = false,

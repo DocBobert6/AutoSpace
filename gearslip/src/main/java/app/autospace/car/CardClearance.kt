@@ -9,9 +9,9 @@ import androidx.compose.runtime.setValue
  *
  * The problem, grounded at the parent ref: on short frames the floating
  * media card can cover the template's right-edge controls. The controls
- * are a TopEnd column of 64dp buttons with 12dp gaps (TemplateParts
+ * are a TopEnd column of 72dp buttons with 14dp gaps (TemplateParts
  * RightEdgeControls), 12dp in from the frame's top and right edges, so
- * three of them reach ~228dp down from the top; the card is bottom-
+ * three of them reach ~256dp down from the top; the card is bottom-
  * anchored with 24dp plus the nav-bar strip below it, so on frames
  * shorter than ~104dp + card height + controls extent the two meet on
  * the right edge — and the card, composed after the map pane in the
@@ -75,8 +75,9 @@ import androidx.compose.runtime.setValue
  */
 
 // Verified against TemplateParts.kt RightEdgeControls at the parent ref.
-internal const val CardClearanceButtonDp = 64f
-internal const val CardClearanceGapDp = 12f
+// r178: button 64dp -> 72dp, gap 12dp -> 14dp; chrome pad stays 12dp.
+internal const val CardClearanceButtonDp = 72f
+internal const val CardClearanceGapDp = 14f
 internal const val CardClearanceChromePadDp = 12f
 internal const val CardClearanceCardPadDp = 24f
 
@@ -98,7 +99,7 @@ data class EdgeControlsGeometry(
     val visible: Boolean,
 )
 
-/** Vertical extent of a column of [verticalItems] 64dp buttons with 12dp gaps. */
+/** Vertical extent of a column of [verticalItems] 72dp buttons with 14dp gaps. */
 fun controlsExtentDp(verticalItems: Int): Float =
     if (verticalItems <= 0) 0f
     else verticalItems * CardClearanceButtonDp + (verticalItems - 1) * CardClearanceGapDp

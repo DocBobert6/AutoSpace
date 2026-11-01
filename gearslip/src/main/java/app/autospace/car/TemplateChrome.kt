@@ -156,7 +156,8 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
     val meridian = meridianChromeNow()
     Box(modifier.fillMaxWidth()) {
         if (!pan) (template.navigationInfo as? RoutingInfo)?.let {
-            RoutingCard(it, Modifier.align(Alignment.TopStart).padding(12.dp).width(320.dp))
+            // r178: turn card slightly larger (320dp -> 336dp); padding unchanged.
+            RoutingCard(it, Modifier.align(Alignment.TopStart).padding(12.dp).width(336.dp))
         }
         androidx.compose.runtime.CompositionLocalProvider(LocalMeridianChrome provides meridian) {
             RightEdgeControls(
@@ -166,7 +167,8 @@ private fun NavigationChrome(template: NavigationTemplate, modifier: Modifier) {
             )
         }
         if (!pan) template.destinationTravelEstimate?.let {
-            TravelEstimateBar(it, Modifier.align(Alignment.BottomStart).padding(12.dp))
+            // r178: ETA floats 24dp off the bottom edge (was 12dp); other sides unchanged.
+            TravelEstimateBar(it, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 24.dp))
         }
     }
 }
