@@ -153,6 +153,14 @@ private fun hasNotificationAccess(context: Context): Boolean {
     return runCatching { manager.isNotificationListenerAccessGranted(component) }.getOrDefault(false)
 }
 
+/** r170 (audit §5 5-25): the gentler alternative on the "Turn off Android Auto" page — the in-app Connection switch, not disable/uninstall. */
+internal const val ANDROID_AUTO_SWITCH_LINE =
+    "Or turn off just AutoSpace's USB connection in Settings, under Connection."
+
+/** r170 (audit §5 5-05): the cost of skipping the adb step on the "Readable notifications" page — nothing except notifications staying hidden during capture. */
+internal const val ADB_SKIP_COST_LINE =
+    "If you skip this step, nothing else changes — notifications just stay hidden during capture."
+
 private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<GuidePage> = buildList {
     // --- Safety: always first, and never skipped by an already-granted check ---------
     add(
@@ -340,7 +348,7 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
             GuidePage(
                 title = "Turn off Android Auto.",
                 explanation = "Android Auto is still installed, and it fights AutoSpace for the car's " +
-                    "USB connection. Disable or uninstall it on the screen this opens.",
+                    "USB connection. " + ANDROID_AUTO_SWITCH_LINE + " Disable or uninstall it on the screen this opens if conflicts remain.",
                 icon = glyph(Icons.Filled.Close),
                 actionLabel = "Open Android Auto's app info",
                 onAction = {
@@ -537,7 +545,7 @@ private fun pages(context: Context, onRequestCallScreening: () -> Unit): List<Gu
                 title = "Readable notifications.",
                 explanation = "While audio goes to the car, Android hides what notifications say, " +
                     "as if you were sharing your screen. This lets AutoSpace show them during a " +
-                    "drive and hide them again after.",
+                    "drive and hide them again after. " + ADB_SKIP_COST_LINE,
                 icon = glyph(Icons.Filled.Build),
                 optional = true,
                 usbOnly = true,

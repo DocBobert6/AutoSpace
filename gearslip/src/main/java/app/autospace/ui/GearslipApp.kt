@@ -40,6 +40,21 @@ import app.autospace.car.TestMode
 
 private enum class Screen { INTRO, HOME, LOGS, SETTINGS, CAR_PREVIEW, CAR_PREVIEW_SETTINGS, CERT_SETUP, SETUP_GUIDE, HELP, WHATS_NEW, ASSISTANT_PREVIEW }
 
+/**
+ * r170 (audit §5 5-26): the launch-time notification prompt rule, pure so it is testable without
+ * an Activity. Request on the first attempt, or again while the system still shows a rationale
+ * (denied once, not permanently); never re-launch a dead prompt after a permanent denial.
+ */
+internal fun shouldRequestNotifications(granted: Boolean, showRationale: Boolean, askedBefore: Boolean): Boolean =
+    !granted && (!askedBefore || showRationale)
+
+/**
+ * r170 (audit §5 5-26): the complement — the Settings > Updates row shows exactly when the
+ * prompt is dead: not granted, already asked, and no rationale left to show.
+ */
+internal fun notificationRowVisible(granted: Boolean, showRationale: Boolean, askedBefore: Boolean): Boolean =
+    !granted && askedBefore && !showRationale
+
 /** Three screens and a back stack of depth one: no navigation library needed. */
 @Composable
 fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
@@ -85,15 +100,18 @@ fun GearslipApp(onDisconnect: () -> Unit, onRequestCallScreening: () -> Unit) {
     }
 
     // The guide asks for this now, but anyone who finished it before that never saw the page.
+    // r170 (audit §5 5-26): gated — a permanently denied prompt is never re-launched; the
+    // Settings > Updates row covers that case instead.
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     // Reads the certificate once in the background, so Settings has it ready when opened.
     LaunchedEffect(Unit) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { CertSummary.read(context) } }
     }
     LaunchedEffect(Unit) {
-        if (!needsSetupGuide &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
+        val granted = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val showRationale = (context as? Activity)?.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == true
+        if (!needsSetupGuide && shouldRequestNotifications(granted, showRationale, AppSettings.hasAskedNotificationPermission(context))) {
+            AppSettings.setAskedNotificationPermission(context)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }

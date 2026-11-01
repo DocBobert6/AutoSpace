@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            128, "0.4.117-alpha",
+            listOf(
+                "Onboarding wording is clearer: the intro pages now say exactly what each step does.",
+            ),
+        ),
+        Release(
             127, "0.4.116-alpha",
             listOf(
                 "Empty and error states now say what happened: denied calendars, failed pages, unavailable browsing, and an empty launcher each get their own message.",

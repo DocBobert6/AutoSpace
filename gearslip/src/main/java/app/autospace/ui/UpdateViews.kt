@@ -1,7 +1,10 @@
 package app.autospace.ui
 
+import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +18,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -37,6 +41,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.autospace.AppSettings
 import app.autospace.BuildConfig
 import app.autospace.SessionStatus
 import app.autospace.update.UpdateChecker
@@ -169,6 +174,42 @@ internal fun UpdateRow() {
             onDismiss = { open = false },
         )
     }
+}
+
+/**
+ * r170 (audit §5 5-26): the one-line row for a permanently denied notification permission.
+ * It renders nothing in every other state (granted, never asked, or a rationale still
+ * available), so the Updates section is unchanged for everyone else. The tap deep-links to
+ * this app's notification settings; it never re-launches the dead system prompt. Read at
+ * composition time, so a grant made in system settings hides the row the next time
+ * Settings opens, not mid-screen.
+ */
+@Composable
+internal fun NotificationPermissionRow() {
+    val context = LocalContext.current
+    val granted = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    val showRationale = (context as? Activity)?.shouldShowRequestPermissionRationale(android.Manifest.permission.POST_NOTIFICATIONS) == true
+    if (!notificationRowVisible(granted, showRationale, AppSettings.hasAskedNotificationPermission(context))) return
+    SettingsDivider()
+    SettingsRow(
+        "Notifications are off",
+        Modifier.clickable {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                },
+            )
+        },
+        subtitle = "Update and speech notifications stay off until you turn them on",
+        icon = Icons.Filled.NotificationsOff,
+        trailing = {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+    )
 }
 
 @Composable

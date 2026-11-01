@@ -133,7 +133,10 @@ fun SettingsScreen(
             // stats server, the notes go nowhere, and the section
             // had already shrunk to an informational note. The
             // backend stays, so the removal is reversible.
-            SettingsSection("Updates") { UpdateRow() }
+            SettingsSection("Updates") {
+                UpdateRow()
+                NotificationPermissionRow()
+            }
             CertificateSection()
             AboutSection(onOpenWhatsNew, onReplayTutorial, onReplayIntro)
             Spacer(Modifier.height(16.dp))

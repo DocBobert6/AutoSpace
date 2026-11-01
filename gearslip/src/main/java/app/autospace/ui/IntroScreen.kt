@@ -158,6 +158,10 @@ object Intro {
  * description is pinned by test, and the row itself carries no click handlers. */
 internal const val INTRO_PREVIEW_DESCRIPTION = "Preview of the car screen"
 
+/** r170 (audit §5 5-24): the Voice step's privacy sentence, qualified — the on-device speech-to-text step sends nothing anywhere, but a cloud assistant switched on later does send assistant text to its provider. */
+internal const val VOICE_PRIVACY_SENTENCE =
+    "Your phone turns speech into text by itself, and that step sends nothing anywhere, unless you switch on a cloud assistant."
+
 /** The intro's tones, taken from the phone's own Material You colours like the rest of the app. */
 internal class IntroColors(
     val surface: Color, val onSurface: Color, val onVariant: Color, val outline: Color,
@@ -475,8 +479,8 @@ private fun VoiceStep(c: IntroColors, cq: (Float) -> Dp, cqSp: (Float) -> TextUn
     }
     BadgeStep(
         c, cq, cqSp, c.primaryC, "Just say it.",
-        "Tap the mic, or press the talk button on your wheel, and speak. Your phone turns speech " +
-            "into text by itself, and nothing you say leaves it. Say \"help\" in the car for the full list.",
+        "Tap the mic, or press the talk button on your wheel, and speak. " + VOICE_PRIVACY_SENTENCE +
+            " Say \"help\" in the car for the full list.",
         key,
         action = if (ready) null else label to { SpeechModels.downloadRecommended(context) },
         outlined = true,

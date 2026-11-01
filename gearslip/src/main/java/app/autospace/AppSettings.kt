@@ -11,6 +11,7 @@ object AppSettings {
     private const val KEY_STARTUP_URL = "startup_url"
     private const val KEY_SKIPPED_CERT_SETUP = "skipped_cert_setup"
     private const val KEY_SEEN_PERMISSIONS_SETUP = "seen_permissions_setup"
+    private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notification_permission_asked"
     private const val KEY_GEARSLIP_ENABLED = "gearslip_enabled"
 
     /** r30: learned words typed on the car keyboard (newline-joined, lowercase). */
@@ -51,6 +52,14 @@ object AppSettings {
 
     fun setSeenPermissionsSetup(context: Context) {
         prefs(context).edit().putBoolean(KEY_SEEN_PERMISSIONS_SETUP, true).apply()
+    }
+
+    /** r170 (audit §5 5-26): whether the launch-time notification permission prompt has run once. */
+    fun hasAskedNotificationPermission(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)
+
+    fun setAskedNotificationPermission(context: Context) {
+        prefs(context).edit().putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, true).apply()
     }
 
     /** r30: suggestion strip on the car keyboard. On by default. */
