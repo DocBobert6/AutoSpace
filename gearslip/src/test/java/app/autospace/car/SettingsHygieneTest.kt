@@ -111,7 +111,7 @@ class SettingsHygieneTest {
             CarSettings.lenientParse("car_scale", "", 1f) { it.toFloatOrNull()?.coerceIn(0.5f, 1.5f) },
         )
         assertEquals(
-            10,
+            45,
             CarSettings.lenientParse("car_player_skip_sec", "45", 10) { it.toIntOrNull() },
         )
         assertEquals(
