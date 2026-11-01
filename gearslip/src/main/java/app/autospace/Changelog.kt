@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            130, "0.4.119-alpha",
+            listOf(
+                "Updater hardening: deferred installs survive restarts, drive-end updates notify once, rate limits are honored, and downloads refuse unsigned or non-secure sources.",
+            ),
+        ),
+        Release(
             129, "0.4.118-alpha",
             listOf(
                 "Manifest and dependency cleanup: unused entries removed, the USB accessory is optional, and release builds fail fast without a signing key.",

@@ -690,6 +690,13 @@ class GearslipActivity : ComponentActivity(), Projection {
             handleEpubView(intent)
             return
         }
+        // r172 (audit §5 5-19): the update notification's Install action. The
+        // guards live in install() itself: a connected car refuses, a missing
+        // permission opens settings and defers (and the deferral persists, 5-18).
+        if (intent?.getBooleanExtra(app.autospace.update.UpdateChecker.EXTRA_INSTALL_UPDATE, false) == true) {
+            app.autospace.update.UpdateChecker.installFromAction(this)
+            return
+        }
         if (intent?.action != UsbManager.ACTION_USB_ACCESSORY_ATTACHED) return
         // No USB-accessory feature on this device: the system should never deliver this
         // intent here, but refuse explicitly rather than opening an accessory that cannot

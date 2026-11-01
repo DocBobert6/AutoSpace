@@ -1,6 +1,7 @@
 package app.autospace.update
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -25,6 +26,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -59,6 +63,104 @@ object UpdateChecker {
         data class Failed(val message: String, val release: Release? = null) : State
     }
 
+    /**
+     * A 403/429 from GitHub's release API. Carries the wait GitHub asked for, so the
+     * check path can honor it instead of hammering: Retry-After wins when present,
+     * X-RateLimit-Reset (epoch seconds) is the fallback, and neither means "later,
+     * unsaid". An IOException subclass on purpose — the failure mapping must test
+     * for this type BEFORE the generic network branch, or a rate limit would read
+     * as a connection problem.
+     */
+    class RateLimitedException(
+        val statusCode: Int,
+        val retryAfterSeconds: Long?,
+        val resetEpochSeconds: Long?,
+    ) : IOException("GitHub answered $statusCode (rate limited)")
+
+    /**
+     * A download that finished but failed the final gate (size or SHA-256). The
+     * download path deletes the file on this failure only: a damaged file must
+     * never be resumed from, while a merely interrupted one must be.
+     */
+    class UpdateVerificationException(message: String) : Exception(message)
+
+    /**
+     * r172 (audit §5 5-19): the notification's Install action. GearslipActivity
+     * hands a tap carrying this extra to [installFromAction]; the guards live in
+     * [install] itself, so the action is safe to tap at any time.
+     */
+    const val EXTRA_INSTALL_UPDATE = "app.autospace.update.INSTALL"
+
+    /**
+     * r172 (audit §5 5-22): only https may serve an update APK. Pure, so the unit
+     * test pins it: a saved release whose URL was tampered to http in prefs is
+     * refused here, before any bytes are fetched.
+     */
+    internal fun isSecureApkUrl(url: String): Boolean = runCatching {
+        val parsed = URL(url)
+        parsed.protocol == "https" && parsed.host?.isNotBlank() == true
+    }.getOrDefault(false)
+
+    /**
+     * r172 (audit §5 5-20): the rate-limit message for a check failure. The wait
+     * is Retry-After first, then the seconds until X-RateLimit-Reset, then
+     * nothing — "try again later" with no invented deadline. Pure, so the unit
+     * test pins the wording and the precedence without a device.
+     */
+    internal fun rateLimitMessage(retryAfterSeconds: Long?, resetEpochSeconds: Long?, nowMs: Long): String {
+        val waitSecs = retryAfterSeconds?.takeIf { it > 0 }
+            ?: resetEpochSeconds?.let { (it * 1000 - nowMs) / 1000 }?.takeIf { it > 0 }
+            ?: return "GitHub is rate-limiting checks right now — try again later."
+        val minutes = ((waitSecs + 59) / 60).coerceAtLeast(1)
+        return waitMinutesMessage(minutes)
+    }
+
+    /** Shared wording for a rate-limit wait, from minutes until it lifts. */
+    private fun waitMinutesMessage(minutes: Long): String =
+        "GitHub is rate-limiting checks right now — try again in $minutes minute${if (minutes == 1L) "" else "s"}."
+
+    /** r172 (audit §5 5-20): the timestamp automatic checks must not retry before, or null. */
+    internal fun rateLimitUntilMs(retryAfterSeconds: Long?, resetEpochSeconds: Long?, nowMs: Long): Long? {
+        val waitSecs = retryAfterSeconds?.takeIf { it > 0 }
+            ?: resetEpochSeconds?.let { (it * 1000 - nowMs) / 1000 }?.takeIf { it > 0 }
+            ?: return null
+        return nowMs + waitSecs * 1000
+    }
+
+    /**
+     * r172 (audit §5 5-20): what a failed check tells the driver. Rate limits get
+     * the rate-limit message (with the wait when GitHub gave one); the connection
+     * message is reserved for actual network errors; anything else — a bad answer,
+     * an unparseable body — gets a plain message that never blames the connection.
+     * The RateLimited branch must stay first: it is an IOException subclass.
+     */
+    internal fun checkFailureMessage(error: Throwable, nowMs: Long): String = when (error) {
+        is RateLimitedException -> rateLimitMessage(error.retryAfterSeconds, error.resetEpochSeconds, nowMs)
+        is IOException -> "Couldn't reach GitHub. Check the connection and try again."
+        else -> "Couldn't check for updates. Try again."
+    }
+
+    /**
+     * r172 (audit §5 5-23): what a partial file means before a download starts.
+     * VERIFY_COMPLETE still checks the digest — a complete file with a wrong
+     * digest is damaged, not done. Pure, so the unit test pins it.
+     */
+    internal enum class ResumePlan { FRESH, RESUME, VERIFY_COMPLETE, RESTART }
+
+    internal fun resumePlan(existingBytes: Long, totalBytes: Long): ResumePlan = when {
+        existingBytes <= 0L -> ResumePlan.FRESH
+        totalBytes > 0 && existingBytes == totalBytes -> ResumePlan.VERIFY_COMPLETE
+        totalBytes > 0 && existingBytes > totalBytes -> ResumePlan.RESTART
+        else -> ResumePlan.RESUME
+    }
+
+    /** r172 (audit §5 5-23): only a 206 to a ranged request appends to a partial file. */
+    internal fun resumesStream(responseCode: Int, usedRange: Boolean): Boolean =
+        responseCode == 206 && usedRange
+
+    /** r172 (audit §5 5-18/5-19): the cache file for a release, shared by download and restore. */
+    internal fun apkFileName(version: String): String = "AutoSpace-$version.apk"
+
     private val flow = MutableStateFlow<State>(State.Idle)
     val state: StateFlow<State> = flow.asStateFlow()
 
@@ -72,6 +174,12 @@ object UpdateChecker {
     private const val KEY_CHANNEL = "channel"
     private const val KEY_NOTIFIED = "notified_version"
     private const val KEY_CAR_NOTIFIED = "car_notified_version"
+    /** r172 (audit §5 5-18): a deferred install that must survive process death. */
+    private const val KEY_PENDING_INSTALL = "pending_install"
+    /** r172 (audit §5 5-19): a Ready update announced at a drive end, once per version. */
+    private const val KEY_READY_NOTIFIED = "ready_notified_version"
+    /** r172 (audit §5 5-20): automatic checks must not retry before this timestamp. */
+    private const val KEY_RATE_LIMITED_UNTIL = "rate_limited_until"
     /** Lets the car screen settle after plug-in, so the card isn't lost behind the first frames. */
     private const val CAR_DELAY_MS = 8_000L
     private const val CHANNEL = "updates"
@@ -145,12 +253,67 @@ object UpdateChecker {
     }
 
     private fun dueForCheck(context: Context) =
-        !BuildConfig.DEBUG && autoCheckEnabled(context) && System.currentTimeMillis() - prefs(context).getLong(KEY_CHECKED_AT, 0) >= DAY_MS
+        !BuildConfig.DEBUG && autoCheckEnabled(context) && System.currentTimeMillis() - prefs(context).getLong(KEY_CHECKED_AT, 0) >= DAY_MS &&
+            // r172 (audit §5 5-20): a rate limit GitHub asked us to honor still
+            // running means no automatic retry yet, whatever the day cadence says.
+            System.currentTimeMillis() >= prefs(context).getLong(KEY_RATE_LIMITED_UNTIL, 0)
+
+    /** r172 (audit §5 5-18): the deferred-install flag, beside the in-memory one. */
+    private fun setPendingInstall(context: Context, pending: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PENDING_INSTALL, pending).apply()
+    }
+
+    private fun pendingInstall(context: Context): Boolean = prefs(context).getBoolean(KEY_PENDING_INSTALL, false)
+
+    /**
+     * r172 (audit §5 5-18/5-19): a downloaded update that survived process death —
+     * the release is in prefs and the APK is still in the cache dir. Fail-closed:
+     * no digest, a size disagreement, or a digest disagreement all return null,
+     * and a complete-but-damaged file is deleted so the next download starts
+     * fresh. A partial file is left alone — it is for a later download to resume
+     * from, never deleted by a restore attempt.
+     */
+    private fun restoreReady(context: Context): State.Ready? {
+        val release = savedRelease(context) ?: return null
+        val expectedSha = release.sha256 ?: return null
+        val apk = File(updatesDir(context), apkFileName(release.version))
+        if (!apk.isFile) return null
+        if (release.size > 0 && apk.length() > release.size) {
+            apk.delete() // longer than the release: cannot be a prefix of it
+            return null
+        }
+        if (release.size > 0 && apk.length() == release.size) {
+            if (sha256Of(apk).equals(expectedSha, ignoreCase = true)) return State.Ready(release, apk)
+            apk.delete() // complete but damaged: never install it, never resume from it
+            return null
+        }
+        // Shorter than the release: a partial for a later download to resume from.
+        return null
+    }
 
     /** AutoSpace came to the front: check if a day has passed, and finish an install that waited on permission. */
     fun onAppOpened(context: Context) {
+        val app = context.applicationContext
         val current = flow.value
-        if (installWhenAllowed && current is State.Ready && context.packageManager.canRequestPackageInstalls()) {
+        // r172 (audit §5 5-18): a deferred install survives process death. The
+        // in-memory flag dies with the process; the persisted flag does not, and
+        // the downloaded APK is still in the cache dir to restore from.
+        if (pendingInstall(app) && (current is State.Idle || current is State.Ready)) {
+            val ready = current as? State.Ready ?: restoreReady(app)
+            if (ready != null && !carConnected && app.packageManager.canRequestPackageInstalls()) {
+                flow.value = ready
+                install(app) // clears the persisted flag when it fires, below
+                return
+            }
+            if (ready == null) {
+                // Nothing to install any more (apk gone or damaged): drop the stale flag.
+                setPendingInstall(app, false)
+            } else {
+                // Still deferred (car connected, or permission still missing):
+                // keep the flag and fall through to the normal path.
+                installWhenAllowed = true
+            }
+        } else if (installWhenAllowed && current is State.Ready && context.packageManager.canRequestPackageInstalls()) {
             installWhenAllowed = false
             install(context)
             return
@@ -162,8 +325,37 @@ object UpdateChecker {
     }
 
     /**
+     * The notification's Install action (r172, audit §5 5-19): install a Ready
+     * update, restoring it from disk first when the process died after the
+     * download. Only an Idle flow restores — restoring while a download is in
+     * flight could mistake its partial file for a finished update, and any other
+     * state already shows the driver what to do on the Home card. The guards
+     * live in [install] itself: a connected car refuses, a missing permission
+     * opens settings and defers (and the deferral persists, 5-18).
+     */
+    fun installFromAction(context: Context) {
+        val app = context.applicationContext
+        if (flow.value !is State.Ready) {
+            if (flow.value !is State.Idle) {
+                GearslipLog.w("update: install action while not idle — ignoring")
+                return
+            }
+            flow.value = restoreReady(app) ?: run {
+                GearslipLog.w("update: install action with nothing ready to install")
+                return
+            }
+        }
+        install(app)
+    }
+
+    /**
      * A car session ended, so the driver is parked. Checks if a day has passed, then posts a
-     * notification for a new version they haven't been told about yet.
+     * notification for a new version they haven't been told about yet. r172 (audit §5 5-19):
+     * a downloaded update whose install waited out the drive gets its own treatment — it
+     * outranks a merely-available one. When the app is in front, the deferred install
+     * fires directly (the same auto-install the download itself attempted); otherwise
+     * the driver gets a once-per-version "ready to install" notification with a real
+     * Install action, even when the version was already announced while available.
      */
     fun onDriveEnded(context: Context) {
         if (!autoCheckEnabled(context)) return
@@ -174,10 +366,75 @@ object UpdateChecker {
                 flow.value = State.Checking
                 flow.value = checkNow(app)
             }
+            val ready = flow.value as? State.Ready
+            if (ready != null && !carConnected && isAppForegrounded(app)) {
+                GearslipLog.i("update: drive ended with ${ready.release.version} ready and app in front — installing")
+                install(app)
+                return@Thread
+            }
             val release = foundRelease(app) ?: return@Thread
-            if (prefs(app).getString(KEY_NOTIFIED, null) == release.version) return@Thread
-            if (notify(app, release)) prefs(app).edit().putString(KEY_NOTIFIED, release.version).apply()
+            if (prefs(app).getString(KEY_NOTIFIED, null) != release.version) {
+                if (notify(app, release)) prefs(app).edit().putString(KEY_NOTIFIED, release.version).apply()
+            }
+            if (ready != null && !carConnected && prefs(app).getString(KEY_READY_NOTIFIED, null) != ready.release.version) {
+                if (notifyReady(app, ready.release)) prefs(app).edit().putString(KEY_READY_NOTIFIED, ready.release.version).apply()
+            }
         }, "gearslip-update").start()
+    }
+
+    /**
+     * r172 (audit §5 5-19): is this process the foreground app, by the system's own
+     * importance for our pid. A heuristic — importance can lag — but the safe
+     * direction holds either way: a false negative posts the notification instead
+     * of installing, and install() itself still refuses while the car is connected.
+     */
+    private fun isAppForegrounded(context: Context): Boolean {
+        val am = context.getSystemService(ActivityManager::class.java) ?: return false
+        return runCatching {
+            am.runningAppProcesses?.any {
+                it.pid == android.os.Process.myPid() &&
+                    it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
+            } == true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * r172 (audit §5 5-19): "AutoSpace X is ready to install". The Install action
+     * opens the app carrying [EXTRA_INSTALL_UPDATE], which GearslipActivity hands
+     * to [installFromAction] — the guards in [install] still apply, so tapping it
+     * while connected again simply does nothing. A distinct PendingIntent request
+     * code is required: extras do not distinguish PendingIntents, and reusing the
+     * open intent's code would hand the action the open intent instead.
+     */
+    private fun notifyReady(context: Context, release: Release): Boolean {
+        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
+        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL, "Updates", NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        val open = PendingIntent.getActivity(
+            context, NOTIFICATION_ID,
+            Intent(context, GearslipActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val installAction = PendingIntent.getActivity(
+            context, NOTIFICATION_ID + 1,
+            Intent(context, GearslipActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(EXTRA_INSTALL_UPDATE, true),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle("AutoSpace ${release.version} is ready to install")
+            .setContentText("Tap Install to update.")
+            .setContentIntent(open)
+            .addAction(android.R.drawable.stat_sys_download, "Install", installAction)
+            .setAutoCancel(true)
+            .build()
+        return runCatching { NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification) }
+            .onSuccess { GearslipLog.i("update: told the driver ${release.version} is ready to install") }
+            .onFailure { GearslipLog.w("update: could not post the ready notification (${it.message})") }
+            .isSuccess
     }
 
     /**
@@ -252,13 +509,23 @@ object UpdateChecker {
         val current = flow.value
         if (current is State.Checking || current is State.Downloading) return
         val app = context.applicationContext
+        // r172 (audit §5 5-20): the rate-limit wait binds a manual tap too — a
+        // check GitHub just refused would only 429 again. The wait is surfaced
+        // at once instead of sending a doomed request, and the gate lifts itself.
+        val limitedUntil = prefs(app).getLong(KEY_RATE_LIMITED_UNTIL, 0)
+        val now = System.currentTimeMillis()
+        if (limitedUntil > now) {
+            val minutes = ((limitedUntil - now + 59_000) / 60_000).coerceAtLeast(1)
+            flow.value = State.Failed(waitMinutesMessage(minutes))
+            return
+        }
         flow.value = State.Checking
         Thread({ flow.value = checkNow(app) }, "gearslip-update").start()
     }
 
     private fun checkNow(app: Context): State = runCatching { fetchNewest(channel(app)) }.fold(
         onSuccess = { release ->
-            prefs(app).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis()).apply()
+            prefs(app).edit().putLong(KEY_CHECKED_AT, System.currentTimeMillis()).remove(KEY_RATE_LIMITED_UNTIL).apply()
             if (release != null && isNewer(release.version, BuildConfig.VERSION_NAME)) {
                 GearslipLog.i("update: ${release.version} is out (this is ${BuildConfig.VERSION_NAME})")
                 save(app, release)
@@ -270,8 +537,17 @@ object UpdateChecker {
             }
         },
         onFailure = {
+            // r172 (audit §5 5-20): a rate limit is remembered so automatic checks
+            // honor the wait GitHub asked for; the message names the kind — the
+            // connection message is reserved for actual network errors.
+            val now = System.currentTimeMillis()
+            if (it is RateLimitedException) {
+                rateLimitUntilMs(it.retryAfterSeconds, it.resetEpochSeconds, now)?.let { until ->
+                    prefs(app).edit().putLong(KEY_RATE_LIMITED_UNTIL, until).apply()
+                }
+            }
             GearslipLog.w("update: could not check: ${it.message}")
-            State.Failed("Couldn't reach GitHub. Check the connection and try again.")
+            State.Failed(checkFailureMessage(it, now))
         },
     )
 
@@ -281,14 +557,22 @@ object UpdateChecker {
         val app = context.applicationContext
         flow.value = State.Downloading(release, 0f)
         Thread({
-            val dir = updatesDir(app).apply { deleteRecursively(); mkdirs() }
-            val apk = File(dir, "AutoSpace-${release.version}.apk")
+            // r172 (audit §5 5-23): keep the dir — a partial file is a resume, not
+            // garbage. Only other versions' files go, so a stale download cannot
+            // pile up beside the one being resumed.
+            val dir = updatesDir(app).apply { mkdirs() }
+            val apk = File(dir, apkFileName(release.version))
+            dir.listFiles()?.filter { it != apk }?.forEach { it.delete() }
             flow.value = runCatching {
                 fetchApk(release, apk)
                 GearslipLog.i("update: downloaded ${release.version}")
                 State.Ready(release, apk)
             }.getOrElse {
-                apk.delete()
+                // r172 (audit §5 5-23): only a damaged file is deleted. An
+                // interrupted download keeps its partial, so the next attempt
+                // resumes instead of restarting — the final gate below
+                // re-verifies the whole file either way.
+                if (it is UpdateVerificationException) apk.delete()
                 GearslipLog.w("update: download failed: ${it.message}")
                 State.Failed(it.message ?: "The download failed. Try again.", release)
             }
@@ -308,6 +592,9 @@ object UpdateChecker {
         val pm = context.packageManager
         if (!pm.canRequestPackageInstalls()) {
             installWhenAllowed = true
+            // r172 (audit §5 5-18): the deferral persists — process death must
+            // not lose an install that was already waiting on this permission.
+            setPendingInstall(context, true)
             context.startActivity(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -315,6 +602,9 @@ object UpdateChecker {
             return
         }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.logshare", ready.apk)
+        // r172 (audit §5 5-18): the install fires now, so the deferral is consumed.
+        installWhenAllowed = false
+        setPendingInstall(context, false)
         context.startActivity(
             Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, "application/vnd.android.package-archive")
@@ -333,6 +623,15 @@ object UpdateChecker {
         }
         try {
             if (conn.responseCode == 404) return null // no stable release yet
+            // r172 (audit §5 5-20): a rate limit is its own failure kind, with the
+            // wait GitHub asked for — never a generic connection message.
+            if (conn.responseCode == 403 || conn.responseCode == 429) {
+                throw RateLimitedException(
+                    statusCode = conn.responseCode,
+                    retryAfterSeconds = conn.getHeaderField("Retry-After")?.toLongOrNull(),
+                    resetEpochSeconds = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull(),
+                )
+            }
             if (conn.responseCode !in 200..299) error("GitHub answered ${conn.responseCode}")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
             if (stable) return release(JSONObject(body))
@@ -365,44 +664,110 @@ object UpdateChecker {
         )
     }
 
+    /**
+     * r172 (audit §5 5-21/5-22/5-23): the download, hardened. A release without a
+     * digest is refused before any bytes are fetched — size alone never verifies
+     * an update (Q10 decision: fail-closed; the updater serves only GitHub release
+     * assets, which all carry a digest, so no legitimate path lacks one). A
+     * non-https URL is refused the same way. An interrupted download resumes:
+     * a partial file is continued with a Range request, a complete partial is
+     * verified instead of re-downloaded, and a server that ignores the range
+     * restarts the file on the same connection (a 416 restarts on a fresh one).
+     * Size + SHA-256 over the whole file stay the final gate, resumed or not.
+     */
     private fun fetchApk(release: Release, into: File) {
-        val conn = (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 15_000
-            readTimeout = 30_000
-            setRequestProperty("User-Agent", "AutoSpace/${BuildConfig.VERSION_NAME}")
+        val expectedSha = release.sha256 ?: error("Couldn't verify this update.")
+        if (!isSecureApkUrl(release.apkUrl)) error("The update link isn't secure, so it was refused.")
+        val total = release.size.takeIf { it > 0 } ?: -1L
+        val existing = if (into.exists()) into.length() else 0L
+        var resumeFrom = when (resumePlan(existing, total)) {
+            ResumePlan.FRESH -> 0L
+            ResumePlan.RESUME -> existing
+            ResumePlan.VERIFY_COMPLETE -> {
+                if (sha256Of(into).equals(expectedSha, ignoreCase = true)) return // already whole and verified
+                into.delete() // complete but damaged: start fresh below
+                0L
+            }
+            ResumePlan.RESTART -> {
+                into.delete() // longer than the release: cannot be a prefix of it
+                0L
+            }
         }
-        try {
-            if (conn.responseCode !in 200..299) error("GitHub answered ${conn.responseCode}")
-            val total = release.size.takeIf { it > 0 } ?: conn.contentLengthLong
-            val digest = MessageDigest.getInstance("SHA-256")
-            var done = 0L
-            var shown = -1
-            conn.inputStream.use { input ->
-                into.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val n = input.read(buffer)
-                        if (n < 0) break
-                        output.write(buffer, 0, n)
-                        digest.update(buffer, 0, n)
-                        done += n
-                        // Whole percents only, so the screen isn't redrawn for every buffer.
-                        val percent = if (total > 0) (done * 100 / total).toInt() else 0
-                        if (percent != shown) {
-                            shown = percent
-                            flow.value = State.Downloading(release, percent / 100f)
-                        }
+        // At most two attempts: the resume, then a fresh download when the server
+        // refuses the range outright (416). A 200 to a ranged request restarts on
+        // the same connection, so it needs no second attempt.
+        repeat(2) { attempt ->
+            val useRange = resumeFrom > 0
+            val conn = (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 15_000
+                readTimeout = 30_000
+                setRequestProperty("User-Agent", "AutoSpace/${BuildConfig.VERSION_NAME}")
+                if (useRange) setRequestProperty("Range", "bytes=$resumeFrom-")
+            }
+            try {
+                when {
+                    conn.responseCode == 416 && attempt == 0 -> {
+                        // Range unsatisfiable: the partial is not a prefix the server
+                        // recognizes. Drop it and start fresh on the next attempt.
+                        into.delete()
+                        resumeFrom = 0L
                     }
+                    conn.responseCode in 200..299 -> {
+                        val resumed = resumesStream(conn.responseCode, useRange)
+                        if (!resumed && useRange) {
+                            // Server ignored the range and sent the whole file:
+                            // the partial is not a prefix of this stream.
+                            into.delete()
+                            resumeFrom = 0L
+                        }
+                        val remaining = conn.contentLengthLong.takeIf { it >= 0 } ?: 0L
+                        val totalForProgress = if (total > 0) total else resumeFrom + remaining
+                        var done = resumeFrom
+                        var shown = -1
+                        conn.inputStream.use { input ->
+                            FileOutputStream(into, resumed).use { output ->
+                                val buffer = ByteArray(64 * 1024)
+                                while (true) {
+                                    val n = input.read(buffer)
+                                    if (n < 0) break
+                                    output.write(buffer, 0, n)
+                                    done += n
+                                    // Whole percents only, so the screen isn't redrawn for every buffer.
+                                    val percent = if (totalForProgress > 0) (done * 100 / totalForProgress).toInt() else 0
+                                    if (percent != shown) {
+                                        shown = percent
+                                        flow.value = State.Downloading(release, percent / 100f)
+                                    }
+                                }
+                            }
+                        }
+                        // Final gate: size + SHA-256 over the whole file, resumed or not.
+                        if (total > 0 && into.length() != total) throw UpdateVerificationException("The download stopped early. Try again.")
+                        val hex = sha256Of(into)
+                        if (!hex.equals(expectedSha, ignoreCase = true)) throw UpdateVerificationException("The download came out damaged. Try again.")
+                        return
+                    }
+                    else -> error("GitHub answered ${conn.responseCode}")
                 }
+            } finally {
+                conn.disconnect()
             }
-            if (release.size > 0 && done != release.size) error("The download stopped early. Try again.")
-            val hex = digest.digest().joinToString("") { "%02x".format(it) }
-            if (release.sha256 != null && !hex.equals(release.sha256, ignoreCase = true)) {
-                error("The download came out damaged. Try again.")
-            }
-        } finally {
-            conn.disconnect()
         }
+        error("The download failed. Try again.")
+    }
+
+    /** SHA-256 of a whole file, for the final gate and for restoring downloads. */
+    private fun sha256Of(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     /** Installing waits until the car is unplugged. */
