@@ -116,9 +116,15 @@
          intents, so the "Open in app" rows could never appear.
          Narrow on purpose: only VIEW handlers for web links and
          Play Store links, never QUERY_ALL_PACKAGES. -->
+    <!-- r184: one scheme per intent — the package-visibility docs allow each of
+         scheme/host/mimeType at most once per queries intent; http + https in a
+         single intent failed to install (r183). -->
     <intent>
         <action android:name="android.intent.action.VIEW" />
         <data android:scheme="http" />
+    </intent>
+    <intent>
+        <action android:name="android.intent.action.VIEW" />
         <data android:scheme="https" />
     </intent>
     <intent>

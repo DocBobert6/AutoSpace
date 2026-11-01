@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            142, "0.4.131-alpha",
+            listOf(
+                "Install fix: the previous release could not install on some phones, so this one corrects the app's declared link handlers. Nothing else changed.",
+            ),
+        ),
+        Release(
             141, "0.4.130-alpha",
             listOf(
                 "Open in app: links and pages that another app handles can now open in that app instead of hitting a dead end, and tapped phone numbers ask before dialing.",
