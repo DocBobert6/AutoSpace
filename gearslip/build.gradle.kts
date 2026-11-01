@@ -153,7 +153,9 @@ android {
 // unsigned release APK cannot install as an update. Fail fast on assembleRelease only, so
 // keyless clones still build debug and run tests. Safe for CI: release.yml writes
 // keystore.properties before assembleRelease, and no other workflow runs assembleRelease.
-tasks.named("assembleRelease") {
+// Lazy matching (like renameApk below): tasks.named() here fails configuration, because
+// AGP creates the assembleRelease task only after evaluation.
+tasks.matching { it.name == "assembleRelease" }.configureEach {
     doFirst {
         val storeFile = keystoreProperties.getProperty("storeFile")
         if (storeFile == null || !rootProject.file(storeFile).exists()) {
