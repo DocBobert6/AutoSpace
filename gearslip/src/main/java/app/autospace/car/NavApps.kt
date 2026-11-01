@@ -41,7 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
+import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.gsLook
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
 import app.autospace.CarFocus
@@ -489,7 +491,7 @@ private fun PackIconCell(packPkg: String, drawable: String, selected: Boolean, o
     LaunchedEffect(packPkg, drawable) {
         bitmap = withContext(Dispatchers.IO) { IconPackBitmaps.bitmapFor(context, packPkg, drawable) }
     }
-    val shape = RoundedCornerShape(14.dp)
+    val shape = cardShapeForLook(gsLook(), RoundedCornerShape(14.dp))
     Box(
         Modifier
             .aspectRatio(1f)

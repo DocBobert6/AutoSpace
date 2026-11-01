@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            125, "0.4.114-alpha",
+            listOf(
+                "Chrome, turn cards, rows, and badges now follow your chosen button style's shapes.",
+            ),
+        ),
+        Release(
             124, "0.4.113-alpha",
             listOf(
                 "Dead code removed: unused helpers, the old known-apps list, and the lyrics data file are gone, with no change to anything you see.",

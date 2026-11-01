@@ -103,6 +103,16 @@ import app.autospace.host.text
  * so the fill is drawn exactly once per pane, and full-screen content surfaces (which never
  * pass [frosted]) stay opaque.
  */
+/**
+ * r167 (audit §3 N2): the opaque chrome-surface shape rule, kept pure so
+ * it is unit-testable. Non-zero rounded shapes route through the card
+ * rule like the frosted branch; a 0dp fallback stays exactly 0dp (flush
+ * panes must not round to 24dp under Verve); non-rounded shapes pass
+ * through untouched.
+ */
+internal fun opaqueChromeShape(look: ControlLook, shape: Shape): Shape =
+    if (shape is RoundedCornerShape && shape != RoundedCornerShape(0.dp)) cardShapeForLook(look, shape) else shape
+
 @Composable
 internal fun ChromeSurface(
     modifier: Modifier = Modifier,
@@ -140,7 +150,8 @@ internal fun ChromeSurface(
             // r48: the frosted branch routes through the look-fed card
             // rule, so frosted map chrome takes the style corner under
             // Verve (24dp) exactly as the floating card does; the
-            // opaque branch below keeps its call-site shape untouched.
+            // opaque branch below routes through the same card rule
+            // (r167, audit §3 N2), guarded so a 0dp fallback stays 0dp.
             FrostedPanelSurface(
                 shape = cardShapeForLook(gsLook(), shape),
                 elevation = shadowElevation,
@@ -152,7 +163,7 @@ internal fun ChromeSurface(
             shadowElevation = shadowElevation,
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
-            shape = shape,
+            shape = opaqueChromeShape(gsLook(), shape),
             modifier = modifier,
             content = content,
         )

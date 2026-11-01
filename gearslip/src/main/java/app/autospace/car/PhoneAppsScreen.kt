@@ -90,7 +90,7 @@ fun PhoneAppsScreen() {
 private fun TouchRelayWarning() {
     val context = LocalContext.current
     Surface(
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
         modifier = Modifier.fillMaxWidth(),

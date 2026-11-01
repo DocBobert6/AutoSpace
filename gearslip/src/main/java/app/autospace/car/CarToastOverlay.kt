@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +19,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import app.autospace.car.theme.gsLook
+import app.autospace.car.theme.rowShapeForLook
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -46,7 +47,7 @@ internal fun CarToastOverlay(modifier: Modifier = Modifier) {
         modifier
             .padding(horizontal = 24.dp, vertical = 16.dp)
             .widthIn(max = 560.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .clip(rowShapeForLook(gsLook()))
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .semantics { liveRegion = LiveRegionMode.Polite },
     ) {

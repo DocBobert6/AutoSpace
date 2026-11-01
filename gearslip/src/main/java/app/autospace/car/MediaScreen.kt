@@ -352,7 +352,7 @@ private const val SEARCH_PAUSE_MS = 1_000L
 private fun SearchStatus(search: CarMedia.Search, appLabel: String, onDismiss: () -> Unit) {
     Surface(
         onClick = onDismiss,
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
     ) {
@@ -665,7 +665,7 @@ private fun QueueRow(track: QueueTrack, media: CarMedia) {
     }
     Surface(
         onClick = { media.playQueueItem(track) },
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -704,7 +704,7 @@ private fun EntryRow(entry: MediaEntry, media: CarMedia, onClick: () -> Unit = {
     val bitmap = icon
     Surface(
         onClick = onClick,
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     ) {

@@ -108,7 +108,7 @@ fun NotificationsSection() {
 @Composable
 internal fun AccessBanner(onOpen: () -> Unit) {
     Surface(
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),

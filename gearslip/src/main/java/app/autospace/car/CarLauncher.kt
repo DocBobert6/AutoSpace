@@ -492,14 +492,14 @@ private fun PinnedTile(tile: Tile, iconFrac: Float = 1f, tileFrac: Float = 1f) {
     }
 }
 
-/** A red disc with a white X: marks a tile known not to work with Gearslip yet. */
+/** An error-color disc with an onError X: marks a tile known not to work with Gearslip yet. */
 @Composable
 private fun BrokenBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
     Box(
-        modifier.size(size).background(Color(0xFFD32F2F), CircleShape),
+        modifier.size(size).background(MaterialTheme.colorScheme.error, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Close, contentDescription = "Doesn't work with AutoSpace", tint = Color.White, modifier = Modifier.size(size * 0.66f))
+        Icon(Icons.Filled.Close, contentDescription = "Doesn't work with AutoSpace", tint = MaterialTheme.colorScheme.onError, modifier = Modifier.size(size * 0.66f))
     }
 }
 

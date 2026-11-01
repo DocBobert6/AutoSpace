@@ -191,6 +191,27 @@ fun cardShapeForLook(look: ControlLook, fallback: Shape): Shape =
     else if (look.rectangularButtons || look.cardsUseStyleCorner) RoundedCornerShape(look.corner) else fallback
 
 /**
+ * r167 (audit §3 N5): the shared row-shape rule, so full-width rows and
+ * banners cannot silently pick a raw Material shape again. Rows are card
+ * family: the card rule over the 20dp kit-card fallback — chamfered under
+ * Pitlane, the style corner under Verve/Horizon/Meridian/Morph, 20dp
+ * elsewhere (rows move 16dp to 20dp under non-substituting styles, the
+ * same card-family alignment as the r167 turn/ETA fallback).
+ */
+fun rowShapeForLook(look: ControlLook): Shape = cardShapeForLook(look, GsKit.CardShape)
+
+/**
+ * r167 (audit §3 N4): the key-specific shape rule for keyboard keys.
+ * Pill when the active look has pillButtons (Horizon), else the 12dp
+ * fallback — without changing gsButtonShape globally (which would
+ * wrongly pill dialogs, sheets, and the switch knob). A chamferCut style
+ * (Pitlane) keeps its chamfer, as gsButtonShape already gave keys.
+ */
+fun keyShapeForLook(look: ControlLook): Shape =
+    if (look.chamferCut > 0.dp) ChamferShape(look.chamferCut)
+    else if (look.pillButtons) GsKit.PillShape else RoundedCornerShape(12.dp)
+
+/**
  * r152 (audit §3 F4): the shared dialog shape rule, so dialogs and
  * sheets cannot drift again. A dialog takes exactly the kit sheet rule
  * — the card rule over the 28dp sheet fallback — so under Verve a

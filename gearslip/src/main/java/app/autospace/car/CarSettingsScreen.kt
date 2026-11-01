@@ -332,10 +332,11 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     ) { CarSettings.setAppearanceMode(it) }
     Text(
         "Light and Dark force that variant for every scheme that has " +
-            "one. System follows the phone's light/dark. Nocturne and " +
-            "Pitlane are always dark, so while one of them is active " +
-            "the screen stays dark whatever mode is picked here; your " +
-            "mode applies again when you choose another scheme." +
+            "one. System follows the phone's light/dark. Nocturne, " +
+            "Pitlane, and Meridian are always dark, so while one of " +
+            "them is active the screen stays dark whatever mode is " +
+            "picked here; your mode applies again when you choose " +
+            "another scheme." +
             if (schemeForcesDark(scheme)) " Right now ${scheme.displayName} " +
                 "is active, so the screen is dark." else "",
         style = MaterialTheme.typography.bodyMedium,
@@ -1695,7 +1696,7 @@ private fun StepButton(text: String, modifier: Modifier, onClick: () -> Unit) {
         onClick = onClick,
         modifier = modifier.height(64.dp),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
-        shape = MaterialTheme.shapes.large,
+        shape = rowShapeForLook(gsLook()),
     ) {
         Text(text, style = MaterialTheme.typography.titleLarge)
     }

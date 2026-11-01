@@ -217,7 +217,7 @@ private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
             modifier,
             meridianColor = Color(MapChromeColors.MERIDIAN_CARD),
             meridian = meridian,
-            themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+            themedShape = cardShapeForLook(gsLook(), GsKit.CardShape),
         ) {
             Text("Finding a route…", Modifier.padding(16.dp), style = ChromeType.title)
         }
@@ -231,7 +231,7 @@ private fun RoutingCard(info: RoutingInfo, modifier: Modifier = Modifier) {
         modifier,
         meridianColor = Color(MapChromeColors.MERIDIAN_CARD),
         meridian = meridian,
-        themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+        themedShape = cardShapeForLook(gsLook(), GsKit.CardShape),
     ) {
         Column {
             // r61: Meridian's top strip replaces the "then" row below: the
@@ -440,7 +440,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
         modifier,
         meridianColor = Color(MapChromeColors.MERIDIAN_ETA),
         meridian = meridian,
-        themedShape = cardShapeForLook(gsLook(), RoundedCornerShape(16.dp)),
+        themedShape = cardShapeForLook(gsLook(), GsKit.CardShape),
         shadowElevation = 6.dp,
     ) {
         val dark = MaterialTheme.colorScheme.surface.luminanceIsDark()

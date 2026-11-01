@@ -743,7 +743,7 @@ private fun Key(
         } else {
             GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
         },
-        shape = gsButtonShape(RoundedCornerShape(12.dp)),
+        shape = keyShapeForLook(gsLook()),
     ) {
         Box(Modifier.fillMaxWidth()) {
             Row(
@@ -809,7 +809,7 @@ private fun BackspaceKey(
     val latestDelete = rememberUpdatedState(onDeleteOnce)
     val gestureScope = rememberCoroutineScope()
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
-    val shape = gsButtonShape(RoundedCornerShape(12.dp))
+    val shape = keyShapeForLook(gsLook())
     Box(
         modifier
             .height(LocalKeyHeight.current)
@@ -920,7 +920,7 @@ private fun LetterKey(
     // reads as inside: layout always precedes input, so this is only a guard.
     var keySize by remember { mutableStateOf(IntSize.Zero) }
     val colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
-    val shape = gsButtonShape(RoundedCornerShape(12.dp))
+    val shape = keyShapeForLook(gsLook())
     Box(
         modifier
             .height(LocalKeyHeight.current)
@@ -1406,7 +1406,7 @@ private fun DismissKey(onClick: () -> Unit, modifier: Modifier = Modifier) {
         onClick = onClick,
         modifier = modifier.height(LocalKeyHeight.current),
         colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = gsButtonShape(RoundedCornerShape(12.dp)),
+        shape = keyShapeForLook(gsLook()),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -1426,7 +1426,7 @@ private fun SubmitKey(modifier: Modifier, search: Boolean, image: ImageVector?, 
         onClick = onClick,
         modifier = modifier.height(LocalKeyHeight.current),
         colors = GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary),
-        shape = gsButtonShape(RoundedCornerShape(12.dp)),
+        shape = keyShapeForLook(gsLook()),
     ) {
         Row(
             Modifier.fillMaxWidth(),
@@ -1496,7 +1496,7 @@ private fun SuggestionStripRow(
                 suggestions.forEach { candidate ->
                     Box(
                         Modifier.weight(1f).fillMaxHeight()
-                            .clip(gsButtonShape(RoundedCornerShape(12.dp)))
+                            .clip(keyShapeForLook(gsLook()))
                             .background(MaterialTheme.colorScheme.surfaceContainerHighest)
                             .clickable { onCandidate(candidate) },
                         contentAlignment = Alignment.Center,
@@ -1577,7 +1577,7 @@ private fun StripToolButton(
             MaterialTheme.colorScheme.surfaceContainerHighest,
             MaterialTheme.colorScheme.onSurface,
         ),
-        shape = gsButtonShape(RoundedCornerShape(12.dp)),
+        shape = keyShapeForLook(gsLook()),
     ) {
         // The description is the semantics label; the icon itself carries none
         // so screen readers announce it exactly once.

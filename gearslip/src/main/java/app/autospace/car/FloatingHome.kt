@@ -546,7 +546,7 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
                     Row(
                         Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(cardShapeForLook(gsLook(), RoundedCornerShape(10.dp)))
                             .clickable { navigator.media() }
                             .pointerInput(swipeThresholdPx) {
                                 // r71 (A28): the session swipe lives on the
