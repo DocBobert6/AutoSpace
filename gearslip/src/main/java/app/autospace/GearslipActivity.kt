@@ -163,6 +163,9 @@ class GearslipActivity : ComponentActivity(), Projection {
         // the second half of "deleted when the last private tab closes".
         // A no-op where the WebView lacks multi-profile support.
         app.autospace.car.PrivateProfile.wipe()
+        // r157: private downloads from that dead process die here too,
+        // the same as they do on a last-private-tab close.
+        app.autospace.car.BrowserDownloads.deletePrivateDownloads(this)
         AppSettings.applyGearslipEnabled(this)
         // A capture that died without tidying up would leave notifications exposed to every
         // later screen share. Nothing is capturing if the service is not running, so undo it.
@@ -889,3 +892,4 @@ class GearslipActivity : ComponentActivity(), Projection {
         }
     }
 }
+

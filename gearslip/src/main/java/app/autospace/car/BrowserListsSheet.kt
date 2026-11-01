@@ -59,14 +59,26 @@ import app.autospace.car.theme.GsTone
  * Which section the lists sheet opens at (r130). TOP is the whole sheet
  * from the top (the bar star button and the old Saved & history row);
  * BOOKMARKS and HISTORY are the settings sheet's Library rows jumping
- * straight to their section.
+ * straight to their section; DOWNLOADS is the r157 Downloads row.
  */
-enum class ListsSection { TOP, BOOKMARKS, HISTORY }
+enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS }
+
+/** r157: the label on a Downloads row — state rides in the label itself. */
+private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
+    when (record.state) {
+        BrowserStore.DownloadState.IN_PROGRESS -> "${record.fileName} - Downloading"
+        BrowserStore.DownloadState.FAILED -> "${record.fileName} - Failed"
+        BrowserStore.DownloadState.COMPLETE -> record.fileName
+    }
 
 @Composable
 fun BrowserListsSheet(
     bookmarks: List<String>,
     history: List<String>,
+    // r157: the Downloads list (non-private records only — the caller
+    // filters) plus its row actions; the sheet itself never touches
+    // BrowserStore or DownloadManager directly.
+    downloads: List<BrowserStore.DownloadRecord>,
     initialSection: ListsSection = ListsSection.TOP,
     currentUrl: String,
     currentHost: String,
@@ -81,6 +93,9 @@ fun BrowserListsSheet(
     onBookmarkToggle: () -> Unit,
     onRemoveBookmark: (String) -> Unit,
     onClearHistory: () -> Unit,
+    onOpenDownload: (BrowserStore.DownloadRecord) -> Unit,
+    onDeleteDownload: (BrowserStore.DownloadRecord) -> Unit,
+    onRetryDownload: (BrowserStore.DownloadRecord) -> Unit,
     onClose: () -> Unit,
 ) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
@@ -105,10 +120,12 @@ fun BrowserListsSheet(
             val scrollState = rememberScrollState()
             var bookmarksY by remember { mutableStateOf(-1) }
             var historyY by remember { mutableStateOf(-1) }
-            LaunchedEffect(initialSection, bookmarksY, historyY) {
+            var downloadsY by remember { mutableStateOf(-1) }
+            LaunchedEffect(initialSection, bookmarksY, historyY, downloadsY) {
                 val target = when (initialSection) {
                     ListsSection.BOOKMARKS -> bookmarksY
                     ListsSection.HISTORY -> historyY
+                    ListsSection.DOWNLOADS -> downloadsY
                     ListsSection.TOP -> -1
                 }
                 if (target >= 0) scrollState.scrollTo(target)
@@ -117,13 +134,19 @@ fun BrowserListsSheet(
             // In-memory substring filter over the already-received lists, contacts
             // pattern — no BrowserStore change, no new persistence, and the
             // section-jump offsets below keep working because they re-capture
-            // on layout.
+            // on layout. r157: Downloads rides the same search (file name or
+            // source URL), since it is now a list in this same sheet.
             var listQuery by remember { mutableStateOf("") }
             var listSearching by remember { mutableStateOf(false) }
             val shownBookmarks = if (listQuery.isBlank()) bookmarks
                 else bookmarks.filter { it.contains(listQuery, ignoreCase = true) }
             val shownHistory = if (listQuery.isBlank()) history
                 else history.filter { it.contains(listQuery, ignoreCase = true) }
+            val shownDownloads = if (listQuery.isBlank()) downloads
+                else downloads.filter {
+                    it.fileName.contains(listQuery, ignoreCase = true) ||
+                        it.url.contains(listQuery, ignoreCase = true)
+                }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(scrollState).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -134,7 +157,7 @@ fun BrowserListsSheet(
                     fontWeight = FontWeight.Bold,
                 )
                 GsButton(onClick = { listSearching = !listSearching }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (listSearching) "Done searching" else "Search bookmarks and history")
+                    Text(if (listSearching) "Done searching" else "Search bookmarks, history, and downloads")
                 }
                 if (listSearching) {
                     CarKeyboard(
@@ -252,6 +275,52 @@ fun BrowserListsSheet(
                         }
                     }
                 }
+                // r157: Downloads. Tap the file name to open the finished
+                // file with the system viewer (a download still running
+                // or failed toasts instead of opening); Retry shows only
+                // on failed rows (retrying a finished download would be
+                // a duplicate, so it is a no-op by design); Delete drops
+                // the record and the bytes, and is success even when the
+                // file is already gone. Private-origin downloads never
+                // reach this list — the caller filters them out.
+                Text(
+                    "Downloads",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.onGloballyPositioned { downloadsY = it.positionInParent().y.toInt() },
+                )
+                if (shownDownloads.isEmpty()) {
+                    Text(
+                        if (listQuery.isBlank()) "No downloads yet." else "No downloads match \"$listQuery\".",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        shownDownloads.forEach { record ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                GsButton(onClick = { onOpenDownload(record) }, tone = GsTone.Neutral, modifier = Modifier.weight(1f)) {
+                                    Text(downloadRowLabel(record), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                if (record.state == BrowserStore.DownloadState.FAILED) {
+                                    GsButton(onClick = { onRetryDownload(record) }, tone = GsTone.Neutral) {
+                                        Text("Retry")
+                                    }
+                                }
+                                GsButton(onClick = { onDeleteDownload(record) }, tone = GsTone.Neutral) {
+                                    Text("Delete")
+                                }
+                            }
+                        }
+                    }
+                }
                 GsButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
                     Text("Close")
                 }
@@ -259,3 +328,4 @@ fun BrowserListsSheet(
         }
     }
 }
+

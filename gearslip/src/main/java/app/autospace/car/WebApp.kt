@@ -1,10 +1,8 @@
 package app.autospace.car
 
-import android.app.DownloadManager
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -14,7 +12,6 @@ import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
-import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -455,6 +452,8 @@ fun WebApp(content: String) {
             mainHandler.post {
                 runCatching { v?.destroy() }
                 if (wasPrivate) PrivateProfile.wipe()
+                // r157: private downloads die with the private profile too.
+                if (wasPrivate) BrowserDownloads.deletePrivateDownloads(context)
             }
             tabsOpen = false
             resetBarScrollHide()
@@ -478,23 +477,27 @@ fun WebApp(content: String) {
             runCatching { v?.destroy() }
             // The private profile dies with the last private tab.
             if (wasPrivate && tabs.none { it.isPrivate }) PrivateProfile.wipe()
+            // r157: private downloads die with it too.
+            if (wasPrivate && tabs.none { it.isPrivate }) BrowserDownloads.deletePrivateDownloads(context)
         }
         saveSessionNow()
     }
-    /** Downloads [url] through the phone Downloads folder — the same path the
-     *  download listener uses, shared with the long-press menu (r21). */
-    fun downloadUrl(url: String) {
-        runCatching {
-            val filename = URLUtil.guessFileName(url, null, null)
-            val request = DownloadManager.Request(Uri.parse(url))
-                .setTitle(filename)
-                .setDescription("Downloaded from the car browser")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-            context.getSystemService(DownloadManager::class.java)?.enqueue(request)
-            GearslipLog.i("car browser download started: $filename")
-        }.onFailure { e ->
-            GearslipLog.e("car browser download FAILED: $url - ${e.message}")
+    /**
+     * Downloads [url] through the phone Downloads folder — the single
+     * plain-download path (r157): the download listener and the
+     * long-press menu both come here, and the record it writes is what
+     * the Downloads list shows. [isPrivate] marks a private-tab origin:
+     * the record is stored but never listed, and its bytes die with the
+     * private profile (see the wipe call sites). Start/failure toasts
+     * match the old listener behaviour, so the long-press row gains the
+     * same notices the listener always showed.
+     */
+    fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null) {
+        val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate)
+        if (record != null) {
+            CarToasts.show(context, "Download started: ${record.fileName}", CarToast.LENGTH_SHORT)
+        } else {
+            CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
         }
     }
     /** Shares [url] cleaned of tracking parameters (r21 CleanLink). */
@@ -526,6 +529,11 @@ fun WebApp(content: String) {
     var pins by remember { mutableStateOf(BrowserStore.pins(context)) }
     var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
     var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
+    // r157: the Downloads list shows non-private records only — private-origin
+    // records are stored but filtered here, never reaching the sheet.
+    var downloads by remember {
+        mutableStateOf(BrowserStore.visibleDownloads(BrowserStore.downloads(context)))
+    }
     // Keep the Back/Home/Reload pointer on the active tab's WebView.
     // Also (A2) applies the stored text zoom to the newly active
     // tab and re-runs an open find query on it, so zoom/find
@@ -801,6 +809,7 @@ fun WebApp(content: String) {
     fun refreshLists() {
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
+        downloads = BrowserStore.visibleDownloads(BrowserStore.downloads(context))
         popupStrict = BrowserStore.popupStrict(context)
         popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
         recentlyClosed = BrowserStore.recentlyClosed(context)
@@ -873,6 +882,9 @@ fun WebApp(content: String) {
             // with private tabs open destroys those views too.
             saveSessionNow()
             if (hadPrivate) PrivateProfile.wipe()
+            // r157: leaving with private tabs open destroys them, so
+            // their downloads die here too, same as a last-tab close.
+            if (hadPrivate) BrowserDownloads.deletePrivateDownloads(context)
             stopReading()
             // Leaving clears immersive session state, so a later
             // entry never starts immersive (never persisted).
@@ -1451,25 +1463,16 @@ fun WebApp(content: String) {
                                         }
                                     },
                                 )
-                                val downloadOwner = this
                                 setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
                                     // Phase 3.4, item 4: downloads go to the phone Downloads
                                     // folder with a started/failed notice, instead of silently
-                                    // doing nothing (the old behaviour).
-                                    runCatching {
-                                        val filename = URLUtil.guessFileName(url, contentDisposition, mimeType)
-                                        val request = DownloadManager.Request(Uri.parse(url))
-                                            .setTitle(filename)
-                                            .setDescription("Downloaded from the car browser")
-                                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, filename)
-                                        context.getSystemService(DownloadManager::class.java)?.enqueue(request)
-                                        GearslipLog.i("car browser download started: $filename")
-                                        CarToasts.show(downloadOwner, "Download started: $filename", CarToast.LENGTH_SHORT)
-                                    }.onFailure { e ->
-                                        GearslipLog.e("car browser download FAILED: $url - ${e.message}")
-                                        CarToasts.show(downloadOwner, "Download failed", CarToast.LENGTH_LONG)
-                                    }
+                                    // doing nothing (the old behaviour). r157: the listener
+                                    // no longer enqueues itself — it funnels through the
+                                    // single downloadUrl path, which writes the record the
+                                    // Downloads list shows. The tab's private flag rides
+                                    // along, so private downloads stay unlisted and die
+                                    // with the private profile.
+                                    downloadUrl(url, tab.isPrivate, contentDisposition, mimeType)
                                 })
                                 addJavascriptInterface(
                                     FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
@@ -1923,7 +1926,16 @@ fun WebApp(content: String) {
                     popupSettingForHost = setting
                 },
                 currentHost = hostOf(activeTab.currentUrl),
-                onOpenLists = { section -> settingsMenuOpen = false; refreshLists(); listsSection = section; listsOpen = true },
+                onOpenLists = { section ->
+                    settingsMenuOpen = false
+                    // r157: opening Downloads re-queries DownloadManager
+                    // first, so finished downloads show finished even if
+                    // the completion broadcast was missed.
+                    if (section == ListsSection.DOWNLOADS) BrowserDownloads.refreshDownloads(context)
+                    refreshLists()
+                    listsSection = section
+                    listsOpen = true
+                },
                 onOpenTabs = { settingsMenuOpen = false; tabsOpen = true },
                 onCloseMenu = { settingsMenuOpen = false },
                 onCloseBrowser = { settingsMenuOpen = false; navigator.forceBack() },
@@ -2021,6 +2033,35 @@ fun WebApp(content: String) {
                 },
                 onClearHistory = {
                     BrowserStore.clearHistory(context)
+                    refreshLists()
+                },
+                // r157: the Downloads list. Open is a plain system view
+                // of the file (never the library player — that is slice
+                // 2); Delete drops record + bytes; Retry re-enqueues a
+                // failed download under the same record, and is a no-op
+                // on a completed one.
+                downloads = downloads,
+                onOpenDownload = { record ->
+                    when (BrowserDownloads.openDownload(context, record)) {
+                        BrowserDownloads.DownloadOpenResult.OPENED -> Unit
+                        BrowserDownloads.DownloadOpenResult.NOT_READY ->
+                            CarToasts.show(context, "Still downloading", CarToast.LENGTH_SHORT)
+                        BrowserDownloads.DownloadOpenResult.FAILED ->
+                            CarToasts.show(context, "Download failed. Tap Retry.", CarToast.LENGTH_LONG)
+                        BrowserDownloads.DownloadOpenResult.NO_FILE ->
+                            CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
+                    }
+                    refreshLists()
+                },
+                onDeleteDownload = { record ->
+                    BrowserDownloads.deleteDownload(context, record)
+                    refreshLists()
+                },
+                onRetryDownload = { record ->
+                    val updated = BrowserDownloads.retryDownload(context, record)
+                    if (updated.state == BrowserStore.DownloadState.FAILED) {
+                        CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
+                    }
                     refreshLists()
                 },
                 onClose = { listsOpen = false },
@@ -2271,7 +2312,7 @@ fun WebApp(content: String) {
                             }, modifier = Modifier.fillMaxWidth()) { Text("View image") }
                             GsButton(onClick = {
                                 longPressTarget = null
-                                downloadUrl(longPress.url)
+                                downloadUrl(longPress.url, activeTab.isPrivate)
                             }, modifier = Modifier.fillMaxWidth()) { Text("Download") }
                         }
                         GsButton(onClick = {
@@ -2610,6 +2651,8 @@ private fun BrowserSettingsMenu(
                 MenuSection("Library")
                 MenuRow("History", false) { onOpenLists(ListsSection.HISTORY) }
                 MenuRow("Bookmarks", false) { onOpenLists(ListsSection.BOOKMARKS) }
+                // r157: the Downloads list lives in the same sheet.
+                MenuRow("Downloads", false) { onOpenLists(ListsSection.DOWNLOADS) }
                 MenuSection("Address bar")
                 MenuRow("At the top", !barBottom) { onBarPosition(false) }
                 MenuRow("At the bottom", barBottom) { onBarPosition(true) }
@@ -3365,3 +3408,4 @@ private const val EXTRACT_MEDIA_JS = """
         return out;
     })();
 """
+

@@ -346,6 +346,21 @@
                 android:resource="@xml/share_paths" />
         </provider>
 
+        <!-- r157: opening a finished download whose DownloadManager URI
+             is a file URI needs a shareable content URI (a raw file URI
+             would trip FileUriExposedException on the receiving app).
+             Scoped to the public Downloads folder only — nothing else
+             in the app is exposed through this authority. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.downloads"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/download_paths" />
+        </provider>
+
 
         <!--
           singleTop: the head unit can re-attach while we are already foregrounded, which
@@ -388,6 +403,20 @@
         <receiver
             android:name=".notify.TestMessageReceiver"
             android:exported="false" />
+
+        <!-- r157: plain-download completion. DownloadManager sends
+             ACTION_DOWNLOAD_COMPLETE when an enqueued download finishes;
+             the receiver refreshes just that download's record. System
+             broadcasts reach exported=false receivers; a spoofed
+             broadcast can only no-op, because the refresh queries
+             DownloadManager itself and ignores unknown ids. -->
+        <receiver
+            android:name=".car.DownloadCompleteReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".mirror.MirrorService"
@@ -457,3 +486,4 @@
         </service>
     </application>
 </manifest>
+

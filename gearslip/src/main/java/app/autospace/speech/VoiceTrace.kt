@@ -77,7 +77,7 @@ object VoiceTrace {
      * push that forgets to bump it fails CI instead of shipping an
      * ambiguous trace. NEVER reuse a tag value across pushes.
      */
-    const val BUILD_TAG = "r156"
+    const val BUILD_TAG = "r157"
 
     private const val PREFS = "voice_trace"
     private const val KEY_ARMED = "armed"
@@ -313,4 +313,5 @@ object VoiceTrace {
     private fun fileStamp(): String =
         SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 }
+
 

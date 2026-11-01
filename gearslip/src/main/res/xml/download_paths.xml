@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- r157: only the phone's public Downloads folder, so a finished
+         download with a file URI can be opened with the system viewer
+         through a content URI. Nothing else is exposed. -->
+    <external-path name="downloads" path="Download/" />
+</paths>

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            115, "0.4.104-alpha",
+            listOf(
+                "Downloads now keep a list: open, delete, or retry them from the browser menu.",
+            ),
+        ),
+        Release(
             114, "0.4.103-alpha",
             listOf(
                 "The assistant no longer hears 'skip' inside another word as a command to skip, and barge-in during a reply can now be turned off on the Voice page.",
@@ -684,4 +690,5 @@ object Changelog {
     /** The release that matches this build, if it has notes. */
     val current: Release? get() = releases.firstOrNull { it.versionCode == BuildConfig.VERSION_CODE }
 }
+
 

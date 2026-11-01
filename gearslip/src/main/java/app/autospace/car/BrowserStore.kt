@@ -294,6 +294,124 @@ object BrowserStore {
         )
     }
 
+    // ---- Downloads (r157, slice 1 of the downloads + offline library port) ----
+    // One record per plain DownloadManager download, stored as a JSON array
+    // in SharedPreferences via AppSettings — the same pattern as bookmarks
+    // and history above, so no new database and no new permission. The
+    // record shape is deliberately minimal but forward-compatible: slice 2
+    // adds the media flag and the Offline library section on top of these
+    // records without changing this codec. HLS (.m3u8), DASH (.mpd), and
+    // segmented downloads get records only in slices 3–4; until then this
+    // list covers plain DownloadManager downloads only.
+    /** Plain-download lifecycle: in progress, finished, or failed. */
+    enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED }
+
+    /**
+     * One plain download. [downloadManagerId] is the DownloadManager id
+     * returned at enqueue time (-1 when unknown — no slice-1 record is
+     * created without one, but the codec tolerates it); [localSource] is
+     * the DownloadManager local URI once the download completes, null
+     * until then. [isPrivate] marks a private-tab origin: such records
+     * are stored but never shown in the Downloads list, and their bytes
+     * are deleted with the private profile (see BrowserDownloads).
+     */
+    data class DownloadRecord(
+        val id: String,
+        val url: String,
+        val fileName: String,
+        val state: DownloadState,
+        val downloadManagerId: Long,
+        val localSource: String?,
+        val isPrivate: Boolean,
+        val createdAtMs: Long,
+    )
+
+    private const val KEY_DOWNLOADS = "browser_downloads"
+    private const val MAX_DOWNLOADS = 200
+
+    /** Pure codec: one JSON object per record, tolerant on decode. */
+    fun encodeDownloads(records: List<DownloadRecord>): String {
+        val array = JSONArray()
+        records.forEach { record ->
+            array.put(
+                JSONObject()
+                    .put("id", record.id)
+                    .put("url", record.url)
+                    .put("file", record.fileName)
+                    .put("state", record.state.name)
+                    .put("dm", record.downloadManagerId)
+                    .put("local", record.localSource ?: "")
+                    .put("private", record.isPrivate)
+                    .put("created", record.createdAtMs),
+            )
+        }
+        return array.toString()
+    }
+
+    /** Pure codec: malformed rows are skipped, missing fields get safe defaults. */
+    fun decodeDownloads(raw: String): List<DownloadRecord> {
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).mapNotNull { index ->
+                val obj = array.optJSONObject(index) ?: return@mapNotNull null
+                val id = obj.optString("id")
+                val url = obj.optString("url")
+                if (id.isBlank() || url.isBlank()) return@mapNotNull null
+                val state = runCatching {
+                    DownloadState.valueOf(obj.optString("state"))
+                }.getOrDefault(DownloadState.IN_PROGRESS)
+                DownloadRecord(
+                    id = id,
+                    url = url,
+                    fileName = obj.optString("file"),
+                    state = state,
+                    downloadManagerId = obj.optLong("dm", -1L),
+                    localSource = obj.optString("local").takeIf { it.isNotBlank() },
+                    isPrivate = obj.optBoolean("private", false),
+                    createdAtMs = obj.optLong("created", 0L),
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** All records, newest first — including private-origin ones. */
+    fun downloads(context: Context): List<DownloadRecord> =
+        decodeDownloads(AppSettings.getString(context, KEY_DOWNLOADS, ""))
+
+    /** The records the Downloads list shows: private-origin records never appear. */
+    fun visibleDownloads(records: List<DownloadRecord>): List<DownloadRecord> =
+        records.filter { !it.isPrivate }
+
+    fun addDownload(context: Context, record: DownloadRecord) {
+        val list = (listOf(record) + downloads(context))
+            .distinctBy { it.id }.take(MAX_DOWNLOADS)
+        AppSettings.putString(context, KEY_DOWNLOADS, encodeDownloads(list))
+    }
+
+    fun updateDownload(context: Context, record: DownloadRecord) {
+        val list = downloads(context).map { if (it.id == record.id) record else it }
+        AppSettings.putString(context, KEY_DOWNLOADS, encodeDownloads(list))
+    }
+
+    fun removeDownload(context: Context, id: String) {
+        val list = downloads(context).filter { it.id != id }
+        AppSettings.putString(context, KEY_DOWNLOADS, encodeDownloads(list))
+    }
+
+    fun downloadById(context: Context, id: String): DownloadRecord? =
+        downloads(context).firstOrNull { it.id == id }
+
+    fun downloadByManagerId(context: Context, dmId: Long): DownloadRecord? =
+        downloads(context).firstOrNull { it.downloadManagerId == dmId }
+
+    /** Pure retry gate: a completed record is a no-op, anything else may re-enqueue. */
+    fun retryable(record: DownloadRecord): Boolean = record.state != DownloadState.COMPLETE
+
+    /** Pure retry transition: same record, fresh manager id, back to in progress. */
+    fun retried(record: DownloadRecord, newDmId: Long): DownloadRecord =
+        record.copy(state = DownloadState.IN_PROGRESS, downloadManagerId = newDmId, localSource = null)
+
     // ---- Text zoom (audit fix, 2026-10-25, A2) ----
     // WebView textZoom percent, persisted like the bar position
     // so a chosen size survives tab switches and sessions.
@@ -306,3 +424,4 @@ object BrowserStore {
         AppSettings.putString(context, KEY_TEXT_ZOOM, zoom.coerceIn(50, 200).toString())
     }
 }
+
