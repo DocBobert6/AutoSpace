@@ -11,3 +11,8 @@
 
 # Speech-to-text: the native library calls back into these classes by name.
 -keep class com.k2fsa.sherpa.onnx.** { *; }
+
+# WorkManager's Room database is instantiated by reflection at startup (androidx.startup
+# -> WorkManagerInitializer); R8 stripped its no-arg constructor, which killed every launch
+# of r159-r174 before any activity started. Keep it.
+-keepclassmembers class androidx.work.impl.WorkDatabase_Impl { <init>(); }
