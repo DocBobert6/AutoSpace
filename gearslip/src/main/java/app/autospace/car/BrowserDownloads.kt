@@ -27,7 +27,7 @@ import java.util.UUID
  * progress, pause/resume, and library membership only in slices 3–4.
  * r158 (slice 2) adds the media flag and the Offline library actions on
  * top of these records: a download counts as media when its MIME type
- * is video/* or audio/* (DownloadListener path), or when the caller
+ * is a video or audio type (DownloadListener path), or when the caller
  * says so outright (media-finder path); the long-press path passes no
  * MIME type, so it stays an ordinary file even for a media-looking URL.
  * Completion is tracked two ways: the manifest receiver
@@ -50,8 +50,8 @@ object BrowserDownloads {
     enum class LibraryResult { READY, NOT_READY, FAILED, NO_FILE, COPY_FAILED }
 
     /**
-     * Pure MIME classification (r158): video/* and audio/* count as
-     * media. Parameters ("; charset=…") are stripped and the match is
+     * Pure MIME classification (r158): video and audio MIME types count
+     * as media. Parameters ("; charset=…") are stripped and the match is
      * case-insensitive; null, blank, and anything else are not media.
      * The long-press path passes no MIME type, so it lands here as
      * null and stays an ordinary file by construction.
