@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            140, "0.4.129-alpha",
+            listOf(
+                "Settings tidying: the hotword rows sit in a more sensible order, and the map day/night setting now uses the same label in both places it appears.",
+            ),
+        ),
+        Release(
             139, "0.4.128-alpha",
             listOf(
                 "Small-screen fixes: the floating media card now steps aside for the widget column as well as the map's edge buttons, and the widget column drops its lower widgets on very short screens so nothing runs underneath the bar.",

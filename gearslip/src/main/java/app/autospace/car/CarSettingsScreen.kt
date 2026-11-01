@@ -154,7 +154,7 @@ fun CarSettingsScreen() {
 private enum class SettingsCategory(val title: String, val description: String) {
     APPEARANCE(
         "Appearance",
-        "Sizes, color scheme, dark mode, Auto night, button style, map day/night, units",
+        "Sizes, color scheme, appearance mode, Auto night, button style, map day/night, units",
     ),
     AUDIO_AND_CALLS(
         "Audio & calls",
@@ -717,6 +717,19 @@ private fun VoicePage() {
     // the assistant is listening or thinking, or on a call, and while
     // speaking only when the barge-in switch below is off — so this row
     // is only the switch.
+    // r182 (audit D6): the master hotword row comes first; its
+    // phone-mic variant follows it, then barge-in below.
+    SettingsToggleRow(
+        title = "Listen for “Hey AutoSpace”",
+        description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
+            "(or “Hey Gearslip”) and opens the assistant without a button press. " +
+            "It needs the Kroko listening model downloaded, it stops while the " +
+            "assistant is listening or thinking, on a call, or when the car " +
+            "disconnects, and nothing you say leaves the phone. While a reply " +
+            "plays, it stays live unless barge-in is turned off below.",
+        checked = hotword,
+    ) { CarSettings.setHotword(it) }
+
     // Hotword-only phone mic (2026-10-25): the same switch as
     // phone Settings, same state. When on, hotword listening uses
     // the phone mic even when the car has one — the workaround for
@@ -730,17 +743,6 @@ private fun VoicePage() {
             "calls, and everything else are unaffected.",
         checked = hotwordPhoneMic,
     ) { CarSettings.setHotwordPhoneMic(it) }
-
-    SettingsToggleRow(
-        title = "Listen for “Hey AutoSpace”",
-        description = "While connected to the car, AutoSpace listens for “Hey AutoSpace” " +
-            "(or “Hey Gearslip”) and opens the assistant without a button press. " +
-            "It needs the Kroko listening model downloaded, it stops while the " +
-            "assistant is listening or thinking, on a call, or when the car " +
-            "disconnects, and nothing you say leaves the phone. While a reply " +
-            "plays, it stays live unless barge-in is turned off below.",
-        checked = hotword,
-    ) { CarSettings.setHotword(it) }
 
     // Barge-in (r156): the mid-reply half of the hotword only. Off means the
     // wake phrase is ignored while a reply plays; it changes nothing else —

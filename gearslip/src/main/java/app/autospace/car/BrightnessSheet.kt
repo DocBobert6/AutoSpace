@@ -134,7 +134,7 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
                     ThemeChoice("Dark", appearanceMode == AppearanceMode.DARK, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.DARK) }
                     ThemeChoice("System", appearanceMode == AppearanceMode.SYSTEM, Modifier.weight(1f)) { CarSettings.setAppearanceMode(AppearanceMode.SYSTEM) }
                 }
-                Text("Night mode (maps)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text("Map day/night", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ThemeChoice("Auto", night == NightMode.AUTO, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.AUTO) }
                     ThemeChoice("Day", night == NightMode.DAY, Modifier.weight(1f)) { CarSettings.setNightMode(NightMode.DAY) }
