@@ -191,6 +191,8 @@ dependencies {
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
+    // DASH download worker (r160, downloads slice 4).
+    implementation(libs.media3.transformer)
     // Private WebView profiles (r21, androidx.webkit ProfileStore).
     implementation(libs.androidx.webkit)
     // HLS download worker (r159, downloads slice 3).

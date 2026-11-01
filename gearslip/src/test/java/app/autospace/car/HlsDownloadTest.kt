@@ -164,56 +164,82 @@ class HlsDownloadTest {
         )
     }
 
-    // ---- Routing rule ----
+    // ---- Routing rule (r159, extended r160) ----
 
     @Test
     fun routingRuleMatrix() {
-        // Listener path (media unknown): HLS goes to the worker.
+        // Listener path (media unknown): HLS and DASH go to their workers.
         assertEquals(
             BrowserDownloads.DownloadRoute.HLS_WORKER,
-            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", null),
+            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", null, true),
         )
-        // Finder path (media true): HLS goes to the worker.
+        assertEquals(
+            BrowserDownloads.DownloadRoute.DASH_WORKER,
+            BrowserDownloads.routeFor("https://example.com/v/manifest.mpd", null, true),
+        )
+        // Finder path (media true): HLS and DASH go to their workers.
         assertEquals(
             BrowserDownloads.DownloadRoute.HLS_WORKER,
-            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", true),
-        )
-        // Long-press path (media false outright): HLS still plain-downloads.
-        assertEquals(
-            BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", false),
-        )
-        // DASH still plain-downloads in this slice, on every path.
-        assertEquals(
-            BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/v/manifest.mpd", true),
+            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", true, true),
         )
         assertEquals(
+            BrowserDownloads.DownloadRoute.DASH_WORKER,
+            BrowserDownloads.routeFor("https://example.com/v/manifest.mpd", true, false),
+        )
+        // Long-press path (media false outright): playlists still plain-download.
+        assertEquals(
             BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/v/manifest.mpd", null),
+            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8", false, true),
+        )
+        assertEquals(
+            BrowserDownloads.DownloadRoute.PLAIN,
+            BrowserDownloads.routeFor("https://example.com/v/manifest.mpd", false, true),
+        )
+        // Segmented: media true with the setting on segments; the
+        // setting off, or media false or unknown, stays plain.
+        assertEquals(
+            BrowserDownloads.DownloadRoute.SEGMENTED_WORKER,
+            BrowserDownloads.routeFor("https://example.com/video.mp4", true, true),
+        )
+        assertEquals(
+            BrowserDownloads.DownloadRoute.PLAIN,
+            BrowserDownloads.routeFor("https://example.com/video.mp4", true, false),
+        )
+        assertEquals(
+            BrowserDownloads.DownloadRoute.PLAIN,
+            BrowserDownloads.routeFor("https://example.com/video.mp4", false, true),
+        )
+        assertEquals(
+            BrowserDownloads.DownloadRoute.PLAIN,
+            BrowserDownloads.routeFor("https://example.com/video.mp4", null, true),
         )
         // Ordinary URLs are untouched.
         assertEquals(
             BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/video.mp4", true),
+            BrowserDownloads.routeFor("https://example.com/report.pdf", null, true),
         )
-        assertEquals(
-            BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/report.pdf", null),
-        )
-        // Query strings and case do not hide an HLS URL.
+        // Query strings and case do not hide a playlist or manifest URL.
         assertEquals(
             BrowserDownloads.DownloadRoute.HLS_WORKER,
-            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8?token=abc", null),
+            BrowserDownloads.routeFor("https://example.com/hls/master.m3u8?token=abc", null, true),
         )
         assertEquals(
             BrowserDownloads.DownloadRoute.HLS_WORKER,
-            BrowserDownloads.routeFor("https://example.com/hls/MASTER.M3U8", null),
+            BrowserDownloads.routeFor("https://example.com/hls/MASTER.M3U8", null, true),
         )
-        // A .m3u8 directory name with a non-playlist file does not route.
+        assertEquals(
+            BrowserDownloads.DownloadRoute.DASH_WORKER,
+            BrowserDownloads.routeFor("https://example.com/v/MANIFEST.MPD?token=abc", null, true),
+        )
+        // A playlist or manifest directory name with a non-playlist
+        // file does not route.
         assertEquals(
             BrowserDownloads.DownloadRoute.PLAIN,
-            BrowserDownloads.routeFor("https://example.com/x.m3u8/video.mp4", null),
+            BrowserDownloads.routeFor("https://example.com/x.m3u8/video.mp4", null, true),
+        )
+        assertEquals(
+            BrowserDownloads.DownloadRoute.PLAIN,
+            BrowserDownloads.routeFor("https://example.com/x.mpd/video.mp4", null, true),
         )
     }
 

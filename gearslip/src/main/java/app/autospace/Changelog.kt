@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            118, "0.4.107-alpha",
+            listOf(
+                "Downloads are complete: DASH videos save into the Offline library too, with Wi-Fi-only and segmented-download settings.",
+            ),
+        ),
+        Release(
             117, "0.4.106-alpha",
             listOf(
                 "Stream playlists now download properly: HLS videos save into the Offline library, where you can pause, resume, or cancel them.",

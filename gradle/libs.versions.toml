@@ -55,6 +55,8 @@ media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", versi
 media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
 media3-exoplayer-dash = { group = "androidx.media3", name = "media3-exoplayer-dash", version.ref = "media3" }
 media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+# DASH download worker (r160): Transformer remuxes a DASH presentation to one .mp4.
+media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
 androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activityCompose" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }

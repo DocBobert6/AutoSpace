@@ -1,6 +1,7 @@
 package app.autospace.car
 
 import android.app.DownloadManager
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -32,6 +33,12 @@ import java.util.UUID
  * is a video or audio type (DownloadListener path), or when the caller
  * says so outright (media-finder path); the long-press path passes no
  * MIME type, so it stays an ordinary file even for a media-looking URL.
+ * Slice 4 (r160) completes the port: DASH routes to a Transformer
+ * remux worker, media files route to a segmented range worker while
+ * the segmented setting is on, the Wi-Fi-only setting gates new
+ * downloads, and a MediaStore backfill rescues files moved out
+ * from under DownloadManager. Plain DownloadManager downloads are
+ * still not user-pausable, by the decided Mariner rule.
  * Completion is tracked two ways: the manifest receiver
  * (DownloadCompleteReceiver) updates the record when DownloadManager
  * reports completion, and [refreshDownloads]/[refreshRecord] re-query
@@ -63,56 +70,68 @@ object BrowserDownloads {
         return type.startsWith("video/") || type.startsWith("audio/")
     }
 
-    /** Where an enqueue goes: plain DownloadManager, or the HLS worker. */
-    enum class DownloadRoute { PLAIN, HLS_WORKER }
+    /** Where an enqueue goes: plain DownloadManager, or one of the workers. */
+    enum class DownloadRoute { PLAIN, HLS_WORKER, DASH_WORKER, SEGMENTED_WORKER }
 
     /**
-     * Pure HLS detection (r159): the URL's path — query and fragment
-     * stripped, case-insensitive — ends in .m3u8. A bare .m3u8
-     * substring elsewhere (a query token, a directory name) does not
-     * count, so ordinary pages never route to the worker by accident.
+     * Pure DASH detection (r160): the same path-only, case-insensitive
+     * rule as [isHlsUrl], for the .mpd suffix.
      */
-    fun isHlsUrl(url: String): Boolean =
-        url.substringBefore('?').substringBefore('#').lowercase().endsWith(".m3u8")
+    fun isDashUrl(url: String): Boolean =
+        url.substringBefore('?').substringBefore('#').lowercase().endsWith(".mpd")
 
     /**
-     * Pure routing rule (r159), the one place the decision lives.
+     * Pure routing rule (r160), the one place the decision lives.
      * An explicitly non-media caller always plain-downloads — that is
      * the long-press path, which passes media false outright, so a
      * long-pressed playlist link still lands as an ordinary file.
-     * Otherwise an HLS URL routes to the worker (listener path with
-     * media unknown, finder path with media true); everything else,
-     * including .mpd until slice 4, plain-downloads.
+     * Otherwise a playlist or manifest URL routes to its worker
+     * (HLS for .m3u8, DASH for .mpd) on any path, including media
+     * unknown; an ordinary media URL routes to the segmented worker
+     * only when the caller confirmed media AND the segmented
+     * setting is on; everything else plain-downloads. Media unknown
+     * (the listener path before MIME classification) never
+     * segments — the enqueue path resolves it from the MIME type
+     * first, so only classified media reaches this rule as true.
      */
-    fun routeFor(url: String, isMedia: Boolean?): DownloadRoute = when {
+    fun routeFor(url: String, isMedia: Boolean?, segmentedOn: Boolean): DownloadRoute = when {
         isMedia == false -> DownloadRoute.PLAIN
         isHlsUrl(url) -> DownloadRoute.HLS_WORKER
+        isDashUrl(url) -> DownloadRoute.DASH_WORKER
+        isMedia == true && segmentedOn -> DownloadRoute.SEGMENTED_WORKER
         else -> DownloadRoute.PLAIN
     }
 
+    /** True for the engine kinds a worker owns — the rows with pause, resume, and cancel. */
+    fun isWorkerKind(kind: BrowserStore.DownloadKind): Boolean =
+        kind == BrowserStore.DownloadKind.HLS ||
+            kind == BrowserStore.DownloadKind.DASH ||
+            kind == BrowserStore.DownloadKind.SEGMENTED
+
     /**
-     * Pure library-row action gates (r159), so the sheet never shows
-     * an affordance the engine cannot honor. Delete shows on every
-     * row (unconditional, by construction). Retry shows only on
-     * failed rows — a completed record is a no-op by the retry gate,
-     * and a paused worker row offers Resume instead. Pause, Resume,
-     * and Cancel show only on worker records: plain DownloadManager
-     * downloads are not user-pausable, by the decided Mariner rule,
-     * and a pause button on one would be a lie.
+     * Pure library-row action gates (r159, generalized r160 to every
+     * worker engine), so the sheet never shows an affordance the
+     * engine cannot honor. Delete shows on every row (unconditional,
+     * by construction). Retry shows only on failed rows — a completed
+     * record is a no-op by the retry gate, and a paused worker row
+     * offers Resume instead. Pause, Resume, and Cancel show only on
+     * worker records: plain DownloadManager downloads are not
+     * user-pausable, by the decided Mariner rule, and a pause button
+     * on one would be a lie.
      */
     fun showLibraryRetry(record: BrowserStore.DownloadRecord): Boolean =
         record.state == BrowserStore.DownloadState.FAILED
 
     fun showLibraryPause(record: BrowserStore.DownloadRecord): Boolean =
-        record.kind == BrowserStore.DownloadKind.HLS &&
+        isWorkerKind(record.kind) &&
             record.state == BrowserStore.DownloadState.IN_PROGRESS
 
     fun showLibraryResume(record: BrowserStore.DownloadRecord): Boolean =
-        record.kind == BrowserStore.DownloadKind.HLS &&
+        isWorkerKind(record.kind) &&
             record.state == BrowserStore.DownloadState.PAUSED
 
     fun showLibraryCancel(record: BrowserStore.DownloadRecord): Boolean =
-        record.kind == BrowserStore.DownloadKind.HLS &&
+        isWorkerKind(record.kind) &&
             (record.state == BrowserStore.DownloadState.IN_PROGRESS ||
                 record.state == BrowserStore.DownloadState.PAUSED)
 
@@ -155,15 +174,20 @@ object BrowserDownloads {
      * when null, the MIME type decides (the DownloadListener path), and
      * a null MIME type — the long-press path — is not media.
      *
-     * Routing (r159): an HLS URL routes to the worker unless the
-     * caller explicitly passed media false (see [routeFor]). A worker
+     * Routing (r159, extended r160): the media question is resolved
+     * first — an explicit caller value wins, otherwise the MIME
+     * type decides — and then [routeFor] picks the engine. A worker
      * record is media by routing — it is a video by nature — so it
      * lands in the Offline library, never in Downloads; its manager
      * id is -1 (no DownloadManager row exists for it) and its file
-     * name is the playlist name with the .m3u8 suffix stripped, since
-     * the joined file's real extension (.ts or .mp4) is only known
-     * once the worker has seen the variant — the worker rewrites the
-     * name to the published one on completion.
+     * name is the playlist or manifest name with its suffix
+     * stripped, since the joined or remuxed file's real extension
+     * is only known once the worker has run — the worker rewrites
+     * the name to the published one on completion. A plain record
+     * under the Wi-Fi-only setting on a metered network is not
+     * enqueued at all: it is stored WAITING (see [tryStartWaiting]),
+     * and the caller toasts "Waiting for Wi-Fi" instead of
+     * "Download started".
      */
     fun enqueueDownload(
         context: Context,
@@ -173,8 +197,36 @@ object BrowserDownloads {
         isPrivate: Boolean,
         isMedia: Boolean? = null,
     ): BrowserStore.DownloadRecord? {
-        if (routeFor(url, isMedia) == DownloadRoute.HLS_WORKER) {
-            return enqueueWorkerDownload(context, url, contentDisposition, mimeType, isPrivate)
+        val effectiveMedia = isMedia ?: isMediaMime(mimeType)
+        when (routeFor(url, effectiveMedia, BrowserStore.segmentedDownloadsEnabled(context))) {
+            DownloadRoute.HLS_WORKER ->
+                return enqueueWorkerDownload(context, url, contentDisposition, mimeType, isPrivate)
+            DownloadRoute.DASH_WORKER ->
+                return enqueueDashDownload(context, url, contentDisposition, mimeType, isPrivate)
+            DownloadRoute.SEGMENTED_WORKER ->
+                return enqueueSegmentedDownload(context, url, contentDisposition, mimeType, isPrivate)
+            DownloadRoute.PLAIN -> Unit
+        }
+        if (shouldWaitForWifi(
+                BrowserStore.wifiOnlyDownloadsEnabled(context),
+                isUnmeteredNetwork(context),
+            )
+        ) {
+            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val record = BrowserStore.DownloadRecord(
+                id = UUID.randomUUID().toString(),
+                url = url,
+                fileName = fileName,
+                state = BrowserStore.DownloadState.WAITING,
+                downloadManagerId = -1L,
+                localSource = null,
+                isPrivate = isPrivate,
+                createdAtMs = System.currentTimeMillis(),
+                isMedia = effectiveMedia,
+            )
+            BrowserStore.addDownload(context, record)
+            GearslipLog.i("car browser download waiting for Wi-Fi: $fileName")
+            return record
         }
         return runCatching {
             val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
@@ -235,13 +287,135 @@ object BrowserDownloads {
         )
         BrowserStore.addDownload(context, record)
         return runCatching {
-            HlsDownloadWorker.enqueue(context, record, replace = false)
+            HlsDownloadWorker.enqueue(
+                context,
+                record,
+                replace = false,
+                wifiOnly = BrowserStore.wifiOnlyDownloadsEnabled(context),
+            )
             GearslipLog.i("car browser HLS download started: $fileName")
             record
         }.getOrElse { e ->
             GearslipLog.e("car browser HLS download FAILED: $url - ${e.message}")
             BrowserStore.removeDownload(context, record.id)
             null
+        }
+    }
+
+    /**
+     * The DASH half of [enqueueDownload] (r160): same shape as the
+     * HLS half — record first, then the unique work, and the
+     * record is dropped again when the enqueue itself throws, so
+     * no phantom row ever points at work that does not exist.
+     * The file name strips the .mpd suffix; the worker rewrites
+     * it to the published .mp4 name on completion.
+     */
+    private fun enqueueDashDownload(
+        context: Context,
+        url: String,
+        contentDisposition: String?,
+        mimeType: String?,
+        isPrivate: Boolean,
+    ): BrowserStore.DownloadRecord? {
+        val guessed = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        val fileName = if (guessed.lowercase().endsWith(".mpd")) {
+            guessed.dropLast(4).ifBlank { "video" }
+        } else {
+            guessed
+        }
+        val record = BrowserStore.DownloadRecord(
+            id = UUID.randomUUID().toString(),
+            url = url,
+            fileName = fileName,
+            state = BrowserStore.DownloadState.IN_PROGRESS,
+            downloadManagerId = -1L,
+            localSource = null,
+            isPrivate = isPrivate,
+            createdAtMs = System.currentTimeMillis(),
+            isMedia = true,
+            progress = -1,
+            kind = BrowserStore.DownloadKind.DASH,
+        )
+        BrowserStore.addDownload(context, record)
+        return runCatching {
+            DashDownloadWorker.enqueue(
+                context,
+                record,
+                replace = false,
+                wifiOnly = BrowserStore.wifiOnlyDownloadsEnabled(context),
+            )
+            GearslipLog.i("car browser DASH download started: $fileName")
+            record
+        }.getOrElse { e ->
+            GearslipLog.e("car browser DASH download FAILED: $url - ${e.message}")
+            BrowserStore.removeDownload(context, record.id)
+            null
+        }
+    }
+
+    /**
+     * The segmented half of [enqueueDownload] (r160): same shape
+     * as the other worker halves. The guessed file name is kept
+     * whole — a segmented download is an ordinary file fetched
+     * in parts, so there is no playlist suffix to strip and the
+     * published name is the guessed one.
+     */
+    private fun enqueueSegmentedDownload(
+        context: Context,
+        url: String,
+        contentDisposition: String?,
+        mimeType: String?,
+        isPrivate: Boolean,
+    ): BrowserStore.DownloadRecord? {
+        val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+        val record = BrowserStore.DownloadRecord(
+            id = UUID.randomUUID().toString(),
+            url = url,
+            fileName = fileName,
+            state = BrowserStore.DownloadState.IN_PROGRESS,
+            downloadManagerId = -1L,
+            localSource = null,
+            isPrivate = isPrivate,
+            createdAtMs = System.currentTimeMillis(),
+            isMedia = true,
+            progress = -1,
+            kind = BrowserStore.DownloadKind.SEGMENTED,
+        )
+        BrowserStore.addDownload(context, record)
+        return runCatching {
+            SegmentedDownloadWorker.enqueue(
+                context,
+                record,
+                replace = false,
+                wifiOnly = BrowserStore.wifiOnlyDownloadsEnabled(context),
+            )
+            GearslipLog.i("car browser segmented download started: $fileName")
+            record
+        }.getOrElse { e ->
+            GearslipLog.e("car browser segmented download FAILED: $url - ${e.message}")
+            BrowserStore.removeDownload(context, record.id)
+            null
+        }
+    }
+
+    /** Re-enqueues one worker record's work by engine, reading the Wi-Fi-only setting fresh. */
+    private fun enqueueWorkFor(context: Context, record: BrowserStore.DownloadRecord, replace: Boolean) {
+        val wifiOnly = BrowserStore.wifiOnlyDownloadsEnabled(context)
+        when (record.kind) {
+            BrowserStore.DownloadKind.HLS -> HlsDownloadWorker.enqueue(context, record, replace, wifiOnly)
+            BrowserStore.DownloadKind.DASH -> DashDownloadWorker.enqueue(context, record, replace, wifiOnly)
+            BrowserStore.DownloadKind.SEGMENTED -> SegmentedDownloadWorker.enqueue(context, record, replace, wifiOnly)
+            BrowserStore.DownloadKind.PLAIN -> Unit
+        }
+    }
+
+    /** Cancels one worker record's work by engine; a plain record has no work to cancel. */
+    private fun cancelWorkFor(context: Context, record: BrowserStore.DownloadRecord) {
+        when (record.kind) {
+            BrowserStore.DownloadKind.HLS -> HlsDownloadWorker.cancel(context, record.id)
+            BrowserStore.DownloadKind.DASH -> DashDownloadWorker.cancel(context, record.id)
+            BrowserStore.DownloadKind.SEGMENTED -> SegmentedDownloadWorker.cancel(context, record.id)
+            BrowserStore.DownloadKind.PLAIN -> Unit
         }
     }
 
@@ -276,20 +450,135 @@ object BrowserDownloads {
         }.getOrNull()
     }
 
-    /** Re-query every in-progress record and persist any state change. */
+    /**
+     * Re-query every live record and persist any state change.
+     * In-progress records re-query DownloadManager (worker records
+     * are a no-op there — the worker writes its own state);
+     * WAITING records try to start (see [tryStartWaiting]), so a
+     * download held for Wi-Fi begins on the next list open once
+     * Wi-Fi is available or the setting is off.
+     */
     fun refreshDownloads(context: Context) {
-        BrowserStore.downloads(context)
-            .filter { it.state == BrowserStore.DownloadState.IN_PROGRESS }
-            .forEach { refreshRecord(context, it) }
+        BrowserStore.downloads(context).forEach { record ->
+            when (record.state) {
+                BrowserStore.DownloadState.IN_PROGRESS -> refreshRecord(context, record)
+                BrowserStore.DownloadState.WAITING -> tryStartWaiting(context, record)
+                else -> Unit
+            }
+        }
     }
 
-    /** Re-query one record, persist any state change, and return the current record. Worker records have no DownloadManager row (manager id -1), so the query is a no-op for them — their state is written by the worker itself. */
+    /**
+     * Starts a WAITING plain record for real (r160): when the
+     * Wi-Fi-only setting is off, or the phone is on an unmetered
+     * network, the record enqueues through DownloadManager under
+     * its same id; when still gated it is left waiting, never
+     * failed. A missing DownloadManager or a failed enqueue marks
+     * it failed — that is a real failure, not a network the user
+     * told the app to avoid.
+     */
+    private fun tryStartWaiting(context: Context, record: BrowserStore.DownloadRecord) {
+        val current = BrowserStore.downloadById(context, record.id) ?: return
+        if (current.state != BrowserStore.DownloadState.WAITING) return
+        if (shouldWaitForWifi(
+                BrowserStore.wifiOnlyDownloadsEnabled(context),
+                isUnmeteredNetwork(context),
+            )
+        ) {
+            return
+        }
+        val dm = context.getSystemService(DownloadManager::class.java)
+        if (dm == null) {
+            BrowserStore.updateDownload(context, current.copy(state = BrowserStore.DownloadState.FAILED))
+            return
+        }
+        runCatching {
+            val dmId = dm.enqueue(buildRequest(current.url, current.fileName))
+            val updated = BrowserStore.retried(current, dmId)
+            BrowserStore.updateDownload(context, updated)
+            GearslipLog.i("car browser download started after Wi-Fi wait: ${current.fileName}")
+        }.getOrElse { e ->
+            GearslipLog.e("car browser download start FAILED: ${current.url} - ${e.message}")
+            BrowserStore.updateDownload(context, current.copy(state = BrowserStore.DownloadState.FAILED))
+        }
+    }
+
+    /**
+     * Re-query one record, persist any state change, and return the current record. Worker records have no DownloadManager row (manager id -1), so the query is a no-op for them — their state is written by the worker itself. A complete plain record whose file no longer resolves then gets the backfill attempt (see [backfillLocalSource]) — whether its DownloadManager row is gone or merely points at a file moved elsewhere.
+     */
     fun refreshRecord(context: Context, record: BrowserStore.DownloadRecord): BrowserStore.DownloadRecord {
-        val status = queryStatus(context, record.downloadManagerId) ?: return record
-        if (status.state == record.state && status.localUri == record.localSource) return record
-        val updated = record.copy(state = status.state, localSource = status.localUri)
-        BrowserStore.updateDownload(context, updated)
-        return updated
+        val status = queryStatus(context, record.downloadManagerId)
+        val afterQuery = if (status == null) {
+            record
+        } else if (status.state == record.state && status.localUri == record.localSource) {
+            record
+        } else {
+            val updated = record.copy(state = status.state, localSource = status.localUri)
+            BrowserStore.updateDownload(context, updated)
+            updated
+        }
+        if (afterQuery.kind == BrowserStore.DownloadKind.PLAIN &&
+            afterQuery.state == BrowserStore.DownloadState.COMPLETE &&
+            (afterQuery.localSource == null || !localFileExists(context, afterQuery.localSource))
+        ) {
+            val backfilled = backfillLocalSource(context, afterQuery)
+            if (backfilled != null) {
+                val updated = afterQuery.copy(localSource = backfilled)
+                BrowserStore.updateDownload(context, updated)
+                return updated
+            }
+        }
+        return afterQuery
+    }
+
+    /**
+     * MediaStore backfill (r160): for a complete plain record whose
+     * file no longer resolves, look for a Downloads row with the
+     * record's exact file name dated within two days of the
+     * record's creation, and return its content URI when exactly
+     * one such row exists. Zero or several matches refuse — the
+     * record is left as-is and still reports as gone, rather than
+     * recovering the wrong file. Worker records never backfill:
+     * their published file either exists at its recorded URI or
+     * it is gone.
+     */
+    private fun backfillLocalSource(context: Context, record: BrowserStore.DownloadRecord): String? {
+        val candidates = runCatching {
+            val projection = arrayOf(
+                android.provider.MediaStore.MediaColumns._ID,
+                android.provider.MediaStore.MediaColumns.DISPLAY_NAME,
+                android.provider.MediaStore.MediaColumns.DATE_ADDED,
+            )
+            val selection = "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+            context.contentResolver.query(
+                android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                projection,
+                selection,
+                arrayOf(record.fileName),
+                null,
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns._ID)
+                val nameIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DISPLAY_NAME)
+                val dateIndex = cursor.getColumnIndexOrThrow(android.provider.MediaStore.MediaColumns.DATE_ADDED)
+                val out = mutableListOf<BackfillCandidate>()
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idIndex)
+                    val uri = ContentUris.withAppendedId(
+                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                        id,
+                    ).toString()
+                    out.add(
+                        BackfillCandidate(
+                            displayName = cursor.getString(nameIndex) ?: "",
+                            addedAtMs = cursor.getLong(dateIndex) * 1000L,
+                            uri = uri,
+                        ),
+                    )
+                }
+                out
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+        return backfillMatch(candidates, record.fileName, record.createdAtMs)
     }
 
     /**
@@ -298,25 +587,28 @@ object BrowserDownloads {
      * retrying it must never produce a duplicate download. When the fresh
      * enqueue itself fails, the record is marked failed.
      *
-     * Worker records (r159) re-enqueue through the worker, not through
+     * Worker records (r159, generalized r160 to every worker
+     * engine) re-enqueue through their worker, not through
      * DownloadManager: REPLACE policy, so any stale run is cancelled
-     * first, and the run resumes from the segments already on disk.
+     * first, and the run resumes from the work already done — HLS
+     * segments on disk, segmented parts on disk, or, for DASH, a
+     * fresh export (Transformer cannot resume a partial export).
      * A paused worker record retries the same way — Resume and Retry
      * are one path, differing only in which button the sheet shows.
      */
     fun retryDownload(context: Context, record: BrowserStore.DownloadRecord): BrowserStore.DownloadRecord {
         if (!BrowserStore.retryable(record)) return record
-        if (record.kind == BrowserStore.DownloadKind.HLS) {
+        if (isWorkerKind(record.kind)) {
             val current = BrowserStore.downloadById(context, record.id) ?: record
             if (!BrowserStore.retryable(current)) return current
             return runCatching {
                 val updated = BrowserStore.retriedWorker(current)
                 BrowserStore.updateDownload(context, updated)
-                HlsDownloadWorker.enqueue(context, updated, replace = true)
-                GearslipLog.i("car browser HLS download retried: ${record.fileName}")
+                enqueueWorkFor(context, updated, replace = true)
+                GearslipLog.i("car browser worker download retried: ${record.fileName}")
                 updated
             }.getOrElse { e ->
-                GearslipLog.e("car browser HLS download retry FAILED: ${record.url} - ${e.message}")
+                GearslipLog.e("car browser worker download retry FAILED: ${record.url} - ${e.message}")
                 val failed = current.copy(state = BrowserStore.DownloadState.FAILED)
                 BrowserStore.updateDownload(context, failed)
                 failed
@@ -343,8 +635,8 @@ object BrowserDownloads {
     }
 
     /**
-     * Pause a worker download (r159): cancels the unique work and
-     * marks the record paused, keeping its temp segments for resume.
+     * Pause a worker download (r159, generalized r160): cancels the unique work and
+     * marks the record paused, keeping its temp work for resume.
      * A no-op on anything but an in-progress worker record — plain
      * downloads are not user-pausable, and a finished, failed, or
      * already-paused record has nothing to pause. The stored record
@@ -353,29 +645,29 @@ object BrowserDownloads {
      */
     fun pauseDownload(context: Context, record: BrowserStore.DownloadRecord): BrowserStore.DownloadRecord {
         val current = BrowserStore.downloadById(context, record.id) ?: record
-        if (current.kind != BrowserStore.DownloadKind.HLS ||
+        if (!isWorkerKind(current.kind) ||
             current.state != BrowserStore.DownloadState.IN_PROGRESS
         ) {
             return current
         }
-        HlsDownloadWorker.cancel(context, current.id)
+        cancelWorkFor(context, current)
         val paused = current.copy(state = BrowserStore.DownloadState.PAUSED)
         BrowserStore.updateDownload(context, paused)
         return paused
     }
 
     /**
-     * Cancel a worker download (r159): cancels the unique work and
+     * Cancel a worker download (r159, generalized r160): cancels the unique work and
      * drops the record together with everything it owns — temp
-     * segments and any published file. A no-op on plain records and
+     * work and any published file. A no-op on plain records and
      * on completed worker records (a finished file is deleted through
      * Delete, not Cancel).
      */
     fun cancelWorkerDownload(context: Context, record: BrowserStore.DownloadRecord) {
         val current = BrowserStore.downloadById(context, record.id) ?: record
-        if (current.kind != BrowserStore.DownloadKind.HLS) return
+        if (!isWorkerKind(current.kind)) return
         if (current.state == BrowserStore.DownloadState.COMPLETE) return
-        HlsDownloadWorker.cancel(context, current.id)
+        cancelWorkFor(context, current)
         deleteWorkerFiles(context, current)
         BrowserStore.removeDownload(context, current.id)
     }
@@ -384,14 +676,14 @@ object BrowserDownloads {
      * Delete a download: remove it from DownloadManager (which deletes
      * the bytes, or cancels a partial download) and drop the record.
      * A record whose file is already gone is success, not an error —
-     * the record is dropped either way. Worker records (r159) delete
-     * through their own path: cancel the work, drop temp segments
-     * and any published file, then drop the record.
+     * the record is dropped either way. Worker records (r159,
+     * generalized r160) delete through their own path: cancel the work, drop temp
+     * work and any published file, then drop the record.
      */
     fun deleteDownload(context: Context, record: BrowserStore.DownloadRecord) {
-        if (record.kind == BrowserStore.DownloadKind.HLS) {
+        if (isWorkerKind(record.kind)) {
             val current = BrowserStore.downloadById(context, record.id) ?: record
-            HlsDownloadWorker.cancel(context, current.id)
+            cancelWorkFor(context, current)
             deleteWorkerFiles(context, current)
             BrowserStore.removeDownload(context, current.id)
             return
@@ -455,10 +747,11 @@ object BrowserDownloads {
      * the slice-1 vanished-file pattern, extended to library rows.
      * The caller plays [String] through the existing video player
      * (which takes URL strings); this function never touches the
-     * player itself. No MediaStore backfill here: the refresh covers
-     * completion-state staleness, not a file moved out from under
-     * DownloadManager — that heuristic stays unbuilt for the worker
-     * slices if still needed.
+     * player itself. A complete plain record whose file no longer
+     * resolves gets the MediaStore backfill attempt first (see
+     * [backfillLocalSource]): a moved file with a unique
+     * name-and-date match recovers, and only a genuinely gone or
+     * ambiguous file reports as gone.
      */
     fun librarySource(
         context: Context,

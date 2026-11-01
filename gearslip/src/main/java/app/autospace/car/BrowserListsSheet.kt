@@ -64,7 +64,7 @@ import app.autospace.car.theme.GsTone
  */
 enum class ListsSection { TOP, BOOKMARKS, HISTORY, DOWNLOADS, LIBRARY }
 
-/** r157: the label on a Downloads row — state rides in the label itself. r159: worker rows show their reported percent while downloading, and paused rows say so. */
+/** r157: the label on a Downloads row — state rides in the label itself. r159: worker rows show their reported percent while downloading, and paused rows say so. r160: a record waiting for Wi-Fi says so. */
 private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
     when (record.state) {
         BrowserStore.DownloadState.IN_PROGRESS ->
@@ -73,6 +73,7 @@ private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
         BrowserStore.DownloadState.FAILED -> "${record.fileName} - Failed"
         BrowserStore.DownloadState.COMPLETE -> record.fileName
         BrowserStore.DownloadState.PAUSED -> "${record.fileName} - Paused"
+        BrowserStore.DownloadState.WAITING -> "${record.fileName} - Waiting for Wi-Fi"
     }
 
 @Composable
@@ -364,9 +365,10 @@ fun BrowserListsSheet(
                 // private profile exactly like any private download.
                 // r159: Delete drops the row and its bytes; Retry
                 // re-enqueues a failed row; Pause, Resume, and Cancel
-                // show only on worker rows (HLS), gated by the
+                // show only on worker rows, gated by the
                 // BrowserDownloads helpers — plain rows never offer
                 // a pause, because plain downloads are not pausable.
+                // r160: the worker rows are HLS, DASH, and segmented.
                 Text(
                     "Offline library",
                     style = MaterialTheme.typography.titleMedium,

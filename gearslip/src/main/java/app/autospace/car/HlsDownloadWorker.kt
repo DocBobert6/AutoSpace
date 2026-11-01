@@ -42,9 +42,10 @@ import kotlinx.coroutines.withContext
  * segment plus media segments in order to a .mp4; MPEG-TS
  * variants join plainly to a .ts.
  *
- * No network constraint is set on the work request in this slice:
- * the wifi-only setting arrives with the settings in slice 4, so
- * the HLS worker runs regardless of network type for now.
+ * No network constraint is set on the work request unless the
+ * Wi-Fi-only setting is on (r160): then the enqueue carries an
+ * UNMETERED constraint, so WorkManager itself holds the work
+ * until Wi-Fi instead of failing it on cellular.
  */
 class HlsDownloadWorker(
     appContext: Context,
@@ -251,8 +252,13 @@ class HlsDownloadWorker(
         /** The unique-work name for one record's HLS download. */
         fun workName(recordId: String): String = "hls-download-$recordId"
 
-        /** Enqueues (or re-enqueues) the worker for [record] under its unique name. */
-        fun enqueue(context: Context, record: BrowserStore.DownloadRecord, replace: Boolean) {
+        /** Enqueues (or re-enqueues) the worker for [record] under its unique name. When [wifiOnly] is true the work carries an UNMETERED constraint, so WorkManager itself holds it until Wi-Fi — the record stays in progress, not failed, while it waits. */
+        fun enqueue(
+            context: Context,
+            record: BrowserStore.DownloadRecord,
+            replace: Boolean,
+            wifiOnly: Boolean = false,
+        ) {
             val request = androidx.work.OneTimeWorkRequestBuilder<HlsDownloadWorker>()
                 .setInputData(
                     workDataOf(
@@ -260,6 +266,7 @@ class HlsDownloadWorker(
                         KEY_URL to record.url,
                     ),
                 )
+                .setConstraints(workerNetworkConstraints(wifiOnly))
                 .build()
             val policy = if (replace) {
                 androidx.work.ExistingWorkPolicy.REPLACE
@@ -316,12 +323,14 @@ internal fun joinSegments(segments: List<File>, output: File, initSegment: File?
 }
 
 /**
- * Deletes everything a worker download owns: its temp dir, and its
- * published file when one exists (MediaStore entry, or a plain file
- * path). Already-gone bytes are success, not an error.
+ * Deletes everything a worker download owns: its temp dir (by
+ * engine — HLS keeps its r159 path, DASH and segmented have
+ * their own), and its published file when one exists (MediaStore
+ * entry, or a plain file path). Already-gone bytes are success,
+ * not an error.
  */
 internal fun deleteWorkerFiles(context: Context, record: BrowserStore.DownloadRecord) {
-    runCatching { workerTempDir(context, record.id).deleteRecursively() }
+    runCatching { downloadTempDir(context, record.kind, record.id).deleteRecursively() }
     val raw = record.localSource ?: return
     runCatching {
         val uri = android.net.Uri.parse(raw)

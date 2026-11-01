@@ -194,6 +194,26 @@ object BrowserStore {
         AppSettings.putString(context, KEY_AD_BLOCK, on.toString())
     }
 
+    // ---- Downloads settings (r160, slice 4) ----
+    /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
+    private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"
+    /** Wi-Fi-only downloads, OFF by default (see BrowserDownloads for the gate). */
+    private const val KEY_WIFI_ONLY_DOWNLOADS = "browser_wifi_only_downloads"
+
+    fun segmentedDownloadsEnabled(context: Context): Boolean =
+        AppSettings.getString(context, KEY_SEGMENTED_DOWNLOADS, "true") != "false"
+
+    fun setSegmentedDownloads(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_SEGMENTED_DOWNLOADS, on.toString())
+    }
+
+    fun wifiOnlyDownloadsEnabled(context: Context): Boolean =
+        AppSettings.getString(context, KEY_WIFI_ONLY_DOWNLOADS, "false") == "true"
+
+    fun setWifiOnlyDownloads(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_WIFI_ONLY_DOWNLOADS, on.toString())
+    }
+
     // ---- Filter lists (r85) ----
     /** The driver's own network rules, one UserBlockRules line per line. */
     private const val KEY_USER_NET = "browser_user_net"
@@ -312,12 +332,13 @@ object BrowserStore {
     // line fields, and pre-slice rows decode with unknown progress
     // and the plain engine. HLS (.m3u8) downloads get worker records
     // in slice 3; DASH (.mpd) and segmented downloads arrive in
-    // slice 4, and until then still plain-download.
-    /** Download lifecycle: in progress, finished, failed, or worker-paused. */
-    enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED, PAUSED }
+    // slice 4 (r160), which also adds the WAITING state for
+    // Wi-Fi-only plain downloads and the two download settings.
+    /** Download lifecycle: in progress, finished, failed, worker-paused, or waiting for Wi-Fi. */
+    enum class DownloadState { IN_PROGRESS, COMPLETE, FAILED, PAUSED, WAITING }
 
-    /** Which engine owns a record: plain DownloadManager, or the HLS worker. */
-    enum class DownloadKind { PLAIN, HLS }
+    /** Which engine owns a record: plain DownloadManager, or one of the workers. */
+    enum class DownloadKind { PLAIN, HLS, DASH, SEGMENTED }
 
     /**
      * One download. [downloadManagerId] is the DownloadManager id
@@ -335,6 +356,14 @@ object BrowserStore {
      * 0..100, or -1 when unknown — plain DownloadManager downloads
      * never report one, so they stay unknown. [kind] (r159) is the
      * engine that owns the record; pre-slice rows decode as plain.
+     * [state] WAITING (r160, slice 4) is a plain record that has
+     * not been enqueued yet because the Wi-Fi-only setting is on
+     * and the phone is not on an unmetered network; it starts on
+     * the next list refresh once Wi-Fi is available (or the
+     * setting is off), and it is never a failed download.
+     * [kind] DASH and SEGMENTED (r160) are the slice-4 worker
+     * engines; pre-slice rows still decode as plain, and unknown
+     * kind names still degrade to plain.
      */
     data class DownloadRecord(
         val id: String,
@@ -367,7 +396,9 @@ object BrowserStore {
      * with media false) | progress percent or -1 (r159; pre-slice rows
      * have no tenth field and decode with unknown progress)
      * | engine kind name (r159; pre-slice rows have no eleventh field
-     * and decode as plain, unknown names also decode as plain).
+     * and decode as plain, unknown names also decode as plain;
+     * r160 adds DASH and SEGMENTED as real kind names, and WAITING
+     * as a real state name).
      */
     fun encodeDownloads(records: List<DownloadRecord>): String =
         records.joinToString("\n") { record ->

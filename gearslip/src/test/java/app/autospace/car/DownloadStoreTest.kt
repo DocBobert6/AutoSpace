@@ -227,7 +227,9 @@ class DownloadStoreTest {
         assertEquals(BrowserStore.DownloadKind.PLAIN, decoded[1].kind)
         assertTrue(decoded[1].isMedia)
         // An 11-field row with an unknown kind name degrades to plain.
-        val bogusKind = "dl-bogus|https://example.com/c.mp4|c.mp4|FAILED|9||0|1000000|1|50|DASH"
+        // (DASH became a real kind in r160, so the bogus name here
+        // is one no engine uses.)
+        val bogusKind = "dl-bogus|https://example.com/c.mp4|c.mp4|FAILED|9||0|1000000|1|50|MERGE"
         assertEquals(BrowserStore.DownloadKind.PLAIN, BrowserStore.decodeDownloads(bogusKind)[0].kind)
         assertEquals(50, BrowserStore.decodeDownloads(bogusKind)[0].progress)
     }

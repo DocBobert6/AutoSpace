@@ -504,7 +504,11 @@ fun WebApp(content: String) {
     fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null, isMedia: Boolean? = null) {
         val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate, isMedia)
         if (record != null) {
-            CarToasts.show(context, "Download started: ${record.fileName}", CarToast.LENGTH_SHORT)
+            if (record.state == BrowserStore.DownloadState.WAITING) {
+                CarToasts.show(context, "Waiting for Wi-Fi", CarToast.LENGTH_SHORT)
+            } else {
+                CarToasts.show(context, "Download started: ${record.fileName}", CarToast.LENGTH_SHORT)
+            }
         } else {
             CarToasts.show(context, "Download failed", CarToast.LENGTH_LONG)
         }
@@ -670,6 +674,10 @@ fun WebApp(content: String) {
     var ruleEditError by remember { mutableStateOf<String?>(null) }
     var rulesVersion by remember { mutableStateOf(0) }
     var adBlockOn by remember { mutableStateOf(BrowserStore.adBlockEnabled(context)) }
+    // r160: the two download settings, read fresh where they apply
+    // (enqueue and list refresh) and mirrored here for the menu.
+    var segmentedDownloadsOn by remember { mutableStateOf(BrowserStore.segmentedDownloadsEnabled(context)) }
+    var wifiOnlyDownloadsOn by remember { mutableStateOf(BrowserStore.wifiOnlyDownloadsEnabled(context)) }
     /** Bumped to recreate the active tab's WebView (desktop toggle, r21). */
     var webViewEpoch by remember { mutableStateOf(0) }
     /** Reader mode (r21): runs vendored Readability against a clone of the
@@ -833,6 +841,8 @@ fun WebApp(content: String) {
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
         adBlockOn = BrowserStore.adBlockEnabled(context)
+        segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
+        wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
     }
     // r158: library Save-a-copy. The picker is the Storage Access
     // Framework create-document flow (no permission, no new provider):
@@ -2016,6 +2026,16 @@ fun WebApp(content: String) {
                     BrowserStore.setAdBlockEnabled(context, on)
                     adBlockOn = on
                 },
+                segmentedDownloadsOn = segmentedDownloadsOn,
+                onSegmentedDownloads = { on ->
+                    BrowserStore.setSegmentedDownloads(context, on)
+                    segmentedDownloadsOn = on
+                },
+                wifiOnlyDownloadsOn = wifiOnlyDownloadsOn,
+                onWifiOnlyDownloads = { on ->
+                    BrowserStore.setWifiOnlyDownloads(context, on)
+                    wifiOnlyDownloadsOn = on
+                },
                 desktopMode = activeTab.desktopMode,
                 canToggleDesktop = !activeTab.isStartPage,
                 onToggleDesktop = { settingsMenuOpen = false; toggleDesktop() },
@@ -2696,6 +2716,12 @@ private fun BrowserSettingsMenu(
     // Browser batch (r21).
     adBlockOn: Boolean,
     onAdBlock: (Boolean) -> Unit,
+    // r160: the two download settings, beside the ad-block toggle
+    // in this same sheet — no new settings page for two rows.
+    segmentedDownloadsOn: Boolean,
+    onSegmentedDownloads: (Boolean) -> Unit,
+    wifiOnlyDownloadsOn: Boolean,
+    onWifiOnlyDownloads: (Boolean) -> Unit,
     desktopMode: Boolean,
     canToggleDesktop: Boolean,
     onToggleDesktop: () -> Unit,
@@ -2906,6 +2932,19 @@ private fun BrowserSettingsMenu(
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Update now") }
                 MenuRow("My rules…", false) { onEditBlockRules() }
+                MenuSection("Downloads")
+                MenuRow("Segmented downloads", segmentedDownloadsOn) { onSegmentedDownloads(!segmentedDownloadsOn) }
+                Text(
+                    "Downloads media in pieces when this is on, so a paused download resumes where it stopped instead of starting over. Playlists and ordinary files are unaffected.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Wi-Fi only downloads", wifiOnlyDownloadsOn) { onWifiOnlyDownloads(!wifiOnlyDownloadsOn) }
+                Text(
+                    "New downloads wait for Wi-Fi when this is on. Downloads already running are left alone.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 MenuSection("Search engine")
                 MenuRow("No-AI DuckDuckGo", !isCustomEngine) { onResetSearchEngine() }
                 MenuRow(
