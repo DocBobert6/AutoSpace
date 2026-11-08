@@ -552,7 +552,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                                     CarScreen.VehicleData -> VehicleDataScreen()
                                     is CarScreen.Notifications -> NotificationsScreen(screen.replyTo)
                                     is CarScreen.Messages -> MessagesScreen(screen.packageName)
-                                    is CarScreen.VideoPlayer -> VideoPlayerScreen(urls = screen.urls, titles = screen.titles, startIndex = screen.index, onClose = { navigator.back() })
+                                    is CarScreen.VideoPlayer -> VideoPlayerScreen(urls = screen.urls, titles = screen.titles, startIndex = screen.index, onClose = { navigator.back() }, isPrivate = screen.isPrivate)
                                     is CarScreen.App -> CarApps.find(screen.id)?.content?.invoke()
                                 }
                             }

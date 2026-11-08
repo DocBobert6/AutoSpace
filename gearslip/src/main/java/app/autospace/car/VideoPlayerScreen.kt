@@ -187,7 +187,7 @@ object PlayerBrightnessOverride {
 }
 
 @Composable
-fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int, onClose: () -> Unit) {
+fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int, onClose: () -> Unit, isPrivate: Boolean = false) {
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
     var retryKey by remember { mutableIntStateOf(0) }
@@ -334,12 +334,19 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // any stored entry untouched, and a >=95% position removes it, per
     // PlayerResume.save — so this is safe to call on pause, stop, and
     // dispose alike, including at position 0 before first play.
+    // r194: the persisted half is gated on !private; the live half is not.
     fun saveCurrentPosition() {
         val idx = player.currentMediaItemIndex
         if (player.mediaItemCount == 0 || idx !in urls.indices) return
         val pos = player.currentPosition.coerceAtLeast(0L)
         val dur = player.duration.let { if (it == C.TIME_UNSET) 0L else it.coerceAtLeast(0L) }
-        PlayerResume.save(context, urls[idx], pos, dur)
+        // r194: the persisted write is gated on !private (Mariner's
+        // shouldSavePlaybackPosition) — a private-tab video never
+        // leaves a resume entry behind. The in-memory holder below
+        // stays ungated: it dies with the process.
+        if (shouldSavePlaybackPosition(isPrivate)) {
+            PlayerResume.save(context, urls[idx], pos, dur)
+        }
         // r118: the same save feeds the shared live position, under
         // the same three-way rule (see VideoPositionSync).
         VideoPositionSync.saveLikeResume(urls[idx], pos, dur)
@@ -447,7 +454,12 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                     // Natural end of an item: it completed, so its saved
                     // position goes (r22). Manual Next/Prev saves first in
                     // the button handler instead, so it is not cleared here.
-                    urls.getOrNull(lastSeenIndex)?.let { PlayerResume.clear(context, it) }
+                    // r194: clearing is a persisted write too — gated
+                    // on !private, so a private completion cannot
+                    // erase a non-private resume entry for the URL.
+                    if (shouldSavePlaybackPosition(isPrivate)) {
+                        urls.getOrNull(lastSeenIndex)?.let { PlayerResume.clear(context, it) }
+                    }
                 }
                 lastSeenIndex = player.currentMediaItemIndex
                 currentIndex = player.currentMediaItemIndex
@@ -461,7 +473,9 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 if (state == Player.STATE_ENDED) {
                     // Playlist end: the finishing item completed, so its
                     // saved position goes (r22). mediaId is the URL here.
-                    player.currentMediaItem?.mediaId?.let { PlayerResume.clear(context, it) }
+                    if (shouldSavePlaybackPosition(isPrivate)) {
+                        player.currentMediaItem?.mediaId?.let { PlayerResume.clear(context, it) }
+                    }
                 }
                 isBuffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) {
@@ -1131,7 +1145,10 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             player.pause()
                             urls.getOrNull(currentIndex)?.let { url ->
                                 VideoPositionSync.setSwitch(url, player.currentPosition.coerceAtLeast(0L))
-                                MiniVideoState.popOut(url, titles.getOrNull(currentIndex))
+                                // r194: minimize hands the mini the whole
+                                // queue, so it can keep advancing after
+                                // the handoff, like a fresh pop-out.
+                                MiniVideoState.popOut(urls, titles, currentIndex, isPrivate)
                                 navigator.home()
                             }
                         },
@@ -1535,7 +1552,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                             .playerCapsule(androidx.compose.foundation.shape.RoundedCornerShape(50))
                             .clickable(onClick = {
                                 resumePromptMs = null
-                                if (openingUrl != null) PlayerResume.clear(context, openingUrl)
+                                if (openingUrl != null && shouldSavePlaybackPosition(isPrivate)) PlayerResume.clear(context, openingUrl)
                                 player.seekTo(0)
                                 player.play()
                                 touchControls()

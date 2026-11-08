@@ -168,6 +168,73 @@ class MiniVideoTest {
         assertEquals(null, cycleMiniVideoSize(MiniVideoSize.LARGE))
     }
 
+    // r194: finder queue + silent auto-advance + private flag.
+
+    @Test
+    fun popOutQueueAdvancesSilentlyToNextItem() {
+        MiniVideoState.popOut(
+            listOf("https://example.com/a.mp4", "https://example.com/b.mp4", "https://example.com/c.mp4"),
+            listOf("A", "B", "C"),
+            0,
+            false,
+        )
+        assertEquals("https://example.com/a.mp4", MiniVideoState.active.value?.url)
+        assertEquals(true, MiniVideoState.advance())
+        assertEquals("https://example.com/b.mp4", MiniVideoState.active.value?.url)
+        assertEquals(true, MiniVideoState.advance())
+        assertEquals("https://example.com/c.mp4", MiniVideoState.active.value?.url)
+    }
+
+    @Test
+    fun popOutQueueStartsAtIndex() {
+        MiniVideoState.popOut(
+            listOf("https://example.com/a.mp4", "https://example.com/b.mp4"),
+            listOf("A", "B"),
+            1,
+            false,
+        )
+        assertEquals("https://example.com/b.mp4", MiniVideoState.active.value?.url)
+    }
+
+    @Test
+    fun advanceAtQueueEndStops() {
+        MiniVideoState.popOut(
+            listOf("https://example.com/a.mp4", "https://example.com/b.mp4"),
+            listOf("A", "B"),
+            1,
+            false,
+        )
+        assertEquals("https://example.com/b.mp4", MiniVideoState.active.value?.url)
+        assertEquals(false, MiniVideoState.advance())
+        assertEquals("https://example.com/b.mp4", MiniVideoState.active.value?.url)
+    }
+
+    @Test
+    fun singleItemPopOutIsAQueueOfOne() {
+        MiniVideoState.popOut("https://example.com/v.mp4", "Clip")
+        assertEquals("https://example.com/v.mp4", MiniVideoState.active.value?.url)
+        assertEquals(false, MiniVideoState.advance())
+        assertEquals("https://example.com/v.mp4", MiniVideoState.active.value?.url)
+    }
+
+    @Test
+    fun popOutStoresPrivateFlagAndClearResetsIt() {
+        MiniVideoState.popOut("https://example.com/v.mp4", null, true)
+        assertEquals(true, MiniVideoState.isPrivate)
+        MiniVideoState.clear()
+        assertEquals(false, MiniVideoState.isPrivate)
+        assertEquals(null, MiniVideoState.active.value)
+    }
+
+    @Test
+    fun miniVideoNextIndexPure() {
+        assertEquals(1, miniVideoNextIndex(3, 0))
+        assertEquals(2, miniVideoNextIndex(3, 1))
+        assertEquals(null, miniVideoNextIndex(3, 2))
+        assertEquals(null, miniVideoNextIndex(1, 0))
+        assertEquals(null, miniVideoNextIndex(0, 0))
+    }
+
     @Test
     fun dragGateParkedOnly() {
         assertEquals(true, miniVideoDragApplies(false))

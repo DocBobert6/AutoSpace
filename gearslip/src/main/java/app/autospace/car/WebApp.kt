@@ -313,7 +313,14 @@ fun WebApp(content: String) {
     fun popOut(item: FoundMedia) {
         // r193: the page the media came from is the player's Referer.
         PlayerNet.referer = activeTab.currentUrl
-        MiniVideoState.popOut(item.url, item.title)
+        // r194: the mini card gets the whole finder queue, mirroring
+        // the fullscreen path, so it can advance silently on end.
+        MiniVideoState.popOut(
+            activeTab.foundMedia.map { it.url },
+            activeTab.foundMedia.map { it.title },
+            activeTab.foundMedia.indexOf(item).coerceAtLeast(0),
+            activeTab.isPrivate,
+        )
         navigator.home()
     }
     var tabsOpen by remember { mutableStateOf(false) }
@@ -2618,6 +2625,7 @@ fun WebApp(content: String) {
                         activeTab.foundMedia.map { it.url },
                         activeTab.foundMedia.map { it.title },
                         activeTab.foundMedia.indexOf(item).coerceAtLeast(0),
+                        activeTab.isPrivate,
                     )
                 },
                 // r75: per-row Pop out — the precise alternative to

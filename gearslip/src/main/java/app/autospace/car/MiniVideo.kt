@@ -106,17 +106,53 @@ object MiniVideoState {
     var driverAnswered: Boolean = false
         private set
 
+    /**
+     * r194: the finder queue behind the active item, so the mini card
+     * can advance silently when a video ends (mirroring the full
+     * player's queue). Empty outside a pop-out; a single-item pop-out
+     * is just a queue of one.
+     */
+    private var queue: List<Item> = emptyList()
+    private var queueIndex: Int = 0
+
+    /** r194: whether the popped-out video came from a private tab — gates the persisted resume write (see shouldSavePlaybackPosition). */
+    var isPrivate: Boolean = false
+        private set
+
     /** A fresh PiP tap: new video, fresh gate — a passenger is re-asked, like a fresh browser entry. */
-    fun popOut(url: String, title: String?) {
-        activeFlow.value = Item(url, title)
+    fun popOut(url: String, title: String?, isPrivate: Boolean = false) {
+        popOut(listOf(url), listOf(title), 0, isPrivate)
+    }
+
+    /** r194: pop out a whole finder queue at [index], mirroring the fullscreen path's queue handoff. */
+    fun popOut(urls: List<String>, titles: List<String?>, index: Int, isPrivate: Boolean = false) {
+        val items = urls.mapIndexed { i, u -> Item(u, titles.getOrNull(i)) }
+        queue = items
+        queueIndex = index.coerceIn(0, (items.size - 1).coerceAtLeast(0))
+        activeFlow.value = items.getOrNull(queueIndex)
+        this.isPrivate = isPrivate
         gateOpenFlow.value = false
         passengerAllowed = false
         driverAnswered = false
         sizeFlow.value = MiniVideoSize.SMALL
         // A fresh handoff starts at 0, never at a stale live position
-        // for the same URL — but a pending switch is preserved: it
+        // for any queue URL — but a pending switch is preserved: it
         // belongs to an in-flight expand/minimize, not to this handoff.
-        VideoPositionSync.clearLive(url)
+        items.forEach { VideoPositionSync.clearLive(it.url) }
+    }
+
+    /**
+     * r194: advance to the next queue item on natural end, silently
+     * like the full player. Returns true when there is a next item;
+     * at queue end returns false and the mini stops, as the full
+     * player does at playlist end. Never expands to the full player
+     * and never adds transport buttons — that is a separate call.
+     */
+    fun advance(): Boolean {
+        val next = miniVideoNextIndex(queue.size, queueIndex) ?: return false
+        queueIndex = next
+        activeFlow.value = queue[next]
+        return true
     }
 
     /** Dismiss, or expand to the full player: playback stops here, state resets. */
@@ -126,6 +162,9 @@ object MiniVideoState {
         // survives, because expand() sets it before clearing.
         activeFlow.value?.let { VideoPositionSync.clearLive(it.url) }
         activeFlow.value = null
+        queue = emptyList()
+        queueIndex = 0
+        isPrivate = false
         gateOpenFlow.value = false
         passengerAllowed = false
         driverAnswered = false
@@ -179,6 +218,13 @@ fun cycleMiniVideoSize(size: MiniVideoSize): MiniVideoSize? = when (size) {
     MiniVideoSize.SMALL -> MiniVideoSize.LARGE
     MiniVideoSize.LARGE -> null
 }
+
+/**
+ * r194: the next queue index after the current item ends, or null
+ * at queue end (the mini stops). Pure so the unit test pins it.
+ */
+fun miniVideoNextIndex(queueSize: Int, currentIndex: Int): Int? =
+    (currentIndex + 1).takeIf { it in 0 until queueSize }
 
 /**
  * r118: the card width for a mini size, in dp as a Float so the rule
@@ -355,11 +401,25 @@ fun MiniVideoCard(
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
             }
+
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_ENDED) {
+                    // r194: silent auto-advance through the finder
+                    // queue, mirroring the full player. At queue end
+                    // advance() returns false and the mini stops.
+                    MiniVideoState.advance()
+                }
+            }
         }
         player.addListener(listener)
         isPlaying = player.isPlaying
         onDispose {
-            PlayerResume.save(context, item.url, player.currentPosition, player.duration)
+            // r194: the persisted write is gated on !private (Mariner's
+            // shouldSavePlaybackPosition); the in-memory holder below
+            // stays ungated — it dies with the process.
+            if (shouldSavePlaybackPosition(MiniVideoState.isPrivate)) {
+                PlayerResume.save(context, item.url, player.currentPosition, player.duration)
+            }
             VideoPositionSync.saveLikeResume(item.url, player.currentPosition, player.duration)
             player.removeListener(listener)
             player.release()
@@ -384,7 +444,7 @@ fun MiniVideoCard(
         // (clear() preserves a pending switch by design.)
         VideoPositionSync.setSwitch(item.url, player.currentPosition.coerceAtLeast(0L))
         MiniVideoState.clear()
-        navigator.videoPlayer(listOf(item.url), listOf(item.title), 0)
+        navigator.videoPlayer(listOf(item.url), listOf(item.title), 0, MiniVideoState.isPrivate)
     }
 
     // r118: press-and-hold drag on the card BODY only — the video

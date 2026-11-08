@@ -106,3 +106,14 @@ object PlayerResume {
         }
     }
 }
+
+/**
+ * r194: Mariner's shouldSavePlaybackPosition port — a private
+ * session never writes the persisted resume, so a private-tab
+ * video can never prompt Resume in a later non-private open.
+ * Only the PERSISTED write is gated: the in-memory
+ * VideoPositionSync holder stays ungated (it dies with the
+ * process), and the Resume prompt still reads whatever a
+ * non-private open stored — Mariner's read side is ungated too.
+ */
+fun shouldSavePlaybackPosition(isPrivate: Boolean): Boolean = !isPrivate

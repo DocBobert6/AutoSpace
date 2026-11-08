@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            152, "0.4.141-alpha",
+            listOf(
+                "Videos from a private tab no longer leave a resume position behind, so they never prompt Resume later. The mini video card now plays through the finder's queue instead of stopping when one video ends.",
+            ),
+        ),
+        Release(
             151, "0.4.140-alpha",
             listOf(
                 "The video player now sends the browser's identity with its requests, so videos that only play when the site recognizes the browser — or when its cookies are present — now play in the player instead of failing. Recently played video is also kept in a small on-phone cache.",

@@ -21,6 +21,15 @@ class PlayerResumeTest {
         assertFalse(PlayerResume.isMeaningful(9_000L, 0L))
     }
 
+    @Test fun shouldSavePlaybackPositionGatesPrivateOnly() {
+        // r194: Mariner's gate — a private session never writes the
+        // persisted resume; a non-private session saves as before.
+        // The in-memory VideoPositionSync holder has no such gate:
+        // it dies with the process, so both cases still update it.
+        assertTrue(shouldSavePlaybackPosition(false))
+        assertFalse(shouldSavePlaybackPosition(true))
+    }
+
     @Test fun codecRoundTripWithSpecialCharacters() {
         val entries = linkedMapOf(
             "https://example.com/v?a=1&b=2|weird" to PlayerResume.Entry(123_456L, 600_000L),
