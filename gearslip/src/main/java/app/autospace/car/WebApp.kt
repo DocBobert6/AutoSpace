@@ -729,6 +729,9 @@ fun WebApp(content: String) {
     // (enqueue and list refresh) and mirrored here for the menu.
     var segmentedDownloadsOn by remember { mutableStateOf(BrowserStore.segmentedDownloadsEnabled(context)) }
     var wifiOnlyDownloadsOn by remember { mutableStateOf(BrowserStore.wifiOnlyDownloadsEnabled(context)) }
+    // r190 (parity Phase 7): "Open links in a new tab", Mariner's
+    // openLinksInNewTab, default off.
+    var openLinksNewTabOn by remember { mutableStateOf(BrowserStore.openLinksInNewTab(context)) }
     /** Bumped to recreate the active tab's WebView (desktop toggle, r21). */
     var webViewEpoch by remember { mutableStateOf(0) }
     /** Reader mode (r21): runs vendored Readability against a clone of the
@@ -897,6 +900,7 @@ fun WebApp(content: String) {
         adBlockOn = BrowserStore.adBlockEnabled(context)
         segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
         wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
+        openLinksNewTabOn = BrowserStore.openLinksInNewTab(context)
     }
     /** r162: Newsstand save — an explicit handoff from the in-memory
      *  article, never from any cache (the dead ArticleCache is
@@ -1597,6 +1601,13 @@ fun WebApp(content: String) {
                                     // gate + privacy state, read per tap.
                                     openInAppAllowed = { !CarMotion.moving || latestPassengerAllowed.value },
                                     isPrivateTab = { tab.isPrivate },
+                                    // r190: the tab URL for the anchor
+                                    // check, and the new-tab open for a
+                                    // tapped link when the toggle is on.
+                                    currentUrl = { tab.currentUrl },
+                                    onOpenLinkNewTab = { url ->
+                                        mainHandler.post { newUrlTab(url, isPrivate = tab.isPrivate) }
+                                    },
                                 )
                                 // Document-start cosmetics (r85): the
                                 // generic hiding sheet is registered
@@ -2108,6 +2119,19 @@ fun WebApp(content: String) {
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             GsButton(onClick = { activeTab.loadError = null; web?.reload() }) { Text("Retry") }
                             GsButton(onClick = { activeTab.loadError = null; web?.goBack() }) { Text("Go back") }
+                            // r190 (parity Phase 7): Home returns to the
+                            // start page, Mariner's StatusPages onHome —
+                            // the tab resets in place (same shape as
+                            // closing the last tab), so the tab count
+                            // does not change.
+                            GsButton(onClick = {
+                                activeTab.loadError = null
+                                activeTab.isStartPage = true
+                                activeTab.currentUrl = ""
+                                activeTab.title = null
+                                activeTab.foundMedia.clear()
+                                saveSessionNow()
+                            }) { Text("Home") }
                         }
                     }
                 }
@@ -2257,6 +2281,11 @@ fun WebApp(content: String) {
                 onAdBlock = { on ->
                     BrowserStore.setAdBlockEnabled(context, on)
                     adBlockOn = on
+                },
+                openLinksNewTabOn = openLinksNewTabOn,
+                onOpenLinksNewTab = { on ->
+                    BrowserStore.setOpenLinksInNewTab(context, on)
+                    openLinksNewTabOn = on
                 },
                 segmentedDownloadsOn = segmentedDownloadsOn,
                 onSegmentedDownloads = { on ->
@@ -3221,6 +3250,9 @@ private fun BrowserSettingsMenu(
     // Browser batch (r21).
     adBlockOn: Boolean,
     onAdBlock: (Boolean) -> Unit,
+    // r190 (parity Phase 7): "Open links in a new tab".
+    openLinksNewTabOn: Boolean,
+    onOpenLinksNewTab: (Boolean) -> Unit,
     // r160: the two download settings, beside the ad-block toggle
     // in this same sheet — no new settings page for two rows.
     segmentedDownloadsOn: Boolean,
@@ -3384,6 +3416,16 @@ private fun BrowserSettingsMenu(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // r190 (parity Phase 7): "Open links in a new tab"
+                // sits in the Page section, with the other rows about
+                // where a link or page goes (Mariner puts it in its
+                // Browsing page; AutoSpace has no such section).
+                MenuRow("Open links in a new tab", openLinksNewTabOn) { onOpenLinksNewTab(!openLinksNewTabOn) }
+                Text(
+                    "Tapped links open in a new tab instead of leaving the page you are on. Same-page links stay put.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 MenuSection("Ads & trackers")
                 MenuRow("Block ads & trackers", adBlockOn) { onAdBlock(!adBlockOn) }
                 Text(
@@ -3654,6 +3696,18 @@ private enum class RuleEditType { BLOCK_HOST, BLOCK_URL, ALLOW_HOST }
  */
 internal fun httpErrorMessage(statusCode: Int): String = "This page answered $statusCode"
 
+/**
+ * r190 (parity Phase 7): a same-page anchor link — the target is the
+ * current page with only a fragment changed. Mariner's isAnchorLink,
+ * verbatim: anchors stay put when "Open links in a new tab" is on.
+ * Top-level so unit tests can pin it down.
+ */
+internal fun isAnchorLink(currentUrl: String, targetUrl: String): Boolean {
+    if (currentUrl.isBlank() || targetUrl.isBlank()) return false
+    if (currentUrl.substringBefore('#') != targetUrl.substringBefore('#')) return false
+    return '#' in currentUrl || '#' in targetUrl
+}
+
 private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
@@ -3670,6 +3724,13 @@ private class BrowserClient(
     // must not be private, or a tapped link keeps today's dead-end.
     private val openInAppAllowed: () -> Boolean = { true },
     private val isPrivateTab: () -> Boolean = { false },
+    // r190 (parity Phase 7): the tab's current URL for the anchor
+    // check, read per tap like pageHost — a tab's URL changes
+    // without the client being rebuilt.
+    private val currentUrl: () -> String = { "" },
+    // r190: the new-tab open for a tapped link when the toggle is
+    // on; the caller opens it in a foreground tab.
+    private val onOpenLinkNewTab: (String) -> Unit = {},
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -3768,6 +3829,23 @@ private class BrowserClient(
                 }
                 OpenInApp.TapAction.NONE -> Unit
             }
+        }
+        // r190 (parity Phase 7): "Open links in a new tab" (Mariner's
+        // openLinksInNewTab, default off) — a plain tap on a link opens
+        // it in a foreground tab inheriting this tab's privacy instead
+        // of navigating here. Same-page anchors stay put, and _blank
+        // links never reach this callback (onCreateWindow owns them),
+        // so both keep current behavior; special schemes were handled
+        // by the r183 block above and fall through untouched. Unlike
+        // Mariner, no HTTPS upgrade applies here — AutoSpace has none
+        // (that ships with the adblock HTTPS round, not this one).
+        if (view != null && request?.isForMainFrame == true && request.hasGesture() &&
+            url != null && (url.startsWith("http://") || url.startsWith("https://")) &&
+            BrowserStore.openLinksInNewTab(view.context) &&
+            !isAnchorLink(currentUrl(), url)
+        ) {
+            onOpenLinkNewTab(url)
+            return true
         }
         if (request?.isForMainFrame == true && request.hasGesture() == false && url != null &&
             (url.startsWith("http://") || url.startsWith("https://"))

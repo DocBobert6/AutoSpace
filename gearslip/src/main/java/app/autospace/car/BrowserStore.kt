@@ -273,6 +273,17 @@ object BrowserStore {
         AppSettings.putString(context, KEY_WIFI_ONLY_DOWNLOADS, on.toString())
     }
 
+    // ---- Open links in a new tab (r190, parity Phase 7) ----
+    /** Mariner's openLinksInNewTab, default off: a tapped link opens in a new tab. */
+    private const val KEY_OPEN_LINKS_NEW_TAB = "browser_open_links_new_tab"
+
+    fun openLinksInNewTab(context: Context): Boolean =
+        AppSettings.getString(context, KEY_OPEN_LINKS_NEW_TAB, "false") == "true"
+
+    fun setOpenLinksInNewTab(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_OPEN_LINKS_NEW_TAB, on.toString())
+    }
+
     // ---- Filter lists (r85) ----
     /** The driver's own network rules, one UserBlockRules line per line. */
     private const val KEY_USER_NET = "browser_user_net"

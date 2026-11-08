@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            148, "0.4.137-alpha",
+            listOf(
+                "Browser settings has an 'Open links in a new tab' switch: when it is on, tapping a link opens it in a new tab instead of leaving the page you are on. And a page that fails to load now offers Home, back to the start page, next to Retry and Go back.",
+            ),
+        ),
+        Release(
             147, "0.4.136-alpha",
             listOf(
                 "Long-pressing a link now offers two more rows: open it in a background tab without leaving the page you are on, or open it in a private tab.",
