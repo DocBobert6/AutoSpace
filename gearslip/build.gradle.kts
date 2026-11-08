@@ -212,6 +212,8 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
+    // r193: the player factory (PlayerNet) builds on the datasource module directly.
+    implementation(libs.media3.datasource)
     implementation(libs.media3.ui)
     // DASH download worker (r160, downloads slice 4).
     implementation(libs.media3.transformer)

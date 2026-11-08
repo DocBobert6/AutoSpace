@@ -91,7 +91,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -310,19 +309,19 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     }
 
     val player = remember(urls, retryKey) {
-        ExoPlayer.Builder(context)
-            // Audio focus is handled here, via setAudioAttributes' second argument:
-            // the Builder has no separate setHandleAudioFocus in Media3 1.11 (that
-            // call fails to resolve and poisons the whole chain's type inference).
-            .setAudioAttributes(
-                androidx.media3.common.AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                true,
-            )
-            .build()
+        PlayerNet.buildPlayer(context)
             .apply {
+                // Audio focus is handled here, via setAudioAttributes' second argument:
+                // there is no separate setHandleAudioFocus call on the player in
+                // Media3 1.11 (that call fails to resolve and poisons the whole
+                // chain's type inference).
+                setAudioAttributes(
+                    androidx.media3.common.AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
                 setPlaybackSpeed(speed)
                 setMediaItems(buildItems(), currentIndex, initialSeekMs)
                 prepare()
@@ -589,8 +588,9 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // the selector instead, and a pick is an exact bitrate pin. Probed by
     // content (#EXTM3U + #EXT-X-STREAM-INF), not by name. DASH renditions
     // come through the player's own track list, so no manifest parse is
-    // needed there. Unlike Notscape, no browser identity or page cookies
-    // are attached — the finder hands over direct media URLs.
+    // needed there. The probe carries the player's browser identity, the
+    // page's Referer, and the site's cookies — the same identity playback
+    // itself uses (see PlayerNet.probeHeaders).
     LaunchedEffect(currentIndex) {
         parsedQualities = emptyList()
         val u = urls.getOrNull(currentIndex) ?: return@LaunchedEffect
@@ -600,6 +600,15 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 val conn = java.net.URL(u).openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 10_000
                 conn.readTimeout = 10_000
+                // r193: the fetch carries the player's own browser
+                // identity, the page's Referer, and the site's cookies
+                // (HTTPS only for Referer/Cookie) — cookie-gated CDNs
+                // refused this fetch (403) while the video played
+                // in-page, and the failure was silent, so the quality
+                // row simply never appeared on those videos.
+                PlayerNet.probeHeaders(u).forEach { (name, value) ->
+                    conn.setRequestProperty(name, value)
+                }
                 conn.inputStream.bufferedReader().use { reader ->
                     val sb = StringBuilder()
                     var line = reader.readLine() ?: return@use null

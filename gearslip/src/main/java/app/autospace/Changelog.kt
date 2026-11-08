@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            151, "0.4.140-alpha",
+            listOf(
+                "The video player now sends the browser's identity with its requests, so videos that only play when the site recognizes the browser — or when its cookies are present — now play in the player instead of failing. Recently played video is also kept in a small on-phone cache.",
+            ),
+        ),
+        Release(
             150, "0.4.139-alpha",
             listOf(
                 "The browser now sends Global Privacy Control: sites are told not to sell or share your data, with a switch in browser settings to turn it off.",

@@ -311,6 +311,8 @@ fun WebApp(content: String) {
      * playing, so there is never double audio.
      */
     fun popOut(item: FoundMedia) {
+        // r193: the page the media came from is the player's Referer.
+        PlayerNet.referer = activeTab.currentUrl
         MiniVideoState.popOut(item.url, item.title)
         navigator.home()
     }
@@ -2449,6 +2451,9 @@ fun WebApp(content: String) {
                         BrowserDownloads.LibraryResult.READY -> {
                             listsOpen = false
                             if (source != null) {
+                                // r193: a downloaded file has no page to
+                                // refer to — clear any stale Referer.
+                                PlayerNet.referer = null
                                 navigator.videoPlayer(listOf(source), listOf(record.fileName), 0)
                             }
                         }
@@ -2607,6 +2612,8 @@ fun WebApp(content: String) {
                 items = activeTab.foundMedia,
                 onOpen = { item ->
                     sheetOpen = false
+                    // r193: the page the media came from is the player's Referer.
+                    PlayerNet.referer = activeTab.currentUrl
                     navigator.videoPlayer(
                         activeTab.foundMedia.map { it.url },
                         activeTab.foundMedia.map { it.title },

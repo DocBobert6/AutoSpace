@@ -42,7 +42,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import app.autospace.R
 import app.autospace.car.theme.FrostedPanelSurface
@@ -329,16 +328,15 @@ fun MiniVideoCard(
     // mime types from VideoUrl exactly as buildItems() does, title
     // metadata, seek to the shared position, play straight away.
     val player = remember(item.url) {
-        ExoPlayer.Builder(context)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(C.USAGE_MEDIA)
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .build(),
-                true,
-            )
-            .build()
+        PlayerNet.buildPlayer(context)
             .apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true,
+                )
                 val builder = MediaItem.Builder().setUri(item.url).setMediaId(item.url)
                     .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title ?: "").build())
                 when (VideoUrl.kindOf(item.url)) {
