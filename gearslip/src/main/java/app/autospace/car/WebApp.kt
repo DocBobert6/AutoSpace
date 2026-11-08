@@ -414,17 +414,25 @@ fun WebApp(content: String) {
             }
         }
     }
-    /** A new tab already aimed at a URL (popups, long-press, recently closed). */
-    fun newUrlTab(url: String, isPrivate: Boolean = false) {
+    /**
+     * A new tab already aimed at a URL (popups, long-press, recently
+     * closed). Phase 8 (r189): [activate] opens the tab in the
+     * background when false -- the tab is created and saved, but the
+     * current tab stays active and the address bar untouched, so the
+     * page keeps its place (Mariner's openBackgroundTab shape).
+     */
+    fun newUrlTab(url: String, isPrivate: Boolean = false, activate: Boolean = true) {
         val tab = BrowserTab(nextTabId++, url)
         tab.isPrivate = isPrivate
         tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
         tabs.add(tab)
-        activeTabId = tab.id
-        addressEditing = false
-        addressSelected = false
-        tabsOpen = false
-        resetBarScrollHide()
+        if (activate) {
+            activeTabId = tab.id
+            addressEditing = false
+            addressSelected = false
+            tabsOpen = false
+            resetBarScrollHide()
+        }
         saveSessionNow()
     }
     /** Loads [url] into [tab], waking a start-page tab (which has no WebView yet). */
@@ -2789,6 +2797,15 @@ fun WebApp(content: String) {
                                 longPressTarget = null
                                 newUrlTab(longPress.url)
                             }, modifier = Modifier.fillMaxWidth()) { Text("Open in new tab") }
+                            GsButton(onClick = {
+                                longPressTarget = null
+                                newUrlTab(longPress.url, activeTab.isPrivate, activate = false)
+                                CarToasts.show(context, "Opened in background tab", CarToast.LENGTH_SHORT)
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in background tab") }
+                            GsButton(onClick = {
+                                longPressTarget = null
+                                newUrlTab(longPress.url, isPrivate = true)
+                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in private tab") }
                             // r183: "Open in app" for a link another app
                             // handles — host-specific handlers only, so
                             // a generic browser never earns this row.

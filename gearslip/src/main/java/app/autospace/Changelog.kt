@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            147, "0.4.136-alpha",
+            listOf(
+                "Long-pressing a link now offers two more rows: open it in a background tab without leaving the page you are on, or open it in a private tab.",
+            ),
+        ),
+        Release(
             146, "0.4.135-alpha",
             listOf(
                 "The tab switcher now groups tabs into Normal and Private sections, and the tab count on the bar and in the switcher shows how many tabs are in the same group as the tab you are on, instead of the total.",
