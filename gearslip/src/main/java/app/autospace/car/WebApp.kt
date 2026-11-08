@@ -435,29 +435,12 @@ fun WebApp(content: String) {
         }
         saveSessionNow()
     }
-    /**
-     * r192 (parity G1): app-controlled navigations load with the
-     * Sec-GPC: 1 header when Global Privacy Control is on, exactly as
-     * Mariner attaches it on navigations the app controls. The header
-     * rides only the initial request of the load — in-page navigations
-     * and subresources rely on the navigator.globalPrivacyControl flag
-     * from the document-start script instead, because header injection
-     * for subresources is not feasible without refetching. The toggle
-     * is read fresh on every navigation, so flipping it applies to
-     * the next load (the DOM flag, registered once per WebView below,
-     * applies to new tabs).
-     */
-    fun loadUrlWithGpc(view: WebView?, url: String) {
-        if (view == null) return
-        val headers = FilterEngine.gpcHeaders(BrowserStore.gpcEnabled(context))
-        if (headers.isEmpty()) view.loadUrl(url) else view.loadUrl(url, headers)
-    }
     /** Loads [url] into [tab], waking a start-page tab (which has no WebView yet). */
     fun openUrlInTab(tab: BrowserTab, url: String) {
         tab.isStartPage = false
         tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
         if (tab.view != null) {
-            loadUrlWithGpc(tab.view, url)
+            loadUrlWithGpc(context, tab.view, url)
         } else {
             tab.currentUrl = url
         }
@@ -843,7 +826,7 @@ fun WebApp(content: String) {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
         val tab = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUrlWithGpc(tab.view, url)
+        loadUrlWithGpc(context, tab.view, url)
         if (tab.id != activeTabId) activeTabId = tab.id
         if (pendingPopups.isEmpty()) {
             showPopupNotice = false
@@ -861,7 +844,7 @@ fun WebApp(content: String) {
         val urls = pendingPopups.toList()
         if (urls.isEmpty()) return
         val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUrlWithGpc(origin.view, urls.first())
+        loadUrlWithGpc(context, origin.view, urls.first())
         if (origin.id != activeTabId) activeTabId = origin.id
         urls.drop(1).forEach { url ->
             val tab = BrowserTab(nextTabId++, url)
@@ -893,7 +876,7 @@ fun WebApp(content: String) {
     }
     fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {        if (allowed) {
             runCatching { transport.destroy() }
-            loadUrlWithGpc(tab.view, url)
+            loadUrlWithGpc(context, tab.view, url)
             if (tab.id != activeTabId) activeTabId = tab.id
         } else if (pendingPopups.size < 5) {
             capturedPopupViews.add(transport)
@@ -1170,7 +1153,7 @@ fun WebApp(content: String) {
                         if (activeTab.isStartPage) {
                             openUrlInTab(activeTab, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         } else {
-                            loadUrlWithGpc(web, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
+                            loadUrlWithGpc(context, web, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         }
                     }, true)
                 }
@@ -1731,7 +1714,7 @@ fun WebApp(content: String) {
                                 if (tab.rawHtml != null) {
                                     loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
                                 } else {
-                                    loadUrlWithGpc(this, tab.currentUrl)
+                                    loadUrlWithGpc(context, this, tab.currentUrl)
                                 }
                                 tab.view = this
                                 web = this
@@ -1816,7 +1799,7 @@ fun WebApp(content: String) {
                     LocalSuggestionsCard(pillSuggestions) { url ->
                         addressEditing = false
                         addressSelected = false
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
                     }
                 }
                 // r154: the address bar holds a URL, so no auto-formatting.
@@ -1842,7 +1825,7 @@ fun WebApp(content: String) {
                         // Search uses the engine setting (r21); a
                         // start-page tab wakes into a real tab here.
                         val url = BrowserSearch.navigateUrl(context, addressText)
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
                     },
                     onDismiss = {
                         addressEditing = false
@@ -2406,7 +2389,7 @@ fun WebApp(content: String) {
                 },
                 onLoad = { url ->
                     listsOpen = false
-                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
+                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
                 },
                 onBookmarkToggle = {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
@@ -2755,7 +2738,7 @@ fun WebApp(content: String) {
                                         if (activeTab.isStartPage || target == null) {
                                             openUrlInTab(activeTab, url)
                                         } else {
-                                            loadUrlWithGpc(target, url)
+                                            loadUrlWithGpc(context, target, url)
                                         }
                                         return true
                                     }
@@ -3795,6 +3778,25 @@ internal fun isAnchorLink(currentUrl: String, targetUrl: String): Boolean {
     return '#' in currentUrl || '#' in targetUrl
 }
 
+/**
+ * r192 (parity G1): app-controlled navigations load with the Sec-GPC: 1
+ * header when Global Privacy Control is on, exactly as Mariner attaches
+ * it on navigations the app controls. The header rides only the initial
+ * request of the load — in-page navigations and subresources rely on the
+ * navigator.globalPrivacyControl flag from the document-start script
+ * instead, because header injection for subresources is not feasible
+ * without refetching. The toggle is read fresh on every navigation, so
+ * flipping it applies to the next load (the DOM flag, registered once
+ * per WebView, applies to new tabs). File-level, not a composable local,
+ * so BrowserClient can use it too — the open-in-app fallback loads from
+ * shouldOverrideUrlLoading.
+ */
+internal fun loadUrlWithGpc(context: android.content.Context, view: WebView?, url: String) {
+    if (view == null) return
+    val headers = FilterEngine.gpcHeaders(BrowserStore.gpcEnabled(context))
+    if (headers.isEmpty()) view.loadUrl(url) else view.loadUrl(url, headers)
+}
+
 private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
@@ -3908,7 +3910,7 @@ private class BrowserClient(
                     if (openInAppAllowed() && !isPrivateTab()) {
                         val fallback = OpenInApp.fallbackUrl(url)
                         if (fallback != null) {
-                            loadUrlWithGpc(view, fallback)
+                            view?.let { loadUrlWithGpc(it.context, it, fallback) }
                             return true
                         }
                     }
