@@ -54,7 +54,7 @@ object BrowserStore {
                 '\r' -> out.append("\\r")
                 '\t' -> out.append("\\t")
                 '\b' -> out.append("\\b")
-                '\f' -> out.append("\\f")
+                '\u000C' -> out.append("\\f")
                 else -> if (ch < ' ') out.append("\\u%04x".format(ch.code)) else out.append(ch)
             }
         }
@@ -81,7 +81,7 @@ object BrowserStore {
                 'r' -> out.append('\r')
                 't' -> out.append('\t')
                 'b' -> out.append('\b')
-                'f' -> out.append('\f')
+                'f' -> out.append('\u000C')
                 'u' -> {
                     val hex = raw.substring(i + 2, minOf(i + 6, raw.length))
                     val code = hex.toIntOrNull(16)
