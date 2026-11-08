@@ -1573,7 +1573,7 @@ fun WebApp(content: String) {
                                             if (tab.id == activeTabId) resetBarScrollHide()
                                         }
                                     },
-                                    onHistory = { url, back, forward ->
+                                    onHistory = { url, title, back, forward ->
                                         mainHandler.post {
                                             tab.currentUrl = url
                                             tab.canGoBack = back
@@ -1583,7 +1583,7 @@ fun WebApp(content: String) {
                                             // session saves with them
                                             // filtered out too.
                                             if (!tab.isPrivate) {
-                                                BrowserStore.recordHistory(context, url)
+                                                BrowserStore.recordHistory(context, url, title)
                                             }
                                             saveSessionNow()
                                         }
@@ -1640,7 +1640,21 @@ fun WebApp(content: String) {
                                         mainHandler.post { onPopupUrl(tab, host, url, transport, allowed) }
                                     },
                                     onProgress = { p -> mainHandler.post { tab.progress = p } },
-                                    onTitle = { t -> mainHandler.post { tab.title = t?.takeIf { it.isNotBlank() } } },
+                                    onTitle = { t ->
+                                        mainHandler.post {
+                                            tab.title = t?.takeIf { it.isNotBlank() }
+                                            // r191 (parity G2): a title
+                                            // that arrives after the visit
+                                            // was recorded fills the
+                                            // history row's blank title.
+                                            // Private tabs never wrote
+                                            // history, so there is
+                                            // nothing to fill there.
+                                            if (!tab.isPrivate && t != null) {
+                                                BrowserStore.updateHistoryTitle(context, tab.currentUrl, t)
+                                            }
+                                        }
+                                    },
                                     onShowFullscreen = { view, callback ->
                                         // Fullscreen / dialogs belong to the
                                         // tab in front: a background tab's
@@ -2159,7 +2173,7 @@ fun WebApp(content: String) {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
                         BrowserStore.removeBookmark(context, activeTab.currentUrl)
                     } else {
-                        BrowserStore.addBookmark(context, activeTab.currentUrl)
+                        BrowserStore.addBookmark(context, activeTab.currentUrl, activeTab.title ?: "")
                     }
                     refreshLists()
                 },
@@ -2353,7 +2367,7 @@ fun WebApp(content: String) {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
                         BrowserStore.removeBookmark(context, activeTab.currentUrl)
                     } else {
-                        BrowserStore.addBookmark(context, activeTab.currentUrl)
+                        BrowserStore.addBookmark(context, activeTab.currentUrl, activeTab.title ?: "")
                     }
                     refreshLists()
                 },
@@ -2990,8 +3004,8 @@ private fun LocalSuggestionsCard(
 @Composable
 private fun BrowserStartPage(
     pins: List<SavedPage>,
-    bookmarks: List<String>,
-    history: List<String>,
+    bookmarks: List<SavedPage>,
+    history: List<SavedPage>,
     frequent: List<FrequentHost>,
     onSearch: (String) -> Unit,
     onOpen: (String) -> Unit,
@@ -3080,9 +3094,25 @@ private fun BrowserStartPage(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                bookmarks.forEach { url ->
-                    GsButton(onClick = { onOpen(url) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
-                        Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                bookmarks.forEach { entry ->
+                    GsButton(onClick = { onOpen(entry.url) }, tone = app.autospace.car.theme.GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                            Text(
+                                BrowserStore.displayTitle(entry),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (entry.title.isNotBlank()) {
+                                Text(
+                                    entry.url,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -3102,19 +3132,19 @@ private fun BrowserStartPage(
                     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    history.take(8).forEach { url ->
+                    history.take(8).forEach { entry ->
                         Box(
                             Modifier
                                 .background(
                                     MaterialTheme.colorScheme.surfaceContainerHigh,
                                     gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                                 )
-                                .clickable { onOpen(url) }
+                                .clickable { onOpen(entry.url) }
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                runCatching { Uri.parse(url).host ?: url }.getOrDefault(url),
+                                runCatching { Uri.parse(entry.url).host ?: entry.url }.getOrDefault(entry.url),
                                 style = MaterialTheme.typography.titleMedium,
                                 maxLines = 1,
                             )
@@ -3712,7 +3742,7 @@ private class BrowserClient(
     private val ring: String,
     private val onMedia: (String, String?) -> Unit,
     private val onPageStart: () -> Unit,
-    private val onHistory: (String, Boolean, Boolean) -> Unit = { _, _, _ -> },
+    private val onHistory: (String, String, Boolean, Boolean) -> Unit = { _, _, _, _ -> },
     private val onMainFrameError: (String) -> Unit = {},
     private val onPopunder: (String, String) -> Unit = { _, _ -> },
     // r85: the page host the tab is showing, for $domain= and
@@ -3871,7 +3901,11 @@ private class BrowserClient(
     // never reach here, so history stays clean).
     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
         if (view != null && url != null) {
-            onHistory(url, view.canGoBack(), view.canGoForward())
+            // r191 (parity G2): the WebView's title at navigation
+            // time, Mariner's shape — it is the title the visit is
+            // recorded under; a title that arrives later fills a
+            // blank one in through onTitle instead.
+            onHistory(url, view.title ?: "", view.canGoBack(), view.canGoForward())
         }
     }
 

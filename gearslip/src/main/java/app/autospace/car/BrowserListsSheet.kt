@@ -87,8 +87,8 @@ private fun downloadRowLabel(record: BrowserStore.DownloadRecord): String =
 
 @Composable
 fun BrowserListsSheet(
-    bookmarks: List<String>,
-    history: List<String>,
+    bookmarks: List<SavedPage>,
+    history: List<SavedPage>,
     // r157: the Downloads list (non-private, non-media records only —
     // the caller filters) plus its row actions; the sheet itself never
     // touches BrowserStore or DownloadManager directly.
@@ -185,9 +185,15 @@ fun BrowserListsSheet(
             var listQuery by remember { mutableStateOf("") }
             var listSearching by remember { mutableStateOf(false) }
             val shownBookmarks = if (listQuery.isBlank()) bookmarks
-                else bookmarks.filter { it.contains(listQuery, ignoreCase = true) }
+                else bookmarks.filter {
+                    it.title.contains(listQuery, ignoreCase = true) ||
+                        it.url.contains(listQuery, ignoreCase = true)
+                }
             val shownHistory = if (listQuery.isBlank()) history
-                else history.filter { it.contains(listQuery, ignoreCase = true) }
+                else history.filter {
+                    it.title.contains(listQuery, ignoreCase = true) ||
+                        it.url.contains(listQuery, ignoreCase = true)
+                }
             val shownDownloads = if (listQuery.isBlank()) downloads
                 else downloads.filter {
                     it.fileName.contains(listQuery, ignoreCase = true) ||
@@ -291,16 +297,32 @@ fun BrowserListsSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        shownBookmarks.forEach { url ->
+                        shownBookmarks.forEach { entry ->
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
-                                GsButton(onClick = { onLoad(url) }, tone = GsTone.Neutral, modifier = Modifier.weight(1f)) {
-                                    Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                GsButton(onClick = { onLoad(entry.url) }, tone = GsTone.Neutral, modifier = Modifier.weight(1f)) {
+                                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                        Text(
+                                            BrowserStore.displayTitle(entry),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.titleMedium,
+                                        )
+                                        if (entry.title.isNotBlank()) {
+                                            Text(
+                                                entry.url,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
                                 }
-                                GsButton(onClick = { onRemoveBookmark(url) }, tone = GsTone.Neutral) {
+                                GsButton(onClick = { onRemoveBookmark(entry.url) }, tone = GsTone.Neutral) {
                                     Text("Remove")
                                 }
                             }
@@ -325,9 +347,25 @@ fun BrowserListsSheet(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        shownHistory.forEach { url ->
-                            GsButton(onClick = { onLoad(url) }, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
-                                Text(url, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        shownHistory.forEach { entry ->
+                            GsButton(onClick = { onLoad(entry.url) }, tone = GsTone.Neutral, modifier = Modifier.fillMaxWidth()) {
+                                Column(Modifier.weight(1f), horizontalAlignment = Alignment.Start) {
+                                    Text(
+                                        BrowserStore.displayTitle(entry),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        style = MaterialTheme.typography.titleMedium,
+                                    )
+                                    if (entry.title.isNotBlank()) {
+                                        Text(
+                                            entry.url,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

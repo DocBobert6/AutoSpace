@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            149, "0.4.138-alpha",
+            listOf(
+                "Bookmarks and history now show the page title above the address, like the start page pins already did, instead of a bare address. Old entries without a recorded title still show the address exactly as before.",
+            ),
+        ),
+        Release(
             148, "0.4.137-alpha",
             listOf(
                 "Browser settings has an 'Open links in a new tab' switch: when it is on, tapping a link opens it in a new tab instead of leaving the page you are on. And a page that fails to load now offers Home, back to the start page, next to Retry and Go back.",

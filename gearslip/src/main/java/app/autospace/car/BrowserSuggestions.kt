@@ -9,8 +9,8 @@ package app.autospace.car
  *
  * Local suggestions: matches from this device's own bookmarks and
  * history only — Mariner's card, car-sized. Nothing is sent anywhere.
- * Bookmarks and history carry no titles in AutoSpace (titles arrive
- * with G2), so a suggestion's display title is its host and its
+ * A suggestion's display title is the stored page title when one
+ * was recorded (r191, parity G2), falling back to the host; its
  * second line is the full URL. Bookmark matches come first and wear
  * a star; history matches wear a history glyph.
  */
@@ -40,13 +40,14 @@ fun suggestionHostOf(url: String): String {
 
 /**
  * Local suggestions for [query]: bookmarks first, then history, each
- * matched case-insensitively on the URL, deduped by URL (a bookmark
- * wins over the same history URL), capped at [limit]. A blank query
- * matches nothing — the card stays hidden until the driver types.
+ * matched case-insensitively on the title or the URL, deduped by URL
+ * (a bookmark wins over the same history URL), capped at [limit]. A
+ * blank query matches nothing — the card stays hidden until the
+ * driver types.
  */
 fun localSuggestions(
-    bookmarks: List<String>,
-    history: List<String>,
+    bookmarks: List<SavedPage>,
+    history: List<SavedPage>,
     query: String,
     limit: Int = LOCAL_SUGGESTION_LIMIT,
 ): List<LocalSuggestion> {
@@ -54,20 +55,31 @@ fun localSuggestions(
     if (q.isEmpty()) return emptyList()
     val seen = mutableSetOf<String>()
     val out = mutableListOf<LocalSuggestion>()
-    for (url in bookmarks) {
+    for (entry in bookmarks) {
         if (out.size >= limit) break
-        if (url.lowercase().contains(q) && seen.add(url)) {
-            out.add(LocalSuggestion(suggestionHostOf(url), url, true))
+        if (suggestionMatches(entry, q) && seen.add(entry.url)) {
+            out.add(LocalSuggestion(suggestionTitle(entry), entry.url, true))
         }
     }
-    for (url in history) {
+    for (entry in history) {
         if (out.size >= limit) break
-        if (url.lowercase().contains(q) && seen.add(url)) {
-            out.add(LocalSuggestion(suggestionHostOf(url), url, false))
+        if (suggestionMatches(entry, q) && seen.add(entry.url)) {
+            out.add(LocalSuggestion(suggestionTitle(entry), entry.url, false))
         }
     }
     return out
 }
+
+/** A suggestion matches when the query hits its title or its URL. */
+fun suggestionMatches(entry: SavedPage, query: String): Boolean {
+    val q = query.trim().lowercase()
+    if (q.isEmpty()) return false
+    return entry.title.lowercase().contains(q) || entry.url.lowercase().contains(q)
+}
+
+/** The stored title when one was recorded, else the host. */
+fun suggestionTitle(entry: SavedPage): String =
+    entry.title.ifBlank { suggestionHostOf(entry.url) }
 
 /**
  * Frequently visited, from the history list (most-recent-first).
@@ -81,13 +93,14 @@ fun localSuggestions(
  * URL. Hosts in [hidden] are excluded (their history is untouched).
  */
 fun frequentlyVisited(
-    history: List<String>,
+    history: List<SavedPage>,
     hidden: Set<String>,
     limit: Int = FREQUENT_VISITED_LIMIT,
 ): List<FrequentHost> {
     val firstIndex = mutableMapOf<String, Int>()
     val byHost = linkedMapOf<String, MutableList<String>>()
-    history.forEachIndexed { index, url ->
+    history.forEachIndexed { index, entry ->
+        val url = entry.url
         val host = suggestionHostOf(url)
         firstIndex.putIfAbsent(host, index)
         byHost.getOrPut(host) { mutableListOf() }.add(url)

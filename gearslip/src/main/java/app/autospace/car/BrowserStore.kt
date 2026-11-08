@@ -29,53 +29,105 @@ object BrowserStore {
     private const val MAX_HISTORY = 50
     private const val MAX_BOOKMARKS = 200
 
-    private fun read(context: Context, key: String): MutableList<String> {
+    // r191 (parity G2): bookmarks and history carry the page title
+    // alongside the URL, reusing the pins' SavedPage shape. The stored
+    // JSON array mixes plain strings (legacy entries written before
+    // titles existed — a string is a URL with no title) and objects
+    // {"url": ..., "title": ...}; an untitled new entry is still
+    // written as a plain string, so old builds keep reading new
+    // files. A malformed element is skipped, never fatal.
+    fun parseTitledEntry(value: Any?): SavedPage? {
+        return when (value) {
+            is String -> value.takeIf { it.isNotBlank() }?.let { SavedPage(it, "") }
+            is JSONObject -> {
+                val url = value.optString("url", "")
+                if (url.isBlank()) null else SavedPage(url, value.optString("title", ""))
+            }
+            else -> null
+        }
+    }
+
+    fun titledEntryToJson(page: SavedPage): Any =
+        if (page.title.isBlank()) page.url
+        else JSONObject().put("url", page.url).put("title", page.title)
+
+    /** The row title: the stored title, or the URL when none was ever recorded. */
+    fun displayTitle(page: SavedPage): String = page.title.ifBlank { page.url }
+
+    /**
+     * Adds [page] at the front, dropping any older entry for the same
+     * URL (a re-visit refreshes the title) and capping at [cap].
+     */
+    fun addTitledEntry(existing: List<SavedPage>, page: SavedPage, cap: Int): List<SavedPage> =
+        (listOf(page) + existing.filter { it.url != page.url }).take(cap)
+
+    /**
+     * Fills in a missing title for [url] in place. Only blank titles
+     * are filled — a recorded title is never overwritten — and a
+     * blank [title] changes nothing.
+     */
+    fun fillMissingTitle(existing: List<SavedPage>, url: String, title: String): List<SavedPage> {
+        if (title.isBlank()) return existing
+        return existing.map { if (it.url == url && it.title.isBlank()) it.copy(title = title) else it }
+    }
+
+    private fun readTitled(context: Context, key: String): MutableList<SavedPage> {
         val raw = AppSettings.getString(context, key, "")
         if (raw.isBlank()) return mutableListOf()
         return runCatching {
             val array = JSONArray(raw)
-            MutableList(array.length()) { array.getString(it) }
+            MutableList(array.length()) { parseTitledEntry(array.get(it)) }
+                .filterNotNull().toMutableList()
         }.getOrDefault(mutableListOf())
     }
 
-    private fun write(context: Context, key: String, values: List<String>) {
+    private fun writeTitled(context: Context, key: String, values: List<SavedPage>) {
         val array = JSONArray()
-        values.forEach { array.put(it) }
+        values.forEach { array.put(titledEntryToJson(it)) }
         AppSettings.putString(context, key, array.toString())
     }
 
-    fun bookmarks(context: Context): List<String> = read(context, KEY_BOOKMARKS)
+    fun bookmarks(context: Context): List<SavedPage> = readTitled(context, KEY_BOOKMARKS)
 
     fun isBookmarked(context: Context, url: String): Boolean =
-        read(context, KEY_BOOKMARKS).contains(url)
+        readTitled(context, KEY_BOOKMARKS).any { it.url == url }
 
     /** Returns true when the bookmark was added (false when it was already there). */
-    fun addBookmark(context: Context, url: String): Boolean {
+    fun addBookmark(context: Context, url: String, title: String = ""): Boolean {
         if (url.isBlank()) return false
-        val list = read(context, KEY_BOOKMARKS)
-        if (list.contains(url)) return false
-        list.add(0, url)
-        write(context, KEY_BOOKMARKS, list.take(MAX_BOOKMARKS))
+        val list = readTitled(context, KEY_BOOKMARKS)
+        if (list.any { it.url == url }) return false
+        writeTitled(context, KEY_BOOKMARKS, addTitledEntry(list, SavedPage(url, title), MAX_BOOKMARKS))
         return true
     }
 
     fun removeBookmark(context: Context, url: String) {
-        val list = read(context, KEY_BOOKMARKS)
-        if (list.remove(url)) write(context, KEY_BOOKMARKS, list)
+        val list = readTitled(context, KEY_BOOKMARKS)
+        val kept = list.filter { it.url != url }
+        if (kept.size != list.size) writeTitled(context, KEY_BOOKMARKS, kept)
     }
 
-    fun history(context: Context): List<String> = read(context, KEY_HISTORY)
+    fun history(context: Context): List<SavedPage> = readTitled(context, KEY_HISTORY)
 
-    fun recordHistory(context: Context, url: String) {
+    fun recordHistory(context: Context, url: String, title: String = "") {
         if (url.isBlank() || !url.startsWith("http")) return
-        val list = read(context, KEY_HISTORY)
-        list.remove(url)
-        list.add(0, url)
-        write(context, KEY_HISTORY, list.take(MAX_HISTORY))
+        val list = readTitled(context, KEY_HISTORY)
+        writeTitled(context, KEY_HISTORY, addTitledEntry(list, SavedPage(url, title), MAX_HISTORY))
+    }
+
+    /**
+     * Backfills a title that arrived after the visit was recorded
+     * (a page whose title loads late). Only blank titles are filled.
+     */
+    fun updateHistoryTitle(context: Context, url: String, title: String) {
+        if (url.isBlank() || title.isBlank()) return
+        val list = readTitled(context, KEY_HISTORY)
+        val filled = fillMissingTitle(list, url, title)
+        if (filled != list) writeTitled(context, KEY_HISTORY, filled)
     }
 
     fun clearHistory(context: Context) {
-        write(context, KEY_HISTORY, emptyList())
+        writeTitled(context, KEY_HISTORY, emptyList())
     }
 
     // ---- Frequently visited removals (r186) ----

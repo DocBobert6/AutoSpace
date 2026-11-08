@@ -24,18 +24,32 @@ class BrowserSuggestionsTest {
     fun blankQuerySuggestsNothing() {
         assertEquals(
             emptyList<LocalSuggestion>(),
-            localSuggestions(listOf("https://example.com"), listOf("https://example.com"), ""),
+            localSuggestions(
+                listOf(SavedPage("https://example.com", "")),
+                listOf(SavedPage("https://example.com", "")),
+                "",
+            ),
         )
         assertEquals(
             emptyList<LocalSuggestion>(),
-            localSuggestions(listOf("https://example.com"), listOf("https://example.com"), "   "),
+            localSuggestions(
+                listOf(SavedPage("https://example.com", "")),
+                listOf(SavedPage("https://example.com", "")),
+                "   ",
+            ),
         )
     }
 
     @Test
     fun bookmarksComeFirstAndDedupeAgainstHistory() {
-        val bookmarks = listOf("https://example.com/a", "https://other.com/b")
-        val history = listOf("https://example.com/a", "https://example.com/c")
+        val bookmarks = listOf(
+            SavedPage("https://example.com/a", ""),
+            SavedPage("https://other.com/b", ""),
+        )
+        val history = listOf(
+            SavedPage("https://example.com/a", ""),
+            SavedPage("https://example.com/c", ""),
+        )
         val got = localSuggestions(bookmarks, history, "example")
         assertEquals(
             listOf(
@@ -50,7 +64,7 @@ class BrowserSuggestionsTest {
     fun matchingIsCaseInsensitiveOnTheUrl() {
         val got = localSuggestions(
             emptyList(),
-            listOf("https://Example.COM/News"),
+            listOf(SavedPage("https://Example.COM/News", "")),
             "EXAMPLE",
         )
         assertEquals(
@@ -61,7 +75,7 @@ class BrowserSuggestionsTest {
 
     @Test
     fun suggestionsCapAtSix() {
-        val history = (1..9).map { "https://site$it.example.com/page" }
+        val history = (1..9).map { SavedPage("https://site$it.example.com/page", "") }
         val got = localSuggestions(emptyList(), history, "example")
         assertEquals(6, got.size)
         assertEquals("https://site1.example.com/page", got.first().url)
@@ -73,10 +87,10 @@ class BrowserSuggestionsTest {
         // History dedups re-visits, so a host with three distinct pages
         // outranks a host with one page visited many times.
         val history = listOf(
-            "https://solo.com/only",
-            "https://busy.com/a",
-            "https://busy.com/b",
-            "https://busy.com/c",
+            SavedPage("https://solo.com/only", ""),
+            SavedPage("https://busy.com/a", ""),
+            SavedPage("https://busy.com/b", ""),
+            SavedPage("https://busy.com/c", ""),
         )
         val got = frequentlyVisited(history, emptySet())
         assertEquals(2, got.size)
@@ -87,10 +101,10 @@ class BrowserSuggestionsTest {
     @Test
     fun frequentlyVisitedTiesBreakByMostRecentVisit() {
         val history = listOf(
-            "https://second.com/a",
-            "https://first.com/a",
-            "https://second.com/b",
-            "https://first.com/b",
+            SavedPage("https://second.com/a", ""),
+            SavedPage("https://first.com/a", ""),
+            SavedPage("https://second.com/b", ""),
+            SavedPage("https://first.com/b", ""),
         )
         // Both hosts have two pages; second.com's most recent visit
         // (index 0) is newer than first.com's (index 1).
@@ -102,8 +116,8 @@ class BrowserSuggestionsTest {
     @Test
     fun frequentlyVisitedRepresentsAHostByItsMostRecentVisit() {
         val history = listOf(
-            "https://example.com/newest",
-            "https://example.com/older",
+            SavedPage("https://example.com/newest", ""),
+            SavedPage("https://example.com/older", ""),
         )
         val got = frequentlyVisited(history, emptySet())
         assertEquals(1, got.size)
@@ -112,21 +126,51 @@ class BrowserSuggestionsTest {
 
     @Test
     fun frequentlyVisitedExcludesHiddenHostsWithoutTouchingHistory() {
-        val history = listOf("https://hidden.com/a", "https://shown.com/a")
+        val history = listOf(
+            SavedPage("https://hidden.com/a", ""),
+            SavedPage("https://shown.com/a", ""),
+        )
         val got = frequentlyVisited(history, setOf("hidden.com"))
         assertEquals(listOf(FrequentHost("shown.com", "https://shown.com/a", 1)), got)
         // The hidden host's history entry is still in the input list.
-        assertTrue(history.contains("https://hidden.com/a"))
+        assertTrue(history.any { it.url == "https://hidden.com/a" })
     }
 
     @Test
     fun frequentlyVisitedCapsAtEight() {
-        val history = (1..12).map { "https://site$it.example.com/page" }
+        val history = (1..12).map { SavedPage("https://site$it.example.com/page", "") }
         assertEquals(8, frequentlyVisited(history, emptySet()).size)
     }
 
     @Test
     fun frequentlyVisitedEmptyHistoryIsEmpty() {
         assertEquals(emptyList<FrequentHost>(), frequentlyVisited(emptyList(), emptySet()))
+    }
+
+    @Test
+    fun suggestionsUseTheStoredTitleWhenRecorded() {
+        val bookmarks = listOf(SavedPage("https://example.com/news", "Example News"))
+        val got = localSuggestions(bookmarks, emptyList(), "example")
+        assertEquals(
+            listOf(LocalSuggestion("Example News", "https://example.com/news", true)),
+            got,
+        )
+    }
+
+    @Test
+    fun suggestionsMatchOnTitleAsWellAsUrl() {
+        val history = listOf(SavedPage("https://example.com/xyz", "Morning Headlines"))
+        assertEquals(
+            listOf(LocalSuggestion("Morning Headlines", "https://example.com/xyz", false)),
+            localSuggestions(emptyList(), history, "headlines"),
+        )
+        // A title match does not fire on an unrelated query.
+        assertEquals(emptyList<LocalSuggestion>(), localSuggestions(emptyList(), history, "sports"))
+    }
+
+    @Test
+    fun suggestionTitleFallsBackToHost() {
+        assertEquals("example.com", suggestionTitle(SavedPage("https://example.com/a", "")))
+        assertEquals("Kept Title", suggestionTitle(SavedPage("https://example.com/a", "Kept Title")))
     }
 }

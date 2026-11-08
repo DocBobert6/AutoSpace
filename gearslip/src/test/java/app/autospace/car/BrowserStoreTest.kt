@@ -1,5 +1,6 @@
 package app.autospace.car
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -153,5 +154,96 @@ class BrowserStoreTest {
             setOf("example.com", "other.com"),
             BrowserStore.parseFrequentHidden(" example.com \nother.com\nexample.com\n\n"),
         )
+    }
+
+    @Test
+    fun parseTitledEntryReadsLegacyPlainStrings() {
+        assertEquals(
+            SavedPage("https://example.com/a", ""),
+            BrowserStore.parseTitledEntry("https://example.com/a"),
+        )
+        assertNull(BrowserStore.parseTitledEntry(""))
+        assertNull(BrowserStore.parseTitledEntry("   "))
+        assertNull(BrowserStore.parseTitledEntry(null))
+        assertNull(BrowserStore.parseTitledEntry(42))
+    }
+
+    @Test
+    fun parseTitledEntryReadsTitledObjects() {
+        val obj = JSONObject().put("url", "https://example.com/a").put("title", "Example A")
+        assertEquals(
+            SavedPage("https://example.com/a", "Example A"),
+            BrowserStore.parseTitledEntry(obj),
+        )
+        assertEquals(
+            SavedPage("https://example.com/b", ""),
+            BrowserStore.parseTitledEntry(JSONObject().put("url", "https://example.com/b")),
+        )
+        assertNull(BrowserStore.parseTitledEntry(JSONObject().put("title", "No URL")))
+        assertNull(BrowserStore.parseTitledEntry(JSONObject().put("url", "")))
+    }
+
+    @Test
+    fun titledEntryToJsonKeepsUntitledEntriesAsPlainStrings() {
+        assertEquals(
+            "https://example.com/a",
+            BrowserStore.titledEntryToJson(SavedPage("https://example.com/a", "")),
+        )
+        val titled = BrowserStore.titledEntryToJson(SavedPage("https://example.com/a", "Example A"))
+        assertTrue(titled is JSONObject)
+        assertEquals(
+            SavedPage("https://example.com/a", "Example A"),
+            BrowserStore.parseTitledEntry(titled),
+        )
+    }
+
+    @Test
+    fun displayTitleFallsBackToUrl() {
+        assertEquals(
+            "Example A",
+            BrowserStore.displayTitle(SavedPage("https://example.com/a", "Example A")),
+        )
+        assertEquals(
+            "https://example.com/a",
+            BrowserStore.displayTitle(SavedPage("https://example.com/a", "")),
+        )
+    }
+
+    @Test
+    fun addTitledEntryDedupesByUrlAndRefreshesTitle() {
+        val existing = listOf(
+            SavedPage("https://example.com/a", "Old A"),
+            SavedPage("https://example.com/b", "B"),
+        )
+        val added = BrowserStore.addTitledEntry(existing, SavedPage("https://example.com/a", "New A"), 200)
+        assertEquals(
+            listOf(SavedPage("https://example.com/a", "New A"), SavedPage("https://example.com/b", "B")),
+            added,
+        )
+    }
+
+    @Test
+    fun addTitledEntryCapsAtCap() {
+        val existing = (1..3).map { SavedPage("https://example.com/$it", "T$it") }
+        val added = BrowserStore.addTitledEntry(existing, SavedPage("https://example.com/new", "New"), 3)
+        assertEquals(3, added.size)
+        assertEquals("https://example.com/new", added[0].url)
+        assertFalse(added.any { it.url == "https://example.com/3" })
+    }
+
+    @Test
+    fun fillMissingTitleFillsOnlyBlankTitles() {
+        val existing = listOf(
+            SavedPage("https://example.com/a", ""),
+            SavedPage("https://example.com/b", "Kept B"),
+        )
+        val filled = BrowserStore.fillMissingTitle(existing, "https://example.com/a", "Now A")
+        assertEquals(SavedPage("https://example.com/a", "Now A"), filled[0])
+        assertEquals(SavedPage("https://example.com/b", "Kept B"), filled[1])
+        // A recorded title is never overwritten, and a blank title changes nothing.
+        val untouched = BrowserStore.fillMissingTitle(existing, "https://example.com/b", "Other B")
+        assertEquals(existing, untouched)
+        assertEquals(existing, BrowserStore.fillMissingTitle(existing, "https://example.com/a", ""))
+        assertEquals(existing, BrowserStore.fillMissingTitle(existing, "https://example.com/missing", "Nope"))
     }
 }
