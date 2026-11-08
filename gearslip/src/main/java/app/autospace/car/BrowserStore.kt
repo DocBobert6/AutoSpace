@@ -36,20 +36,120 @@ object BrowserStore {
     // {"url": ..., "title": ...}; an untitled new entry is still
     // written as a plain string, so old builds keep reading new
     // files. A malformed element is skipped, never fatal.
-    fun parseTitledEntry(value: Any?): SavedPage? {
-        return when (value) {
-            is String -> value.takeIf { it.isNotBlank() }?.let { SavedPage(it, "") }
-            is JSONObject -> {
-                val url = value.optString("url", "")
-                if (url.isBlank()) null else SavedPage(url, value.optString("title", ""))
+    //
+    // The element codec is plain Kotlin over JSON text, not org.json:
+    // on the JVM unit-test classpath org.json is a stub (put returns
+    // null and stores nothing), so the codec has to stand on its own.
+    // org.json is used only to split the stored array on the read
+    // path, where the framework implementation is real.
+
+    /** JSON-quotes one string: escapes quotes, backslashes, and control characters. */
+    fun jsonQuote(value: String): String {
+        val out = StringBuilder("\"")
+        for (ch in value) {
+            when (ch) {
+                '"' -> out.append("\\\"")
+                '\\' -> out.append("\\\\")
+                '\n' -> out.append("\\n")
+                '\r' -> out.append("\\r")
+                '\t' -> out.append("\\t")
+                '\b' -> out.append("\\b")
+                '\f' -> out.append("\\f")
+                else -> if (ch < ' ') out.append("\\u%04x".format(ch.code)) else out.append(ch)
             }
-            else -> null
         }
+        return out.append("\"").toString()
     }
 
-    fun titledEntryToJson(page: SavedPage): Any =
-        if (page.title.isBlank()) page.url
-        else JSONObject().put("url", page.url).put("title", page.title)
+    /** Undoes jsonQuote's escaping (plus \uXXXX). Unknown escapes pass through as-is. */
+    fun jsonUnquote(raw: String): String {
+        if (!raw.contains('\\')) return raw
+        val out = StringBuilder()
+        var i = 0
+        while (i < raw.length) {
+            val ch = raw[i]
+            if (ch != '\\' || i + 1 >= raw.length) {
+                out.append(ch)
+                i++
+                continue
+            }
+            when (val esc = raw[i + 1]) {
+                '"' -> out.append('"')
+                '\\' -> out.append('\\')
+                '/' -> out.append('/')
+                'n' -> out.append('\n')
+                'r' -> out.append('\r')
+                't' -> out.append('\t')
+                'b' -> out.append('\b')
+                'f' -> out.append('\f')
+                'u' -> {
+                    val hex = raw.substring(i + 2, minOf(i + 6, raw.length))
+                    val code = hex.toIntOrNull(16)
+                    if (code != null && hex.length == 4) out.append(code.toChar()) else out.append("\\u").append(hex)
+                    i += 2 + hex.length
+                    continue
+                }
+                else -> out.append(esc)
+            }
+            i += 2
+        }
+        return out.toString()
+    }
+
+    /** Parses a JSON-quoted string ("...") into its value, or null when malformed. */
+    fun jsonParseString(raw: String): String? {
+        val text = raw.trim()
+        if (!text.startsWith("\"")) return null
+        var i = 1
+        while (i < text.length) {
+            val ch = text[i]
+            if (ch == '\\') {
+                i += 2
+                continue
+            }
+            if (ch == '"') return jsonUnquote(text.substring(1, i))
+            i++
+        }
+        return null
+    }
+
+    /**
+     * The string value of [field] in a flat {"k": "v", ...} object
+     * text, or null when the field is absent. Handles escaped
+     * characters inside the value.
+     */
+    fun jsonStringField(raw: String, field: String): String? {
+        val pattern = Regex("\"" + Regex.escape(field) + "\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"")
+        val match = pattern.find(raw) ?: return null
+        return jsonUnquote(match.groupValues[1])
+    }
+
+    /**
+     * One stored entry as its JSON-array element text: the bare URL
+     * (JSON-quoted) when untitled, else a {"url": ..., "title": ...}
+     * object.
+     */
+    fun encodeTitledEntry(page: SavedPage): String =
+        if (page.title.isBlank()) jsonQuote(page.url)
+        else "{\"url\":${jsonQuote(page.url)},\"title\":${jsonQuote(page.title)}}"
+
+    /**
+     * Parses one element text back: a {"url": ..., "title": ...}
+     * object, a quoted URL string, or a bare URL (the element text
+     * of a legacy plain string). Null when malformed or the URL is
+     * blank — the caller skips it, never crashes.
+     */
+    fun decodeTitledEntry(raw: String): SavedPage? {
+        val text = raw.trim()
+        if (text.isEmpty()) return null
+        if (text.startsWith("{")) {
+            val url = jsonStringField(text, "url") ?: return null
+            if (url.isBlank()) return null
+            return SavedPage(url, jsonStringField(text, "title") ?: "")
+        }
+        val url = if (text.startsWith("\"")) jsonParseString(text) ?: return null else text
+        return url.takeIf { it.isNotBlank() }?.let { SavedPage(it, "") }
+    }
 
     /** The row title: the stored title, or the URL when none was ever recorded. */
     fun displayTitle(page: SavedPage): String = page.title.ifBlank { page.url }
@@ -76,15 +176,14 @@ object BrowserStore {
         if (raw.isBlank()) return mutableListOf()
         return runCatching {
             val array = JSONArray(raw)
-            MutableList(array.length()) { parseTitledEntry(array.get(it)) }
+            MutableList(array.length()) { decodeTitledEntry(array.get(it).toString()) }
                 .filterNotNull().toMutableList()
         }.getOrDefault(mutableListOf())
     }
 
     private fun writeTitled(context: Context, key: String, values: List<SavedPage>) {
-        val array = JSONArray()
-        values.forEach { array.put(titledEntryToJson(it)) }
-        AppSettings.putString(context, key, array.toString())
+        val joined = values.joinToString(",") { encodeTitledEntry(it) }
+        AppSettings.putString(context, key, "[$joined]")
     }
 
     fun bookmarks(context: Context): List<SavedPage> = readTitled(context, KEY_BOOKMARKS)

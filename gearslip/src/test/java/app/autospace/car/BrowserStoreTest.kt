@@ -1,6 +1,5 @@
 package app.autospace.car
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -157,44 +156,57 @@ class BrowserStoreTest {
     }
 
     @Test
-    fun parseTitledEntryReadsLegacyPlainStrings() {
+    fun decodeTitledEntryReadsLegacyPlainStrings() {
         assertEquals(
             SavedPage("https://example.com/a", ""),
-            BrowserStore.parseTitledEntry("https://example.com/a"),
+            BrowserStore.decodeTitledEntry("https://example.com/a"),
         )
-        assertNull(BrowserStore.parseTitledEntry(""))
-        assertNull(BrowserStore.parseTitledEntry("   "))
-        assertNull(BrowserStore.parseTitledEntry(null))
-        assertNull(BrowserStore.parseTitledEntry(42))
+        assertNull(BrowserStore.decodeTitledEntry(""))
+        assertNull(BrowserStore.decodeTitledEntry("   "))
+        assertNull(BrowserStore.decodeTitledEntry("{not json"))
     }
 
     @Test
-    fun parseTitledEntryReadsTitledObjects() {
-        val obj = JSONObject().put("url", "https://example.com/a").put("title", "Example A")
+    fun decodeTitledEntryReadsTitledObjects() {
         assertEquals(
             SavedPage("https://example.com/a", "Example A"),
-            BrowserStore.parseTitledEntry(obj),
+            BrowserStore.decodeTitledEntry("{\"url\":\"https://example.com/a\",\"title\":\"Example A\"}"),
+        )
+        // Key order and spacing do not matter.
+        assertEquals(
+            SavedPage("https://example.com/a", "Example A"),
+            BrowserStore.decodeTitledEntry("{ \"title\" : \"Example A\" , \"url\" : \"https://example.com/a\" }"),
         )
         assertEquals(
             SavedPage("https://example.com/b", ""),
-            BrowserStore.parseTitledEntry(JSONObject().put("url", "https://example.com/b")),
+            BrowserStore.decodeTitledEntry("{\"url\":\"https://example.com/b\"}"),
         )
-        assertNull(BrowserStore.parseTitledEntry(JSONObject().put("title", "No URL")))
-        assertNull(BrowserStore.parseTitledEntry(JSONObject().put("url", "")))
+        assertNull(BrowserStore.decodeTitledEntry("{\"title\":\"No URL\"}"))
+        assertNull(BrowserStore.decodeTitledEntry("{\"url\":\"\",\"title\":\"Blank\"}"))
     }
 
     @Test
-    fun titledEntryToJsonKeepsUntitledEntriesAsPlainStrings() {
-        assertEquals(
-            "https://example.com/a",
-            BrowserStore.titledEntryToJson(SavedPage("https://example.com/a", "")),
+    fun encodeDecodeTitledEntryRoundTripsTitlesWithQuotesAndEscapes() {
+        val page = SavedPage(
+            "https://example.com/a?x=1&y=2",
+            "A \"Quoted\" Title \\ with \n newline",
         )
-        val titled = BrowserStore.titledEntryToJson(SavedPage("https://example.com/a", "Example A"))
-        assertTrue(titled is JSONObject)
+        assertEquals(page, BrowserStore.decodeTitledEntry(BrowserStore.encodeTitledEntry(page)))
+        // An untitled entry encodes as a quoted URL string and decodes back bare.
+        val untitled = SavedPage("https://example.com/a", "")
+        assertEquals("\"https://example.com/a\"", BrowserStore.encodeTitledEntry(untitled))
         assertEquals(
-            SavedPage("https://example.com/a", "Example A"),
-            BrowserStore.parseTitledEntry(titled),
+            untitled,
+            BrowserStore.decodeTitledEntry(BrowserStore.encodeTitledEntry(untitled)),
         )
+    }
+
+    @Test
+    fun jsonQuoteAndParseStringRoundTrip() {
+        val tricky = "quote \" backslash \\ newline \n tab \t unicode é"
+        assertEquals(tricky, BrowserStore.jsonParseString(BrowserStore.jsonQuote(tricky)))
+        assertNull(BrowserStore.jsonParseString("not quoted"))
+        assertNull(BrowserStore.jsonParseString("\"unterminated"))
     }
 
     @Test
