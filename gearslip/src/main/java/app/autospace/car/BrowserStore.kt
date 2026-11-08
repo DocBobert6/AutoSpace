@@ -17,6 +17,8 @@ import org.json.JSONObject
 object BrowserStore {
     private const val KEY_BOOKMARKS = "browser_bookmarks"
     private const val KEY_HISTORY = "browser_history"
+    /** Hosts removed from Frequently visited (r186, Mariner's frequentHidden). */
+    private const val KEY_FREQUENT_HIDDEN = "browser_frequent_hidden"
     /** Global strict popup blocking, ON by default (Phase 8, Notscape's popupStrict). */
     const val KEY_POPUP_STRICT = "browser_popup_strict"
     /** Address bar position (audit/browser build, Notscape's barPosition): "top" or "bottom". */
@@ -74,6 +76,26 @@ object BrowserStore {
 
     fun clearHistory(context: Context) {
         write(context, KEY_HISTORY, emptyList())
+    }
+
+    // ---- Frequently visited removals (r186) ----
+    // A host removed from Frequently visited is hidden from that list
+    // only; its history entries are untouched, exactly as Mariner's
+    // frequentHidden setting works. Stored newline-separated, one host
+    // per line. There is no un-hide UI in v1; the hidden set is small
+    // and clearing history does not clear it.
+    fun parseFrequentHidden(raw: String): Set<String> =
+        raw.lines().map { it.trim() }.filter { it.isNotBlank() }.toSet()
+
+    fun frequentHiddenHosts(context: Context): Set<String> =
+        parseFrequentHidden(AppSettings.getString(context, KEY_FREQUENT_HIDDEN, ""))
+
+    fun hideFrequentHost(context: Context, host: String) {
+        if (host.isBlank()) return
+        val hidden = frequentHiddenHosts(context).toMutableSet()
+        if (hidden.add(host.trim())) {
+            AppSettings.putString(context, KEY_FREQUENT_HIDDEN, hidden.joinToString("\n"))
+        }
     }
 
     // ---- Popup settings (Phase 8, Notscape's per-site popup model) ----

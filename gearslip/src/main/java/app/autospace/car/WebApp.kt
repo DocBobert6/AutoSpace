@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -50,7 +51,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.PlayArrow
@@ -542,6 +545,9 @@ fun WebApp(content: String) {
     var pins by remember { mutableStateOf(BrowserStore.pins(context)) }
     var bookmarks by remember { mutableStateOf(BrowserStore.bookmarks(context)) }
     var historyList by remember { mutableStateOf(BrowserStore.history(context)) }
+    // r186: hosts removed from Frequently visited — hidden from that
+    // list only, history untouched. Refreshed with the other lists.
+    var frequentHidden by remember { mutableStateOf(BrowserStore.frequentHiddenHosts(context)) }
     // r157: the Downloads list shows non-private, non-media records
     // only — private-origin records are stored but filtered here,
     // never reaching the sheet, and media records live in the
@@ -850,6 +856,7 @@ fun WebApp(content: String) {
     fun refreshLists() {
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
+        frequentHidden = BrowserStore.frequentHiddenHosts(context)
         downloads = BrowserStore.visibleDownloads(BrowserStore.downloads(context))
         library = BrowserStore.visibleLibrary(BrowserStore.downloads(context))
         newsstand = BrowserStore.newsstand(context)
@@ -1114,7 +1121,9 @@ fun WebApp(content: String) {
                         // Notscape's pill swipe: a horizontal drag over
                         // the pill switches tabs (90px threshold, as in
                         // Notscape); a tap without drag still edits, as
-                        // before. Swiping stays within the tab list and
+                        // before. r186: swiping stays within the active
+                        // tab's class (Mariner's rule) — a normal tab
+                        // never swipes into a private tab or back — and
                         // never creates or closes a tab.
                         .pointerInput(activeTabId, tabs.size) {
                             var dragTotal = 0f
@@ -1123,12 +1132,12 @@ fun WebApp(content: String) {
                                 onHorizontalDrag = { _, amount -> dragTotal += amount },
                                 onDragEnd = {
                                     val idx = tabs.indexOfFirst { it.id == activeTabId }
-                                    val target = when {
-                                        dragTotal < -90f && idx in 0 until tabs.size - 1 -> tabs[idx + 1]
-                                        dragTotal > 90f && idx > 0 -> tabs[idx - 1]
+                                    val targetIdx = when {
+                                        dragTotal < -90f -> sameClassSwipeTarget(tabs.map { it.isPrivate }, idx, true)
+                                        dragTotal > 90f -> sameClassSwipeTarget(tabs.map { it.isPrivate }, idx, false)
                                         else -> null
                                     }
-                                    if (target != null) switchTab(target)
+                                    if (targetIdx != null) switchTab(tabs[targetIdx])
                                     dragTotal = 0f
                                 },
                                 onDragCancel = { dragTotal = 0f },
@@ -1172,6 +1181,18 @@ fun WebApp(content: String) {
                         Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        // r186: a private tab wears a lock glyph in the
+                        // pill (Mariner parity — the switcher row keeps
+                        // its "Private ·" prefix). The glyph marks the
+                        // tab, so it shows while editing too.
+                        if (activeTab.isPrivate) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.Lock, "Private tab",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                        }
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                             // While editing, show what is actually being
                             // typed: the live addressText, not
@@ -1415,6 +1436,7 @@ fun WebApp(content: String) {
                         pins = pins,
                         bookmarks = bookmarks,
                         history = historyList,
+                        frequent = frequentlyVisited(historyList, frequentHidden),
                         onSearch = { input ->
                             openUrlInTab(activeTab, BrowserSearch.navigateUrl(context, input))
                         },
@@ -1422,6 +1444,10 @@ fun WebApp(content: String) {
                         onRemovePin = { url ->
                             BrowserStore.removePin(context, url)
                             pins = BrowserStore.pins(context)
+                        },
+                        onRemoveFrequent = { host ->
+                            BrowserStore.hideFrequentHost(context, host)
+                            frequentHidden = BrowserStore.frequentHiddenHosts(context)
                         },
                     )
                 } else androidx.compose.runtime.key(activeTab.id, webViewEpoch) {
@@ -1674,6 +1700,26 @@ fun WebApp(content: String) {
                 )
             }
             if (addressEditing) {
+                // r186: local suggestions while typing — bookmarks +
+                // history only, nothing sent anywhere. Hidden while the
+                // field still holds the seeded current URL (Mariner's
+                // rule: no card for the just-focused full URL); typing
+                // replaces the selection, so the card appears on the
+                // first keypress. Tapping a row opens it and ends the
+                // edit, exactly as submitting would.
+                val pillQuery = addressText.trim()
+                val pillSuggestions = if (pillQuery.isEmpty() || pillQuery == activeTab.currentUrl.trim()) {
+                    emptyList()
+                } else {
+                    localSuggestions(bookmarks, historyList, pillQuery)
+                }
+                if (pillSuggestions.isNotEmpty()) {
+                    LocalSuggestionsCard(pillSuggestions) { url ->
+                        addressEditing = false
+                        addressSelected = false
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
+                    }
+                }
                 // r154: the address bar holds a URL, so no auto-formatting.
                 CarKeyboard(
                     urlMode = true,
@@ -2697,17 +2743,96 @@ fun WebApp(content: String) {
     }
 }
 
+// Phase 6 (r186): the pill swipe's target, as a pure function so the
+// JVM suite can pin it. Walks from the active tab in the swipe
+// direction and returns the first tab in the SAME class (normal or
+// private) — Mariner's rule — or null when the active tab is the last
+// of its class in that direction. [moveNext] is a left swipe (the next
+// tab); a right swipe walks backwards.
+internal fun sameClassSwipeTarget(
+    isPrivateFlags: List<Boolean>,
+    activeIndex: Int,
+    moveNext: Boolean,
+): Int? {
+    if (activeIndex !in isPrivateFlags.indices) return null
+    val wanted = isPrivateFlags[activeIndex]
+    val step = if (moveNext) 1 else -1
+    var i = activeIndex + step
+    while (i in isPrivateFlags.indices) {
+        if (isPrivateFlags[i] == wanted) return i
+        i += step
+    }
+    return null
+}
+
+// Phase 6 (r186): the local suggestions card — matches from this
+// device's own bookmarks and history only; nothing is sent anywhere.
+// Shared by the address pill and the start-page search. Bookmark
+// matches wear a star; history matches wear a history glyph. The card
+// caps its height and scrolls, so six rows never crowd the keyboard
+// off a short frame. Tapping a row opens the page; the card never
+// navigates on its own.
+@Composable
+private fun LocalSuggestionsCard(
+    suggestions: List<LocalSuggestion>,
+    onPick: (String) -> Unit,
+) {
+    Column(
+        Modifier.fillMaxWidth()
+            .heightIn(max = 216.dp)
+            .verticalScroll(rememberScrollState())
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+            )
+            .padding(vertical = 6.dp),
+    ) {
+        suggestions.forEach { suggestion ->
+            Row(
+                Modifier.fillMaxWidth()
+                    .clickable { onPick(suggestion.url) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                androidx.compose.material3.Icon(
+                    if (suggestion.isBookmark) Icons.Filled.Star else Icons.Filled.History,
+                    if (suggestion.isBookmark) "Bookmarked" else "From history",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(
+                        suggestion.title,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        suggestion.url,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * The new-tab start page (r21), ported from Notscape's StartPage minus
  * the banner — see the delivery note for exactly what was left out.
  * What survives the port: a search entry (which searches with the
  * engine setting, (12)), pins the user sets himself (added from Saved
- * & history, removed here — no invented defaults), and the browser's
- * own bookmarks. What does not survive: the banner card, the update
- * note under it, the emulator sections (Shortcuts for sections /
- * consoles / games), Continue watching/listening (playback positions
- * belong to the player, not the browser), Continue reading (no books
- * here), and Frequently visited (history already has its own sheet).
+ * & history, removed here — no invented defaults), the browser's own
+ * bookmarks, and Frequently visited (r186: top hosts from history by
+ * distinct pages, removable per row — history dedups re-visits, so
+ * the count is distinct pages per host, not raw visits). What does
+ * not survive: the banner card, the update note under it, the
+ * emulator sections (Shortcuts for sections / consoles / games),
+ * Continue watching/listening (playback positions belong to the
+ * player, not the browser), and Continue reading (no books here).
  * Pages themselves are never themed — this page is AutoSpace chrome
  * shown instead of a WebView, not a restyled web page.
  */
@@ -2716,9 +2841,11 @@ private fun BrowserStartPage(
     pins: List<SavedPage>,
     bookmarks: List<String>,
     history: List<String>,
+    frequent: List<FrequentHost>,
     onSearch: (String) -> Unit,
     onOpen: (String) -> Unit,
     onRemovePin: (String) -> Unit,
+    onRemoveFrequent: (String) -> Unit,
 ) {
     var searchText by remember { mutableStateOf("") }
     var searchEditing by remember { mutableStateOf(false) }
@@ -2844,8 +2971,60 @@ private fun BrowserStartPage(
                     }
                 }
             }
+            // r186: Frequently visited — top hosts from history by
+            // distinct pages, most-visited first. Same car-row shape
+            // as Pins. The X hides that host from this list only
+            // (history is untouched); there is no un-hide UI in v1.
+            Text("Frequently visited", style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+            if (frequent.isEmpty()) {
+                Text(
+                    "No frequently visited sites yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                frequent.forEach { site ->
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .background(
+                                MaterialTheme.colorScheme.surfaceContainerHigh,
+                                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                            )
+                            .clickable { onOpen(site.url) }
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                site.host,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                site.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        GsIconButton(Icons.Filled.Close, "Remove from Frequently visited", { onRemoveFrequent(site.host) }, size = 44.dp, iconSize = 22.dp)
+                    }
+                }
+            }
         }
         if (searchEditing) {
+            // r186: the same local suggestions card as the address
+            // pill, over the same bookmarks + history. Tapping a row
+            // opens it and closes the keyboard.
+            val startSuggestions = localSuggestions(bookmarks, history, searchText)
+            if (startSuggestions.isNotEmpty()) {
+                LocalSuggestionsCard(startSuggestions) { url ->
+                    searchEditing = false
+                    onOpen(url)
+                }
+            }
             CarKeyboard(
                 text = searchText,
                 onTextChange = { searchText = it },

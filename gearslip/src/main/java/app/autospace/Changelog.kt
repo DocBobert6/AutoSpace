@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            144, "0.4.133-alpha",
+            listOf(
+                "The browser now suggests pages from your own bookmarks and history while you type an address or search from a new tab, and the new tab page has a Frequently visited section you can trim with one tap. Private tabs show a lock in the address pill, and swiping the pill now stays within normal or private tabs instead of crossing between them.",
+            ),
+        ),
+        Release(
             143, "0.4.132-alpha",
             listOf(
                 "The browser has a proper menu now: new tab, share page, bookmark and pin, reader, media on the page, and desktop site all live in one menu sheet, with a Customize menu to hide rows you never use. Desktop site now reads Mobile site while it is on.",

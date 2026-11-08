@@ -140,4 +140,18 @@ class BrowserStoreTest {
         val all = BrowserMenuRows.DEFAULT_ORDER.joinToString(",")
         assertEquals(BrowserMenuRows.DEFAULT_ORDER.toSet(), BrowserStore.parseMenuHidden(all))
     }
+
+    @Test
+    fun parseFrequentHiddenBlankMeansNothingHidden() {
+        assertEquals(emptySet<String>(), BrowserStore.parseFrequentHidden(""))
+        assertEquals(emptySet<String>(), BrowserStore.parseFrequentHidden("   \n  "))
+    }
+
+    @Test
+    fun parseFrequentHiddenTrimsDedupesAndDropsBlanks() {
+        assertEquals(
+            setOf("example.com", "other.com"),
+            BrowserStore.parseFrequentHidden(" example.com \nother.com\nexample.com\n\n"),
+        )
+    }
 }
