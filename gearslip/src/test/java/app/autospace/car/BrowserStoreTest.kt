@@ -120,4 +120,24 @@ class BrowserStoreTest {
         val added = BrowserStore.addToNewsstand(emptyList(), article)
         assertEquals(listOf(article), added)
     }
+
+    @Test
+    fun parseMenuHiddenBlankMeansNothingHidden() {
+        assertEquals(emptySet<String>(), BrowserStore.parseMenuHidden(""))
+        assertEquals(emptySet<String>(), BrowserStore.parseMenuHidden("   "))
+    }
+
+    @Test
+    fun parseMenuHiddenTrimsDedupesAndDropsUnknownIds() {
+        assertEquals(
+            setOf("newTab", "desktopSite"),
+            BrowserStore.parseMenuHidden(" newTab , desktopSite, newTab, notARow, "),
+        )
+    }
+
+    @Test
+    fun parseMenuHiddenKeepsEveryKnownRow() {
+        val all = BrowserMenuRows.DEFAULT_ORDER.joinToString(",")
+        assertEquals(BrowserMenuRows.DEFAULT_ORDER.toSet(), BrowserStore.parseMenuHidden(all))
+    }
 }

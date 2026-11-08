@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            143, "0.4.132-alpha",
+            listOf(
+                "The browser has a proper menu now: new tab, share page, bookmark and pin, reader, media on the page, and desktop site all live in one menu sheet, with a Customize menu to hide rows you never use. Desktop site now reads Mobile site while it is on.",
+            ),
+        ),
+        Release(
             142, "0.4.131-alpha",
             listOf(
                 "Install fix: the previous release could not install on some phones, so this one corrects the app's declared link handlers. Nothing else changed.",

@@ -258,6 +258,29 @@ object BrowserStore {
         AppSettings.putString(context, KEY_DESKTOP_SITES, obj.toString())
     }
 
+    // ---- Browser menu customization (r185, parity Phase 2) ----
+    // Hidden menu rows, stored as one comma-separated setting in
+    // Mariner's shape. Blank means nothing hidden; the Customize
+    // editor writes through here. No new permission, no new storage.
+    private const val KEY_MENU_HIDDEN_ROWS = "browser_menu_hidden_rows"
+
+    /** Pure reader for the stored hidden set — unit-testable without
+     * Android, same contract as BrowserMenuRows.parseHidden. */
+    fun parseMenuHidden(raw: String): Set<String> = BrowserMenuRows.parseHidden(raw)
+
+    fun menuHiddenRows(context: Context): Set<String> =
+        parseMenuHidden(AppSettings.getString(context, KEY_MENU_HIDDEN_ROWS, ""))
+
+    fun setMenuRowVisible(context: Context, id: String, visible: Boolean) {
+        val hidden = menuHiddenRows(context).toMutableSet()
+        if (visible) hidden.remove(id) else hidden.add(id)
+        AppSettings.putString(context, KEY_MENU_HIDDEN_ROWS, hidden.joinToString(","))
+    }
+
+    fun resetMenuRows(context: Context) {
+        AppSettings.putString(context, KEY_MENU_HIDDEN_ROWS, "")
+    }
+
     /** Saves the session: non-private tabs only, URLs + titles, never playback state. */
     fun saveSession(context: Context, pages: List<SavedPage>, activeIndex: Int) {
         AppSettings.putString(context, KEY_SESSION, encodeSession(pages, activeIndex))

@@ -620,6 +620,12 @@ fun WebApp(content: String) {
     LaunchedEffect(immersive) { if (!immersive) resetBarScrollHide() }
     LaunchedEffect(barBottom) { resetBarScrollHide() }
     var settingsMenuOpen by remember { mutableStateOf(false) }
+    // r185 (parity Phase 2): the browser menu sheet and its Customize
+    // editor. menuHidden is the live copy of the stored hidden set —
+    // refreshed whenever the menu opens, written through by the editor.
+    var menuOpen by remember { mutableStateOf(false) }
+    var customizeOpen by remember { mutableStateOf(false) }
+    var menuHidden by remember { mutableStateOf(BrowserStore.menuHiddenRows(context)) }
     // Browser batch (r21) state: reader article + read-aloud progress live only
     // while the reader is open (no background service); the long-press target
     // is a URL plus whether it is an image; the search-engine editor text is
@@ -693,7 +699,7 @@ fun WebApp(content: String) {
      *  live document, gated by isProbablyReaderable; a page that is not
      *  article-like yields a plain notice, never a broken reader. */
     fun enterReaderMode() {
-        settingsMenuOpen = false
+        menuOpen = false
         val view = activeTab.view
         if (view == null || activeTab.isStartPage) {
             readerNotice = "Reader mode needs a loaded page."
@@ -951,7 +957,7 @@ fun WebApp(content: String) {
             resetBarScrollHide()
             return
         }
-        if (addressEditing || fieldText != null || settingsMenuOpen || tabsOpen ||
+        if (addressEditing || fieldText != null || settingsMenuOpen || menuOpen || customizeOpen || tabsOpen ||
             sheetOpen || listsOpen || jsDialog != null || showPopupNotice ||
             fullscreenView != null || gateOpen || findOpen) return
         val delta = scrollY - oldScrollY
@@ -999,7 +1005,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing, ruleEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -1022,6 +1028,11 @@ fun WebApp(content: String) {
                 // (the interceptor returning false lets navigator.back()
                 // pop the screen). The menu's Close browser button is
                 // the only path that exits regardless of page history.
+                // r185: the Customize editor sits above the menu, so
+                // BACK returns to the menu; BACK from the menu closes
+                // it, like every other sheet here.
+                customizeOpen -> { customizeOpen = false; menuOpen = true; true }
+                menuOpen -> { menuOpen = false; true }
                 settingsMenuOpen -> { settingsMenuOpen = false; true }
                 tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
@@ -1374,7 +1385,10 @@ fun WebApp(content: String) {
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    GsIconButton(Icons.Filled.MoreVert, "Browser settings", { settingsMenuOpen = true }, size = 56.dp, iconSize = 28.dp)
+                    GsIconButton(Icons.Filled.MoreVert, "Browser menu", {
+                        menuHidden = BrowserStore.menuHiddenRows(context)
+                        menuOpen = true
+                    }, size = 56.dp, iconSize = 28.dp)
                 }
             }
             // Floating bar (Notscape parity, audit fix): the page fills the
@@ -2019,6 +2033,76 @@ fun WebApp(content: String) {
                 }
             }
         }
+        // r185 (parity Phase 2): the browser menu sheet. Every row
+        // dismisses the menu first and then acts (Mariner's pattern);
+        // the bookmark/pin toggles reuse the lists sheet's exact
+        // store calls. Closing the Customize editor returns here.
+        if (menuOpen) {
+            BrowserMenuSheet(
+                isPrivate = activeTab.isPrivate,
+                isStartPage = activeTab.isStartPage,
+                desktopMode = activeTab.desktopMode,
+                isBookmarked = BrowserStore.isBookmarked(context, activeTab.currentUrl),
+                isPinned = pins.any { it.url == activeTab.currentUrl },
+                hiddenIds = menuHidden,
+                onClose = { menuOpen = false },
+                onNewTab = { menuOpen = false; newTab(false) },
+                onNewPrivateTab = { menuOpen = false; newTab(true) },
+                onReload = { menuOpen = false; web?.reload() },
+                onSharePage = { menuOpen = false; shareUrl(activeTab.currentUrl) },
+                onBookmarkToggle = {
+                    menuOpen = false
+                    if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
+                        BrowserStore.removeBookmark(context, activeTab.currentUrl)
+                    } else {
+                        BrowserStore.addBookmark(context, activeTab.currentUrl)
+                    }
+                    refreshLists()
+                },
+                onPinToggle = {
+                    menuOpen = false
+                    val url = activeTab.currentUrl
+                    if (pins.any { it.url == url }) {
+                        BrowserStore.removePin(context, url)
+                    } else {
+                        BrowserStore.addPin(context, SavedPage(url, activeTab.title ?: ""))
+                    }
+                    refreshLists()
+                },
+                onReadArticle = { enterReaderMode() },
+                onMediaScan = { menuOpen = false; sheetOpen = true },
+                onFindInPage = { menuOpen = false; findQuery = ""; findMatches = ""; findOpen = true },
+                onToggleDesktop = { menuOpen = false; toggleDesktop() },
+                onOpenBookmarks = {
+                    menuOpen = false
+                    refreshLists()
+                    listsSection = ListsSection.BOOKMARKS
+                    listsOpen = true
+                },
+                onOpenHistory = {
+                    menuOpen = false
+                    refreshLists()
+                    listsSection = ListsSection.HISTORY
+                    listsOpen = true
+                },
+                onOpenSettings = { menuOpen = false; settingsMenuOpen = true },
+                onCustomize = { menuOpen = false; customizeOpen = true },
+            )
+        }
+        if (customizeOpen) {
+            BrowserMenuCustomizeSheet(
+                hiddenIds = menuHidden,
+                onToggleVisible = { id, visible ->
+                    BrowserStore.setMenuRowVisible(context, id, visible)
+                    menuHidden = BrowserStore.menuHiddenRows(context)
+                },
+                onReset = {
+                    BrowserStore.resetMenuRows(context)
+                    menuHidden = BrowserStore.menuHiddenRows(context)
+                },
+                onClose = { customizeOpen = false; menuOpen = true },
+            )
+        }
         if (settingsMenuOpen) {
             BrowserSettingsMenu(
                 barBottom = barBottom,
@@ -2058,7 +2142,6 @@ fun WebApp(content: String) {
                     textZoom = clamped
                     activeTab.view?.settings?.textZoom = clamped
                 },
-                onFindInPage = { settingsMenuOpen = false; findQuery = ""; findMatches = ""; findOpen = true },
                 // Audit fix (2026-10-25, A3): share intent to the
                 // phone browser. The car tab is untouched — nothing
                 // here closes it, switches it, or reloads it — and
@@ -2105,10 +2188,6 @@ fun WebApp(content: String) {
                     BrowserStore.setWifiOnlyDownloads(context, on)
                     wifiOnlyDownloadsOn = on
                 },
-                desktopMode = activeTab.desktopMode,
-                canToggleDesktop = !activeTab.isStartPage,
-                onToggleDesktop = { settingsMenuOpen = false; toggleDesktop() },
-                onReaderMode = { enterReaderMode() },
                 searchEngineLabel = BrowserSearch.customTemplate(context)
                     .takeIf { it.isNotBlank() } ?: BrowserSearch.DEFAULT_NAME,
                 isCustomEngine = BrowserSearch.customTemplate(context).isNotBlank(),
@@ -2829,11 +2908,10 @@ private fun BrowserSettingsMenu(
     onOpenTabs: () -> Unit,
     onCloseMenu: () -> Unit,
     onCloseBrowser: () -> Unit,
-    // Audit fix (2026-10-25, A2/A3): text zoom, find-in-page,
-    // and open-on-phone, all from this same sheet.
+    // Audit fix (2026-10-25, A2/A3): text zoom and open-on-phone,
+    // all from this same sheet.
     textZoom: Int,
     onTextZoom: (Int) -> Unit,
-    onFindInPage: () -> Unit,
     onOpenOnPhone: () -> Unit,
     // r183: current-page "Open in app" — shown only when a handler
     // exists, computed by the caller when the menu opens.
@@ -2848,10 +2926,6 @@ private fun BrowserSettingsMenu(
     onSegmentedDownloads: (Boolean) -> Unit,
     wifiOnlyDownloadsOn: Boolean,
     onWifiOnlyDownloads: (Boolean) -> Unit,
-    desktopMode: Boolean,
-    canToggleDesktop: Boolean,
-    onToggleDesktop: () -> Unit,
-    onReaderMode: () -> Unit,
     searchEngineLabel: String,
     isCustomEngine: Boolean,
     onResetSearchEngine: () -> Unit,
@@ -2990,24 +3064,10 @@ private fun BrowserSettingsMenu(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // r185: Find in page, Reader mode, and Desktop site
+                // moved to the browser menu sheet (parity Phase 2);
+                // the Page section keeps Open on phone (+ Open in app).
                 MenuSection("Page")
-                MenuRow("Find in page", false) { onFindInPage() }
-                MenuRow("Reader mode", false) { onReaderMode() }
-                Text(
-                    "Reader mode shows the article text large, with JavaScript off. " +
-                        "It works only on pages that look like articles.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (canToggleDesktop) {
-                    MenuRow("Desktop site", desktopMode) { onToggleDesktop() }
-                    Text(
-                        "Desktop site flips this tab to the desktop user agent and back. " +
-                            "The choice is remembered for this site. New tabs start mobile.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
                 MenuRow("Open on phone", false) { onOpenOnPhone() }
                 Text(
                     "Open on phone shares this page's address to the phone's browser, " +
