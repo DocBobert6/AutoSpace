@@ -73,6 +73,8 @@ class SettingsHygieneTest {
             "car_phone_mic_voice",
             "car_pinned_apps",
             "car_pipe_audio",
+            "car_player_brightness",
+            "car_player_scale",
             "car_player_skip_sec",
             "car_player_speed",
             "car_scale",

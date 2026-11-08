@@ -97,8 +97,8 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
     internal const val KEY_TILE_SIZE = "car_tile_size"
     internal const val KEY_PLAYER_SPEED = "car_player_speed"
     internal const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
-    internal const val KEY_PLAYER_SCALE = "playerScale"
-    internal const val KEY_PLAYER_BRIGHTNESS = "playerBrightness"
+    internal const val KEY_PLAYER_SCALE = "car_player_scale"
+    internal const val KEY_PLAYER_BRIGHTNESS = "car_player_brightness"
     internal const val KEY_SUB_FONT = "car_sub_font"
     internal const val KEY_SUB_SIZE = "car_sub_size"
     internal const val KEY_SUB_COLOR = "car_sub_color"
@@ -845,8 +845,9 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
      * the car's brightness) or a float 0.05..1. The player's own
      * brightness is separate from the car's global brightness: it
      * is restored when the player opens and never changes the car
-     * setting. Stored under Mariner's key names, not the car_
-     * prefix, so the two players agree.
+     * setting. Stored under the car_ prefix like every other
+     * CarSettings key (the r173 hygiene test requires it); the
+     * accessor names carry Mariner's playerScale/playerBrightness.
      */
     fun playerScaleLabel(): String = subtitleSetting(KEY_PLAYER_SCALE, "Fit")
     fun setPlayerScaleLabel(label: String) = AppSettings.putString(app, KEY_PLAYER_SCALE, label)
