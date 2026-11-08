@@ -145,6 +145,10 @@ private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? =
     var canGoForward by mutableStateOf(false)
     var progress by mutableStateOf(0)
     var loadError by mutableStateOf<String?>(null)
+    // r199 (adblock A4): HTTPS-first state, Mariner's shape. [pendingHttpOriginal] is the plain-http URL an upgrade came from, so a failed secure load can fall back; [httpOnlyHosts] are hosts that already failed an upgrade in this tab, so the tab stops re-trying https for them; [httpsSeenHosts] are hosts that have loaded over HTTPS in this tab, so a later failure never silently downgrades them. Session-only, never persisted.
+    var pendingHttpOriginal by mutableStateOf<String?>(null)
+    val httpOnlyHosts = mutableSetOf<String>()
+    val httpsSeenHosts = mutableSetOf<String>()
     val foundMedia = mutableStateListOf<FoundMedia>()
     var view: WebView? = null
 }
@@ -346,6 +350,10 @@ fun WebApp(content: String) {
     // r197 (adblock A2): the Blocked detail page — per-tab, per-category and
     // per-day counts, opened from the settings menu under Ads & trackers.
     var showBlockedDetail by remember { mutableStateOf(false) }
+    // r199 (adblock A4): the HTTPS-only interstitial — the plain-http URL waiting on the driver's choice, and the tab it belongs to. Mariner's httpsWarnUrl shape, with the tab id riding along so the choice loads into the right tab. The one-time allowance set below is session-only: "Continue once" remembers the host only until the browser is left.
+    var httpsWarnUrl by remember { mutableStateOf<String?>(null) }
+    var httpsWarnTabId by remember { mutableStateOf(-1) }
+    val httpsOnceHosts = remember { mutableSetOf<String>() }
     // r130: which section the lists sheet opens at. The bar star button
     // opens at the top; the settings sheet's Library rows jump straight
     // to History or Bookmarks (see BrowserListsSheet.initialSection).
@@ -376,6 +384,40 @@ fun WebApp(content: String) {
     // this file's scope (r21 CI proved it with hostOf).
     fun hostOf(url: String): String =
         runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+    /**
+     * r199 (adblock A4): HTTPS-first navigation, Mariner's loadUrl
+     * shape. An http:// URL upgrades to https:// unless the host is
+     * local or already failed an upgrade in this tab; the plain
+     * original is remembered so a failed secure load can fall back.
+     * When HTTPS-only mode is on and the result is still plain http,
+     * the navigation stops at the interstitial instead of loading —
+     * unless the host holds a one-time allowance or a stored
+     * exception. Returns true when the URL was loaded (or stored for
+     * a tab with no WebView yet); false only when the interstitial
+     * showed, so the caller can leave the tab where it was.
+     */
+    fun loadUpgraded(tab: BrowserTab, url: String, view: WebView? = tab.view): Boolean {
+        val upgraded = httpsUpgradeFor(tab.httpOnlyHosts, url)
+        val target = upgraded ?: url
+        if (upgraded != null) tab.pendingHttpOriginal = url
+        if (httpsWarnNeeded(
+                BrowserStore.httpsOnly(context),
+                httpsOnceHosts,
+                BrowserStore.httpsExceptionsRaw(context),
+                target,
+            )
+        ) {
+            httpsWarnUrl = target
+            httpsWarnTabId = tab.id
+            return false
+        }
+        if (view != null) {
+            loadUrlWithGpc(context, view, target)
+        } else {
+            tab.currentUrl = target
+        }
+        return true
+    }
     // r85: rule-editor validation + serialization. A host must be
     // a bare host (no scheme, no path); an address must be a full
     // http(s) URL, stored with query and fragment stripped so ad
@@ -451,13 +493,12 @@ fun WebApp(content: String) {
     }
     /** Loads [url] into [tab], waking a start-page tab (which has no WebView yet). */
     fun openUrlInTab(tab: BrowserTab, url: String) {
-        tab.isStartPage = false
         tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
-        if (tab.view != null) {
-            loadUrlWithGpc(context, tab.view, url)
-        } else {
-            tab.currentUrl = url
-        }
+        // r199 (adblock A4): the interstitial decision lives inside
+        // loadUpgraded — when it shows, the tab stays a start page
+        // (no WebView is created for a blocked load) and the choice
+        // loads into it afterwards.
+        if (loadUpgraded(tab, url)) tab.isStartPage = false
         saveSessionNow()
     }
     fun switchTab(tab: BrowserTab) {
@@ -747,6 +788,8 @@ fun WebApp(content: String) {
     // Mariner — one toggle gates both the Sec-GPC: 1 header and the
     // navigator.globalPrivacyControl flag.
     var gpcOn by remember { mutableStateOf(BrowserStore.gpcEnabled(context)) }
+    // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
+    var httpsOnlyOn by remember { mutableStateOf(BrowserStore.httpsOnly(context)) }
     // r196 (adblock A1): cookie controls, Mariner's shapes — accept
     // and block-third-party default ON, session-only OFF, DOM storage ON.
     var acceptCookiesOn by remember { mutableStateOf(BrowserStore.acceptCookies(context)) }
@@ -850,7 +893,7 @@ fun WebApp(content: String) {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
         val tab = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUrlWithGpc(context, tab.view, url)
+        loadUpgraded(tab, url)
         if (tab.id != activeTabId) activeTabId = tab.id
         if (pendingPopups.isEmpty()) {
             showPopupNotice = false
@@ -868,7 +911,7 @@ fun WebApp(content: String) {
         val urls = pendingPopups.toList()
         if (urls.isEmpty()) return
         val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUrlWithGpc(context, origin.view, urls.first())
+        loadUpgraded(origin, urls.first())
         if (origin.id != activeTabId) activeTabId = origin.id
         urls.drop(1).forEach { url ->
             val tab = BrowserTab(nextTabId++, url)
@@ -900,7 +943,7 @@ fun WebApp(content: String) {
     }
     fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {        if (allowed) {
             runCatching { transport.destroy() }
-            loadUrlWithGpc(context, tab.view, url)
+            loadUpgraded(tab, url)
             if (tab.id != activeTabId) activeTabId = tab.id
         } else if (pendingPopups.size < 5) {
             capturedPopupViews.add(transport)
@@ -928,6 +971,7 @@ fun WebApp(content: String) {
         blockAdsOn = BrowserStore.blockAds(context)
         blockTrackersOn = BrowserStore.blockTrackers(context)
         gpcOn = BrowserStore.gpcEnabled(context)
+        httpsOnlyOn = BrowserStore.httpsOnly(context)
         acceptCookiesOn = BrowserStore.acceptCookies(context)
         blockThirdPartyOn = BrowserStore.blockThirdPartyCookies(context)
         sessionOnlyCookiesOn = BrowserStore.sessionOnlyCookies(context)
@@ -1092,7 +1136,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, showBlockedDetail, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, showBlockedDetail, jsDialog, httpsWarnUrl, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -1102,6 +1146,9 @@ fun WebApp(content: String) {
                 gateOpen -> { gateOpen = false; navigator.forceBack(); true }
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
+                // r199 (adblock A4): BACK dismisses the HTTPS-only
+                // warning without loading — the tab keeps its page.
+                httpsWarnUrl != null -> { httpsWarnUrl = null; true }
                 // r187: the display sheet sits above the reader, so
                 // BACK closes it first and only then the reader.
                 readerDisplayOpen -> { readerDisplayOpen = false; true }
@@ -1195,7 +1242,7 @@ fun WebApp(content: String) {
                         if (activeTab.isStartPage) {
                             openUrlInTab(activeTab, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         } else {
-                            loadUrlWithGpc(context, web, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
+                            loadUpgraded(activeTab, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         }
                     }, true)
                 }
@@ -1662,6 +1709,84 @@ fun WebApp(content: String) {
                                     onOpenLinkNewTab = { url ->
                                         mainHandler.post { newUrlTab(url, isPrivate = tab.isPrivate) }
                                     },
+                                    // r199 (adblock A4): HTTPS-first state
+                                    // for this tab — the upgrade records
+                                    // the plain original; the interstitial
+                                    // and fallback decisions read the tab
+                                    // per call, like pageHost.
+                                    httpsUpgradeLink = { raw ->
+                                        httpsUpgradeFor(tab.httpOnlyHosts, raw)
+                                            ?.also { tab.pendingHttpOriginal = raw }
+                                    },
+                                    httpsWarnFor = { target ->
+                                        if (httpsWarnNeeded(
+                                                BrowserStore.httpsOnly(context),
+                                                httpsOnceHosts,
+                                                BrowserStore.httpsExceptionsRaw(context),
+                                                target,
+                                            )
+                                        ) {
+                                            mainHandler.post {
+                                                httpsWarnUrl = target
+                                                httpsWarnTabId = tab.id
+                                            }
+                                            true
+                                        } else false
+                                    },
+                                    httpsLoadFailed = { failedUrl, errorCode ->
+                                        val original = tab.pendingHttpOriginal
+                                        val connectivity = errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                                            errorCode == WebViewClient.ERROR_CONNECT ||
+                                            errorCode == WebViewClient.ERROR_TIMEOUT ||
+                                            errorCode == WebViewClient.ERROR_IO
+                                        // The failed load must be the
+                                        // upgraded one (same host as the
+                                        // plain original): a redirect chain
+                                        // that fails on another host is not
+                                        // this upgrade's failure, so the
+                                        // error stands. SSL handshake
+                                        // failures are never a fallback:
+                                        // without a cert-proceed UI the
+                                        // error is the safe answer.
+                                        if (original != null && connectivity &&
+                                            httpsHostOf(failedUrl) == httpsHostOf(original)
+                                        ) {
+                                            tab.pendingHttpOriginal = null
+                                            val host = httpsHostOf(original)
+                                            if (host.isNotEmpty() && host in tab.httpsSeenHosts) {
+                                                // A host this tab has
+                                                // already loaded over HTTPS
+                                                // never falls back — the
+                                                // error stands (Mariner
+                                                // S-m2).
+                                                false
+                                            } else if (BrowserStore.httpsOnly(context) &&
+                                                !BrowserStore.isHttpsException(context, host)
+                                            ) {
+                                                mainHandler.post {
+                                                    httpsWarnUrl = original
+                                                    httpsWarnTabId = tab.id
+                                                }
+                                                true
+                                            } else {
+                                                if (host.isNotEmpty()) tab.httpOnlyHosts.add(host)
+                                                mainHandler.post {
+                                                    tab.view?.let { loadUrlWithGpc(context, it, original) }
+                                                }
+                                                true
+                                            }
+                                        } else {
+                                            if (original != null) tab.pendingHttpOriginal = null
+                                            false
+                                        }
+                                    },
+                                    httpsFinished = { finishedUrl ->
+                                        if (finishedUrl != null && finishedUrl.startsWith("https://")) {
+                                            tab.pendingHttpOriginal = null
+                                            httpsHostOf(finishedUrl).takeIf { it.isNotEmpty() }
+                                                ?.let { tab.httpsSeenHosts.add(it) }
+                                        }
+                                    },
                                 )
                                 // Document-start cosmetics (r85): the
                                 // generic hiding sheet is registered
@@ -1763,7 +1888,7 @@ fun WebApp(content: String) {
                                 if (tab.rawHtml != null) {
                                     loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
                                 } else {
-                                    loadUrlWithGpc(context, this, tab.currentUrl)
+                                    loadUpgraded(tab, tab.currentUrl, this)
                                 }
                                 tab.view = this
                                 web = this
@@ -1848,7 +1973,7 @@ fun WebApp(content: String) {
                     LocalSuggestionsCard(pillSuggestions) { url ->
                         addressEditing = false
                         addressSelected = false
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUpgraded(activeTab, url)
                     }
                 }
                 // r154: the address bar holds a URL, so no auto-formatting.
@@ -1874,7 +1999,7 @@ fun WebApp(content: String) {
                         // Search uses the engine setting (r21); a
                         // start-page tab wakes into a real tab here.
                         val url = BrowserSearch.navigateUrl(context, addressText)
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUpgraded(activeTab, url)
                     },
                     onDismiss = {
                         addressEditing = false
@@ -2385,6 +2510,11 @@ fun WebApp(content: String) {
                     BrowserStore.setGpcEnabled(context, on)
                     gpcOn = on
                 },
+                httpsOnlyOn = httpsOnlyOn,
+                onHttpsOnly = { on ->
+                    BrowserStore.setHttpsOnly(context, on)
+                    httpsOnlyOn = on
+                },
                 acceptCookiesOn = acceptCookiesOn,
                 onAcceptCookies = { on ->
                     BrowserStore.setAcceptCookies(context, on)
@@ -2473,7 +2603,7 @@ fun WebApp(content: String) {
                 },
                 onLoad = { url ->
                     listsOpen = false
-                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(context, web, url)
+                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUpgraded(activeTab, url)
                 },
                 onBookmarkToggle = {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
@@ -2636,6 +2766,30 @@ fun WebApp(content: String) {
             JsDialogOverlay(
                 dialog = dialog,
                 onDismiss = { jsDialog = null },
+            )
+        }
+        // r199 (adblock A4): the HTTPS-only interstitial — a
+        // plain-http page that could not upgrade, waiting on the
+        // driver's choice. Same in-composition overlay pattern as
+        // JsDialogOverlay, never a real Dialog (virtual-display rule).
+        httpsWarnUrl?.let { warnUrl ->
+            HttpsWarnOverlay(
+                url = warnUrl,
+                onContinueOnce = {
+                    val host = httpsHostOf(warnUrl)
+                    if (host.isNotEmpty()) httpsOnceHosts.add(host)
+                    val tab = tabs.firstOrNull { it.id == httpsWarnTabId } ?: activeTab
+                    httpsWarnUrl = null
+                    openUrlInTab(tab, warnUrl)
+                },
+                onContinueSite = {
+                    val host = httpsHostOf(warnUrl)
+                    if (host.isNotEmpty()) BrowserStore.setHttpsException(context, host, true)
+                    val tab = tabs.firstOrNull { it.id == httpsWarnTabId } ?: activeTab
+                    httpsWarnUrl = null
+                    openUrlInTab(tab, warnUrl)
+                },
+                onGoBack = { httpsWarnUrl = null },
             )
         }
         // Phase 8 popup notice (Notscape's popup notice, car-sized): a frost
@@ -2837,7 +2991,7 @@ fun WebApp(content: String) {
                                         if (activeTab.isStartPage || target == null) {
                                             openUrlInTab(activeTab, url)
                                         } else {
-                                            loadUrlWithGpc(context, target, url)
+                                            loadUpgraded(activeTab, url)
                                         }
                                         return true
                                     }
@@ -3418,6 +3572,9 @@ private fun BrowserSettingsMenu(
     // both the Sec-GPC: 1 header and the navigator flag, as in Mariner.
     gpcOn: Boolean,
     onGpc: (Boolean) -> Unit,
+    // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
+    httpsOnlyOn: Boolean,
+    onHttpsOnly: (Boolean) -> Unit,
     // r196 (adblock A1): cookie controls, Mariner's shapes.
     acceptCookiesOn: Boolean,
     onAcceptCookies: (Boolean) -> Unit,
@@ -3651,6 +3808,16 @@ private fun BrowserSettingsMenu(
                 MenuRow("DOM storage", domStorageOn) { onDomStorage(!domStorageOn) }
                 Text(
                     "Lets sites save data in the browser (local storage). Turning it off can break sites that need it.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r199 (adblock A4): HTTPS-only mode, Mariner's
+                // label — plain-http pages that cannot go secure
+                // warn first; the site can be allowed once or for
+                // good from the warning itself.
+                MenuRow("HTTPS-only mode", httpsOnlyOn) { onHttpsOnly(!httpsOnlyOn) }
+                Text(
+                    "Plain-http pages are tried over a secure connection first. With HTTPS-only mode on, a page that cannot load securely shows a warning first; you can allow it once or for the site.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3937,6 +4104,59 @@ internal fun isAnchorLink(currentUrl: String, targetUrl: String): Boolean {
 }
 
 /**
+ * r199 (adblock A4): HTTPS-first upgrade, Mariner's httpsUpgradeFor
+ * shape as pure string logic so unit tests can pin it down
+ * (android.net.Uri is a stub on the JVM test classpath). Returns the
+ * https:// version of an http:// URL, or null when no upgrade should
+ * be attempted: local addresses (localhost, *.local, bare IPv4 —
+ * home-network devices are usually http-only) and hosts that already
+ * failed an upgrade in this tab are left alone. The path, query and
+ * fragment ride along untouched.
+ */
+internal fun httpsUpgradeFor(httpOnlyHosts: Set<String>, raw: String): String? {
+    if (!raw.startsWith("http://")) return null
+    val host = httpsHostOf(raw)
+    if (host.isEmpty()) return null
+    if (host == "localhost" || host.endsWith(".local")) return null
+    if (host in httpOnlyHosts) return null
+    if (host.matches(Regex("""\d{1,3}(\.\d{1,3}){3}"""))) return null
+    return "https://" + raw.substringAfter("http://")
+}
+
+/**
+ * Pure host extraction for an http(s) URL, string-based so tests can
+ * use it: the authority up to /, ? or #, with userinfo and port
+ * stripped, lowercased. Bracketed IPv6 literals unwrap to the bare
+ * address.
+ */
+internal fun httpsHostOf(raw: String): String {
+    val afterScheme = raw.substringAfter("://", "")
+    if (afterScheme.isEmpty()) return ""
+    val authority = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+    val hostPort = authority.substringAfter('@')
+    if (hostPort.startsWith("[")) return hostPort.substringAfter('[').substringBefore(']').lowercase()
+    return hostPort.substringBefore(':').lowercase()
+}
+
+/**
+ * Pure HTTPS-only interstitial decision: a still-plain-http target
+ * warns when the mode is on, the host has no one-time allowance
+ * this session and no stored exception. An excepted host's normal
+ * http load never warns.
+ */
+internal fun httpsWarnNeeded(
+    httpsOnly: Boolean,
+    onceHosts: Set<String>,
+    exceptionsRaw: String,
+    target: String,
+): Boolean {
+    if (!httpsOnly || !target.startsWith("http://")) return false
+    val host = httpsHostOf(target)
+    if (host.isEmpty() || host in onceHosts) return false
+    return !BrowserStore.isHttpsException(exceptionsRaw, host)
+}
+
+/**
  * r192 (parity G1): app-controlled navigations load with the Sec-GPC: 1
  * header when Global Privacy Control is on, exactly as Mariner attaches
  * it on navigations the app controls. The header rides only the initial
@@ -3981,6 +4201,18 @@ private class BrowserClient(
     // r190: the new-tab open for a tapped link when the toggle is
     // on; the caller opens it in a foreground tab.
     private val onOpenLinkNewTab: (String) -> Unit = {},
+    // r199 (adblock A4): HTTPS-first state for this tab, read per
+    // call like pageHost. [httpsUpgradeLink] returns the upgraded URL
+    // (recording the plain original on the tab) or null;
+    // [httpsWarnFor] shows the HTTPS-only interstitial for an http
+    // URL that could not upgrade and returns true when it did;
+    // [httpsLoadFailed] handles a failed secure load (true when
+    // handled, suppressing the error panel); [httpsFinished] records
+    // a completed https load so the host counts as seen-secure.
+    private val httpsUpgradeLink: (String) -> String? = { null },
+    private val httpsWarnFor: (String) -> Boolean = { false },
+    private val httpsLoadFailed: (String, Int) -> Boolean = { _, _ -> false },
+    private val httpsFinished: (String?) -> Unit = {},
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
@@ -4081,7 +4313,13 @@ private class BrowserClient(
                     if (openInAppAllowed() && !isPrivateTab()) {
                         val fallback = OpenInApp.fallbackUrl(url)
                         if (fallback != null) {
-                            view?.let { loadUrlWithGpc(it.context, it, fallback) }
+                            // r199 (adblock A4): the fallback page
+                            // upgrades like any tapped link, and
+                            // HTTPS-only mode stops it at the
+                            // interstitial when it cannot upgrade.
+                            val target = httpsUpgradeLink(fallback) ?: fallback
+                            if (httpsWarnFor(target)) return true
+                            view?.let { loadUrlWithGpc(it.context, it, target) }
                             return true
                         }
                     }
@@ -4106,6 +4344,23 @@ private class BrowserClient(
         ) {
             onOpenLinkNewTab(url)
             return true
+        }
+        // r199 (adblock A4): HTTPS-first for tapped links (Mariner's
+        // shape) — a tapped http:// link tries https:// first, and
+        // HTTPS-only mode stops it at the interstitial when it cannot
+        // upgrade. The upgrade is tried first here, matching the
+        // typed-address order in loadUpgraded: the brief's "cannot
+        // upgrade" is what shows the warning (Mariner warns first for
+        // taps). Same-page anchors stay put, as with the new-tab rule.
+        if (view != null && request?.isForMainFrame == true && request.hasGesture() &&
+            url != null && url.startsWith("http://") && !isAnchorLink(currentUrl(), url)
+        ) {
+            val target = httpsUpgradeLink(url) ?: url
+            if (httpsWarnFor(target)) return true
+            if (target != url) {
+                loadUrlWithGpc(view.context, view, target)
+                return true
+            }
         }
         if (request?.isForMainFrame == true && request.hasGesture() == false && url != null &&
             (url.startsWith("http://") || url.startsWith("https://"))
@@ -4183,12 +4438,19 @@ private class BrowserClient(
                 }
             }
         }
+        // r199 (adblock A4): a completed https load forgets the plain
+        // original and marks the host seen-secure, so a later failure
+        // never silently downgrades it (Mariner S-m2).
+        httpsFinished(url)
     }
 
     // onPageFinished fires for error pages too, so without this a blocked load (missing
     // INTERNET permission, no network) looks like a successful one.
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
         if (request?.isForMainFrame == true) {
+            // r199 (adblock A4): a failed HTTPS-first upgrade is
+            // handled before the error panel — see httpsLoadFailed.
+            if (httpsLoadFailed(request.url.toString(), error?.errorCode ?: 0)) return
             GearslipLog.e("car web page FAILED: ${GearslipLog.loggableUrl(request.url.toString())} - ${error?.errorCode} ${error?.description}")
             onMainFrameError("Could not load ${request.url}. ${error?.description ?: "Check the connection and try again."}")
         }
@@ -4364,6 +4626,55 @@ private sealed interface JsDialogState {
     ) : JsDialogState {
         fun confirmWith(value: String) { result.confirm(value) }
         override fun cancel() { result.cancel() }
+    }
+}
+
+/**
+ * r199 (adblock A4): the HTTPS-only warning, Mariner's interstitial
+ * shape — same in-composition overlay pattern as JsDialogOverlay
+ * (a kit panel over a dimmed page, never a real Dialog). "Continue
+ * once" loads the plain page this one time only — the host is
+ * remembered for this browser session, never stored; "Continue for
+ * this site" stores a persistent per-host exception, as in Mariner;
+ * "Go back" leaves the tab where it was.
+ */
+@Composable
+private fun HttpsWarnOverlay(
+    url: String,
+    onContinueOnce: () -> Unit,
+    onContinueSite: () -> Unit,
+    onGoBack: () -> Unit,
+) {
+    val host = httpsHostOf(url).ifBlank { url }
+    Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Phase 8: a kit panel, not a raw Material surface.
+            GsPanelCard(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Plain http page", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "$host does not offer a secure connection. Anything you send could be read by others.",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = onContinueOnce, modifier = Modifier.weight(1f)) { Text("Continue once") }
+                        GsButton(onClick = onContinueSite, modifier = Modifier.weight(1f)) { Text("Continue for this site") }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = onGoBack, modifier = Modifier.weight(1f)) { Text("Go back") }
+                    }
+                }
+            }
+        }
     }
 }
 

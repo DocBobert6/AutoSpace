@@ -516,6 +516,56 @@ object BrowserStore {
         AppSettings.putString(context, KEY_DOM_STORAGE, on.toString())
     }
 
+    // ---- HTTPS upgrade + HTTPS-only mode (r199, adblock A4) ----
+    /** HTTPS-only mode, OFF by default as in Mariner: plain-http pages show a warning first. */
+    private const val KEY_HTTPS_ONLY = "browser_https_only"
+    /** Per-site HTTPS-only exceptions, one comma-separated setting of lowercase hosts (Mariner's httpsExceptions shape). */
+    private const val KEY_HTTPS_EXCEPTIONS = "browser_https_exceptions"
+
+    /**
+     * Pure HTTPS-only default rule, no storage involved so it is unit-testable:
+     * nothing stored yet means OFF — the mode defaults off, as in Mariner.
+     */
+    fun httpsOnlyFromStored(raw: String?): Boolean = raw == "true"
+
+    fun httpsOnly(context: Context): Boolean =
+        httpsOnlyFromStored(AppSettings.getString(context, KEY_HTTPS_ONLY, "false"))
+
+    fun setHttpsOnly(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_HTTPS_ONLY, on.toString())
+    }
+
+    /** The stored exception list, raw, for the pure interstitial decision (see httpsWarnNeeded). */
+    fun httpsExceptionsRaw(context: Context): String =
+        AppSettings.getString(context, KEY_HTTPS_EXCEPTIONS, "")
+
+    /**
+     * Pure HTTPS-exception list math, no storage involved so it is unit-testable
+     * (Mariner's Store.kt shape): one comma-separated setting of lowercase hosts.
+     */
+    fun parseHttpsExceptions(raw: String): Set<String> =
+        raw.split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+
+    fun withHttpsException(raw: String, host: String): String =
+        (parseHttpsExceptions(raw) + host.trim().lowercase()).sorted().joinToString(",")
+
+    fun withoutHttpsException(raw: String, host: String): String =
+        (parseHttpsExceptions(raw) - host.trim().lowercase()).sorted().joinToString(",")
+
+    fun isHttpsException(raw: String, host: String): Boolean =
+        host.trim().lowercase() in parseHttpsExceptions(raw)
+
+    fun isHttpsException(context: Context, host: String): Boolean =
+        isHttpsException(httpsExceptionsRaw(context), host)
+
+    fun setHttpsException(context: Context, host: String, on: Boolean) {
+        val raw = httpsExceptionsRaw(context)
+        AppSettings.putString(
+            context, KEY_HTTPS_EXCEPTIONS,
+            if (on) withHttpsException(raw, host) else withoutHttpsException(raw, host),
+        )
+    }
+
     // ---- Downloads settings (r160, slice 4) ----
     /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
     private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"

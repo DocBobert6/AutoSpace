@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            157, "0.4.146-alpha",
+            listOf(
+                "The browser tries a secure connection first now: plain-http addresses upgrade to https when the site offers it, except home-network addresses like localhost and 192.168.x.x. A new HTTPS-only mode in the settings menu under Ads & trackers warns before loading any page that cannot go secure, and you can allow a site once or for good.",
+            ),
+        ),
+        Release(
             156, "0.4.145-alpha",
             listOf(
                 "The browser's ad blocking got sharper: pages that only exist to serve ads are now stopped at the door, ad hiding applies in the right order so precise rules win over generic ones, and the Blocked page no longer shows an empty today row on a fresh install.",

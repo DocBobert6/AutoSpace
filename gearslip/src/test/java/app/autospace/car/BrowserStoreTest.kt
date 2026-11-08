@@ -255,6 +255,34 @@ class BrowserStoreTest {
     }
 
     @Test
+    fun httpsOnlyDefaultsOff() {
+        assertFalse(BrowserStore.httpsOnlyFromStored(null))
+        assertFalse(BrowserStore.httpsOnlyFromStored("false"))
+        assertTrue(BrowserStore.httpsOnlyFromStored("true"))
+    }
+
+    @Test
+    fun httpsExceptionsParseIsCaseInsensitiveAndDropsBlanks() {
+        assertEquals(setOf("a.com", "b.com"), BrowserStore.parseHttpsExceptions("A.com, b.com,, "))
+        assertTrue(BrowserStore.parseHttpsExceptions("").isEmpty())
+    }
+
+    @Test
+    fun httpsExceptionsAddAndRemove() {
+        assertEquals("a.com,b.com", BrowserStore.withHttpsException("b.com", "A.com"))
+        assertEquals("b.com", BrowserStore.withHttpsException("b.com", "b.com"))
+        assertEquals("a.com", BrowserStore.withoutHttpsException("a.com,b.com", "B.com"))
+        assertEquals("", BrowserStore.withoutHttpsException("a.com", "a.com"))
+    }
+
+    @Test
+    fun httpsExceptionLookupIsCaseInsensitive() {
+        assertTrue(BrowserStore.isHttpsException("a.com,b.com", "B.com"))
+        assertFalse(BrowserStore.isHttpsException("a.com", "b.com"))
+        assertFalse(BrowserStore.isHttpsException("", "a.com"))
+    }
+
+    @Test
     fun cookieAcceptDefaultsOnWhenNothingStored() {
         assertTrue(BrowserStore.acceptCookiesFromStored(null))
         assertTrue(BrowserStore.acceptCookiesFromStored("true"))
