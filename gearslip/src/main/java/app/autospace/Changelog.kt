@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            153, "0.4.142-alpha",
+            listOf(
+                "The video player has a lock: tap it in the options and the controls hide until you tap to unlock, so a stray touch can't pause or skip. Subtitles can now use the Open Sans or Inter fonts, a subtitle file saved next to a downloaded video is picked up on its own, and the player remembers your scale and brightness choices.",
+            ),
+        ),
+        Release(
             152, "0.4.141-alpha",
             listOf(
                 "Videos from a private tab no longer leave a resume position behind, so they never prompt Resume later. The mini video card now plays through the finder's queue instead of stopping when one video ends.",

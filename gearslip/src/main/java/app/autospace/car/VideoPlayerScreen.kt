@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Forward5
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -202,9 +204,11 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var lastSeenIndex by remember { mutableIntStateOf(startIndex.coerceIn(0, (urls.size - 1).coerceAtLeast(0))) }
     // Player-local brightness (r22): null = no override, follow the car's
     // brightness. Set only by the player brightness slider below; published
-    // to PlayerBrightnessOverride, cleared when the player leaves.
+    // to PlayerBrightnessOverride, cleared when the player leaves. r195 G7:
+    // the slider value persists (Mariner playerBrightness) and is restored
+    // when the player opens — the car's own brightness is never written.
     var showBrightnessRow by remember { mutableStateOf(false) }
-    var playerBrightness by remember { mutableStateOf<Float?>(null) }
+    var playerBrightness by remember { mutableStateOf<Float?>(CarSettings.playerBrightnessValue()) }
     val carBrightness by CarSettings.brightness.collectAsState()
     // Resume candidate (r22): the stored position for the opening item
     // only, when it falls in the meaningful window (10s in to 95% of
@@ -245,13 +249,19 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var controlsVisible by remember { mutableStateOf(true) }
     var interactionKey by remember { mutableIntStateOf(0) }
     fun touchControls() { controlsVisible = true; interactionKey++ }
+    // Controls lock (r195 G5, Mariner P-m20): when locked, the top
+    // capsule, centre transport and bottom chrome all hide, and a
+    // cover swallows every gesture except the unlock button. The
+    // passenger gate and the error screen are drawn outside the
+    // video branch, so the lock can never cover them.
+    var controlsLocked by remember { mutableStateOf(false) }
 
     // Scaling (Notscape Phase C item 6): resize mode + pinch zoom/pan. The
     // PlayerView rides a TextureView (res/layout/autospace_player_view.xml)
     // so the graphicsLayer transform below really moves the picture. The
-    // mode persists for the session; zoom/pan reset on track change, mode
-    // change, and entering listen mode.
-    var scaleMode by remember { mutableStateOf(ScaleMode.FIT) }
+    // mode persists across player opens (r195 G7, Mariner playerScale);
+    // zoom/pan reset on track change, mode change, and entering listen mode.
+    var scaleMode by remember { mutableStateOf(scaleModeFromLabel(CarSettings.playerScaleLabel())) }
     var pinchScale by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
@@ -263,6 +273,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     fun applyScaleMode(m: ScaleMode) {
         scaleMode = m
+        CarSettings.setPlayerScaleLabel(m.label)
         resetZoom()
         playerViewRef?.resizeMode = when (m) {
             ScaleMode.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
@@ -286,6 +297,13 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     var selectedTextId by remember { mutableStateOf<String?>(null) }
     var subtitlesOff by remember { mutableStateOf(false) }
     var showAudioRow by remember { mutableStateOf(false) }
+    // Sidecar subtitles (r195 G6c, Mariner Beta.58(6)): a .vtt/.srt/.ttml
+    // file sitting beside a local video is picked up automatically and
+    // offered in the Subtitles row like any embedded track. sidecarAuto
+    // marks an auto-discovered set, so a new item's discovery starts
+    // clean instead of carrying the old item's file.
+    var sidecarSubs by remember { mutableStateOf<List<MediaItem.SubtitleConfiguration>>(emptyList()) }
+    var sidecarAuto by remember { mutableStateOf(false) }
     // r153 (audit §4 A6): the playlist sheet's toggle, alongside the other option rows.
     var showPlaylistRow by remember { mutableStateOf(false) }
     var showTextRow by remember { mutableStateOf(false) }
@@ -300,6 +318,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     fun buildItems(): List<MediaItem> = urls.mapIndexed { i, u ->
         val builder = MediaItem.Builder().setUri(u).setMediaId(u)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(titles.getOrNull(i) ?: "").build())
+            .setSubtitleConfigurations(if (i == currentIndex) sidecarSubs else emptyList())
         when (VideoUrl.kindOf(u)) {
             VideoUrl.Kind.HLS -> builder.setMimeType(MimeTypes.APPLICATION_M3U8)
             VideoUrl.Kind.DASH -> builder.setMimeType(MimeTypes.APPLICATION_MPD)
@@ -681,6 +700,37 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     // "no override", i.e. follow the car's brightness.
     LaunchedEffect(playerBrightness) {
         PlayerBrightnessOverride.override.value = playerBrightness
+    }
+    // Sidecar discovery (r195 G6c): re-runs per item. Only plain file
+    // paths have siblings directly; AutoSpace offline sources are
+    // content:// URIs, so those resolve through the file's display
+    // name into the public Downloads folder, where both the video and
+    // any subtitle downloaded beside it live. A content:// URI from
+    // anywhere else has no sibling to find.
+    LaunchedEffect(currentIndex) {
+        if (sidecarAuto) sidecarSubs = emptyList()
+        val u = urls.getOrNull(currentIndex) ?: return@LaunchedEffect
+        val found = withContext(kotlinx.coroutines.Dispatchers.IO) { findSidecarFile(context, u) }
+            ?: return@LaunchedEffect
+        val mime = sidecarMimeFor(found) ?: return@LaunchedEffect
+        sidecarSubs = listOf(
+            MediaItem.SubtitleConfiguration.Builder(android.net.Uri.fromFile(java.io.File(found)))
+                .setMimeType(mime).setLanguage("und").build()
+        )
+        sidecarAuto = true
+    }
+    // Rebuild the load when a sidecar arrives, keeping the position
+    // and the play/pause state (Mariner's shape, with the resume
+    // prompt respected: a pending prompt holds playback, so play()
+    // only runs when the player was already playing).
+    LaunchedEffect(sidecarSubs) {
+        if (sidecarSubs.isEmpty()) return@LaunchedEffect
+        val pos = player.currentPosition.coerceAtLeast(0)
+        val idx = player.currentMediaItemIndex
+        val wasPlaying = player.playWhenReady
+        player.setMediaItems(buildItems(), idx, pos)
+        player.prepare()
+        if (wasPlaying) player.play()
     }
     // Pausing saves the position (r22) — including the sleep timer's
     // pause, which is just a pause. At composition start isPlaying is
@@ -1110,7 +1160,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             // ---- Top capsule: Close + Stop. No phone PiP in a car
             // Presentation — Close player is the car equivalent.
             AnimatedVisibility(
-                visible = controlsVisible && error == null,
+                visible = playerChromeVisible(controlsVisible, controlsLocked) && error == null,
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.TopStart),
@@ -1159,7 +1209,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
 
             // ---- Centre transport: separate frosted circles.
             AnimatedVisibility(
-                visible = controlsVisible,
+                visible = playerChromeVisible(controlsVisible, controlsLocked),
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.Center),
@@ -1169,7 +1219,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
 
             // ---- Bottom: title + options capsule, then the slim scrubber.
             AnimatedVisibility(
-                visible = controlsVisible,
+                visible = playerChromeVisible(controlsVisible, controlsLocked),
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -1352,13 +1402,14 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                                     onValueChange = {
                                         touchControls()
                                         playerBrightness = it.coerceIn(0.05f, 1f)
+                                        CarSettings.setPlayerBrightnessValue(playerBrightness)
                                     },
                                     valueRange = 0.05f..1f,
                                     modifier = Modifier.width(220.dp).height(48.dp),
                                 )
                                 PlayerTextButton(
                                     "Reset", selected = playerBrightness == null,
-                                    onClick = { touchControls(); playerBrightness = null },
+                                    onClick = { touchControls(); playerBrightness = null; CarSettings.setPlayerBrightnessValue(null) },
                                 )
                             }
                         }
@@ -1460,6 +1511,11 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                                     size = 56.dp, iconSize = 28.dp, active = showScaleRow || scaleMode != ScaleMode.FIT,
                                 )
                             }
+                            PlayerIconButton(
+                                Icons.Filled.Lock, "Lock controls",
+                                { touchControls(); closeAllRows(); controlsLocked = true },
+                                size = 56.dp, iconSize = 28.dp,
+                            )
                             PlayerTextButton(
                                 if (speed == speed.toInt().toFloat()) "${speed.toInt()}×" else "${speed}×",
                                 selected = false,
@@ -1474,6 +1530,30 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                     }
                     Spacer(Modifier.height(10.dp))
                     scrubberRow()
+                }
+            }
+            // r195 G5: the lock cover (Mariner P-m20). It swallows every
+            // gesture except the unlock button itself. It lives inside
+            // the video branch, so the error screen (a separate branch)
+            // and the passenger gate (emitted after this Box) are never
+            // covered by it — the hard rule for the lock.
+            if (lockCoverVisible(controlsLocked, error)) {
+                Box(
+                    Modifier.fillMaxSize().clickable { },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        PlayerIconButton(
+                            Icons.Filled.LockOpen, "Unlock controls",
+                            { controlsLocked = false; touchControls() },
+                            size = 72.dp, iconSize = 48.dp,
+                        )
+                        Text(
+                            "Tap to unlock",
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
         }
@@ -1820,7 +1900,7 @@ private fun SkipForwardIcon(sec: Int) {
 /** Player scaling modes (Notscape Phase C item 6): Fit, Stretch and Fill map
  * straight onto the Media3 resize modes; Crop is Fill (cover) with an extra
  * fixed 1.25x zoom on top, for a stronger centre crop. */
-private enum class ScaleMode(val label: String) { FIT("Fit"), STRETCH("Stretch"), FILL("Fill"), CROP("Crop") }
+internal enum class ScaleMode(val label: String) { FIT("Fit"), STRETCH("Stretch"), FILL("Fill"), CROP("Crop") }
 
 /** One selectable audio/subtitle/quality track in the player's track rows. */
 private data class TrackChoice(
@@ -1849,9 +1929,74 @@ private fun formatTime(ms: Long): String {
  * values. Applies only when at least one subtitle option is set — until
  * then the player's default (the system caption style) stands untouched.
  * Car limits: the Subtitles section in car Settings writes these
- * (audit fix, 2026-10-25), and only system typefaces are mapped —
- * Notscape's bundled opensans/inter fonts and custom font files have
- * no AutoSpace resource to load from. */
+ * (audit fix, 2026-10-25). r195: the bundled opensans/inter fonts
+ * (assets/fonts/, r187) now load from assets; custom font files are
+ * still not offered. */
+/** Scale mode from a stored label (Mariner playerScale); anything unknown is Fit. */
+internal fun scaleModeFromLabel(label: String): ScaleMode = when (label) {
+    "Stretch" -> ScaleMode.STRETCH
+    "Fill" -> ScaleMode.FILL
+    "Crop" -> ScaleMode.CROP
+    else -> ScaleMode.FIT
+}
+
+/** The player chrome (top capsule, centre transport, bottom chrome) shows only when controls are visible AND unlocked. */
+internal fun playerChromeVisible(controlsVisible: Boolean, controlsLocked: Boolean): Boolean =
+    controlsVisible && !controlsLocked
+
+/** The lock cover shows only when locked and there is no error screen — the hard rule: the lock never covers the error screen (the passenger gate is drawn after the video branch, so it is never covered either). */
+internal fun lockCoverVisible(controlsLocked: Boolean, error: String?): Boolean =
+    controlsLocked && error == null
+
+/** A sidecar subtitle file's path for a video URL: plain file paths only; anything else (http, content://) has no sibling path of its own. */
+internal fun sidecarPathFor(url: String): String? = when {
+    url.startsWith("file://") -> url.removePrefix("file://")
+    url.startsWith("/") -> url
+    else -> null
+}
+
+/** Sidecar candidates beside a video (Mariner Beta.58(6)): the bare name, then .sub1-3. */
+internal fun sidecarCandidates(basePath: String): List<String> = listOf(
+    "$basePath.vtt", "$basePath.srt", "$basePath.ttml",
+    "$basePath.sub1.vtt", "$basePath.sub2.vtt", "$basePath.sub3.vtt",
+    "$basePath.sub1.ttml", "$basePath.sub2.ttml", "$basePath.sub3.ttml",
+)
+
+/** Sidecar candidates for a file by name inside a folder (the content:// path: the video's display name resolves into the public Downloads folder). */
+internal fun sidecarCandidatesInDir(dirPath: String, fileName: String): List<String> {
+    val base = "$dirPath/${fileName.substringBeforeLast('.', fileName)}"
+    return sidecarCandidates(base)
+}
+
+/** Mime type for a sidecar path, as the MimeTypes values; null when the extension is not a subtitle format. */
+internal fun sidecarMimeFor(path: String): String? = when (path.substringAfterLast('.', "")) {
+    "vtt" -> "text/vtt"
+    "srt" -> "application/x-subrip"
+    "ttml" -> "application/ttml+xml"
+    else -> null
+}
+
+/** Device-real sidecar lookup (not unit-tested; the pure seams above carry the tests): a plain file path's siblings, or — for a content:// source — the display name resolved into the public Downloads folder, where the video and any subtitle downloaded beside it live. */
+private fun findSidecarFile(context: android.content.Context, url: String): String? {
+    val path = sidecarPathFor(url)
+    if (path != null) {
+        val base = path.substringBeforeLast('.', path)
+        return sidecarCandidates(base).firstOrNull { java.io.File(it).isFile }
+    }
+    if (!url.startsWith("content://")) return null
+    val name = runCatching {
+        context.contentResolver.query(
+            android.net.Uri.parse(url),
+            arrayOf(android.provider.MediaStore.MediaColumns.DISPLAY_NAME),
+            null, null, null,
+        )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+    }.getOrNull() ?: return null
+    val dir = android.os.Environment.getExternalStoragePublicDirectory(
+        android.os.Environment.DIRECTORY_DOWNLOADS,
+    ).absolutePath
+    return sidecarCandidatesInDir(dir, name).firstOrNull { java.io.File(it).isFile }
+}
+
 private fun applySubtitleStyle(context: android.content.Context, view: PlayerView) {
     val font = CarSettings.subtitleFont()
     val size = CarSettings.subtitleSize()
@@ -1883,6 +2028,8 @@ private fun applySubtitleStyle(context: android.content.Context, view: PlayerVie
         else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
     }
     val face = when (font) {
+        "opensans" -> runCatching { Typeface.createFromAsset(context.assets, "fonts/opensans.ttf") }.getOrNull()
+        "inter" -> runCatching { Typeface.createFromAsset(context.assets, "fonts/inter.ttf") }.getOrNull()
         "roboto" -> Typeface.create("sans", Typeface.NORMAL)
         "serif" -> Typeface.SERIF
         "mono" -> Typeface.MONOSPACE

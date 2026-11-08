@@ -944,7 +944,7 @@ private fun SubtitleSettings() {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            ChoiceRow("Font", listOf("" to "System default", "roboto" to "Sans", "serif" to "Serif", "mono" to "Monospace"), font) {
+            ChoiceRow("Font", listOf("" to "System default", "opensans" to "Open Sans", "inter" to "Inter", "roboto" to "Sans", "serif" to "Serif", "mono" to "Monospace"), font) {
                 font = it; CarSettings.setSubtitleFont(it)
             }
             ChoiceRow("Size", listOf("80" to "80%", "100" to "100%", "125" to "125%", "150" to "150%"), size) {

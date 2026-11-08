@@ -97,6 +97,8 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
     internal const val KEY_TILE_SIZE = "car_tile_size"
     internal const val KEY_PLAYER_SPEED = "car_player_speed"
     internal const val KEY_PLAYER_SKIP_SEC = "car_player_skip_sec"
+    internal const val KEY_PLAYER_SCALE = "playerScale"
+    internal const val KEY_PLAYER_BRIGHTNESS = "playerBrightness"
     internal const val KEY_SUB_FONT = "car_sub_font"
     internal const val KEY_SUB_SIZE = "car_sub_size"
     internal const val KEY_SUB_COLOR = "car_sub_color"
@@ -837,6 +839,21 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
     }
 
     /**
+     * Video player scale mode + brightness, persisted (Notscape
+     * playerScale / playerBrightness, r195). The scale label is one
+     * of Fit/Stretch/Fill/Crop; the brightness is "system" (follow
+     * the car's brightness) or a float 0.05..1. The player's own
+     * brightness is separate from the car's global brightness: it
+     * is restored when the player opens and never changes the car
+     * setting. Stored under Mariner's key names, not the car_
+     * prefix, so the two players agree.
+     */
+    fun playerScaleLabel(): String = subtitleSetting(KEY_PLAYER_SCALE, "Fit")
+    fun setPlayerScaleLabel(label: String) = AppSettings.putString(app, KEY_PLAYER_SCALE, label)
+    fun playerBrightnessValue(): Float? = playerBrightnessFromStored(subtitleSetting(KEY_PLAYER_BRIGHTNESS, "system"))
+    fun setPlayerBrightnessValue(value: Float?) = AppSettings.putString(app, KEY_PLAYER_BRIGHTNESS, playerBrightnessToStored(value))
+
+    /**
      * Subtitle styling values (Notscape subFont/subSize/subColor/subBg/
      * subEdge), written by the Subtitles section in car Settings
      * (audit fix, 2026-10-25). Until any is set, every read returns
@@ -937,3 +954,11 @@ internal const val KEY_LOCATION_WARNING = "car_location_warning"
         AppSettings.putString(app, KEY_ICON_OVERRIDES, encodeOverrides(next))
     }
 }
+
+/** Stored player brightness (Mariner playerBrightness): "system" means follow the car's brightness; anything else is a float clamped to 0.05..1. */
+internal fun playerBrightnessFromStored(stored: String): Float? =
+    if (stored == "system") null else stored.toFloatOrNull()?.coerceIn(0.05f, 1f)
+
+/** Stored player brightness, written back: null is "system", anything else its float. */
+internal fun playerBrightnessToStored(value: Float?): String =
+    if (value == null) "system" else value.coerceIn(0.05f, 1f).toString()
