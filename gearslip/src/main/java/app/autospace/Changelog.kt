@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            156, "0.4.145-alpha",
+            listOf(
+                "The browser's ad blocking got sharper: pages that only exist to serve ads are now stopped at the door, ad hiding applies in the right order so precise rules win over generic ones, and the Blocked page no longer shows an empty today row on a fresh install.",
+            ),
+        ),
+        Release(
             155, "0.4.144-alpha",
             listOf(
                 "Ads and trackers are separate toggles now, in the settings menu under Ads & trackers, and a new Blocked page shows what was blocked on this tab, this session, and over the last 30 days.",

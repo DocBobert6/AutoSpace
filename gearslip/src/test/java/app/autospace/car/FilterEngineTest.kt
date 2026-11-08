@@ -660,4 +660,132 @@ class FilterEngineTest {
         assertEquals(listOf(3L, 1L, 0L), back["2026-11-08"]!!.toList())
         assertEquals(listOf(0L, 0L, 5L), back["2026-11-07"]!!.toList())
     }
+
+    // ---- r198 (adblock A3): $document enforcement ----
+
+    private fun docBlocked(
+        host: String,
+        path: String = "/",
+        pageHost: String = "",
+    ): Boolean = FilterEngine.isDocumentBlocked(host, path, pageHost)
+
+    @Test
+    fun documentFlagCapturedOnScopedRules() {
+        val scoped = parse("||ads.example.com^\$document,domain=news.example.org\n")
+        assertTrue(scoped.scoped["ads.example.com"]!![0].document)
+        val pathRule = parse("||example.com/ads/x^\$document\n")
+        assertTrue(pathRule.scoped["example.com"]!![0].document)
+        assertEquals("/ads/x", pathRule.scoped["example.com"]!![0].pathPrefix)
+        val plain = parse("||ads.example.com^\$domain=news.example.org\n")
+        assertFalse(plain.scoped["ads.example.com"]!![0].document)
+    }
+
+    @Test
+    fun documentBlockedPureHostRule() {
+        install("||pop.example.com^\$document\n")
+        assertTrue(docBlocked("pop.example.com"))
+        assertTrue(docBlocked("www.pop.example.com"))
+        assertFalse(docBlocked("safe.example.com"))
+    }
+
+    @Test
+    fun documentBlockedScopedRuleNeedsMatchingDomain() {
+        install("||ads.example.com^\$document,domain=news.example.org\n")
+        assertTrue(docBlocked("ads.example.com", pageHost = "news.example.org"))
+        assertFalse(docBlocked("ads.example.com", pageHost = "other.example.org"))
+        assertFalse(docBlocked("ads.example.com"))
+    }
+
+    @Test
+    fun documentBlockedPathScopedRule() {
+        install("||example.com/ads^\$document\n")
+        assertTrue(docBlocked("example.com", path = "/ads/banner"))
+        assertFalse(docBlocked("example.com", path = "/other"))
+    }
+
+    @Test
+    fun documentBlockedExceptionVetoes() {
+        install("||pop.example.com^\$document\n@@||pop.example.com^\$document\n")
+        assertFalse(docBlocked("pop.example.com"))
+    }
+
+    @Test
+    fun documentBlockedImportantBeatsException() {
+        install("||pop.example.com^\$document,important\n@@||pop.example.com^\n")
+        assertTrue(docBlocked("pop.example.com"))
+    }
+
+    @Test
+    fun documentBlockedNeverBlockHostsExempt() {
+        install("||youtube.com^\$document\n")
+        assertFalse(docBlocked("youtube.com"))
+    }
+
+    @Test
+    fun documentBlockedPlainRuleDoesNotBlock() {
+        install("||ads.example.com^\n")
+        assertFalse(docBlocked("ads.example.com"))
+    }
+
+    // ---- r198 (adblock A3): cosmetic order ----
+
+    @Test
+    fun orderedSelectorsDomainUserGeneric() {
+        install(
+            "##.gen-x\n" +
+                "news.example.org##.dom-x\n",
+            userCosmetic = listOf(
+                UserBlockRules.CosmeticRule("news.example.org", ".usr-x"),
+            ),
+        )
+        val css = FilterEngine.cosmeticCss("news.example.org")
+        val dom = css.indexOf(".dom-x")
+        val usr = css.indexOf(".usr-x")
+        val gen = css.indexOf(".gen-x")
+        assertTrue(dom >= 0 && usr >= 0 && gen >= 0)
+        assertTrue(dom < usr && usr < gen)
+    }
+
+    @Test
+    fun generichideSuppressesGenericOnSubdomainsToo() {
+        install(
+            "##.gen-x\n" +
+                "news.example.org##.dom-x\n" +
+                "@@||news.example.org^\$generichide\n",
+        )
+        val page = FilterEngine.cosmeticCss("news.example.org")
+        assertFalse(page.contains(".gen-x"))
+        assertTrue(page.contains(".dom-x"))
+        val sub = FilterEngine.cosmeticCss("deep.news.example.org")
+        assertFalse(sub.contains(".gen-x"))
+        assertTrue(sub.contains(".dom-x"))
+    }
+
+    @Test
+    fun documentStartScriptWalksParentDomains() {
+        val script = FilterEngine.buildDocumentStartScript(
+            ".ad{display:none!important}",
+            setOf("example.org"),
+        )
+        assertTrue(script.contains("while(h)"))
+        assertTrue(script.contains("substring(d+1)"))
+        assertFalse(script.contains("indexOf(location.hostname)"))
+    }
+
+    // ---- r198 (adblock A3): history empty state ----
+
+    @Test
+    fun blockedHistoryEmptyStateGatesOnAllZeroCounts() {
+        assertTrue(blockedHistoryIsEmpty(emptyMap()))
+        assertTrue(blockedHistoryIsEmpty(mapOf("2026-11-08" to listOf(0L, 0L, 0L))))
+        assertFalse(blockedHistoryIsEmpty(mapOf("2026-11-08" to listOf(1L, 0L, 0L))))
+        assertFalse(
+            blockedHistoryIsEmpty(
+                mapOf(
+                    "2026-11-08" to listOf(0L, 0L, 0L),
+                    "2026-11-07" to listOf(0L, 2L, 0L),
+                ),
+            ),
+        )
+    }
 }

@@ -4037,10 +4037,13 @@ private class BrowserClient(
     // aimed at a known popunder host, is captured like a blocked popup
     // instead of loaded. Typed addresses never reach here (loadUrl
     // skips this callback) and tapped links carry a gesture. The host
-    // test is PopunderHosts': the parsed $document/$popup set once
-    // filter lists have loaded (r85), the built-in set before that.
-    // Returning false for everything else preserves the previous
-    // behaviour exactly (WebView handles http(s) itself).
+    // test is FilterEngine.isDocumentBlocked (r198, adblock A3):
+    // a pure ||host^$document/$popup rule or a scoped document rule
+    // whose scope matches this navigation; PopunderHosts' built-in
+    // set stays as the fallback until the first lists load, when
+    // isDocumentBlocked has nothing parsed yet. Returning false for
+    // everything else preserves the previous behaviour exactly
+    // (WebView handles http(s) itself).
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val url = request?.url?.toString()
         // r183: a tapped non-http(s) link gets the open treatment
@@ -4108,9 +4111,11 @@ private class BrowserClient(
             (url.startsWith("http://") || url.startsWith("https://"))
         ) {
             val targetHost = runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
+            val targetPath = runCatching { Uri.parse(url).path ?: "" }.getOrDefault("")
             val hereHost = runCatching { Uri.parse(view?.url ?: "").host ?: "" }.getOrDefault("")
             if (targetHost.isNotEmpty() && targetHost != hereHost &&
-                PopunderHosts.isDocumentHost(targetHost)
+                (FilterEngine.isDocumentBlocked(targetHost, targetPath, hereHost) ||
+                    PopunderHosts.isDocumentHost(targetHost))
             ) {
                 onPopunder(url, hereHost)
                 return true

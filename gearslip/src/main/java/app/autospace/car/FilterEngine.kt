@@ -57,6 +57,8 @@ data class ScopedRule(
     val important: Boolean = false,
     /** r197 (adblock A2): which category a block by this rule counts as. */
     val category: Int = FilterEngine.CAT_ADS,
+    /** Beta.63 #64 (r198, adblock A3): the rule applies to document/popup loads. */
+    val document: Boolean = false,
 )
 
 /** The parsed collections, bundled so load, refresh validation and
@@ -495,7 +497,7 @@ object FilterEngine {
             if (rest.isEmpty() || rest == "^") {
                 if (isScoped) {
                     scoped.getOrPut(host) { mutableListOf() }
-                        .add(ScopedRule(null, domains, notDomains, exception, thirdParty, important, category))
+                        .add(ScopedRule(null, domains, notDomains, exception, thirdParty, important, category, document = docType))
                 } else {
                     (if (exception) exceptions else hosts).add(host)
                     // r197 (adblock A2): a pure host rule from a
@@ -503,9 +505,13 @@ object FilterEngine {
                     // ad list names it too (Mariner's trackerHosts).
                     if (!exception && category == CAT_TRACKER) trackerHosts?.add(host)
                     // Popunder provenance for the navigation guard:
-                    // a pure host whose ONLY type options are
-                    // $document/$popup.
-                    if (!exception && docType && !otherType) docHosts.add(host)
+                    // a pure host whose rule applies to document
+                    // loads ($document and/or $popup, whatever
+                    // other types it also carries) — Mariner's
+                    // shape; the narrower ONLY-type gate silently
+                    // dropped document rules that also named a
+                    // resource type.
+                    if (!exception && docType) docHosts.add(host)
                 }
                 continue
             }
@@ -519,7 +525,7 @@ object FilterEngine {
                 if (pipe >= 0) path = path.substring(0, pipe)
                 if (path.length < 2) continue
                 scoped.getOrPut(host) { mutableListOf() }
-                    .add(ScopedRule(path.lowercase(), domains, notDomains, exception, thirdParty, important, category))
+                    .add(ScopedRule(path.lowercase(), domains, notDomains, exception, thirdParty, important, category, document = docType))
                 continue
             }
             // Anchored/wildcard leftovers — skip.
@@ -685,12 +691,14 @@ object FilterEngine {
         pageHost: String,
         wantException: Boolean,
         onlyImportant: Boolean = false,
+        onlyDocument: Boolean = false,
     ): ScopedRule? {
         for (h in hostChain(reqHost)) {
             val rules = scopedRules[h] ?: continue
             for (r in rules) {
                 if (r.exception != wantException) continue
                 if (onlyImportant && !r.important) continue
+                if (onlyDocument && !r.document) continue
                 if (r.domains != null &&
                     (pageHost.isEmpty() || !matches(r.domains, pageHost))
                 ) continue
@@ -912,6 +920,37 @@ object FilterEngine {
         return matches(docHosts, h)
     }
 
+    /**
+     * Beta.63 #64 (r198, adblock A3): full $document/$popup enforcement at request
+     * level. True when the main-frame load of [host]/[path] is covered by a
+     * document rule — a pure ||host^$document/$popup rule, or a scoped one
+     * ($domain=, path, $third-party) whose scope matches this navigation.
+     * $important document rules beat exceptions; a scoped document exception
+     * vetoes. Consulted by the navigation guard only; typed addresses and
+     * tapped links never reach it, so a rule can never break a deliberate
+     * navigation. Plain strings, so the unit tests pin it without a device.
+     */
+    fun isDocumentBlocked(host: String, path: String, pageHost: String): Boolean {
+        val h = host.lowercase()
+        if (h.isEmpty()) return false
+        if (matches(neverBlockHosts, h)) return false
+        val p = path.lowercase()
+        val page = pageHost.lowercase()
+        scopedRuleMatch(
+            h, p, page, wantException = false,
+            onlyImportant = true, onlyDocument = true,
+        )?.let { return true }
+        if (matches(exceptionHosts, h)) return false
+        if (scopedRuleMatch(
+                h, p, page, wantException = true, onlyDocument = true,
+            ) != null
+        ) return false
+        if (isDocumentHost(h)) return true
+        return scopedRuleMatch(
+            h, p, page, wantException = false, onlyDocument = true,
+        ) != null
+    }
+
     // ---- Cosmetic CSS ----
 
     /**
@@ -952,8 +991,10 @@ object FilterEngine {
      * element the moment the document exists, skipping hosts in
      * [offHosts] (the $generichide set, checked in-script against
      * location.hostname because the script is registered before
-     * the target host is known). Empty css yields an empty script
-     * (nothing registered).
+     * the target host is known — walking up to parent domains,
+     * Mariner's beta.56 shape, so a $generichide page scope covers
+     * its subdomains exactly like the per-navigation sheet does).
+     * Empty css yields an empty script (nothing registered).
      */
     internal fun buildDocumentStartScript(
         css: String, offHosts: Set<String>,
@@ -966,9 +1007,36 @@ object FilterEngine {
             .replace("\\", "\\\\")
             .replace("'", "\\'")
             .replace("</", "<\\/")
-        return "(function(){try{var OFF=[HOSTS];if(OFF.indexOf(location.hostname)>=0)return;var s=document.createElement('style');s.textContent='CSS';(document.documentElement||document).appendChild(s);}catch(e){}})();"
+        return "(function(){try{var OFF=[HOSTS];var h=location.hostname;var off=false;while(h){if(OFF.indexOf(h)>=0){off=true;break;}var d=h.indexOf('.');if(d<0)break;h=h.substring(d+1);}if(off)return;var s=document.createElement('style');s.textContent='CSS';(document.documentElement||document).appendChild(s);}catch(e){}})();"
             .replace("HOSTS", hosts)
             .replace("CSS", esc)
+    }
+
+    /**
+     * Selector order for a page's sheet (Mariner beta.56): domain rules
+     * first, then the user's own, then generic — so the size budget in
+     * [cosmeticCss] trims generic selectors before it ever touches the
+     * precise ones. Previously generic filled the budget first and
+     * domain/user selectors were the ones silently dropped on
+     * selector-heavy pages. $generichide still suppresses generic
+     * only; #@# exceptions subtract after all three sets are merged.
+     */
+    internal fun orderedSelectors(
+        host: String,
+        generic: List<String>,
+        domain: Map<String, List<String>>,
+        user: List<String>,
+        excGeneric: Set<String>,
+        excDomain: Map<String, List<String>>,
+        hideOff: Set<String>,
+    ): LinkedHashSet<String> {
+        val sels = LinkedHashSet<String>()
+        for (h in hostChain(host)) domain[h]?.let { sels.addAll(it) }
+        sels.addAll(user)
+        if (!matches(hideOff, host)) sels.addAll(generic)
+        sels.removeAll(excGeneric)
+        for (h in hostChain(host)) excDomain[h]?.let { sels.removeAll(it) }
+        return sels
     }
 
     /** CSS that hides ad containers on [pageHost]; "" when nothing applies. */
@@ -976,18 +1044,15 @@ object FilterEngine {
         val host = pageHost.lowercase()
         if (host.isEmpty()) return ""
         cssCache?.let { if (it.first == host) return it.second }
-        val sels = LinkedHashSet<String>()
-        // A $generichide exception for this page host turns generic
-        // hiding off here (domain rules still apply).
-        if (!matches(genericHideOffHosts, host)) sels.addAll(genericSelectors)
-        for (h in hostChain(host)) domainSelectors[h]?.let { sels.addAll(it) }
-        // The user's own picked selectors: exact host only, never
-        // inherited up the chain the way list selectors are.
-        sels.addAll(UserBlockRules.selectorsForHost(userCosmeticRules, host))
-        // #@# unhide exceptions subtract, exact selector for exact
-        // selector — the shape list authors actually write.
-        sels.removeAll(cosmeticExcGeneric)
-        for (h in hostChain(host)) cosmeticExcDomain[h]?.let { sels.removeAll(it) }
+        val sels = orderedSelectors(
+            host,
+            genericSelectors,
+            domainSelectors,
+            UserBlockRules.selectorsForHost(userCosmeticRules, host),
+            cosmeticExcGeneric,
+            cosmeticExcDomain,
+            genericHideOffHosts,
+        )
         if (sels.isEmpty()) return ""
         // No silent count cap on selectors. The only guard is a
         // generous size budget for the injected <style>; past it,

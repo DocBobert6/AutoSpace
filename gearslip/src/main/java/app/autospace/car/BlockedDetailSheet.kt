@@ -26,6 +26,15 @@ import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsSheetSurface
 
 /**
+ * True when the Blocked history has nothing to show: no days at all,
+ * or every day all-zero (r198, adblock A3) — BlockedHistory.snapshot()
+ * always carries today's row, so an empty check alone can never show
+ * the empty state on a fresh install. Pure, so the unit tests pin it.
+ */
+internal fun blockedHistoryIsEmpty(history: Map<String, List<Long>>): Boolean =
+    history.isEmpty() || history.all { (_, counts) -> counts.all { it == 0L } }
+
+/**
  * Blocked detail page (r197, adblock A2) — the Blocked page behind the
  * "Blocked..." row in the settings menu's Ads & trackers section. Same
  * in-composition overlay style as the lists sheet (no real Dialog window
@@ -113,7 +122,7 @@ fun BlockedDetailSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 16.dp),
                 )
-                if (history.isEmpty()) {
+                if (blockedHistoryIsEmpty(history)) {
                     Text(
                         "No previous days yet",
                         style = MaterialTheme.typography.bodyMedium,
