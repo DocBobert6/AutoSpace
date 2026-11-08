@@ -337,6 +337,14 @@ class BrowserStoreTest {
     }
 
     @Test
+    fun deleteOnExitDefaultsOff() {
+        assertFalse(BrowserStore.deleteOnExitFromStored(null))
+        assertFalse(BrowserStore.deleteOnExitFromStored(""))
+        assertFalse(BrowserStore.deleteOnExitFromStored("false"))
+        assertTrue(BrowserStore.deleteOnExitFromStored("true"))
+    }
+
+    @Test
     fun fillMissingTitleFillsOnlyBlankTitles() {
         val existing = listOf(
             SavedPage("https://example.com/a", ""),

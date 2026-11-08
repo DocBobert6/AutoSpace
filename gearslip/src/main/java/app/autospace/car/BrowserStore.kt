@@ -566,6 +566,23 @@ object BrowserStore {
         )
     }
 
+    // ---- Delete-on-exit + clear browsing data (r200, adblock A5) ----
+    /** Delete browsing data on exit, OFF by default as in Mariner (beta.63 #25, Robert's condition). */
+    private const val KEY_DELETE_ON_EXIT = "browser_delete_on_exit"
+
+    /**
+     * Pure delete-on-exit default rule, no storage involved so it is unit-testable:
+     * nothing stored yet means OFF — the mode defaults off, as in Mariner.
+     */
+    fun deleteOnExitFromStored(raw: String?): Boolean = raw == "true"
+
+    fun deleteOnExit(context: Context): Boolean =
+        deleteOnExitFromStored(AppSettings.getString(context, KEY_DELETE_ON_EXIT, "false"))
+
+    fun setDeleteOnExit(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_DELETE_ON_EXIT, on.toString())
+    }
+
     // ---- Downloads settings (r160, slice 4) ----
     /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
     private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"

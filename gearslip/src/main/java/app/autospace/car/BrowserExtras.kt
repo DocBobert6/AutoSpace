@@ -3,6 +3,7 @@ package app.autospace.car
 import android.content.Context
 import android.net.Uri
 import android.webkit.WebResourceResponse
+import android.webkit.WebStorage
 import android.webkit.WebView
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewCompat
@@ -294,6 +295,80 @@ fun clearSessionCookies() {
         val manager = android.webkit.CookieManager.getInstance()
         manager.removeAllCookies(null)
         manager.flush()
+    }
+}
+
+// ---- Clear browsing data (r200, adblock A5) ----
+
+/**
+ * Which browsing traces a clear sweep covers. The sheet offers the
+ * first four; tabs ride delete-on-exit only (Mariner's beta.63 #25
+ * sweep is history, cookies, cache, site data, and open tabs).
+ */
+data class ClearSelection(
+    val history: Boolean,
+    val cookies: Boolean,
+    val cache: Boolean,
+    val siteData: Boolean,
+    val tabs: Boolean,
+)
+
+/** The delete-on-exit selection: everything, Mariner's beta.63 #25 shape. Pure, unit-pinned. */
+fun deleteOnExitSelection(): ClearSelection =
+    ClearSelection(history = true, cookies = true, cache = true, siteData = true, tabs = true)
+
+/**
+ * Pure labels for the cleared confirmation line, in Mariner's order:
+ * history, cookies, cache, site data, open tabs. Only the selected
+ * parts appear, so the line always says what actually cleared.
+ */
+fun clearBrowsingDataLabels(selection: ClearSelection): List<String> = buildList {
+    if (selection.history) add("history")
+    if (selection.cookies) add("cookies")
+    if (selection.cache) add("cache")
+    if (selection.siteData) add("site data")
+    if (selection.tabs) add("open tabs")
+}
+
+/**
+ * Cache half, Mariner's WebCache.clear shape: clearCache(true) on each
+ * live WebView, then delete the on-disk cache under cacheDir and
+ * codeCacheDir — the WebView disk cache lives there, so this also
+ * covers WebViews that no longer exist. Deleting cacheDir wholesale
+ * also drops the r193 player segment cache (cacheDir/player); Mariner
+ * does the same wholesale delete, and the player re-caches on demand.
+ */
+fun clearWebCache(context: Context, webViews: List<WebView?>) {
+    webViews.forEach { webView -> runCatching { webView?.clearCache(true) } }
+    runCatching {
+        listOf(context.cacheDir, context.codeCacheDir).forEach { dir ->
+            dir.listFiles()?.forEach { child ->
+                if (child.isDirectory) child.deleteRecursively() else child.delete()
+            }
+        }
+    }
+}
+
+/**
+ * The one shared clear sweep (r200, adblock A5): the clear-data sheet
+ * and delete-on-exit run the same function, so the two paths can never
+ * drift apart. Bookmarks and downloads are never touched — neither
+ * half of the sweep reads or writes them. Recently-closed tabs ride
+ * the tabs half (Mariner clears closedTabs in clearBrowsingData too);
+ * the per-day blocked-count history is NOT cleared — it holds counts
+ * only, no URLs — and video resume positions are NOT cleared either:
+ * the approved sweep is the five named traces, and resume is a player
+ * feature, not browsing data. Every half is runCatching-guarded, so
+ * one failing half never blocks the rest.
+ */
+fun clearBrowsingData(context: Context, webViews: List<WebView?>, selection: ClearSelection) {
+    if (selection.history) runCatching { BrowserStore.clearHistory(context) }
+    if (selection.cookies) clearSessionCookies()
+    if (selection.cache) clearWebCache(context, webViews)
+    if (selection.siteData) runCatching { WebStorage.getInstance().deleteAllData() }
+    if (selection.tabs) runCatching {
+        BrowserStore.clearSession(context)
+        BrowserStore.clearRecentlyClosed(context)
     }
 }
 

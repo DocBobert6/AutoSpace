@@ -243,6 +243,15 @@ fun WebApp(content: String) {
     // and the browser opens a start page instead (the 4-hour rule).
     val launchSession = remember {
         if (voiceUrl == null) {
+            // r200 (adblock A5): Mariner's cold-start half of
+            // delete-on-exit — a previous session that died (killed
+            // process) skips the leave hook, so the wipe runs again
+            // here, BEFORE the session is read, and the data never
+            // survives a session boundary. No live WebViews exist
+            // yet, so the cache half is the on-disk delete only.
+            if (BrowserStore.deleteOnExit(context)) {
+                clearBrowsingData(context, emptyList(), deleteOnExitSelection())
+            }
             val saved = BrowserStore.loadSession(context)
             when {
                 saved.first.isEmpty() -> Triple(emptyList<SavedPage>(), 0, false)
@@ -790,6 +799,12 @@ fun WebApp(content: String) {
     var gpcOn by remember { mutableStateOf(BrowserStore.gpcEnabled(context)) }
     // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
     var httpsOnlyOn by remember { mutableStateOf(BrowserStore.httpsOnly(context)) }
+    // r200 (adblock A5): delete browsing data on exit, OFF by default
+    // as in Mariner (beta.63 #25, Robert's condition).
+    var deleteOnExitOn by remember { mutableStateOf(BrowserStore.deleteOnExit(context)) }
+    // r200 (adblock A5): the clear-browsing-data sheet, opened from
+    // the settings menu under Ads & trackers.
+    var showClearData by remember { mutableStateOf(false) }
     // r196 (adblock A1): cookie controls, Mariner's shapes — accept
     // and block-third-party default ON, session-only OFF, DOM storage ON.
     var acceptCookiesOn by remember { mutableStateOf(BrowserStore.acceptCookies(context)) }
@@ -1114,6 +1129,18 @@ fun WebApp(content: String) {
             // with private tabs open destroys those views too.
             saveSessionNow()
             if (hadPrivate) PrivateProfile.wipe()
+            // r200 (adblock A5): delete-on-exit — the stored
+            // session was just saved above, so the tabs half wipes
+            // it now. The tab WebViews were already destroyed
+            // above, so the cache half is the on-disk delete
+            // (Mariner's WebCache note: the disk cache lives under
+            // cacheDir, so this also covers WebViews that no longer
+            // exist). Same honest limit as the r196 session-only
+            // sweep: a killed process skips this hook, so the entry
+            // wipe above is what catches that case.
+            if (BrowserStore.deleteOnExit(context)) {
+                clearBrowsingData(context, tabs.map { it.view }, deleteOnExitSelection())
+            }
             // r196 (adblock A1): session-only cookies die with the
             // browser session — Mariner kills them when the app
             // backgrounds (P-m9); AutoSpace's session ends when the
@@ -1136,7 +1163,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, showBlockedDetail, jsDialog, httpsWarnUrl, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, showBlockedDetail, jsDialog, httpsWarnUrl, showClearData, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -1175,6 +1202,7 @@ fun WebApp(content: String) {
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
                 showBlockedDetail -> { showBlockedDetail = false; true }
+                showClearData -> { showClearData = false; true }
                 // Audit fix (2026-10-25, A2): an open find bar
                 // closes first, clearing the page highlights, and
                 // never steps back a page while it is up.
@@ -2515,6 +2543,15 @@ fun WebApp(content: String) {
                     BrowserStore.setHttpsOnly(context, on)
                     httpsOnlyOn = on
                 },
+                deleteOnExitOn = deleteOnExitOn,
+                onDeleteOnExit = { on ->
+                    BrowserStore.setDeleteOnExit(context, on)
+                    deleteOnExitOn = on
+                },
+                onOpenClearData = {
+                    settingsMenuOpen = false
+                    showClearData = true
+                },
                 acceptCookiesOn = acceptCookiesOn,
                 onAcceptCookies = { on ->
                     BrowserStore.setAcceptCookies(context, on)
@@ -2753,6 +2790,17 @@ fun WebApp(content: String) {
             BlockedDetailSheet(
                 tabId = activeTab.id,
                 onClose = { showBlockedDetail = false },
+            )
+        }
+        // r200 (adblock A5): clear browsing data sheet, above the
+        // page like the Blocked detail page — BACK closes it first
+        // (see the back interceptor above).
+        if (showClearData) {
+            ClearBrowsingDataSheet(
+                onClear = { selection ->
+                    clearBrowsingData(context, tabs.map { it.view }, selection)
+                },
+                onClose = { showClearData = false },
             )
         }
         // Fullscreen video (Phase 3.4, item 3): the WebView's custom view fills the
@@ -3575,6 +3623,10 @@ private fun BrowserSettingsMenu(
     // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
     httpsOnlyOn: Boolean,
     onHttpsOnly: (Boolean) -> Unit,
+    // r200 (adblock A5): delete-on-exit toggle + the clear-data sheet opener.
+    deleteOnExitOn: Boolean,
+    onDeleteOnExit: (Boolean) -> Unit,
+    onOpenClearData: () -> Unit,
     // r196 (adblock A1): cookie controls, Mariner's shapes.
     acceptCookiesOn: Boolean,
     onAcceptCookies: (Boolean) -> Unit,
@@ -3818,6 +3870,21 @@ private fun BrowserSettingsMenu(
                 MenuRow("HTTPS-only mode", httpsOnlyOn) { onHttpsOnly(!httpsOnlyOn) }
                 Text(
                     "Plain-http pages are tried over a secure connection first. With HTTPS-only mode on, a page that cannot load securely shows a warning first; you can allow it once or for the site.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r200 (adblock A5): delete-on-exit + clear browsing
+                // data, Mariner's beta.63 #25 shapes — the toggle
+                // wipes on leave, the row opens the sheet.
+                MenuRow("Delete browsing data on exit", deleteOnExitOn) { onDeleteOnExit(!deleteOnExitOn) }
+                Text(
+                    "History, cookies, cache, site data, and open tabs are cleared when you leave the browser. Bookmarks and downloads are kept.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Clear browsing data…", false) { onOpenClearData() }
+                Text(
+                    "Choose what to clear now — history, cookies, cache, or site data. Bookmarks and downloads are kept.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

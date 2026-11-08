@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            158, "0.4.147-alpha",
+            listOf(
+                "You can clear your browsing data now: a new Clear browsing data row in the settings menu under Ads & trackers lets you pick history, cookies, cache, and site data to clear, and a Delete browsing data on exit toggle clears all of that plus your open tabs whenever you leave the browser. Bookmarks and downloads are always kept.",
+            ),
+        ),
+        Release(
             157, "0.4.146-alpha",
             listOf(
                 "The browser tries a secure connection first now: plain-http addresses upgrade to https when the site offers it, except home-network addresses like localhost and 192.168.x.x. A new HTTPS-only mode in the settings menu under Ads & trackers warns before loading any page that cannot go secure, and you can allow a site once or for good.",
