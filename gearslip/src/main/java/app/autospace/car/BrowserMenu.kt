@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -83,7 +85,7 @@ fun BrowserMenuSheet(
         ) {
             if (checked) {
                 androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.filled.Check, null,
+                    Icons.Filled.Check, null,
                     tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(12.dp))
@@ -180,7 +182,7 @@ fun BrowserMenuSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text("Browser menu", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    GsIconButton(androidx.compose.material.icons.filled.Close, "Close menu", onClose, size = 56.dp, iconSize = 28.dp)
+                    GsIconButton(Icons.Filled.Close, "Close menu", onClose, size = 56.dp, iconSize = 28.dp)
                 }
                 for ((title, rows) in sections) {
                     if (rows.isEmpty()) continue
@@ -234,7 +236,7 @@ fun BrowserMenuCustomizeSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text("Customize menu", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    GsIconButton(androidx.compose.material.icons.filled.Close, "Close customize menu", onClose, size = 56.dp, iconSize = 28.dp)
+                    GsIconButton(Icons.Filled.Close, "Close customize menu", onClose, size = 56.dp, iconSize = 28.dp)
                 }
                 Text(
                     "Choose which rows the browser menu shows. The Customize menu row itself always stays.",
