@@ -12,6 +12,7 @@ import java.io.ByteArrayInputStream
 import java.net.URLDecoder
 import java.net.URLEncoder
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 /**
  * Browser batch (r21) support code, ported from Notscape where noted and otherwise
@@ -451,6 +452,90 @@ private fun escapeHtml(s: String): String = s
     .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     .replace("\"", "&quot;")
 
+
+/**
+ * Reader display themes (r187, browser parity Phase 5): Mariner's four
+ * Safari Reader palettes, ported verbatim (ArticleExtractor.readerPalette)
+ * — White / Sepia / Gray / Night. The reader is chrome, not a page: the
+ * shell is a NEW document built from extracted text, so a theme here does
+ * not restyle any page (the never-themed rule stands).
+ */
+data class ReaderPalette(
+    val bg: String,
+    val fg: String,
+    val link: String,
+    val dark: Boolean,
+)
+
+fun readerPalette(theme: String): ReaderPalette = when (readerThemeKey(theme)) {
+    "sepia" -> ReaderPalette("#F8F1E3", "#4F321C", "#4F321C", dark = false)
+    "gray" -> ReaderPalette("#4A4A4D", "#D7D7D9", "#D7D7D9", dark = true)
+    "night" -> ReaderPalette("#121212", "#B0B0B0", "#B0B0B0", dark = true)
+    else -> ReaderPalette("#FFFFFF", "#1B1B1B", "#1B1B1B", dark = false)
+}
+
+/** Normalize a stored reader-theme key to Mariner's four (readerThemeKey). */
+fun readerThemeKey(stored: String): String = when (stored) {
+    "light" -> "white"
+    "dark" -> "night"
+    "white", "sepia", "gray", "night" -> stored
+    else -> "white"
+}
+
+/**
+ * Normalize a stored reader-font key to the three bundled fonts (Mariner's
+ * readerFontKey). There is no custom-font import in AutoSpace, so a
+ * "custom" key folds to Open Sans instead of naming a font that can
+ * never load.
+ */
+fun readerFontKey(stored: String): String = when (stored) {
+    "opensans", "serif", "mono" -> "opensans"
+    "roboto", "sans" -> "roboto"
+    "inter" -> "inter"
+    else -> "opensans"
+}
+
+/** The CSS font stack for a reader font (Mariner's readerFontStack). */
+fun readerFontStack(font: String): String = when (readerFontKey(font)) {
+    "inter" -> "'Inter', 'Roboto', system-ui, sans-serif"
+    "roboto" -> "'Roboto', system-ui, sans-serif"
+    else -> "'Open Sans', 'Roboto', system-ui, sans-serif"
+}
+
+/** Reader text size in px, clamped to Mariner's stepper range 14-28. */
+fun coerceReaderFontSize(px: Int): Int = px.coerceIn(14, 28)
+
+/**
+ * Reader line spacing, rounded to one decimal and clamped to Mariner's
+ * slider range 1.1-2.2. The one-decimal rounding keeps the stored value
+ * ("1.6") and the CSS ("line-height: 1.6") free of float noise from
+ * repeated +0.1 steps.
+ */
+fun coerceReaderLineMult(mult: Float): Float =
+    ((mult * 10).roundToInt().coerceIn(11, 22) / 10f)
+
+/**
+ * The @font-face rule for a bundled reader font, with the font embedded
+ * as a data URI (Mariner's readerFontFaceCss): the reader document's base
+ * URL is the article's own, so asset files can't be referenced by path.
+ * Roboto is a system font and needs no embedding; a missing asset degrades
+ * to the system stack instead of breaking the reader.
+ */
+fun readerFontFaceCss(context: Context, font: String): String {
+    val (family, asset) = when (readerFontKey(font)) {
+        "inter" -> "Inter" to "fonts/inter.ttf"
+        "roboto" -> return ""
+        else -> "Open Sans" to "fonts/opensans.ttf"
+    }
+    val b64 = runCatching {
+        context.assets.open(asset).use { input ->
+            android.util.Base64.encodeToString(input.readBytes(), android.util.Base64.NO_WRAP)
+        }
+    }.getOrNull() ?: return ""
+    return "@font-face { font-family: '$family'; " +
+        "src: url(data:font/ttf;base64,$b64) format('truetype'); font-weight: 100 900; }"
+}
+
 /**
  * The reader document shell: a single column with a site / title / byline header
  * over the extracted article HTML, in the car UI's own surface/on-surface/link
@@ -458,7 +543,16 @@ private fun escapeHtml(s: String): String = s
  * theming: the page itself is never restyled — the reader builds a NEW document
  * from extracted text, and the original page is untouched underneath.
  */
-fun buildReaderShell(article: Article, bg: String, fg: String, link: String): String {
+fun buildReaderShell(
+    article: Article,
+    bg: String,
+    fg: String,
+    link: String,
+    fontSizePx: Int = 22,
+    lineHeight: Float = 1.6f,
+    fontFamily: String = "system-ui, sans-serif",
+    fontFaceCss: String = "",
+): String {
     val byline = if (article.byline.isBlank()) "" else
         """<div class="byline">${escapeHtml(article.byline)}</div>"""
     val site = if (article.siteName.isBlank()) "" else
@@ -471,12 +565,13 @@ fun buildReaderShell(article: Article, bg: String, fg: String, link: String): St
 <base href="${escapeHtml(article.url)}">
 <title>${escapeHtml(article.title)}</title>
 <style>
+  $fontFaceCss
   html, body { margin: 0; padding: 0; background: $bg; }
   body {
     color: $fg;
-    font-family: system-ui, sans-serif;
-    font-size: 22px;
-    line-height: 1.6;
+    font-family: $fontFamily;
+    font-size: ${fontSizePx}px;
+    line-height: $lineHeight;
     -webkit-text-size-adjust: 100%;
   }
   main { max-width: 720px; margin: 0 auto; padding: 28px 20px 72px; }

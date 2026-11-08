@@ -75,6 +75,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -645,6 +646,23 @@ fun WebApp(content: String) {
     // non-private, since Newsstand never holds private-origin articles.
     var readerPrivate by remember { mutableStateOf(false) }
     var readerNotice by remember { mutableStateOf<String?>(null) }
+    // r187 (parity Phase 5 + G4): the reader's display settings — the
+    // stored theme key (blank until the user picks one), text size,
+    // font, and line spacing. The overlay reads these live, so a pick
+    // in the display sheet reloads the reader shell at once.
+    var readerDisplayOpen by remember { mutableStateOf(false) }
+    var readerThemeStored by remember { mutableStateOf(BrowserStore.readerTheme(context)) }
+    var readerFontSizePx by remember { mutableStateOf(BrowserStore.readerFontSizePx(context)) }
+    var readerFont by remember { mutableStateOf(BrowserStore.readerFont(context)) }
+    var readerLineMult by remember { mutableStateOf(BrowserStore.readerLineMult(context)) }
+    // The effective theme is the stored pick, or — until the user picks —
+    // the car-scheme match (Night on a dark surface, White on a light
+    // one), so the default look is exactly today's car-scheme reader.
+    val readerEffectiveTheme = if (readerThemeStored.isBlank()) {
+        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) "night" else "white"
+    } else {
+        readerThemeKey(readerThemeStored)
+    }
     var readingChunks by remember { mutableStateOf<List<String>>(emptyList()) }
     var readingIndex by remember { mutableStateOf(-1) }
     var readingToken by remember { mutableStateOf(0) }
@@ -1012,7 +1030,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, longPressTarget, engineEditing, ruleEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -1022,6 +1040,9 @@ fun WebApp(content: String) {
                 gateOpen -> { gateOpen = false; navigator.forceBack(); true }
                 fullscreenView != null -> { hideFullscreen(); true }
                 jsDialog != null -> { jsDialog?.cancel(); jsDialog = null; true }
+                // r187: the display sheet sits above the reader, so
+                // BACK closes it first and only then the reader.
+                readerDisplayOpen -> { readerDisplayOpen = false; true }
                 // Reader (r21) closes before page history: BACK leaves
                 // the article and returns to the page underneath.
                 readerOpen -> { stopReading(); readerOpen = false; true }
@@ -2552,9 +2573,27 @@ fun WebApp(content: String) {
         if (readerOpen) {
             val article = readerArticle
             if (article != null) {
-                val bgHex = String.format("#%06X", MaterialTheme.colorScheme.surface.toArgb() and 0xFFFFFF)
-                val fgHex = String.format("#%06X", MaterialTheme.colorScheme.onSurface.toArgb() and 0xFFFFFF)
-                val linkHex = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
+                // r187: a stored theme switches the shell to Mariner's
+                // Safari palette; with no stored theme the shell keeps
+                // today's car-scheme colors, exactly as before.
+                val readerThemePalette = if (readerThemeStored.isBlank()) null else readerPalette(readerEffectiveTheme)
+                val bgHex = readerThemePalette?.bg ?: String.format("#%06X", MaterialTheme.colorScheme.surface.toArgb() and 0xFFFFFF)
+                val fgHex = readerThemePalette?.fg ?: String.format("#%06X", MaterialTheme.colorScheme.onSurface.toArgb() and 0xFFFFFF)
+                val linkHex = readerThemePalette?.link ?: String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
+                // The bundled font's @font-face, embedded as a data URI
+                // (Mariner's shape): cached per font key so the ~1 MB
+                // base64 is built once, not on every recomposition.
+                val readerFontFaceCss = remember(readerFont) { readerFontFaceCss(context, readerFont) }
+                // One reload per settings change: the shell signature
+                // covers the article, the colors, and every display
+                // setting, so a pick in the display sheet reloads the
+                // reader at once and nothing else reloads it.
+                val readerShellSig = "$bgHex|$fgHex|$linkHex|${article.url}|$readerEffectiveTheme|$readerFontSizePx|$readerFont|$readerLineMult"
+                // Plain holder, not Compose state: AndroidView's update
+                // runs during composition, and writing state there is
+                // not allowed — this field just remembers the last
+                // signature the WebView was loaded with.
+                val readerShellLastSig = remember { object { var sig: String? = null } }
                 Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -2584,6 +2623,9 @@ fun WebApp(content: String) {
                         if (!readerPrivate) {
                             GsButton(onClick = { saveReaderArticle() }) { Text("Save") }
                         }
+                        // r187: display settings (theme, text size,
+                        // font, line spacing) in their own sheet.
+                        GsButton(onClick = { readerDisplayOpen = true }) { Text("Display") }
                         GsIconButton(Icons.Filled.Close, "Close reader", {
                             stopReading()
                             readerOpen = false
@@ -2617,9 +2659,25 @@ fun WebApp(content: String) {
                                         return true
                                     }
                                 }
-                                loadDataWithBaseURL(
+                            }
+                        },
+                        // r187: the shell loads here, not in the factory,
+                        // so a display pick reloads the live reader at
+                        // once; the signature guard keeps every other
+                        // recomposition from reloading it (and losing the
+                        // reader's scroll position).
+                        update = { view ->
+                            if (readerShellLastSig.sig != readerShellSig) {
+                                readerShellLastSig.sig = readerShellSig
+                                view.loadDataWithBaseURL(
                                     article.url,
-                                    buildReaderShell(article, bgHex, fgHex, linkHex),
+                                    buildReaderShell(
+                                        article, bgHex, fgHex, linkHex,
+                                        fontSizePx = readerFontSizePx,
+                                        lineHeight = readerLineMult,
+                                        fontFamily = readerFontStack(readerFont),
+                                        fontFaceCss = readerFontFaceCss,
+                                    ),
                                     "text/html", "utf-8", null,
                                 )
                             }
@@ -2628,6 +2686,35 @@ fun WebApp(content: String) {
                     )
                 }
             }
+        }
+        // r187 (parity Phase 5 + G4): the reader display sheet, above
+        // the reader overlay; BACK closes it before the reader. It only
+        // ever opens from the reader header, so it only ever shows while
+        // the reader is open.
+        if (readerDisplayOpen) {
+            ReaderDisplaySheet(
+                currentTheme = readerEffectiveTheme,
+                fontSizePx = readerFontSizePx,
+                font = readerFont,
+                lineMult = readerLineMult,
+                onTheme = { theme ->
+                    BrowserStore.setReaderTheme(context, theme)
+                    readerThemeStored = BrowserStore.readerTheme(context)
+                },
+                onFontSize = { px ->
+                    BrowserStore.setReaderFontSizePx(context, px)
+                    readerFontSizePx = BrowserStore.readerFontSizePx(context)
+                },
+                onFont = { font ->
+                    BrowserStore.setReaderFont(context, font)
+                    readerFont = BrowserStore.readerFont(context)
+                },
+                onLineMult = { mult ->
+                    BrowserStore.setReaderLineMult(context, mult)
+                    readerLineMult = BrowserStore.readerLineMult(context)
+                },
+                onClose = { readerDisplayOpen = false },
+            )
         }
         // Reader notice (r21): a plain reason when extraction refuses
         // (not an article) or no spoken voice is downloaded yet.

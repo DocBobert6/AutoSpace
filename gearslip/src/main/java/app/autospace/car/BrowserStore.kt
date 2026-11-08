@@ -168,6 +168,49 @@ object BrowserStore {
         AppSettings.putString(context, KEY_BAR_POSITION, if (bottom) "bottom" else "top")
     }
 
+    // ---- Reader display (r187, browser parity Phase 5 + G4) ----
+    // Mariner's reader panel, stored as plain strings through AppSettings
+    // like every other browser setting. The theme is blank until the user
+    // picks one: blank means the reader keeps today's car-scheme colors
+    // (surface / on-surface / primary), so nothing changes on upgrade;
+    // a stored theme switches the shell to Mariner's Safari palette.
+    private const val KEY_READER_THEME = "browser_reader_theme"
+    private const val KEY_READER_FONT_SIZE = "browser_reader_font_size"
+    private const val KEY_READER_FONT = "browser_reader_font"
+    private const val KEY_READER_LINE_MULT = "browser_reader_line_mult"
+
+    /** The stored reader theme key, or "" when the user never picked one. */
+    fun readerTheme(context: Context): String =
+        AppSettings.getString(context, KEY_READER_THEME, "")
+
+    fun setReaderTheme(context: Context, theme: String) {
+        AppSettings.putString(context, KEY_READER_THEME, readerThemeKey(theme))
+    }
+
+    /** Reader text size in px (Mariner's readerFontSize, stepper 14-28). */
+    fun readerFontSizePx(context: Context): Int =
+        coerceReaderFontSize(AppSettings.getString(context, KEY_READER_FONT_SIZE, "22").toIntOrNull() ?: 22)
+
+    fun setReaderFontSizePx(context: Context, px: Int) {
+        AppSettings.putString(context, KEY_READER_FONT_SIZE, coerceReaderFontSize(px).toString())
+    }
+
+    /** Reader font key (Mariner's readerFont): opensans, roboto, or inter. */
+    fun readerFont(context: Context): String =
+        readerFontKey(AppSettings.getString(context, KEY_READER_FONT, "opensans"))
+
+    fun setReaderFont(context: Context, font: String) {
+        AppSettings.putString(context, KEY_READER_FONT, readerFontKey(font))
+    }
+
+    /** Reader line spacing (Mariner's readerLineMult, 1.1-2.2, default 1.6). */
+    fun readerLineMult(context: Context): Float =
+        coerceReaderLineMult(AppSettings.getString(context, KEY_READER_LINE_MULT, "1.6").toFloatOrNull() ?: 1.6f)
+
+    fun setReaderLineMult(context: Context, mult: Float) {
+        AppSettings.putString(context, KEY_READER_LINE_MULT, "%.1f".format(java.util.Locale.US, coerceReaderLineMult(mult)))
+    }
+
     // ---- Browser batch (r21) ----
     /** Ad/tracker blocking toggle (bundled host list, BrowserFilter); ON by default. */
     private const val KEY_AD_BLOCK = "browser_ad_block"

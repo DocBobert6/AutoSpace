@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            145, "0.4.134-alpha",
+            listOf(
+                "Reader display: articles in Reader mode now have their own display settings — four themes (White, Sepia, Gray, Night), text size from 14 to 28, a choice of three fonts, and line spacing. The reader still follows the car's colors until you pick a theme.",
+            ),
+        ),
+        Release(
             144, "0.4.133-alpha",
             listOf(
                 "The browser now suggests pages from your own bookmarks and history while you type an address or search from a new tab, and the new tab page has a Frequently visited section you can trim with one tap. Private tabs show a lock in the address pill, and swiping the pill now stays within normal or private tabs instead of crossing between them.",
