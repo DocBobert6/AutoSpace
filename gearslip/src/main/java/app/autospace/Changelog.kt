@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            159, "0.4.148-alpha",
+            listOf(
+                "Web pages can no longer play video or audio on their own unless you let them: a new Autoplay row in the settings menu under Ads & trackers cycles Allowed, Blocked, and Muted only. Blocked waits for your tap, and Muted only starts silent and unmutes at your first tap or key press.",
+            ),
+        ),
+        Release(
             158, "0.4.147-alpha",
             listOf(
                 "You can clear your browsing data now: a new Clear browsing data row in the settings menu under Ads & trackers lets you pick history, cookies, cache, and site data to clear, and a Delete browsing data on exit toggle clears all of that plus your open tabs whenever you leave the browser. Bookmarks and downloads are always kept.",

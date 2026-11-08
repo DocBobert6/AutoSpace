@@ -359,4 +359,48 @@ class BrowserStoreTest {
         assertEquals(existing, BrowserStore.fillMissingTitle(existing, "https://example.com/a", ""))
         assertEquals(existing, BrowserStore.fillMissingTitle(existing, "https://example.com/missing", "Nope"))
     }
+
+    @Test
+    fun autoplayModeDefaultsToAllowForAnythingUnstored() {
+        assertEquals("allow", BrowserStore.autoplayModeFromStored(null))
+        assertEquals("allow", BrowserStore.autoplayModeFromStored(""))
+        assertEquals("allow", BrowserStore.autoplayModeFromStored("whatever"))
+    }
+
+    @Test
+    fun autoplayModeKeepsOnlyKnownModes() {
+        assertEquals("block", BrowserStore.autoplayModeFromStored("block"))
+        assertEquals("muted", BrowserStore.autoplayModeFromStored("muted"))
+    }
+
+    @Test
+    fun autoplayGestureFlagIsBlockOnly() {
+        assertTrue(BrowserStore.autoplayRequiresGesture("block"))
+        assertFalse(BrowserStore.autoplayRequiresGesture("allow"))
+        assertFalse(BrowserStore.autoplayRequiresGesture("muted"))
+    }
+
+    @Test
+    fun autoplayMutedIsMutedOnly() {
+        assertTrue(BrowserStore.autoplayMuted("muted"))
+        assertFalse(BrowserStore.autoplayMuted("allow"))
+        assertFalse(BrowserStore.autoplayMuted("block"))
+    }
+
+    @Test
+    fun autoplayCycleFollowsMarinersOrder() {
+        assertEquals("block", BrowserStore.nextAutoplayMode("allow"))
+        assertEquals("muted", BrowserStore.nextAutoplayMode("block"))
+        assertEquals("allow", BrowserStore.nextAutoplayMode("muted"))
+        // Anything unrecognized cycles back to allow, the safe default.
+        assertEquals("allow", BrowserStore.nextAutoplayMode("whatever"))
+    }
+
+    @Test
+    fun autoplayLabelsMatchMariner() {
+        assertEquals("Allowed", BrowserStore.autoplayModeLabel("allow"))
+        assertEquals("Blocked", BrowserStore.autoplayModeLabel("block"))
+        assertEquals("Muted only", BrowserStore.autoplayModeLabel("muted"))
+        assertEquals("Allowed", BrowserStore.autoplayModeLabel("whatever"))
+    }
 }

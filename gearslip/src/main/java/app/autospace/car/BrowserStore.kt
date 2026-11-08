@@ -583,6 +583,47 @@ object BrowserStore {
         AppSettings.putString(context, KEY_DELETE_ON_EXIT, on.toString())
     }
 
+    // ---- Web autoplay (r201, adblock A6) ----
+    /** Web autoplay mode, "allow" by default as in Mariner: "allow" / "muted" / "block". */
+    private const val KEY_AUTOPLAY = "browser_autoplay"
+
+    /**
+     * Pure autoplay mode rule, no storage involved so it is unit-testable:
+     * nothing stored (or anything unrecognized) means "allow" — today's
+     * behaviour, so nothing changes for existing users until they touch the row.
+     */
+    fun autoplayModeFromStored(raw: String?): String = when (raw) {
+        "block", "muted" -> raw
+        else -> "allow"
+    }
+
+    fun autoplayMode(context: Context): String =
+        autoplayModeFromStored(AppSettings.getString(context, KEY_AUTOPLAY, "allow"))
+
+    fun setAutoplayMode(context: Context, mode: String) {
+        AppSettings.putString(context, KEY_AUTOPLAY, autoplayModeFromStored(mode))
+    }
+
+    /** Pure flag mapping (Mariner's BrowserScreen shape): only "block" needs a user gesture. */
+    fun autoplayRequiresGesture(mode: String): Boolean = mode == "block"
+
+    /** Pure muted check: "muted" plays start silent until the first tap or key press. */
+    fun autoplayMuted(mode: String): Boolean = mode == "muted"
+
+    /** Pure cycle (Mariner's SettingsScreen order): allow -> block -> muted -> allow. */
+    fun nextAutoplayMode(mode: String): String = when (mode) {
+        "allow" -> "block"
+        "block" -> "muted"
+        else -> "allow"
+    }
+
+    /** Pure row value text (Mariner's labels): Allowed / Blocked / Muted only. */
+    fun autoplayModeLabel(mode: String): String = when (mode) {
+        "block" -> "Blocked"
+        "muted" -> "Muted only"
+        else -> "Allowed"
+    }
+
     // ---- Downloads settings (r160, slice 4) ----
     /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
     private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"

@@ -811,6 +811,9 @@ fun WebApp(content: String) {
     var blockThirdPartyOn by remember { mutableStateOf(BrowserStore.blockThirdPartyCookies(context)) }
     var sessionOnlyCookiesOn by remember { mutableStateOf(BrowserStore.sessionOnlyCookies(context)) }
     var domStorageOn by remember { mutableStateOf(BrowserStore.domStorageEnabled(context)) }
+    // r201 (adblock A6): web autoplay, "allow" by default as in Mariner —
+    // "allow" / "muted" / "block", cycled from one row in Ads & trackers.
+    var autoplayMode by remember { mutableStateOf(BrowserStore.autoplayMode(context)) }
     // r160: the two download settings, read fresh where they apply
     // (enqueue and list refresh) and mirrored here for the menu.
     var segmentedDownloadsOn by remember { mutableStateOf(BrowserStore.segmentedDownloadsEnabled(context)) }
@@ -991,6 +994,7 @@ fun WebApp(content: String) {
         blockThirdPartyOn = BrowserStore.blockThirdPartyCookies(context)
         sessionOnlyCookiesOn = BrowserStore.sessionOnlyCookies(context)
         domStorageOn = BrowserStore.domStorageEnabled(context)
+        autoplayMode = BrowserStore.autoplayMode(context)
         segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
         wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
         openLinksNewTabOn = BrowserStore.openLinksInNewTab(context)
@@ -1630,6 +1634,10 @@ fun WebApp(content: String) {
                                 // WebView), DOM storage; replaces the
                                 // hardcoded domStorageEnabled = true.
                                 applyCookieSettings(context, this)
+                                // r201 (adblock A6): web autoplay — only
+                                // "block" needs a user gesture; the muted
+                                // half rides a document-start script below.
+                                applyAutoplaySettings(context, this)
                                 settings.loadWithOverviewMode = true
                                 settings.useWideViewPort = true
                                 // Hardening baseline (r21): applied to every
@@ -1857,6 +1865,24 @@ fun WebApp(content: String) {
                                     runCatching {
                                         androidx.webkit.WebViewCompat
                                             .addDocumentStartJavaScript(this, FilterEngine.GPC_SCRIPT, setOf("*"))
+                                    }
+                                }
+                                // r201 (adblock A6): muted autoplay rides
+                                // its own document-start script, Mariner's
+                                // P-m17 snippet — every media element starts
+                                // muted and unmutes at the first tap or key
+                                // press. Registered once per WebView, like
+                                // the GPC script, so flipping the mode
+                                // applies to new tabs; the gesture flag half
+                                // re-applies to the live tab at once.
+                                if (BrowserStore.autoplayMode(context) == "muted" &&
+                                    androidx.webkit.WebViewFeature.isFeatureSupported(
+                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                                    )
+                                ) {
+                                    runCatching {
+                                        androidx.webkit.WebViewCompat
+                                            .addDocumentStartJavaScript(this, FilterEngine.AUTOPLAY_MUTE_SCRIPT, setOf("*"))
                                     }
                                 }
                                 webChromeClient = BrowserChrome(
@@ -2574,6 +2600,12 @@ fun WebApp(content: String) {
                     BrowserStore.setDomStorageEnabled(context, on)
                     domStorageOn = on
                     applyCookieSettings(context, activeTab.view)
+                },
+                autoplayMode = autoplayMode,
+                onAutoplay = { mode ->
+                    BrowserStore.setAutoplayMode(context, mode)
+                    autoplayMode = mode
+                    applyAutoplaySettings(context, activeTab.view)
                 },
                 openLinksNewTabOn = openLinksNewTabOn,
                 onOpenLinksNewTab = { on ->
@@ -3636,6 +3668,9 @@ private fun BrowserSettingsMenu(
     onSessionOnlyCookies: (Boolean) -> Unit,
     domStorageOn: Boolean,
     onDomStorage: (Boolean) -> Unit,
+    // r201 (adblock A6): web autoplay, Mariner's three states.
+    autoplayMode: String,
+    onAutoplay: (String) -> Unit,
     // r190 (parity Phase 7): "Open links in a new tab".
     openLinksNewTabOn: Boolean,
     onOpenLinksNewTab: (Boolean) -> Unit,
@@ -3687,6 +3722,42 @@ private fun BrowserSettingsMenu(
                 else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    @Composable
+    fun MenuValueRow(label: String, value: String, onClick: () -> Unit) {
+        Row(
+            Modifier.fillMaxWidth()
+                .background(
+                    MaterialTheme.colorScheme.surfaceContainerHigh,
+                    gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+                )
+                .clickable { onClick() }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Spacer(Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.width(8.dp))
+            androidx.compose.material3.Icon(
+                Icons.Filled.KeyboardArrowDown, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp),
             )
         }
     }
@@ -3860,6 +3931,16 @@ private fun BrowserSettingsMenu(
                 MenuRow("DOM storage", domStorageOn) { onDomStorage(!domStorageOn) }
                 Text(
                     "Lets sites save data in the browser (local storage). Turning it off can break sites that need it.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r201 (adblock A6): web autoplay, Mariner's row —
+                // one row cycles Allowed / Blocked / Muted only.
+                MenuValueRow("Autoplay", BrowserStore.autoplayModeLabel(autoplayMode)) {
+                    onAutoplay(BrowserStore.nextAutoplayMode(autoplayMode))
+                }
+                Text(
+                    "Videos and audio on pages play on their own, only muted, or only after you tap. Muted plays start silent and unmute at your first tap or key press.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

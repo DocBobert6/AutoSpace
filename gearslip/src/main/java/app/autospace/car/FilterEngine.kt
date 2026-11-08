@@ -199,6 +199,25 @@ object FilterEngine {
             "{get:function(){return true;},configurable:true});}catch(e){}})();"
 
     /**
+     * r201 (adblock A6): the muted-autoplay script, Mariner's P-m17
+     * snippet verbatim — every media element starts muted and unmutes
+     * at the first tap or key press. Registered as its own
+     * document-start script when the mode is "muted", next to the GPC
+     * script, so it applies even with ad blocking off.
+     */
+    const val AUTOPLAY_MUTE_SCRIPT =
+        "(function(){try{" +
+            "var muteAll=function(){try{" +
+            "document.querySelectorAll('video,audio').forEach(function(m){m.muted=true;});" +
+            "}catch(e){}};muteAll();" +
+            "var unmute=function(){try{" +
+            "document.querySelectorAll('video,audio').forEach(function(m){m.muted=false;});" +
+            "}catch(e){}};" +
+            "document.addEventListener('pointerdown',unmute,{once:true});" +
+            "document.addEventListener('keydown',unmute,{once:true});" +
+            "}catch(e){}})();"
+
+    /**
      * r192 (parity G1): the request half of Global Privacy Control —
      * Sec-GPC: 1 on navigations the app controls, nothing when the
      * toggle is off. Pure so it is unit-testable; WebApp reads the

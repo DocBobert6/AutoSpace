@@ -285,6 +285,24 @@ fun applyCookieSettings(context: Context, webView: WebView?) {
 }
 
 /**
+ * Web autoplay (r201, adblock A6, Mariner's P-m17 shape): only "block"
+ * needs a user gesture (mediaPlaybackRequiresUserGesture). Called at
+ * WebView creation and from the settings-sheet callback so a flip
+ * applies to the live tab at once instead of waiting for a navigation.
+ * The muted half rides a document-start script registered at creation
+ * (see WebApp, next to the GPC script) — a flag flip cannot re-register
+ * it, so muted applies to new tabs like the GPC flag does. A null
+ * WebView applies nothing: there is no global half.
+ */
+fun applyAutoplaySettings(context: Context, webView: WebView?) {
+    if (webView == null) return
+    runCatching {
+        webView.settings.mediaPlaybackRequiresUserGesture =
+            BrowserStore.autoplayRequiresGesture(BrowserStore.autoplayMode(context))
+    }
+}
+
+/**
  * Session-only cookies (r196, Mariner P-m9): delete every cookie and
  * flush. Mariner does this when the app backgrounds; AutoSpace's
  * browser session ends when the user leaves the browser (see the
