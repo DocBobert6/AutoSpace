@@ -2,7 +2,7 @@ package app.autospace.car
 
 import android.content.Context
 import android.webkit.CookieManager
-import androidx.media3.datasource.CacheDataSource
+import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
