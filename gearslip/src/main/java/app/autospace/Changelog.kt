@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            146, "0.4.135-alpha",
+            listOf(
+                "The tab switcher now groups tabs into Normal and Private sections, and the tab count on the bar and in the switcher shows how many tabs are in the same group as the tab you are on, instead of the total.",
+            ),
+        ),
+        Release(
             145, "0.4.134-alpha",
             listOf(
                 "Reader display: articles in Reader mode now have their own display settings — four themes (White, Sepia, Gray, Night), text size from 14 to 28, a choice of three fonts, and line spacing. The reader still follows the car's colors until you pick a theme.",

@@ -293,6 +293,10 @@ fun WebApp(content: String) {
         }
     }
     val activeTab = tabs.firstOrNull { it.id == activeTabId } ?: tabs.first()
+    // Phase 3 (r188): the bar tab button and the switcher title show
+    // how many tabs sit in the active tab's class (normal or private)
+    // -- Mariner's rule (TabList.classCount) -- not the total.
+    val classTabCount = tabClassCount(tabs.map { it.isPrivate }, tabs.indexOfFirst { it.id == activeTabId })
     // r97 graduation: browser PiP is regular now. The button
     // renders while the active tab's finder list is non-empty — the
     // button appears only where a handoff is actually possible.
@@ -1343,8 +1347,9 @@ fun WebApp(content: String) {
                 }
                 // Tabs (Phase 10, Notscape's tab button): a 44dp frost
                 // box holding the count on a small surface (25dp, 8dp
-                // radius) — the count is always shown, never zero tabs;
-                // the switcher sheet holds New tab + the list.
+                // radius) — the count is the active tab's class (r188),
+                // always shown, never zero tabs; the switcher sheet
+                // holds New tab + the list.
                 Box(
                     Modifier.size(44.dp)
                         .frostBar(gsButtonShape(androidx.compose.foundation.shape.CircleShape), 6.dp)
@@ -1360,7 +1365,7 @@ fun WebApp(content: String) {
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            "${tabs.size}",
+                            "$classTabCount",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -2852,6 +2857,19 @@ internal fun sameClassSwipeTarget(
     return null
 }
 
+// Phase 3 (r188): how many tabs sit in the active tab's class
+// (normal or private) -- Mariner's rule (TabList.classCount). The bar
+// tab button and the switcher title show this, not the total. An
+// out-of-range active index falls back to the total, the old display.
+internal fun tabClassCount(
+    isPrivateFlags: List<Boolean>,
+    activeIndex: Int,
+): Int {
+    if (activeIndex !in isPrivateFlags.indices) return isPrivateFlags.size
+    val wanted = isPrivateFlags[activeIndex]
+    return isPrivateFlags.count { it == wanted }
+}
+
 // Phase 6 (r186): the local suggestions card — matches from this
 // device's own bookmarks and history only; nothing is sent anywhere.
 // Shared by the address pill and the start-page search. Bookmark
@@ -3429,6 +3447,64 @@ private fun BrowserSettingsMenu(
 }
 
 /**
+ * Phase 3 (r188): a "Normal (3)" / "Private (1)" section header in
+ * the tab switcher -- same style as the "Recently closed" header.
+ */
+@Composable
+private fun TabSectionHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+    )
+}
+
+/**
+ * Phase 3 (r188): one tab row in the switcher, extracted so the
+ * Normal and Private sections share it. The class is named by the
+ * section header now, so the row no longer prefixes "Private" on
+ * private tabs.
+ */
+@Composable
+private fun TabSwitcherRow(
+    tab: BrowserTab,
+    isActive: Boolean,
+    onSwitch: (BrowserTab) -> Unit,
+    onCloseTab: (BrowserTab) -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .background(
+                if (isActive) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainerHigh,
+                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
+            )
+            .clickable { onSwitch(tab) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                tab.title ?: runCatching { Uri.parse(tab.currentUrl).host ?: "" }.getOrDefault("").ifBlank { "New tab" },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
+                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                if (tab.isStartPage) "Start page" else tab.currentUrl,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp)
+    }
+}
+
+/**
  * Tab switcher (Phase 10): a bottom kit sheet listing every tab by
  * title (or host, or "New tab") + URL, with the active tab bold in
  * primary, a close X per tab, and a New tab row on top. Back closes
@@ -3448,6 +3524,8 @@ private fun TabSwitcherSheet(
     onClearClosed: () -> Unit,
     onClose: () -> Unit,
 ) {
+    // Phase 3 (r188): the title shows the active tab's class count.
+    val classCount = tabClassCount(tabs.map { it.isPrivate }, tabs.indexOfFirst { it.id == activeTabId })
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Box(
             Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)).clickable(
@@ -3472,7 +3550,7 @@ private fun TabSwitcherSheet(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text("Tabs (${tabs.size})", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    Text("Tabs ($classCount)", style = MaterialTheme.typography.headlineSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
                     GsIconButton(Icons.Filled.Close, "Close tabs", onClose, size = 56.dp, iconSize = 28.dp)
                 }
                 GsButton(onClick = onNewTab, modifier = Modifier.fillMaxWidth()) {
@@ -3482,45 +3560,30 @@ private fun TabSwitcherSheet(
                 GsButton(onClick = onNewPrivateTab, modifier = Modifier.fillMaxWidth()) {
                     Text("New private tab")
                 }
-                Text(
-                    "Private tabs run in their own profile, leave no history, and " +
-                        "are never restored. The profile is deleted when the last " +
-                        "private tab closes.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                tabs.forEach { tab ->
-                    val isActive = tab.id == activeTabId
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .background(
-                                if (isActive) MaterialTheme.colorScheme.primaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
-                            )
-                            .clickable { onSwitch(tab) }
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                (if (tab.isPrivate) "Private · " else "") +
-                                    (tab.title ?: runCatching { Uri.parse(tab.currentUrl).host ?: "" }.getOrDefault("").ifBlank { "New tab" }),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = if (isActive) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal,
-                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                if (tab.isStartPage) "Start page" else tab.currentUrl,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp)
+                // Phase 3 (r188): tabs split into Normal / Private
+                // sections, each headed with its own count; the title
+                // above shows the active tab's class count (Mariner's
+                // rule). An empty class shows no section. No stills
+                // (deferred), no search, no duplicate, no close-all.
+                val normalTabs = tabs.filter { !it.isPrivate }
+                val privateTabs = tabs.filter { it.isPrivate }
+                if (normalTabs.isNotEmpty()) {
+                    TabSectionHeader("Normal (${normalTabs.size})")
+                    normalTabs.forEach { tab ->
+                        TabSwitcherRow(tab, tab.id == activeTabId, onSwitch, onCloseTab)
+                    }
+                }
+                if (privateTabs.isNotEmpty()) {
+                    TabSectionHeader("Private (${privateTabs.size})")
+                    Text(
+                        "Private tabs run in their own profile, leave no history, and " +
+                            "are never restored. The profile is deleted when the last " +
+                            "private tab closes.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    privateTabs.forEach { tab ->
+                        TabSwitcherRow(tab, tab.id == activeTabId, onSwitch, onCloseTab)
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
