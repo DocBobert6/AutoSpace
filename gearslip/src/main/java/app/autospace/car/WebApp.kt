@@ -435,12 +435,29 @@ fun WebApp(content: String) {
         }
         saveSessionNow()
     }
+    /**
+     * r192 (parity G1): app-controlled navigations load with the
+     * Sec-GPC: 1 header when Global Privacy Control is on, exactly as
+     * Mariner attaches it on navigations the app controls. The header
+     * rides only the initial request of the load — in-page navigations
+     * and subresources rely on the navigator.globalPrivacyControl flag
+     * from the document-start script instead, because header injection
+     * for subresources is not feasible without refetching. The toggle
+     * is read fresh on every navigation, so flipping it applies to
+     * the next load (the DOM flag, registered once per WebView below,
+     * applies to new tabs).
+     */
+    fun loadUrlWithGpc(view: WebView?, url: String) {
+        if (view == null) return
+        val headers = FilterEngine.gpcHeaders(BrowserStore.gpcEnabled(context))
+        if (headers.isEmpty()) view.loadUrl(url) else view.loadUrl(url, headers)
+    }
     /** Loads [url] into [tab], waking a start-page tab (which has no WebView yet). */
     fun openUrlInTab(tab: BrowserTab, url: String) {
         tab.isStartPage = false
         tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
         if (tab.view != null) {
-            tab.view?.loadUrl(url)
+            loadUrlWithGpc(tab.view, url)
         } else {
             tab.currentUrl = url
         }
@@ -725,6 +742,10 @@ fun WebApp(content: String) {
     var ruleEditError by remember { mutableStateOf<String?>(null) }
     var rulesVersion by remember { mutableStateOf(0) }
     var adBlockOn by remember { mutableStateOf(BrowserStore.adBlockEnabled(context)) }
+    // r192 (parity G1): Global Privacy Control, ON by default as in
+    // Mariner — one toggle gates both the Sec-GPC: 1 header and the
+    // navigator.globalPrivacyControl flag.
+    var gpcOn by remember { mutableStateOf(BrowserStore.gpcEnabled(context)) }
     // r160: the two download settings, read fresh where they apply
     // (enqueue and list refresh) and mirrored here for the menu.
     var segmentedDownloadsOn by remember { mutableStateOf(BrowserStore.segmentedDownloadsEnabled(context)) }
@@ -822,7 +843,7 @@ fun WebApp(content: String) {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
         val tab = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        tab.view?.loadUrl(url)
+        loadUrlWithGpc(tab.view, url)
         if (tab.id != activeTabId) activeTabId = tab.id
         if (pendingPopups.isEmpty()) {
             showPopupNotice = false
@@ -840,7 +861,7 @@ fun WebApp(content: String) {
         val urls = pendingPopups.toList()
         if (urls.isEmpty()) return
         val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        origin.view?.loadUrl(urls.first())
+        loadUrlWithGpc(origin.view, urls.first())
         if (origin.id != activeTabId) activeTabId = origin.id
         urls.drop(1).forEach { url ->
             val tab = BrowserTab(nextTabId++, url)
@@ -872,7 +893,7 @@ fun WebApp(content: String) {
     }
     fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {        if (allowed) {
             runCatching { transport.destroy() }
-            tab.view?.loadUrl(url)
+            loadUrlWithGpc(tab.view, url)
             if (tab.id != activeTabId) activeTabId = tab.id
         } else if (pendingPopups.size < 5) {
             capturedPopupViews.add(transport)
@@ -898,6 +919,7 @@ fun WebApp(content: String) {
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
         adBlockOn = BrowserStore.adBlockEnabled(context)
+        gpcOn = BrowserStore.gpcEnabled(context)
         segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
         wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
         openLinksNewTabOn = BrowserStore.openLinksInNewTab(context)
@@ -1148,7 +1170,7 @@ fun WebApp(content: String) {
                         if (activeTab.isStartPage) {
                             openUrlInTab(activeTab, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         } else {
-                            web?.loadUrl(if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
+                            loadUrlWithGpc(web, if (content.startsWith("http")) content else ProjectedContent.DEFAULT_URL)
                         }
                     }, true)
                 }
@@ -1634,6 +1656,24 @@ fun WebApp(content: String) {
                                         }
                                     }
                                 }
+                                // r192 (parity G1): the GPC DOM flag rides
+                                // its own document-start script, independent
+                                // of the cosmetic sheet above — Mariner's
+                                // privacy signals live in a separate script
+                                // too. Registered once per WebView, like the
+                                // sheet, so flipping the toggle applies to
+                                // new tabs; the header half re-reads the
+                                // toggle on every navigation instead.
+                                if (BrowserStore.gpcEnabled(context) &&
+                                    androidx.webkit.WebViewFeature.isFeatureSupported(
+                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                                    )
+                                ) {
+                                    runCatching {
+                                        androidx.webkit.WebViewCompat
+                                            .addDocumentStartJavaScript(this, FilterEngine.GPC_SCRIPT, setOf("*"))
+                                    }
+                                }
                                 webChromeClient = BrowserChrome(
                                     context = context,
                                     onPopupUrl = { host, url, transport, allowed ->
@@ -1691,7 +1731,7 @@ fun WebApp(content: String) {
                                 if (tab.rawHtml != null) {
                                     loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
                                 } else {
-                                    loadUrl(tab.currentUrl)
+                                    loadUrlWithGpc(this, tab.currentUrl)
                                 }
                                 tab.view = this
                                 web = this
@@ -1776,7 +1816,7 @@ fun WebApp(content: String) {
                     LocalSuggestionsCard(pillSuggestions) { url ->
                         addressEditing = false
                         addressSelected = false
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
                     }
                 }
                 // r154: the address bar holds a URL, so no auto-formatting.
@@ -1802,7 +1842,7 @@ fun WebApp(content: String) {
                         // Search uses the engine setting (r21); a
                         // start-page tab wakes into a real tab here.
                         val url = BrowserSearch.navigateUrl(context, addressText)
-                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
+                        if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
                     },
                     onDismiss = {
                         addressEditing = false
@@ -2296,6 +2336,11 @@ fun WebApp(content: String) {
                     BrowserStore.setAdBlockEnabled(context, on)
                     adBlockOn = on
                 },
+                gpcOn = gpcOn,
+                onGpc = { on ->
+                    BrowserStore.setGpcEnabled(context, on)
+                    gpcOn = on
+                },
                 openLinksNewTabOn = openLinksNewTabOn,
                 onOpenLinksNewTab = { on ->
                     BrowserStore.setOpenLinksInNewTab(context, on)
@@ -2361,7 +2406,7 @@ fun WebApp(content: String) {
                 },
                 onLoad = { url ->
                     listsOpen = false
-                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else web?.loadUrl(url)
+                    if (activeTab.isStartPage) openUrlInTab(activeTab, url) else loadUrlWithGpc(web, url)
                 },
                 onBookmarkToggle = {
                     if (BrowserStore.isBookmarked(context, activeTab.currentUrl)) {
@@ -2710,7 +2755,7 @@ fun WebApp(content: String) {
                                         if (activeTab.isStartPage || target == null) {
                                             openUrlInTab(activeTab, url)
                                         } else {
-                                            target.loadUrl(url)
+                                            loadUrlWithGpc(target, url)
                                         }
                                         return true
                                     }
@@ -3280,6 +3325,10 @@ private fun BrowserSettingsMenu(
     // Browser batch (r21).
     adBlockOn: Boolean,
     onAdBlock: (Boolean) -> Unit,
+    // r192 (parity G1): Global Privacy Control — one toggle gates
+    // both the Sec-GPC: 1 header and the navigator flag, as in Mariner.
+    gpcOn: Boolean,
+    onGpc: (Boolean) -> Unit,
     // r190 (parity Phase 7): "Open links in a new tab".
     openLinksNewTabOn: Boolean,
     onOpenLinksNewTab: (Boolean) -> Unit,
@@ -3463,6 +3512,14 @@ private fun BrowserSettingsMenu(
                         "AdGuard, uBlock) downloaded in the background, with the bundled host list " +
                         "covering offline gaps. The page itself is never blocked. " +
                         "Turning it off loads everything again.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r192 (parity G1): Mariner's label and explainer,
+                // verbatim — one toggle for the header and the flag.
+                MenuRow("Send Global Privacy Control", gpcOn) { onGpc(!gpcOn) }
+                Text(
+                    "Tells sites not to sell or share your data (Sec-GPC: 1).",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3851,7 +3908,7 @@ private class BrowserClient(
                     if (openInAppAllowed() && !isPrivateTab()) {
                         val fallback = OpenInApp.fallbackUrl(url)
                         if (fallback != null) {
-                            view?.loadUrl(fallback)
+                            loadUrlWithGpc(view, fallback)
                             return true
                         }
                     }

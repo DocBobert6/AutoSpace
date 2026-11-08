@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            150, "0.4.139-alpha",
+            listOf(
+                "The browser now sends Global Privacy Control: sites are told not to sell or share your data, with a switch in browser settings to turn it off.",
+            ),
+        ),
+        Release(
             149, "0.4.138-alpha",
             listOf(
                 "Bookmarks and history now show the page title above the address, like the start page pins already did, instead of a bare address. Old entries without a recorded title still show the address exactly as before.",

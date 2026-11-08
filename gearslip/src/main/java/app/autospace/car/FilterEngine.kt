@@ -147,6 +147,26 @@ object FilterEngine {
      *  paints. */
     @Volatile var documentStartScript: String = ""
         private set
+
+    /**
+     * r192 (parity G1): the Global Privacy Control DOM flag, Mariner's
+     * snippet verbatim — navigator.globalPrivacyControl reads true.
+     * Registered as its own document-start script, independent of the
+     * cosmetic sheet, so it applies even with ad blocking off or
+     * before any filter list has loaded.
+     */
+    const val GPC_SCRIPT =
+        "(function(){try{Object.defineProperty(navigator,'globalPrivacyControl'," +
+            "{get:function(){return true;},configurable:true});}catch(e){}})();"
+
+    /**
+     * r192 (parity G1): the request half of Global Privacy Control —
+     * Sec-GPC: 1 on navigations the app controls, nothing when the
+     * toggle is off. Pure so it is unit-testable; WebApp reads the
+     * toggle fresh on every navigation through loadUrlWithGpc.
+     */
+    fun gpcHeaders(enabled: Boolean): Map<String, String> =
+        if (enabled) mapOf("Sec-GPC" to "1") else emptyMap()
     @Volatile private var cssCache: Pair<String, String>? = null
 
     /** Installs a parsed [FilterData] as the live rule set and

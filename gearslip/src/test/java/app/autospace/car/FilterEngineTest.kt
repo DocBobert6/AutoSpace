@@ -371,4 +371,29 @@ class FilterEngineTest {
         assertFalse(FilterEngine.isDocumentHost("safe.example.com"))
         assertFalse(FilterEngine.isDocumentHost("youtube.com"))
     }
+
+    // ---- r192: Global Privacy Control ----
+
+    @Test
+    fun gpcHeadersOnCarriesSecGpcOne() {
+        assertEquals(mapOf("Sec-GPC" to "1"), FilterEngine.gpcHeaders(true))
+    }
+
+    @Test
+    fun gpcHeadersOffSendsNothing() {
+        assertTrue(FilterEngine.gpcHeaders(false).isEmpty())
+    }
+
+    @Test
+    fun gpcDomScriptDefinesGlobalPrivacyControlTrue() {
+        val script = FilterEngine.GPC_SCRIPT
+        assertTrue(script.contains("globalPrivacyControl"))
+        assertTrue(script.contains("Object.defineProperty"))
+        assertTrue(script.contains("return true"))
+    }
+
+    @Test
+    fun gpcDomScriptIsStandaloneWithoutCosmetics() {
+        assertFalse(FilterEngine.GPC_SCRIPT.contains("createElement('style')"))
+    }
 }

@@ -244,6 +244,17 @@ class BrowserStoreTest {
     }
 
     @Test
+    fun gpcDefaultsOnWhenNothingStored() {
+        assertTrue(BrowserStore.gpcEnabledFromStored(null))
+        assertTrue(BrowserStore.gpcEnabledFromStored("true"))
+    }
+
+    @Test
+    fun gpcOffOnlyWhenStoredFalse() {
+        assertFalse(BrowserStore.gpcEnabledFromStored("false"))
+    }
+
+    @Test
     fun fillMissingTitleFillsOnlyBlankTitles() {
         val existing = listOf(
             SavedPage("https://example.com/a", ""),

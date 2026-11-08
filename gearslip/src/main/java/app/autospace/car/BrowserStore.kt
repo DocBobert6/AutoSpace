@@ -404,6 +404,23 @@ object BrowserStore {
         AppSettings.putString(context, KEY_AD_BLOCK, on.toString())
     }
 
+    // ---- Global Privacy Control (r192, parity G1) ----
+    /** GPC toggle, ON by default as in Mariner: sends Sec-GPC: 1 and sets navigator.globalPrivacyControl. */
+    private const val KEY_GPC = "browser_gpc"
+
+    /**
+     * Pure GPC default rule, no storage involved so it is unit-testable:
+     * nothing stored yet means ON — the toggle defaults on, as in Mariner.
+     */
+    fun gpcEnabledFromStored(raw: String?): Boolean = raw != "false"
+
+    fun gpcEnabled(context: Context): Boolean =
+        gpcEnabledFromStored(AppSettings.getString(context, KEY_GPC, "true"))
+
+    fun setGpcEnabled(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_GPC, on.toString())
+    }
+
     // ---- Downloads settings (r160, slice 4) ----
     /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
     private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"
