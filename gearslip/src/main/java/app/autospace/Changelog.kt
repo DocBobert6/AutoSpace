@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            154, "0.4.143-alpha",
+            listOf(
+                "The browser has cookie controls now: accept cookies, block third-party cookies, session-only cookies, and DOM storage, all in the settings menu under Ads & trackers.",
+            ),
+        ),
+        Release(
             153, "0.4.142-alpha",
             listOf(
                 "The video player has a lock: tap it in the options and the controls hide until you tap to unlock, so a stray touch can't pause or skip. Subtitles can now use the Open Sans or Inter fonts, a subtitle file saved next to a downloaded video is picked up on its own, and the player remembers your scale and brightness choices.",

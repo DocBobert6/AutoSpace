@@ -738,6 +738,12 @@ fun WebApp(content: String) {
     // Mariner — one toggle gates both the Sec-GPC: 1 header and the
     // navigator.globalPrivacyControl flag.
     var gpcOn by remember { mutableStateOf(BrowserStore.gpcEnabled(context)) }
+    // r196 (adblock A1): cookie controls, Mariner's shapes — accept
+    // and block-third-party default ON, session-only OFF, DOM storage ON.
+    var acceptCookiesOn by remember { mutableStateOf(BrowserStore.acceptCookies(context)) }
+    var blockThirdPartyOn by remember { mutableStateOf(BrowserStore.blockThirdPartyCookies(context)) }
+    var sessionOnlyCookiesOn by remember { mutableStateOf(BrowserStore.sessionOnlyCookies(context)) }
+    var domStorageOn by remember { mutableStateOf(BrowserStore.domStorageEnabled(context)) }
     // r160: the two download settings, read fresh where they apply
     // (enqueue and list refresh) and mirrored here for the menu.
     var segmentedDownloadsOn by remember { mutableStateOf(BrowserStore.segmentedDownloadsEnabled(context)) }
@@ -912,6 +918,10 @@ fun WebApp(content: String) {
         pins = BrowserStore.pins(context)
         adBlockOn = BrowserStore.adBlockEnabled(context)
         gpcOn = BrowserStore.gpcEnabled(context)
+        acceptCookiesOn = BrowserStore.acceptCookies(context)
+        blockThirdPartyOn = BrowserStore.blockThirdPartyCookies(context)
+        sessionOnlyCookiesOn = BrowserStore.sessionOnlyCookies(context)
+        domStorageOn = BrowserStore.domStorageEnabled(context)
         segmentedDownloadsOn = BrowserStore.segmentedDownloadsEnabled(context)
         wifiOnlyDownloadsOn = BrowserStore.wifiOnlyDownloadsEnabled(context)
         openLinksNewTabOn = BrowserStore.openLinksInNewTab(context)
@@ -1050,6 +1060,14 @@ fun WebApp(content: String) {
             // with private tabs open destroys those views too.
             saveSessionNow()
             if (hadPrivate) PrivateProfile.wipe()
+            // r196 (adblock A1): session-only cookies die with the
+            // browser session — Mariner kills them when the app
+            // backgrounds (P-m9); AutoSpace's session ends when the
+            // user leaves the browser, so they die here. Honest
+            // limit: a killed process skips this hook, so cookies
+            // from a crashed or swiped-away session survive until
+            // the next leave.
+            if (BrowserStore.sessionOnlyCookies(context)) clearSessionCookies()
             // r157: leaving with private tabs open destroys them, so
             // their downloads die here too, same as a last-tab close.
             if (hadPrivate) BrowserDownloads.deletePrivateDownloads(context)
@@ -1517,7 +1535,11 @@ fun WebApp(content: String) {
                                     }
                                 }
                                 settings.javaScriptEnabled = true
-                                settings.domStorageEnabled = true
+                                // r196 (adblock A1): cookie controls —
+                                // accept (global), third-party (per
+                                // WebView), DOM storage; replaces the
+                                // hardcoded domStorageEnabled = true.
+                                applyCookieSettings(context, this)
                                 settings.loadWithOverviewMode = true
                                 settings.useWideViewPort = true
                                 // Hardening baseline (r21): applied to every
@@ -2332,6 +2354,29 @@ fun WebApp(content: String) {
                 onGpc = { on ->
                     BrowserStore.setGpcEnabled(context, on)
                     gpcOn = on
+                },
+                acceptCookiesOn = acceptCookiesOn,
+                onAcceptCookies = { on ->
+                    BrowserStore.setAcceptCookies(context, on)
+                    acceptCookiesOn = on
+                    applyCookieSettings(context, activeTab.view)
+                },
+                blockThirdPartyOn = blockThirdPartyOn,
+                onBlockThirdParty = { on ->
+                    BrowserStore.setBlockThirdPartyCookies(context, on)
+                    blockThirdPartyOn = on
+                    applyCookieSettings(context, activeTab.view)
+                },
+                sessionOnlyCookiesOn = sessionOnlyCookiesOn,
+                onSessionOnlyCookies = { on ->
+                    BrowserStore.setSessionOnlyCookies(context, on)
+                    sessionOnlyCookiesOn = on
+                },
+                domStorageOn = domStorageOn,
+                onDomStorage = { on ->
+                    BrowserStore.setDomStorageEnabled(context, on)
+                    domStorageOn = on
+                    applyCookieSettings(context, activeTab.view)
                 },
                 openLinksNewTabOn = openLinksNewTabOn,
                 onOpenLinksNewTab = { on ->
@@ -3327,6 +3372,15 @@ private fun BrowserSettingsMenu(
     // both the Sec-GPC: 1 header and the navigator flag, as in Mariner.
     gpcOn: Boolean,
     onGpc: (Boolean) -> Unit,
+    // r196 (adblock A1): cookie controls, Mariner's shapes.
+    acceptCookiesOn: Boolean,
+    onAcceptCookies: (Boolean) -> Unit,
+    blockThirdPartyOn: Boolean,
+    onBlockThirdParty: (Boolean) -> Unit,
+    sessionOnlyCookiesOn: Boolean,
+    onSessionOnlyCookies: (Boolean) -> Unit,
+    domStorageOn: Boolean,
+    onDomStorage: (Boolean) -> Unit,
     // r190 (parity Phase 7): "Open links in a new tab".
     openLinksNewTabOn: Boolean,
     onOpenLinksNewTab: (Boolean) -> Unit,
@@ -3518,6 +3572,33 @@ private fun BrowserSettingsMenu(
                 MenuRow("Send Global Privacy Control", gpcOn) { onGpc(!gpcOn) }
                 Text(
                     "Tells sites not to sell or share your data (Sec-GPC: 1).",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                // r196 (adblock A1): cookie controls, Mariner's
+                // shapes — accept and third-party default ON,
+                // session-only OFF, DOM storage ON.
+                MenuRow("Accept cookies", acceptCookiesOn) { onAcceptCookies(!acceptCookiesOn) }
+                Text(
+                    "Sites can save cookies in the browser. Turning it off signs you out of sites and some pages stop working.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Block third-party cookies", blockThirdPartyOn) { onBlockThirdParty(!blockThirdPartyOn) }
+                Text(
+                    "Blocks cookies from sites other than the one you are on. This can break embedded content and logins that rely on a third-party cookie.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Session-only cookies", sessionOnlyCookiesOn) { onSessionOnlyCookies(!sessionOnlyCookiesOn) }
+                Text(
+                    "Cookies are deleted when you leave the browser, so you start signed out next time.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("DOM storage", domStorageOn) { onDomStorage(!domStorageOn) }
+                Text(
+                    "Lets sites save data in the browser (local storage). Turning it off can break sites that need it.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3968,6 +4049,10 @@ private class BrowserClient(
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         onPageStart()
+        // r196 (adblock A1): Mariner re-evaluates the third-party
+        // policy at every page start, so a flipped toggle reaches
+        // live tabs without waiting for a recreation.
+        if (view != null) applyCookieSettings(view.context, view)
     }
 
     // Main-frame history updates (Phase 3.4): the one reliable place to learn the

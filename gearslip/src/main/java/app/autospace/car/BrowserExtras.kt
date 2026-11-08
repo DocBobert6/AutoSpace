@@ -258,6 +258,45 @@ fun applyWebHardening(settings: android.webkit.WebSettings) {
     }
 }
 
+/**
+ * Cookie controls (r196, adblock A1, Mariner's cookie shapes):
+ * accept is global (CookieManager.setAcceptCookie); third-party is
+ * per-WebView (setAcceptThirdPartyCookies) with no per-site exception
+ * — the per-site panel is excluded, so the toggle is the whole rule;
+ * DOM storage rides the WebView settings. Called at WebView creation
+ * and again on every page start (Mariner re-evaluates the third-party
+ * policy per page start), and from the settings-sheet callbacks so a
+ * flip applies to the live tab at once instead of waiting for a
+ * navigation. A null WebView still applies the global half.
+ */
+fun applyCookieSettings(context: Context, webView: WebView?) {
+    runCatching {
+        val manager = android.webkit.CookieManager.getInstance()
+        manager.setAcceptCookie(BrowserStore.acceptCookies(context))
+        if (webView != null) {
+            manager.setAcceptThirdPartyCookies(
+                webView,
+                !BrowserStore.blockThirdPartyCookies(context),
+            )
+            webView.settings.domStorageEnabled = BrowserStore.domStorageEnabled(context)
+        }
+    }
+}
+
+/**
+ * Session-only cookies (r196, Mariner P-m9): delete every cookie and
+ * flush. Mariner does this when the app backgrounds; AutoSpace's
+ * browser session ends when the user leaves the browser (see the
+ * WebApp DisposableEffect), so they die there instead.
+ */
+fun clearSessionCookies() {
+    runCatching {
+        val manager = android.webkit.CookieManager.getInstance()
+        manager.removeAllCookies(null)
+        manager.flush()
+    }
+}
+
 // ---- Session / recently-closed / pin codecs (pure, unit-tested) ----
 
 /** One saved tab or pin: a URL plus its display title. */

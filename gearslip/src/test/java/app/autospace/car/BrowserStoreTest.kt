@@ -255,6 +255,34 @@ class BrowserStoreTest {
     }
 
     @Test
+    fun cookieAcceptDefaultsOnWhenNothingStored() {
+        assertTrue(BrowserStore.acceptCookiesFromStored(null))
+        assertTrue(BrowserStore.acceptCookiesFromStored("true"))
+        assertFalse(BrowserStore.acceptCookiesFromStored("false"))
+    }
+
+    @Test
+    fun cookieBlockThirdPartyDefaultsOnWhenNothingStored() {
+        assertTrue(BrowserStore.blockThirdPartyCookiesFromStored(null))
+        assertTrue(BrowserStore.blockThirdPartyCookiesFromStored("true"))
+        assertFalse(BrowserStore.blockThirdPartyCookiesFromStored("false"))
+    }
+
+    @Test
+    fun cookieSessionOnlyDefaultsOffWhenNothingStored() {
+        assertFalse(BrowserStore.sessionOnlyCookiesFromStored(null))
+        assertFalse(BrowserStore.sessionOnlyCookiesFromStored("false"))
+        assertTrue(BrowserStore.sessionOnlyCookiesFromStored("true"))
+    }
+
+    @Test
+    fun cookieDomStorageDefaultsOnWhenNothingStored() {
+        assertTrue(BrowserStore.domStorageFromStored(null))
+        assertTrue(BrowserStore.domStorageFromStored("true"))
+        assertFalse(BrowserStore.domStorageFromStored("false"))
+    }
+
+    @Test
     fun fillMissingTitleFillsOnlyBlankTitles() {
         val existing = listOf(
             SavedPage("https://example.com/a", ""),

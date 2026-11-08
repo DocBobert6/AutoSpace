@@ -421,6 +421,53 @@ object BrowserStore {
         AppSettings.putString(context, KEY_GPC, on.toString())
     }
 
+    // ---- Cookie controls (r196, adblock A1) ----
+    /** Accept cookies at all, ON by default as in Mariner. */
+    private const val KEY_COOKIES_ACCEPT = "browser_cookies_accept"
+    /** Block third-party cookies, ON by default as in Mariner. */
+    private const val KEY_COOKIES_BLOCK_THIRD_PARTY = "browser_cookies_block_third_party"
+    /** Session-only cookies, OFF by default as in Mariner: cookies die when the session ends. */
+    private const val KEY_COOKIES_SESSION_ONLY = "browser_cookies_session_only"
+    /** DOM storage (local storage), ON by default as in Mariner. */
+    private const val KEY_DOM_STORAGE = "browser_dom_storage"
+
+    /**
+     * Pure cookie default rules, no storage involved so they are unit-testable:
+     * accept / block-third-party / DOM storage default ON, session-only defaults OFF.
+     */
+    fun acceptCookiesFromStored(raw: String?): Boolean = raw != "false"
+    fun blockThirdPartyCookiesFromStored(raw: String?): Boolean = raw != "false"
+    fun sessionOnlyCookiesFromStored(raw: String?): Boolean = raw == "true"
+    fun domStorageFromStored(raw: String?): Boolean = raw != "false"
+
+    fun acceptCookies(context: Context): Boolean =
+        acceptCookiesFromStored(AppSettings.getString(context, KEY_COOKIES_ACCEPT, "true"))
+
+    fun setAcceptCookies(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_COOKIES_ACCEPT, on.toString())
+    }
+
+    fun blockThirdPartyCookies(context: Context): Boolean =
+        blockThirdPartyCookiesFromStored(AppSettings.getString(context, KEY_COOKIES_BLOCK_THIRD_PARTY, "true"))
+
+    fun setBlockThirdPartyCookies(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_COOKIES_BLOCK_THIRD_PARTY, on.toString())
+    }
+
+    fun sessionOnlyCookies(context: Context): Boolean =
+        sessionOnlyCookiesFromStored(AppSettings.getString(context, KEY_COOKIES_SESSION_ONLY, "false"))
+
+    fun setSessionOnlyCookies(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_COOKIES_SESSION_ONLY, on.toString())
+    }
+
+    fun domStorageEnabled(context: Context): Boolean =
+        domStorageFromStored(AppSettings.getString(context, KEY_DOM_STORAGE, "true"))
+
+    fun setDomStorageEnabled(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_DOM_STORAGE, on.toString())
+    }
+
     // ---- Downloads settings (r160, slice 4) ----
     /** Segmented media downloads, ON by default (see BrowserDownloads routing). */
     private const val KEY_SEGMENTED_DOWNLOADS = "browser_segmented_downloads"
