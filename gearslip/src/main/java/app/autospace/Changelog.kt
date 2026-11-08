@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            155, "0.4.144-alpha",
+            listOf(
+                "Ads and trackers are separate toggles now, in the settings menu under Ads & trackers, and a new Blocked page shows what was blocked on this tab, this session, and over the last 30 days.",
+            ),
+        ),
+        Release(
             154, "0.4.143-alpha",
             listOf(
                 "The browser has cookie controls now: accept cookies, block third-party cookies, session-only cookies, and DOM storage, all in the settings menu under Ads & trackers.",

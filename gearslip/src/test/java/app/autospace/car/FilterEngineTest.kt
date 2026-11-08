@@ -396,4 +396,268 @@ class FilterEngineTest {
     fun gpcDomScriptIsStandaloneWithoutCosmetics() {
         assertFalse(FilterEngine.GPC_SCRIPT.contains("createElement('style')"))
     }
+
+    // ---- r197: separate ads/trackers toggles + blocked counts ----
+
+    private fun category(
+        host: String,
+        blockAds: Boolean = true,
+        blockTrackers: Boolean = true,
+        path: String = "/",
+        url: String = "https://$host$path",
+        pageHost: String = "",
+        mainFrame: Boolean = false,
+    ): Int? = FilterEngine.blockCategory(
+        scheme = "https",
+        host = host,
+        path = path,
+        urlString = url,
+        isForMainFrame = mainFrame,
+        blockAds = blockAds,
+        blockTrackers = blockTrackers,
+        pageHost = pageHost,
+    )
+
+    private fun parseCategorized(text: String, cat: Int): FilterData {
+        val data = FilterData()
+        FilterEngine.parseInto(false, text, data, cat)
+        return data
+    }
+
+    private fun installCategorized(
+        text: String,
+        cat: Int,
+        builtin: Set<String> = emptySet(),
+        userNet: List<UserBlockRules.NetRule> = emptyList(),
+    ) {
+        FilterEngine.installForTest(parseCategorized(text, cat), builtin, userNet)
+    }
+
+    @Test
+    fun categoryForListNamesTrackerLists() {
+        assertEquals(FilterEngine.CAT_TRACKER, FilterEngine.categoryForList(1))
+        assertEquals(FilterEngine.CAT_TRACKER, FilterEngine.categoryForList(3))
+        assertEquals(FilterEngine.CAT_ADS, FilterEngine.categoryForList(0))
+        assertEquals(FilterEngine.CAT_ADS, FilterEngine.categoryForList(2))
+        assertEquals(FilterEngine.CAT_ADS, FilterEngine.categoryForList(4))
+        assertEquals(FilterEngine.CAT_ADS, FilterEngine.categoryForList(5))
+        assertEquals(FilterEngine.CAT_ADS, FilterEngine.categoryForList(6))
+    }
+
+    @Test
+    fun trackerListHostsLandInTrackerSet() {
+        val data = parseCategorized("||trk.example.com^\n", FilterEngine.CAT_TRACKER)
+        assertTrue(data.trackerHosts.contains("trk.example.com"))
+        assertTrue(data.hosts.contains("trk.example.com"))
+        val ads = parseCategorized("||ads.example.com^\n", FilterEngine.CAT_ADS)
+        assertTrue(ads.trackerHosts.isEmpty())
+        assertTrue(ads.hosts.contains("ads.example.com"))
+    }
+
+    @Test
+    fun scopedRuleCarriesItsListCategory() {
+        val data = parseCategorized(
+            "||trk.example.com^\$domain=news.example.org\n", FilterEngine.CAT_TRACKER,
+        )
+        val rules = data.scoped["trk.example.com"]
+        assertTrue(rules != null && rules.size == 1)
+        assertEquals(FilterEngine.CAT_TRACKER, rules!![0].category)
+        val ads = parseCategorized(
+            "||ads.example.com^\$domain=news.example.org\n", FilterEngine.CAT_ADS,
+        )
+        assertEquals(FilterEngine.CAT_ADS, ads.scoped["ads.example.com"]!![0].category)
+    }
+
+    @Test
+    fun trackerHostCountsAsTrackerOnlyWhenTrackersOn() {
+        installCategorized("||trk.example.com^\n", FilterEngine.CAT_TRACKER)
+        assertEquals(FilterEngine.CAT_TRACKER, category("trk.example.com"))
+        assertEquals(FilterEngine.CAT_TRACKER, category("trk.example.com", blockAds = false))
+        assertEquals(null, category("trk.example.com", blockTrackers = false))
+        assertEquals(null, category("trk.example.com", blockAds = false, blockTrackers = false))
+    }
+
+    @Test
+    fun adHostCountsAsAdsOnlyWhenAdsOn() {
+        installCategorized("||ads.example.com^\n", FilterEngine.CAT_ADS)
+        assertEquals(FilterEngine.CAT_ADS, category("ads.example.com"))
+        assertEquals(FilterEngine.CAT_ADS, category("ads.example.com", blockTrackers = false))
+        // Deliberate deviation from Mariner's literal code: an
+        // ad-list host does NOT block with the ads toggle off,
+        // even while trackers is on — each toggle gates only its
+        // own category.
+        assertEquals(null, category("ads.example.com", blockAds = false))
+        assertEquals(null, category("ads.example.com", blockAds = false, blockTrackers = false))
+    }
+
+    @Test
+    fun builtinHostCountsAsTracker() {
+        installCategorized("", FilterEngine.CAT_ADS, builtin = setOf("trk-builtin.example.com"))
+        assertEquals(FilterEngine.CAT_TRACKER, category("trk-builtin.example.com"))
+        assertEquals(null, category("trk-builtin.example.com", blockTrackers = false))
+    }
+
+    @Test
+    fun userRuleCountsAsOtherWheneverEitherToggleOn() {
+        installCategorized(
+            "", FilterEngine.CAT_ADS,
+            userNet = listOf(UserBlockRules.NetRule.Host("mine.example.com")),
+        )
+        assertEquals(FilterEngine.CAT_OTHER, category("mine.example.com"))
+        assertEquals(FilterEngine.CAT_OTHER, category("mine.example.com", blockAds = false))
+        assertEquals(FilterEngine.CAT_OTHER, category("mine.example.com", blockTrackers = false))
+        assertEquals(null, category("mine.example.com", blockAds = false, blockTrackers = false))
+    }
+
+    @Test
+    fun pathKeywordCountsAsAdsOnlyWhenAdsOn() {
+        installCategorized("", FilterEngine.CAT_ADS)
+        assertEquals(FilterEngine.CAT_ADS, category("cdn.example.com", path = "/ads/banner.js"))
+        assertEquals(null, category("cdn.example.com", path = "/ads/banner.js", blockAds = false))
+    }
+
+    @Test
+    fun mainFrameAndBothOffNeverBlock() {
+        installCategorized("||ads.example.com^\n", FilterEngine.CAT_ADS)
+        assertEquals(null, category("ads.example.com", mainFrame = true))
+        assertEquals(null, category("ads.example.com", blockAds = false, blockTrackers = false))
+    }
+
+    @Test
+    fun scopedCategoryGatedByItsToggle() {
+        installCategorized(
+            "||trk.example.com^\$domain=news.example.org\n", FilterEngine.CAT_TRACKER,
+        )
+        assertEquals(
+            FilterEngine.CAT_TRACKER,
+            category("trk.example.com", pageHost = "news.example.org"),
+        )
+        assertEquals(
+            null,
+            category("trk.example.com", pageHost = "news.example.org", blockTrackers = false),
+        )
+    }
+
+    @Test
+    fun perTabCountsAccumulateAndResetOnNavigation() {
+        FilterEngine.noteBlockedFor(7, FilterEngine.CAT_ADS, "a.example.com", false)
+        FilterEngine.noteBlockedFor(7, FilterEngine.CAT_ADS, "b.example.com", false)
+        FilterEngine.noteBlockedFor(7, FilterEngine.CAT_TRACKER, "t.example.com", false)
+        FilterEngine.noteBlockedFor(9, FilterEngine.CAT_ADS, "a.example.com", false)
+        assertEquals(3L, FilterEngine.blockedCountFor(7))
+        assertEquals(listOf(2L, 1L, 0L), FilterEngine.blockedCategoriesFor(7))
+        assertEquals(1L, FilterEngine.blockedCountFor(9))
+        assertEquals(listOf(3L, 1L, 0L), FilterEngine.blockedByCategory())
+        assertEquals(4L, FilterEngine.blockedCount())
+        FilterEngine.resetTabCount(7)
+        assertEquals(0L, FilterEngine.blockedCountFor(7))
+        assertEquals(listOf(0L, 0L, 0L), FilterEngine.blockedCategoriesFor(7))
+        assertEquals(1L, FilterEngine.blockedCountFor(9))
+        // Resetting a tab does not touch the session totals.
+        assertEquals(4L, FilterEngine.blockedCount())
+    }
+
+    @Test
+    fun recentHostsAreMostRecentFirstDistinctAndCapped() {
+        for (i in 1..10) {
+            FilterEngine.noteBlockedFor(3, FilterEngine.CAT_ADS, "h$i.example.com", false)
+        }
+        val recent = FilterEngine.recentBlockedHosts(3)
+        assertEquals(FilterEngine.RECENT_HOSTS_MAX, recent.size)
+        assertEquals("h10.example.com", recent[0].first)
+        assertEquals(FilterEngine.CAT_ADS, recent[0].second)
+        // Re-blocking a host moves it to the front, no duplicate.
+        FilterEngine.noteBlockedFor(3, FilterEngine.CAT_TRACKER, "h5.example.com", false)
+        val moved = FilterEngine.recentBlockedHosts(3)
+        assertEquals("h5.example.com", moved[0].first)
+        assertEquals(FilterEngine.CAT_TRACKER, moved[0].second)
+        assertEquals(1, moved.count { it.first == "h5.example.com" })
+        FilterEngine.resetTabCount(3)
+        assertTrue(FilterEngine.recentBlockedHosts(3).isEmpty())
+    }
+
+    @Test
+    fun privateBlocksCountInSessionButNeverReachHistory() {
+        FilterEngine.noteBlockedFor(5, FilterEngine.CAT_ADS, "p.example.com", true)
+        assertEquals(1L, FilterEngine.blockedCountFor(5))
+        assertEquals(1L, FilterEngine.blockedCount())
+        // No counts anywhere in the history: a private-only
+        // session leaves no history (today's row is all zeros).
+        assertTrue(FilterEngine.blockedHistory.snapshot().values.all { it.all { c -> c == 0L } })
+        FilterEngine.noteBlockedFor(5, FilterEngine.CAT_TRACKER, "q.example.com", false)
+        val snap = FilterEngine.blockedHistory.snapshot()
+        assertEquals(1, snap.size)
+        assertEquals(listOf(0L, 1L, 0L), snap.values.first())
+    }
+
+    // ---- r197: per-day history ----
+
+    @Test
+    fun historyFlushesTodayAndLoadsBack() {
+        val h = BlockedHistory()
+        h.note(FilterEngine.CAT_ADS)
+        h.note(FilterEngine.CAT_ADS)
+        h.note(FilterEngine.CAT_TRACKER)
+        val snap = h.snapshot()
+        assertEquals(1, snap.size)
+        assertEquals(listOf(2L, 1L, 0L), snap.values.first())
+        val raw = h.flush()
+        assertTrue(raw != null && raw!!.contains("=2,1,0"))
+        // Nothing changed since the flush.
+        assertEquals(null, h.flush())
+        val h2 = BlockedHistory()
+        h2.load(raw!!)
+        assertEquals(snap, h2.snapshot())
+    }
+
+    @Test
+    fun historyRollsAtMidnightWithoutDroppingADay() {
+        val h = BlockedHistory()
+        // 26 hours apart, so the two instants are on different
+        // local days in any timezone (a local day is at most 25h).
+        val now = System.currentTimeMillis()
+        val yesterday = now - 26L * 3600 * 1000
+        h.note(FilterEngine.CAT_ADS, yesterday)
+        h.note(FilterEngine.CAT_TRACKER, yesterday)
+        val snap = h.snapshot(now)
+        assertEquals(2, snap.size)
+        // Yesterday's counts survive the roll; today starts empty.
+        assertEquals(listOf(1L, 1L, 0L), snap[todayKey(yesterday)])
+        assertEquals(listOf(0L, 0L, 0L), snap[todayKey(now)])
+        h.note(FilterEngine.CAT_OTHER, now)
+        assertEquals(listOf(0L, 0L, 1L), h.snapshot(now)[todayKey(now)])
+    }
+
+    @Test
+    fun historyPrunesToThirtyDaysAndDropsBadLines() {
+        val h = BlockedHistory()
+        // 35 distinct valid days: Dec 2025 (31) + Jan 2026 (4).
+        val valid = (1..31).map { "2025-12-${"%02d".format(it)}=1,0,0" } +
+            (1..4).map { "2026-01-${"%02d".format(it)}=2,0,0" }
+        h.load((valid + listOf("not-a-day=1,2,3", "2026-01-05=1,2", "2026-01-06=-1,0,0", "junk")).joinToString("\n"))
+        val snap = h.snapshot()
+        // 30 persisted days plus today's (empty) row, newest first.
+        // The snapshot always carries today, even with zero counts.
+        assertEquals(31, snap.size)
+        assertEquals(todayKey(), snap.keys.first())
+        assertEquals("2026-01-04", snap.keys.drop(1).first())
+        assertEquals("2025-12-06", snap.keys.last())
+        assertEquals(listOf(2L, 0L, 0L), snap["2026-01-04"])
+        // Bad lines never land: no malformed day, no short row, no negative count.
+        assertTrue(snap.keys.none { it == "2026-01-05" || it == "2026-01-06" })
+    }
+
+    @Test
+    fun historySerializeParseRoundTrip() {
+        val days = mapOf(
+            "2026-11-08" to longArrayOf(3L, 1L, 0L),
+            "2026-11-07" to longArrayOf(0L, 0L, 5L),
+        )
+        val raw = serializeBlockedHistory(days)
+        assertEquals("2026-11-08=3,1,0\n2026-11-07=0,0,5", raw)
+        val back = parseBlockedHistory(raw)
+        assertEquals(2, back.size)
+        assertEquals(listOf(3L, 1L, 0L), back["2026-11-08"]!!.toList())
+        assertEquals(listOf(0L, 0L, 5L), back["2026-11-07"]!!.toList())
+    }
 }

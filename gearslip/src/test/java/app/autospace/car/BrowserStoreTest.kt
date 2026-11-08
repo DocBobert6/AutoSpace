@@ -282,6 +282,32 @@ class BrowserStoreTest {
         assertFalse(BrowserStore.domStorageFromStored("false"))
     }
 
+    // ---- r197: separate ads/trackers toggles, legacy migration ----
+
+    @Test
+    fun blockAdsFallsBackToLegacyToggleWhenUnset() {
+        // Nothing stored anywhere: ON, as before.
+        assertTrue(BrowserStore.blockAdsFromStored(null, null))
+        assertTrue(BrowserStore.blockAdsFromStored("", "true"))
+        // A stored new key wins over the legacy toggle.
+        assertTrue(BrowserStore.blockAdsFromStored("true", "false"))
+        assertFalse(BrowserStore.blockAdsFromStored("false", "true"))
+        // Unset new key inherits the legacy toggle.
+        assertFalse(BrowserStore.blockAdsFromStored(null, "false"))
+        assertFalse(BrowserStore.blockAdsFromStored("", "false"))
+        assertTrue(BrowserStore.blockAdsFromStored(null, "true"))
+    }
+
+    @Test
+    fun blockTrackersFallsBackToLegacyToggleWhenUnset() {
+        assertTrue(BrowserStore.blockTrackersFromStored(null, null))
+        assertTrue(BrowserStore.blockTrackersFromStored("", "true"))
+        assertTrue(BrowserStore.blockTrackersFromStored("true", "false"))
+        assertFalse(BrowserStore.blockTrackersFromStored("false", "true"))
+        assertFalse(BrowserStore.blockTrackersFromStored(null, "false"))
+        assertFalse(BrowserStore.blockTrackersFromStored("", "false"))
+    }
+
     @Test
     fun fillMissingTitleFillsOnlyBlankTitles() {
         val existing = listOf(

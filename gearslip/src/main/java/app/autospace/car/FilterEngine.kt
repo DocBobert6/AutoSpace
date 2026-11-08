@@ -1,5 +1,9 @@
 package app.autospace.car
 
+import java.util.ArrayDeque
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
+
 /**
  * r85 — full adblocking, ported from Notscape Mariner's FilterEngine
  * (browser/WebTools.kt). Real filter lists (EasyList + EasyPrivacy +
@@ -15,11 +19,13 @@ package app.autospace.car
  * and the matching rules.
  *
  * Adaptations from Mariner, all deliberate:
- * - One toggle, not two: Mariner takes blockAds + blockTrackers;
- *   AutoSpace has a single "Block ads & trackers" switch, so
- *   [isBlocked] takes one [enabled] flag that gates every rule
- *   family (user rules, built-in hosts, list hosts, scoped rules,
- *   path keywords) exactly as the single toggle promises.
+ * - Two toggles, not one gate: r197 (adblock A2) splits the single
+ *   "Block ads & trackers" switch into separate ads + trackers
+ *   toggles, Mariner's shape — [blockCategory] attributes each
+ *   block to a category (ads / trackers / other) and each toggle
+ *   gates only its own category. [isBlocked] keeps the old
+ *   single-[enabled] signature as a delegating wrapper, so the
+ *   existing tests and callers keep their meaning.
  * - User allow rules: Mariner's user rules are block-only. AutoSpace
  *   adds an allow-host rule (see UserBlockRules.NetRule.Allow) so a
  *   driver can unbreak a site the lists break; it is checked first
@@ -49,6 +55,8 @@ data class ScopedRule(
     val thirdParty: Boolean? = null,
     /** $important: beats exception (@@) rules. */
     val important: Boolean = false,
+    /** r197 (adblock A2): which category a block by this rule counts as. */
+    val category: Int = FilterEngine.CAT_ADS,
 )
 
 /** The parsed collections, bundled so load, refresh validation and
@@ -60,6 +68,7 @@ class FilterData {
     val generic = LinkedHashSet<String>()
     val perDomain = HashMap<String, MutableList<String>>()
     val docHosts = HashSet<String>()
+    val trackerHosts = HashSet<String>()
     val excGeneric = HashSet<String>()
     val excDomain = HashMap<String, MutableList<String>>()
     val hideOff = HashSet<String>()
@@ -81,6 +90,7 @@ class FilterData {
             perDomain.getOrPut(k) { mutableListOf() }.addAll(v)
         }
         docHosts.addAll(other.docHosts)
+        trackerHosts.addAll(other.trackerHosts)
         excGeneric.addAll(other.excGeneric)
         other.excDomain.forEach { (k, v) ->
             excDomain.getOrPut(k) { mutableListOf() }.addAll(v)
@@ -90,6 +100,27 @@ class FilterData {
 }
 
 object FilterEngine {
+
+    /** r197 (adblock A2): which kind of rule stopped a request —
+     *  ads (ad lists + ad URL patterns), trackers (tracker lists
+     *  + the builtin tracker hosts), other (the driver's own rules).
+     *  Mariner's constants, verbatim. */
+    const val CAT_ADS = 0
+    const val CAT_TRACKER = 1
+    const val CAT_OTHER = 2
+
+    /** r197 (adblock A2): which category a list's rules count as.
+     *  0 EasyList = ads, 1 EasyPrivacy = trackers, 2 StevenBlack
+     *  hosts = ads (adware/malware domains), 3 AdGuard Tracking
+     *  Protection = trackers, 4 AdGuard Mobile Ads = ads,
+     *  5 uAssets filters = ads, 6 AdGuard Base = ads (its primary
+     *  purpose is ad blocking; its tracker rules are a minority).
+     *  Mariner's categoryForList, verbatim — the index is the
+     *  position in FilterLists' sources list, same order. */
+    internal fun categoryForList(index: Int): Int = when (index) {
+        1, 3 -> CAT_TRACKER
+        else -> CAT_ADS
+    }
 
     /** Player/CDN hosts that must never be host-blocked. */
     private val neverBlockHosts = setOf(
@@ -129,6 +160,12 @@ object FilterEngine {
      *  injected by FilterLists at init and kept as the offline
      *  fallback. Tests set it directly. */
     @Volatile var builtinHosts: Set<String> = emptySet()
+
+    /** r197 (adblock A2): hosts named by the tracker lists
+     *  (EasyPrivacy + AdGuard Tracking Protection) — a host in
+     *  here counts as a tracker even when an ad list names it too.
+     *  Mariner's trackerHosts. */
+    @Volatile var trackerHosts: Set<String> = emptySet()
 
     /** The user's own rules (see UserBlockRules), set by
      *  FilterLists.syncUserRules. Network rules beat the compiled
@@ -174,6 +211,7 @@ object FilterEngine {
      *  after a disk load or a refresh. */
     fun applyData(data: FilterData) {
         listHosts = data.hosts
+        trackerHosts = data.trackerHosts
         exceptionHosts = data.exceptions
         scopedRules = data.scoped
         genericSelectors = data.generic.toList()
@@ -210,6 +248,11 @@ object FilterEngine {
     internal fun clearForTest() {
         installForTest(FilterData())
         documentStartScript = ""
+        sessionBlocked.set(0)
+        perTabCategory.clear()
+        perCategory.forEach { it.set(0) }
+        recentBlockedHosts.clear()
+        blockedHistory.clear()
     }
 
     // ---- Parsing ----
@@ -217,12 +260,16 @@ object FilterEngine {
     /** Parses one list file into [data]. [isHostsFormat] selects
      *  the hosts-file parser (StevenBlack list, index 2); every
      *  other list is ABP syntax. */
-    internal fun parseInto(isHostsFormat: Boolean, text: String, data: FilterData) {
+    internal fun parseInto(
+        isHostsFormat: Boolean, text: String, data: FilterData,
+        category: Int = CAT_ADS,
+    ) {
         if (isHostsFormat) parseHosts(text, data.hosts)
         else parse(
             text, data.hosts, data.exceptions, data.scoped,
             data.generic, data.perDomain, data.docHosts,
             data.excGeneric, data.excDomain, data.hideOff,
+            category, data.trackerHosts,
         )
     }
 
@@ -246,6 +293,8 @@ object FilterEngine {
         genericExc: MutableSet<String>,
         perDomainExc: MutableMap<String, MutableList<String>>,
         hideOff: MutableSet<String>,
+        category: Int = CAT_ADS,
+        trackerHosts: MutableSet<String>? = null,
     ) {
         // $badfilter pass: a badfilter rule disables its twin. Collect
         // the twins' signatures first (the badfilter line may precede
@@ -446,9 +495,13 @@ object FilterEngine {
             if (rest.isEmpty() || rest == "^") {
                 if (isScoped) {
                     scoped.getOrPut(host) { mutableListOf() }
-                        .add(ScopedRule(null, domains, notDomains, exception, thirdParty, important))
+                        .add(ScopedRule(null, domains, notDomains, exception, thirdParty, important, category))
                 } else {
                     (if (exception) exceptions else hosts).add(host)
+                    // r197 (adblock A2): a pure host rule from a
+                    // tracker list counts as a tracker even when an
+                    // ad list names it too (Mariner's trackerHosts).
+                    if (!exception && category == CAT_TRACKER) trackerHosts?.add(host)
                     // Popunder provenance for the navigation guard:
                     // a pure host whose ONLY type options are
                     // $document/$popup.
@@ -466,7 +519,7 @@ object FilterEngine {
                 if (pipe >= 0) path = path.substring(0, pipe)
                 if (path.length < 2) continue
                 scoped.getOrPut(host) { mutableListOf() }
-                    .add(ScopedRule(path.lowercase(), domains, notDomains, exception, thirdParty, important))
+                    .add(ScopedRule(path.lowercase(), domains, notDomains, exception, thirdParty, important, category))
                 continue
             }
             // Anchored/wildcard leftovers — skip.
@@ -621,13 +674,18 @@ object FilterEngine {
         return !sameSite(reqHost, pageHost)
     }
 
-    private fun scopedMatch(
+    /**
+     * The scoped rule that blocks this request, or null — the
+     * rule carries its category (r197, adblock A2), so the
+     * caller can attribute the block instead of re-deciding it.
+     */
+    private fun scopedRuleMatch(
         reqHost: String,
         path: String,
         pageHost: String,
         wantException: Boolean,
         onlyImportant: Boolean = false,
-    ): Boolean {
+    ): ScopedRule? {
         for (h in hostChain(reqHost)) {
             val rules = scopedRules[h] ?: continue
             for (r in rules) {
@@ -643,21 +701,112 @@ object FilterEngine {
                     r.thirdParty != isThirdParty(reqHost, pageHost)
                 ) continue
                 if (r.pathPrefix != null && !path.startsWith(r.pathPrefix)) continue
-                return true
+                return r
             }
         }
-        return false
+        return null
     }
 
+    /** True when a scoped rule blocks this request — the Boolean
+     *  twin of [scopedRuleMatch], for the exception check and any
+     *  caller that only needs the verdict. */
+    private fun scopedMatch(
+        reqHost: String,
+        path: String,
+        pageHost: String,
+        wantException: Boolean,
+        onlyImportant: Boolean = false,
+    ): Boolean = scopedRuleMatch(reqHost, path, pageHost, wantException, onlyImportant) != null
+
     /**
-     * The blocking decision for one subresource request. Plain
+     * The blocking decision for one subresource request, attributed
+     * to its category — or null when nothing blocks it. Plain
      * strings throughout so the unit tests can run it without a
      * device. Order mirrors Mariner's (user rules beat lists;
      * $important beats exceptions; exceptions beat blocks), with
-     * AutoSpace's single [enabled] flag and its allow-host rule:
-     * a main-frame load is NEVER blocked, and an allowed host is
-     * never blocked either — the allow rule is the driver's
-     * explicit override for a site the lists break.
+     * AutoSpace's allow-host rule: a main-frame load is NEVER
+     * blocked, and an allowed host is never blocked either — the
+     * allow rule is the driver's explicit override for a site the
+     * lists break. A host named by a tracker list counts as a
+     * tracker even when an ad list names it too.
+     *
+     * Deliberate deviation from Mariner's literal code, one word
+     * corrects: Mariner returns CAT_ADS for any list-host match
+     * while either toggle is on, so an ad-list host still blocks
+     * with the ads toggle off. Here each toggle gates only its
+     * own category — a list host blocks as ads only when the ads
+     * toggle is on, as trackers only when the trackers toggle is
+     * on — which is what the two toggles promise in the menu.
+     * The driver's own rules apply whenever either toggle is on:
+     * they are explicit blocks, not a list category.
+     */
+    fun blockCategory(
+        scheme: String,
+        host: String,
+        path: String,
+        urlString: String,
+        isForMainFrame: Boolean,
+        blockAds: Boolean,
+        blockTrackers: Boolean,
+        pageHost: String = "",
+    ): Int? {
+        if (isForMainFrame) return null
+        if (!blockAds && !blockTrackers) return null
+        val h = host.lowercase()
+        if (h.isEmpty()) return null
+        // The driver's own allow rule beats everything below it:
+        // an explicit tap to allow something is the strongest
+        // signal there is. It still honours the toggles (the early
+        // return above) and main-frame loads already returned
+        // above, so a rule can never break a tapped link.
+        if (UserBlockRules.allowMatches(userNetRules, h)) return null
+        // The driver's own block rules beat the compiled lists.
+        if (userNetRules.any {
+                UserBlockRules.netMatches(it, scheme, h, path)
+            }
+        ) return CAT_OTHER
+        if (matches(neverBlockHosts, h)) return null
+        val p = path.lowercase()
+        val page = pageHost.lowercase()
+        // $important block rules beat every exception — when their
+        // category's toggle is on; a disabled category falls
+        // through to the exception checks below it.
+        scopedRuleMatch(h, p, page, wantException = false, onlyImportant = true)
+            ?.takeIf { categoryEnabled(it.category, blockAds, blockTrackers) }
+            ?.let { return it.category }
+        if (matches(exceptionHosts, h)) return null
+        if (scopedMatch(h, p, page, wantException = true)) return null
+        if (blockTrackers && matches(builtinHosts, h)) return CAT_TRACKER
+        if ((blockAds || blockTrackers) && matches(listHosts, h)) {
+            return if (matches(trackerHosts, h)) {
+                if (blockTrackers) CAT_TRACKER else null
+            } else {
+                if (blockAds) CAT_ADS else null
+            }
+        }
+        scopedRuleMatch(h, p, page, wantException = false)
+            ?.takeIf { categoryEnabled(it.category, blockAds, blockTrackers) }
+            ?.let { return it.category }
+        if (blockAds) {
+            val s = urlString.lowercase()
+            if (pathKeywords.any { s.contains(it) }) return CAT_ADS
+        }
+        return null
+    }
+
+    /** True when [category] may block under the two toggles —
+     *  ads need the ads toggle, trackers need the trackers
+     *  toggle; other (the driver's own rules) needs either. */
+    internal fun categoryEnabled(category: Int, blockAds: Boolean, blockTrackers: Boolean): Boolean =
+        when (category.coerceIn(0, 2)) {
+            CAT_ADS -> blockAds
+            CAT_TRACKER -> blockTrackers
+            else -> blockAds || blockTrackers
+        }
+
+    /**
+     * The old single-toggle verdict, kept for the existing tests
+     * and callers: blocking on means both categories on.
      */
     fun isBlocked(
         scheme: String,
@@ -667,36 +816,85 @@ object FilterEngine {
         isForMainFrame: Boolean,
         enabled: Boolean,
         pageHost: String = "",
-    ): Boolean {
-        if (isForMainFrame) return false
-        if (!enabled) return false
-        val h = host.lowercase()
-        if (h.isEmpty()) return false
-        // The driver's own allow rule beats everything below it:
-        // an explicit tap to allow something is the strongest
-        // signal there is. It still honours the global toggle
-        // (the early return above) and main-frame loads already
-        // returned above, so a rule can never break a tapped link.
-        if (UserBlockRules.allowMatches(userNetRules, h)) return false
-        // The driver's own block rules beat the compiled lists.
-        if (userNetRules.any {
-                UserBlockRules.netMatches(it, scheme, h, path)
-            }
-        ) return true
-        if (matches(neverBlockHosts, h)) return false
-        val p = path.lowercase()
-        val page = pageHost.lowercase()
-        // $important block rules beat every exception.
-        if (scopedMatch(h, p, page, wantException = false, onlyImportant = true)) return true
-        if (matches(exceptionHosts, h)) return false
-        if (scopedMatch(h, p, page, wantException = true)) return false
-        if (matches(builtinHosts, h)) return true
-        if (matches(listHosts, h)) return true
-        if (scopedMatch(h, p, page, wantException = false)) return true
-        val s = urlString.lowercase()
-        if (pathKeywords.any { s.contains(it) }) return true
-        return false
+    ): Boolean = blockCategory(
+        scheme, host, path, urlString, isForMainFrame,
+        blockAds = enabled, blockTrackers = enabled, pageHost = pageHost,
+    ) != null
+
+    // ---- Blocked counting (r197, adblock A2) — Mariner's
+    // noteBlockedFor shape, plain java.util.concurrent state
+    // (no Compose here: this file stays pure/JVM-testable;
+    // FilterLists mirrors these into StateFlows for the UI).
+    // Interception runs on several WebView threads at once, so
+    // every counter is atomic and every map concurrent. ----
+    private val sessionBlocked = AtomicLong(0)
+    private val perTabCategory = ConcurrentHashMap<Int, Array<AtomicLong>>()
+    private val perCategory = Array(3) { AtomicLong(0) }
+    private val recentBlockedHosts = ConcurrentHashMap<Int, ArrayDeque<Pair<String, Int>>>()
+
+    /** The per-day history (see [BlockedHistory]); non-private
+     *  blocks only — private tabs count in the session totals
+     *  but never reach the persisted history. */
+    val blockedHistory = BlockedHistory()
+
+    /** Records one blocked subresource against its tab and
+     *  category. The session totals and the recent-hosts list
+     *  are session-local and always recorded; the per-day
+     *  history takes non-private blocks only. */
+    fun noteBlockedFor(tabId: Int, category: Int, host: String, isPrivate: Boolean) {
+        val cat = category.coerceIn(0, 2)
+        sessionBlocked.incrementAndGet()
+        perCategory[cat].incrementAndGet()
+        perTabCategory.computeIfAbsent(tabId) { Array(3) { AtomicLong(0) } }[cat].incrementAndGet()
+        val deque = recentBlockedHosts.computeIfAbsent(tabId) { ArrayDeque() }
+        synchronized(deque) {
+            deque.removeAll { it.first == host }
+            deque.addFirst(host to cat)
+            while (deque.size > RECENT_HOSTS_MAX) deque.removeLast()
+        }
+        if (!isPrivate) blockedHistory.note(cat)
     }
+
+    /** A navigation resets the tab's count, Mariner's shape —
+     *  the counts describe the page on screen, not the tab's
+     *  whole life. */
+    fun resetTabCount(tabId: Int) {
+        perTabCategory.remove(tabId)
+        recentBlockedHosts.remove(tabId)
+    }
+
+    /** Total blocked on this tab since its last navigation. */
+    fun blockedCountFor(tabId: Int): Long =
+        perTabCategory[tabId]?.sumOf { it.get() } ?: 0L
+
+    /** This tab's counts by category: [ads, trackers, other]. */
+    fun blockedCategoriesFor(tabId: Int): List<Long> =
+        perTabCategory[tabId]?.map { it.get() } ?: listOf(0, 0, 0)
+
+    /** Session totals by category: [ads, trackers, other]. */
+    fun blockedByCategory(): List<Long> = perCategory.map { it.get() }
+
+    /** Blocked this session, all tabs and categories. */
+    fun blockedCount(): Long = sessionBlocked.get()
+
+    /** Per-tab counts by category, for the UI flows. */
+    fun perTabBlocked(): Map<Int, List<Long>> =
+        perTabCategory.entries.associate { it.key to it.value.map { c -> c.get() } }
+
+    /** This tab's recent blocked hosts, most recent first with
+     *  their category — the detail page's "recent" list. */
+    fun recentBlockedHosts(tabId: Int): List<Pair<String, Int>> =
+        recentBlockedHosts[tabId]?.let { synchronized(it) { it.toList() } } ?: emptyList()
+
+    /** The label a category wears in the detail page. */
+    fun blockedCategoryLabel(category: Int): String = when (category.coerceIn(0, 2)) {
+        CAT_ADS -> "Ads"
+        CAT_TRACKER -> "Trackers"
+        else -> "Other"
+    }
+
+    /** Recent blocked hosts kept per tab. */
+    internal const val RECENT_HOSTS_MAX = 8
 
     /**
      * True when [host] is a known document/popup ad host: the lists
@@ -801,3 +999,120 @@ object FilterEngine {
         return css
     }
 }
+
+/**
+ * r197 (adblock A2): per-day blocked history, Mariner's Beta.63 #26
+ * shape — one line per day, "yyyy-MM-dd=ads,trackers,other", newest
+ * 30 days, kept in the "browser_blocked_history" setting. Counts are
+ * real FilterEngine counters only. Pure (java.util.Calendar only),
+ * so the unit tests pin the day-bucketing, the midnight roll, and
+ * the 30-day prune without a device. All methods are synchronized:
+ * notes arrive on WebView interceptor threads while flush/load run
+ * on the UI thread.
+ */
+class BlockedHistory {
+    private val days = LinkedHashMap<String, LongArray>()
+    private val today = LongArray(3)
+    private val flushed = LongArray(3)
+    private var day = todayKey()
+    private var dirty = false
+
+    @Synchronized fun note(category: Int, nowMs: Long = System.currentTimeMillis()) {
+        rollDay(nowMs)
+        today[category.coerceIn(0, 2)]++
+        dirty = true
+    }
+
+    /** Live view for the UI: persisted days plus today's
+     *  not-yet-flushed counts, newest first. */
+    @Synchronized fun snapshot(nowMs: Long = System.currentTimeMillis()): Map<String, List<Long>> {
+        rollDay(nowMs)
+        val merged = LinkedHashMap<String, LongArray>()
+        days.forEach { (d, v) -> merged[d] = v.copyOf() }
+        val t = merged.getOrPut(day) { LongArray(3) }
+        for (i in 0..2) t[i] += today[i] - flushed[i]
+        return merged.entries.sortedByDescending { it.key }
+            .associate { it.key to it.value.toList() }
+    }
+
+    /** Flush today's counts into the persisted history.
+     *  Returns the serialized history, or null when nothing
+     *  changed since the last flush. */
+    @Synchronized fun flush(nowMs: Long = System.currentTimeMillis()): String? {
+        rollDay(nowMs)
+        if (!dirty) return null
+        val row = days.getOrPut(day) { LongArray(3) }
+        for (i in 0..2) {
+            row[i] += today[i] - flushed[i]
+            flushed[i] = today[i]
+        }
+        while (days.size > 30) days.remove(days.keys.minOrNull() ?: break)
+        dirty = false
+        return serializeBlockedHistory(days)
+    }
+
+    @Synchronized fun load(raw: String) {
+        days.clear()
+        parseBlockedHistory(raw).forEach { (d, v) -> days[d] = v }
+        while (days.size > 30) days.remove(days.keys.minOrNull() ?: break)
+        today.fill(0)
+        flushed.fill(0)
+        day = todayKey()
+        dirty = false
+    }
+
+    @Synchronized fun clear() {
+        days.clear()
+        today.fill(0)
+        flushed.fill(0)
+        day = todayKey()
+        dirty = false
+    }
+
+    private fun rollDay(nowMs: Long) {
+        val d = todayKey(nowMs)
+        if (d == day) return
+        // Commit yesterday's unflushed counts before the day
+        // rolls, so a midnight crossing never drops a day.
+        val row = days.getOrPut(day) { LongArray(3) }
+        for (i in 0..2) row[i] += today[i] - flushed[i]
+        dirty = true
+        day = d
+        today.fill(0)
+        flushed.fill(0)
+    }
+}
+
+/** The day key for [nowMs], local time — "yyyy-MM-dd". */
+internal fun todayKey(nowMs: Long = System.currentTimeMillis()): String {
+    val c = java.util.Calendar.getInstance()
+    c.timeInMillis = nowMs
+    return "%04d-%02d-%02d".format(
+        c.get(java.util.Calendar.YEAR),
+        c.get(java.util.Calendar.MONTH) + 1,
+        c.get(java.util.Calendar.DAY_OF_MONTH),
+    )
+}
+
+/** Newest first, one "yyyy-MM-dd=ads,trackers,other" line per day. */
+internal fun serializeBlockedHistory(days: Map<String, LongArray>): String =
+    days.entries.sortedByDescending { it.key }
+        .joinToString("\n") { (d, v) -> "$d=${v[0]},${v[1]},${v[2]}" }
+
+/** Parses serialized history, dropping malformed lines — a
+ *  corrupt stored value must never take the history down. */
+internal fun parseBlockedHistory(raw: String): Map<String, LongArray> {
+    val out = LinkedHashMap<String, LongArray>()
+    raw.lines().forEach { line ->
+        val eq = line.indexOf('=')
+        if (eq < 0) return@forEach
+        val d = line.substring(0, eq).trim()
+        if (!d.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return@forEach
+        val parts = line.substring(eq + 1).split(",")
+            .mapNotNull { it.trim().toLongOrNull() }
+        if (parts.size != 3 || parts.any { it < 0 }) return@forEach
+        out[d] = longArrayOf(parts[0], parts[1], parts[2])
+    }
+    return out
+}
+

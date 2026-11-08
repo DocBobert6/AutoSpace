@@ -363,7 +363,10 @@ object BrowserStore {
     }
 
     // ---- Browser batch (r21) ----
-    /** Ad/tracker blocking toggle (bundled host list, BrowserFilter); ON by default. */
+    /** Legacy single ad/tracker toggle (r197: split into ads +
+     *  trackers below). Still read as the migration fallback:
+     *  an unset new key inherits this value, so a driver who
+     *  turned blocking off before the split keeps both off. */
     private const val KEY_AD_BLOCK = "browser_ad_block"
     /** Per-site desktop choice, JSON object host -> true (desktop remembered). */
     private const val KEY_DESKTOP_SITES = "browser_desktop_sites"
@@ -397,11 +400,56 @@ object BrowserStore {
     /** Start-page pins the user sets himself; no invented defaults. */
     private const val KEY_PINS = "browser_start_pins"
 
-    fun adBlockEnabled(context: Context): Boolean =
-        AppSettings.getString(context, KEY_AD_BLOCK, "true") != "false"
+    // ---- Separate ads/trackers toggles (r197, adblock A2) ----
+    /** Block ad requests (EasyList, AdGuard Base/Mobile, uBlock, StevenBlack), ON by default. */
+    private const val KEY_BLOCK_ADS = "browser_block_ads"
+    /** Block tracker requests (EasyPrivacy, AdGuard Tracking Protection), ON by default. */
+    private const val KEY_BLOCK_TRACKERS = "browser_block_trackers"
+    /** Per-day blocked history, "yyyy-MM-dd=ads,trackers,other" lines, newest 30 days. */
+    private const val KEY_BLOCKED_HISTORY = "browser_blocked_history"
 
-    fun setAdBlockEnabled(context: Context, on: Boolean) {
-        AppSettings.putString(context, KEY_AD_BLOCK, on.toString())
+    /**
+     * Pure toggle-migration rules, no storage involved so they are unit-testable:
+     * a stored new key wins; unset falls back to the old single "browser_ad_block"
+     * toggle, so a driver who turned blocking off before the split keeps both off.
+     * Nothing stored anywhere means ON, as before.
+     */
+    fun blockAdsFromStored(rawNew: String?, rawLegacy: String?): Boolean =
+        if (!rawNew.isNullOrBlank()) rawNew != "false" else rawLegacy != "false"
+
+    fun blockTrackersFromStored(rawNew: String?, rawLegacy: String?): Boolean =
+        if (!rawNew.isNullOrBlank()) rawNew != "false" else rawLegacy != "false"
+
+    fun blockAds(context: Context): Boolean =
+        blockAdsFromStored(
+            AppSettings.getString(context, KEY_BLOCK_ADS, ""),
+            AppSettings.getString(context, KEY_AD_BLOCK, "true"),
+        )
+
+    fun setBlockAds(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_BLOCK_ADS, on.toString())
+    }
+
+    fun blockTrackers(context: Context): Boolean =
+        blockTrackersFromStored(
+            AppSettings.getString(context, KEY_BLOCK_TRACKERS, ""),
+            AppSettings.getString(context, KEY_AD_BLOCK, "true"),
+        )
+
+    fun setBlockTrackers(context: Context, on: Boolean) {
+        AppSettings.putString(context, KEY_BLOCK_TRACKERS, on.toString())
+    }
+
+    /** True when either blocking toggle is on — the gate for
+     *  cosmetic sheets, which are not per-category. */
+    fun blockingEnabled(context: Context): Boolean =
+        blockAds(context) || blockTrackers(context)
+
+    fun blockedHistoryRaw(context: Context): String =
+        AppSettings.getString(context, KEY_BLOCKED_HISTORY, "")
+
+    fun setBlockedHistory(context: Context, raw: String) {
+        AppSettings.putString(context, KEY_BLOCKED_HISTORY, raw)
     }
 
     // ---- Global Privacy Control (r192, parity G1) ----

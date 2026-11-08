@@ -194,6 +194,8 @@ fun WebApp(content: String) {
     LaunchedEffect(Unit) {
         FilterLists.initAsync(context)
         FilterLists.syncUserRules(context)
+        // r197 (adblock A2): the persisted per-day blocked history.
+        FilterLists.loadBlockedHistory(context)
     }
     // Scroll-hide (Robert 2026-10-25 06:20 redirect): the address
     // bar row — and ONLY it — follows the active tab's WebView
@@ -341,6 +343,9 @@ fun WebApp(content: String) {
     // untouched by this.
     var addressSelected by remember { mutableStateOf(false) }
     var listsOpen by remember { mutableStateOf(false) }
+    // r197 (adblock A2): the Blocked detail page — per-tab, per-category and
+    // per-day counts, opened from the settings menu under Ads & trackers.
+    var showBlockedDetail by remember { mutableStateOf(false) }
     // r130: which section the lists sheet opens at. The bar star button
     // opens at the top; the settings sheet's Library rows jump straight
     // to History or Bookmarks (see BrowserListsSheet.initialSection).
@@ -733,7 +738,11 @@ fun WebApp(content: String) {
     var ruleEditType by remember { mutableStateOf(RuleEditType.BLOCK_HOST) }
     var ruleEditError by remember { mutableStateOf<String?>(null) }
     var rulesVersion by remember { mutableStateOf(0) }
-    var adBlockOn by remember { mutableStateOf(BrowserStore.adBlockEnabled(context)) }
+    // r197 (adblock A2): the single "Block ads & trackers" toggle splits into
+    // separate ads + trackers toggles; an unset new key falls back to the old
+    // single toggle, so a driver who turned blocking off keeps both off.
+    var blockAdsOn by remember { mutableStateOf(BrowserStore.blockAds(context)) }
+    var blockTrackersOn by remember { mutableStateOf(BrowserStore.blockTrackers(context)) }
     // r192 (parity G1): Global Privacy Control, ON by default as in
     // Mariner — one toggle gates both the Sec-GPC: 1 header and the
     // navigator.globalPrivacyControl flag.
@@ -916,7 +925,8 @@ fun WebApp(content: String) {
         popupSettingForHost = BrowserStore.popupSetting(context, hostOf(activeTab.currentUrl))
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
-        adBlockOn = BrowserStore.adBlockEnabled(context)
+        blockAdsOn = BrowserStore.blockAds(context)
+        blockTrackersOn = BrowserStore.blockTrackers(context)
         gpcOn = BrowserStore.gpcEnabled(context)
         acceptCookiesOn = BrowserStore.acceptCookies(context)
         blockThirdPartyOn = BrowserStore.blockThirdPartyCookies(context)
@@ -1068,6 +1078,10 @@ fun WebApp(content: String) {
             // from a crashed or swiped-away session survive until
             // the next leave.
             if (BrowserStore.sessionOnlyCookies(context)) clearSessionCookies()
+            // r197 (adblock A2): persist today's blocked-count history when leaving
+            // the browser — Mariner flushes on app pause; AutoSpace's browser
+            // session ends here, so the history lands here instead.
+            FilterLists.flushBlockedHistory(context)
             // r157: leaving with private tabs open destroys them, so
             // their downloads die here too, same as a last-tab close.
             if (hadPrivate) BrowserDownloads.deletePrivateDownloads(context)
@@ -1078,7 +1092,7 @@ fun WebApp(content: String) {
         }
     }
 
-    DisposableEffect(web, sheetOpen, listsOpen, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
+    DisposableEffect(web, sheetOpen, listsOpen, showBlockedDetail, jsDialog, fullscreenView, showPopupNotice, tabsOpen, settingsMenuOpen, menuOpen, customizeOpen, gateOpen, immersive, readerOpen, readerDisplayOpen, longPressTarget, engineEditing, ruleEditing) {
         navigator.backInterceptor = {
             when {
                 // Passenger gate first: head-unit BACK while the gate is
@@ -1113,6 +1127,7 @@ fun WebApp(content: String) {
                 tabsOpen -> { tabsOpen = false; true }
                 sheetOpen -> { sheetOpen = false; true }
                 listsOpen -> { listsOpen = false; true }
+                showBlockedDetail -> { showBlockedDetail = false; true }
                 // Audit fix (2026-10-25, A2): an open find bar
                 // closes first, clearing the page highlights, and
                 // never steps back a page while it is up.
@@ -1596,6 +1611,9 @@ fun WebApp(content: String) {
                                 }
                                 webViewClient = BrowserClient(
                                     ring = ring,
+                                    // r197 (adblock A2): the tab id for
+                                    // per-tab blocked counts.
+                                    tabId = { tab.id },
                                     onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
                                     onPageStart = {
                                         mainHandler.post {
@@ -1657,7 +1675,7 @@ fun WebApp(content: String) {
                                 // empty script and is never
                                 // re-registered; that tab still gets
                                 // the page-finish sheet on every load.
-                                if (BrowserStore.adBlockEnabled(context) &&
+                                if (BrowserStore.blockingEnabled(context) &&
                                     androidx.webkit.WebViewFeature.isFeatureSupported(
                                         androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
                                     )
@@ -2276,6 +2294,8 @@ fun WebApp(content: String) {
             )
         }
         if (settingsMenuOpen) {
+            // r197 (adblock A2): this tab's counts by category for the Blocked row.
+            val blockedForTab by FilterLists.blockedPerTabCategories.collectAsState()
             BrowserSettingsMenu(
                 barBottom = barBottom,
                 onBarPosition = { bottom ->
@@ -2345,10 +2365,20 @@ fun WebApp(content: String) {
                         OpenInApp.openInApp(context, activeTab.currentUrl)
                     }
                 },
-                adBlockOn = adBlockOn,
-                onAdBlock = { on ->
-                    BrowserStore.setAdBlockEnabled(context, on)
-                    adBlockOn = on
+                blockAdsOn = blockAdsOn,
+                onBlockAds = { on ->
+                    BrowserStore.setBlockAds(context, on)
+                    blockAdsOn = on
+                },
+                blockTrackersOn = blockTrackersOn,
+                onBlockTrackers = { on ->
+                    BrowserStore.setBlockTrackers(context, on)
+                    blockTrackersOn = on
+                },
+                blockedForTab = blockedForTab[activeTab.id] ?: listOf(0L, 0L, 0L),
+                onOpenBlocked = {
+                    settingsMenuOpen = false
+                    showBlockedDetail = true
                 },
                 gpcOn = gpcOn,
                 onGpc = { on ->
@@ -2584,6 +2614,15 @@ fun WebApp(content: String) {
                     refreshLists()
                 },
                 onClose = { listsOpen = false },
+            )
+        }
+        // r197 (adblock A2): the Blocked detail page, above the
+        // page like the lists sheet — BACK closes it first (see
+        // the back interceptor above).
+        if (showBlockedDetail) {
+            BlockedDetailSheet(
+                tabId = activeTab.id,
+                onClose = { showBlockedDetail = false },
             )
         }
         // Fullscreen video (Phase 3.4, item 3): the WebView's custom view fills the
@@ -3365,9 +3404,16 @@ private fun BrowserSettingsMenu(
     // exists, computed by the caller when the menu opens.
     canOpenInApp: Boolean,
     onOpenInApp: () -> Unit,
-    // Browser batch (r21).
-    adBlockOn: Boolean,
-    onAdBlock: (Boolean) -> Unit,
+    // r197 (adblock A2): the single "Block ads & trackers" toggle
+    // splits into separate ads + trackers toggles, Mariner's shape.
+    blockAdsOn: Boolean,
+    onBlockAds: (Boolean) -> Unit,
+    blockTrackersOn: Boolean,
+    onBlockTrackers: (Boolean) -> Unit,
+    // r197 (adblock A2): this tab's counts by category for the
+    // Blocked row, plus the open for the Blocked detail page.
+    blockedForTab: List<Long>,
+    onOpenBlocked: () -> Unit,
     // r192 (parity G1): Global Privacy Control — one toggle gates
     // both the Sec-GPC: 1 header and the navigator flag, as in Mariner.
     gpcOn: Boolean,
@@ -3558,12 +3604,18 @@ private fun BrowserSettingsMenu(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 MenuSection("Ads & trackers")
-                MenuRow("Block ads & trackers", adBlockOn) { onAdBlock(!adBlockOn) }
+                MenuRow("Block ads", blockAdsOn) { onBlockAds(!blockAdsOn) }
                 Text(
-                    "Blocks ad and tracker requests — real filter lists (EasyList, EasyPrivacy, " +
-                        "AdGuard, uBlock) downloaded in the background, with the bundled host list " +
-                        "covering offline gaps. The page itself is never blocked. " +
-                        "Turning it off loads everything again.",
+                    "Blocks ad requests — EasyList, AdGuard Base and Mobile Ads, uBlock and the " +
+                        "StevenBlack hosts, downloaded in the background, with the bundled host list " +
+                        "covering offline gaps. The page itself is never blocked.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Block trackers", blockTrackersOn) { onBlockTrackers(!blockTrackersOn) }
+                Text(
+                    "Blocks tracker requests — EasyPrivacy and AdGuard Tracking Protection. " +
+                        "Turning it off lets trackers load; ads stay blocked.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3628,6 +3680,16 @@ private fun BrowserSettingsMenu(
                 )
                 Text(
                     "Blocked this session: $filterBlocked",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                MenuRow("Blocked…", false) { onOpenBlocked() }
+                Text(
+                    "This tab: ${blockedForTab.sum()} blocked — " +
+                        "${blockedForTab.getOrElse(0) { 0 }} ads · " +
+                        "${blockedForTab.getOrElse(1) { 0 }} trackers · " +
+                        "${blockedForTab.getOrElse(2) { 0 }} other. " +
+                        "Opens the per-tab, per-session and 30-day counts.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3909,6 +3971,9 @@ private class BrowserClient(
     // must not be private, or a tapped link keeps today's dead-end.
     private val openInAppAllowed: () -> Boolean = { true },
     private val isPrivateTab: () -> Boolean = { false },
+    // r197 (adblock A2): the tab id for per-tab blocked counts,
+    // read per request like pageHost.
+    private val tabId: () -> Int = { -1 },
     // r190 (parity Phase 7): the tab's current URL for the anchor
     // check, read per tap like pageHost — a tab's URL changes
     // without the client being rebuilt.
@@ -3937,17 +4002,24 @@ private class BrowserClient(
                 if (method == "GET" || method == "HEAD") {
                     val uri = request.url
                     val ctx = view.context
-                    if (FilterEngine.isBlocked(
-                            scheme = uri.scheme ?: "",
-                            host = uri.host ?: "",
-                            path = uri.path ?: "",
-                            urlString = url,
-                            isForMainFrame = false,
-                            enabled = BrowserStore.adBlockEnabled(ctx),
-                            pageHost = pageHost(),
+                    // r197 (adblock A2): one decision, attributed to
+                    // its category — the ads toggle gates ads, the
+                    // trackers toggle gates trackers, and the count
+                    // lands against this tab and category.
+                    val blockCat = FilterEngine.blockCategory(
+                        scheme = uri.scheme ?: "",
+                        host = uri.host ?: "",
+                        path = uri.path ?: "",
+                        urlString = url,
+                        isForMainFrame = false,
+                        blockAds = BrowserStore.blockAds(ctx),
+                        blockTrackers = BrowserStore.blockTrackers(ctx),
+                        pageHost = pageHost(),
+                    )
+                    if (blockCat != null) {
+                        FilterLists.noteBlockedFor(
+                            tabId(), blockCat, uri.host ?: "", isPrivateTab(),
                         )
-                    ) {
-                        FilterLists.noteBlocked()
                         return BrowserFilter.emptyResponse()
                     }
                 }
@@ -4049,6 +4121,9 @@ private class BrowserClient(
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
         onPageStart()
+        // r197 (adblock A2): a navigation resets this tab's
+        // blocked count, Mariner's shape.
+        FilterLists.resetTabCount(tabId())
         // r196 (adblock A1): Mariner re-evaluates the third-party
         // policy at every page start, so a flipped toggle reaches
         // live tabs without waiting for a recreation.
@@ -4088,7 +4163,7 @@ private class BrowserClient(
         // (the document-start generic sheet, registered at WebView
         // creation below, covers pre-paint hiding when lists were
         // already loaded).
-        if (view != null && url != null && BrowserStore.adBlockEnabled(view.context)) {
+        if (view != null && url != null && BrowserStore.blockingEnabled(view.context)) {
             val finishedHost = runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
             if (finishedHost.isNotEmpty()) {
                 val css = FilterEngine.cosmeticCss(finishedHost)

@@ -55,6 +55,9 @@ object FilterLists {
         val url: String,
         val fileName: String,
         val isHostsFormat: Boolean,
+        // r197 (adblock A2): which category this list's rules
+        // count as — Mariner's categoryForList by list index.
+        val category: Int = FilterEngine.CAT_ADS,
     )
 
     private val sources = listOf(
@@ -65,6 +68,8 @@ object FilterLists {
         FilterListSource(
             "https://easylist.to/easylist/easyprivacy.txt",
             "easyprivacy.txt", false,
+            // r197 (adblock A2): tracker list — its rules count as trackers.
+            FilterEngine.CAT_TRACKER,
         ),
         // Hosts-format blocklist (adware/malware domains). Fills
         // the long-tail ad-network gaps the ABP lists only cover
@@ -77,6 +82,8 @@ object FilterLists {
         FilterListSource(
             "https://filters.adtidy.org/extension/ublock/filters/3.txt",
             "adguard-tracking.txt", false,
+            // r197 (adblock A2): tracker list — its rules count as trackers.
+            FilterEngine.CAT_TRACKER,
         ),
         // AdGuard Mobile Ads — in-app/mobile-web ad networks.
         FilterListSource(
@@ -121,6 +128,31 @@ object FilterLists {
     private val blockedAtomic = AtomicLong(0L)
     private val blockedFlow = MutableStateFlow(0L)
     val blockedCount: StateFlow<Long> = blockedFlow
+
+    /** r197 (adblock A2): session totals by category
+     *  [ads, trackers, other], for the Blocked detail page. */
+    private val blockedByCategoryFlow = MutableStateFlow(listOf(0L, 0L, 0L))
+    val blockedByCategory: StateFlow<List<Long>> = blockedByCategoryFlow
+
+    /** r197 (adblock A2): per-tab counts by category
+     *  [ads, trackers, other], keyed by tab id. */
+    private val blockedPerTabFlow = MutableStateFlow(emptyMap<Int, List<Long>>())
+    val blockedPerTabCategories: StateFlow<Map<Int, List<Long>>> = blockedPerTabFlow
+
+    /** r197 (adblock A2): recent blocked hosts per tab,
+     *  most recent first with their category. */
+    private val blockedRecentFlow = MutableStateFlow(emptyMap<Int, List<Pair<String, Int>>>())
+    val blockedRecent: StateFlow<Map<Int, List<Pair<String, Int>>>> = blockedRecentFlow
+
+    /** r197 (adblock A2): per-day history, newest first —
+     *  persisted days plus today's counts, Mariner's shape. */
+    private val blockedHistoryFlow = MutableStateFlow(emptyMap<String, List<Long>>())
+    val blockedHistory: StateFlow<Map<String, List<Long>>> = blockedHistoryFlow
+
+    /** Mariner's P-m10 throttle, for the history flow only:
+     *  publishing a map copy on every blocked request would
+     *  recompose the detail page per request. */
+    private val lastHistoryPublish = AtomicLong(0)
 
     @Volatile private var started = false
 
@@ -169,9 +201,56 @@ object FilterLists {
         // stale sheet.
     }
 
-    /** Records one blocked subresource (see [blockedCount]). */
-    fun noteBlocked() {
+    /** Records one blocked subresource against its tab and
+     *  category (r197, adblock A2): Mariner's noteBlockedFor
+     *  shape — session total, per-tab and per-category counts,
+     *  recent hosts, and the per-day history (non-private tabs
+     *  only; a private block counts in the session totals but
+     *  never reaches the persisted history). */
+    fun noteBlockedFor(tabId: Int, category: Int, host: String, isPrivate: Boolean) {
         blockedFlow.value = blockedAtomic.incrementAndGet()
+        FilterEngine.noteBlockedFor(tabId, category, host, isPrivate)
+        blockedByCategoryFlow.value = FilterEngine.blockedByCategory()
+        blockedPerTabFlow.value = FilterEngine.perTabBlocked()
+        blockedRecentFlow.value = recentSnapshot()
+        publishHistoryThrottled()
+    }
+
+    /** A navigation resets the tab's count, Mariner's shape. */
+    fun resetTabCount(tabId: Int) {
+        FilterEngine.resetTabCount(tabId)
+        blockedPerTabFlow.value = FilterEngine.perTabBlocked()
+        blockedRecentFlow.value = recentSnapshot()
+    }
+
+    /** Total blocked on this tab since its last navigation. */
+    fun blockedCountFor(tabId: Int): Long = FilterEngine.blockedCountFor(tabId)
+
+    /** Loads the persisted per-day history at browser entry. */
+    fun loadBlockedHistory(context: Context) {
+        FilterEngine.blockedHistory.load(BrowserStore.blockedHistoryRaw(context))
+        blockedHistoryFlow.value = FilterEngine.blockedHistory.snapshot()
+    }
+
+    /** Persists today's blocked-count history when leaving the
+     *  browser — Mariner flushes on app pause; AutoSpace's
+     *  browser session ends here. No-op when nothing changed. */
+    fun flushBlockedHistory(context: Context) {
+        FilterEngine.blockedHistory.flush()?.let { snap ->
+            BrowserStore.setBlockedHistory(context, snap)
+            blockedHistoryFlow.value = FilterEngine.blockedHistory.snapshot()
+        }
+    }
+
+    private fun recentSnapshot(): Map<Int, List<Pair<String, Int>>> =
+        FilterEngine.perTabBlocked().keys.associateWith { FilterEngine.recentBlockedHosts(it) }
+
+    private fun publishHistoryThrottled() {
+        val now = System.currentTimeMillis()
+        val last = lastHistoryPublish.get()
+        if (now - last >= 1000 && lastHistoryPublish.compareAndSet(last, now)) {
+            blockedHistoryFlow.value = FilterEngine.blockedHistory.snapshot()
+        }
     }
 
     private fun applyData(data: FilterData, newest: Long) {
@@ -199,7 +278,7 @@ object FilterLists {
             newest = maxOf(newest, srcFile.lastModified())
             val one = FilterData()
             runCatching {
-                FilterEngine.parseInto(src.isHostsFormat, srcFile.readText(), one)
+                FilterEngine.parseInto(src.isHostsFormat, srcFile.readText(), one, src.category)
             }
             // Rollback: a list file that parses to nothing
             // (truncated or corrupt) falls back to the previous
@@ -207,7 +286,7 @@ object FilterLists {
             if (one.isEmpty() && srcFile == f && bak.exists()) {
                 val fromBak = FilterData()
                 runCatching {
-                    FilterEngine.parseInto(src.isHostsFormat, bak.readText(), fromBak)
+                    FilterEngine.parseInto(src.isHostsFormat, bak.readText(), fromBak, src.category)
                 }
                 if (!fromBak.isEmpty()) {
                     total.merge(fromBak)
@@ -263,14 +342,14 @@ object FilterLists {
                     // + rename so a crash mid-write can't leave a
                     // torn list.
                     val candidate = FilterData()
-                    FilterEngine.parseInto(src.isHostsFormat, text, candidate)
+                    FilterEngine.parseInto(src.isHostsFormat, text, candidate, src.category)
                     if (candidate.isEmpty()) return@runCatching
                     val target = File(d, src.fileName)
                     if (target.exists()) {
                         val current = FilterData()
                         runCatching {
                             FilterEngine.parseInto(
-                                src.isHostsFormat, target.readText(), current,
+                                src.isHostsFormat, target.readText(), current, src.category,
                             )
                         }
                         if (!current.isEmpty() &&
