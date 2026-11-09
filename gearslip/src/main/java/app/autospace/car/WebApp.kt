@@ -2024,6 +2024,13 @@ fun WebApp(content: String) {
                         tab.loadError = null
                     }
                 },
+                // r207 (compat finding 8): an unknown-scheme tap asks
+                // first, naming its target — Mariner's pendingExternalUri.
+                // BrowserClient owns shouldOverrideUrlLoading, so the
+                // callback belongs here, not on BrowserChrome.
+                onExternalScheme = { url ->
+                    mainHandler.post { pendingExternalUri = url }
+                },
                 onPopunder = { url, host ->
                     mainHandler.post { capturePopunder(url, host) }
                 },
@@ -2231,11 +2238,6 @@ fun WebApp(content: String) {
                     if (tab.id == activeTabId) {
                         mainHandler.post { jsDialog = dialog }
                     }
-                },
-                // r207 (compat finding 8): an unknown-scheme tap asks
-                // first, naming its target — Mariner's pendingExternalUri.
-                onExternalScheme = { url ->
-                    mainHandler.post { pendingExternalUri = url }
                 },
                 onWebPermissionRequest = { request ->
                     mainHandler.post { handlePermissionRequest(request, tab.isPrivate) }
