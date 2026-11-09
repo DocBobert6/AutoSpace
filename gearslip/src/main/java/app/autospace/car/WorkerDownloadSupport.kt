@@ -9,6 +9,8 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import java.io.File
 import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Shared plumbing for the downloads workers (r160, downloads slice 4).
@@ -180,6 +182,35 @@ internal fun isUnmeteredNetwork(context: Context): Boolean {
     val capabilities = manager.getNetworkCapabilities(network) ?: return false
     return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
 }
+
+/**
+ * Opens a download connection carrying the browser's identity
+ * (r203, compat finding 2): the tab's user agent always; Referer
+ * + Cookie only over HTTPS (Mariner's S-M8 rule — credentials
+ * never ride a non-HTTPS request). The cookie is the tap-time
+ * snapshot for its own host, else the live jar (non-private
+ * only); a private download never re-reads the live jar. The
+ * caller sets timeouts and checks the response code.
+ */
+internal fun downloadConnection(
+    url: String,
+    identity: BrowserDownloads.DownloadIdentity,
+    snapshot: BrowserDownloads.CookieSnapshot?,
+    isPrivate: Boolean,
+): HttpURLConnection {
+    val connection = URL(url).openConnection() as HttpURLConnection
+    val cookie = BrowserDownloads.cookieForDownloadRequest(url, snapshot, isPrivate) { liveDownloadCookie(it) }
+    BrowserDownloads.downloadHeaders(
+        BrowserDownloads.DownloadIdentity(identity.referer, cookie, identity.userAgent),
+        includeCredentials = BrowserDownloads.isHttpsUrl(url),
+    ).forEach { (name, value) -> connection.setRequestProperty(name, value) }
+    return connection
+}
+
+/** Live cookie lookup for one URL from the default jar (non-private downloads only). */
+private fun liveDownloadCookie(url: String): String? =
+    runCatching { android.webkit.CookieManager.getInstance().getCookie(url) }
+        .getOrNull()?.takeIf { it.isNotBlank() }
 
 /** WorkManager network constraint for one worker enqueue: unmetered only when Wi-Fi-only is on. */
 internal fun workerNetworkConstraints(wifiOnly: Boolean): androidx.work.Constraints {

@@ -162,17 +162,163 @@ object BrowserDownloads {
     }
 
     /**
+     * Download identity (r203, compat finding 2): what a download
+     * request sends so a gated server treats it like the browser —
+     * the page URL as Referer, the session cookies for the download
+     * URL, and the originating tab's user agent. Captured at tap time
+     * and stored on the record (Mariner's cookie-snapshot shape,
+     * Beta.58(2)): a session can end between the tap and the job
+     * running, and the snapshot lets a worker replay the cookies
+     * that were live at tap time. The values are never logged.
+     */
+    data class DownloadIdentity(
+        val referer: String?,
+        val cookie: String?,
+        val userAgent: String?,
+    )
+
+    /**
+     * A tap-time cookie snapshot, host-scoped (Mariner's
+     * CookieSnapshot, Beta.58(2)): replayed only to its own host,
+     * never to any other host.
+     */
+    data class CookieSnapshot(val host: String, val cookie: String)
+
+    /**
+     * Pure host extraction for URL strings. android.net.Uri is a
+     * stub under unit tests, so this parses the string directly:
+     * scheme stripped, authority up to the first /, ?, or #,
+     * userinfo and port stripped. Null when no host survives.
+     */
+    fun hostOfUrl(url: String): String? {
+        val afterScheme = url.substringAfter("://", "")
+        if (afterScheme.isBlank()) return null
+        val authority = afterScheme.substringBefore('/').substringBefore('?').substringBefore('#')
+        val hostPort = authority.substringAfter('@', authority)
+        val host = hostPort.substringBefore(':')
+        return host.takeIf { it.isNotBlank() }?.lowercase()
+    }
+
+    /** Pure: true for an https URL (case-insensitive scheme). */
+    fun isHttpsUrl(url: String): Boolean =
+        url.substringBefore(":", "").lowercase() == "https"
+
+    /**
+     * Pure: the user agent a download request sends — the
+     * originating tab's current agent (mobile default or desktop
+     * X11) when known, else the browser's mobile agent. Mariner
+     * always sends its constant mobile agent, even for desktop
+     * tabs; sending the tab's agent is the more faithful shape
+     * (a desktop tab's download looks like the desktop browser).
+     */
+    fun downloadUserAgent(userAgent: String?): String =
+        userAgent?.takeIf { it.isNotBlank() } ?: PlayerNet.USER_AGENT
+
+    /**
+     * Pure: the headers one download fetch sends. The user agent
+     * always rides; Referer + Cookie ride only when
+     * [includeCredentials] — Mariner's S-M8 rule for worker
+     * fetches (credentials never ride a non-HTTPS request); the
+     * plain DownloadManager path passes true whenever identity is
+     * present, Mariner's buildRequest shape. A blank referer or
+     * cookie sends nothing. [includeUserAgent] exists for the
+     * DASH resolver, where the agent rides the HTTP factory
+     * instead (PlayerNet's shape).
+     */
+    fun downloadHeaders(
+        identity: DownloadIdentity,
+        includeCredentials: Boolean,
+        includeUserAgent: Boolean = true,
+    ): Map<String, String> {
+        val out = HashMap<String, String>()
+        if (includeUserAgent) out["User-Agent"] = downloadUserAgent(identity.userAgent)
+        if (!includeCredentials) return out
+        identity.referer?.takeIf { it.isNotBlank() }?.let { out["Referer"] = it }
+        identity.cookie?.takeIf { it.isNotBlank() }?.let { out["Cookie"] = it }
+        return out
+    }
+
+    /**
+     * Pure: which cookie a request to [url] gets. The tap-time
+     * snapshot wins for its own host; otherwise the live jar
+     * ([liveCookie]) for a non-private download; a private
+     * download never re-reads the live jar — its snapshot is the
+     * only cookie source, so a private HLS download whose
+     * segments live on a different host than the playlist sends
+     * no cookies for those segments. Blank values never send.
+     */
+    fun cookieForDownloadRequest(
+        url: String,
+        snapshot: CookieSnapshot?,
+        isPrivate: Boolean,
+        liveCookie: (String) -> String?,
+    ): String? {
+        val host = hostOfUrl(url)
+        if (snapshot != null && host != null && host == snapshot.host) {
+            return snapshot.cookie.takeIf { it.isNotBlank() }
+        }
+        if (isPrivate) return null
+        return liveCookie(url)?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Pure: notification visibility for a download request —
+     * private downloads never announce themselves in the system
+     * shade (Mariner F-M6); everything else shows the completed
+     * notification, as before.
+     */
+    fun downloadNotificationVisibility(isPrivate: Boolean): Int =
+        if (isPrivate) DownloadManager.Request.VISIBILITY_HIDDEN
+        else DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+
+    /**
+     * Reads the cookies for [url] from the jar the tab actually
+     * uses: the private profile's manager for a private download,
+     * the default manager otherwise. Never the other jar — a
+     * private download must not send non-private cookies, and a
+     * non-private download must not send private ones. Called at
+     * tap time, while the tab is open, so the private profile
+     * exists; null when there are no cookies or the jar cannot
+     * be read. The value is never logged.
+     */
+    fun cookiesForDownload(url: String, isPrivate: Boolean): String? = runCatching {
+        val manager = if (isPrivate) {
+            PrivateProfile.cookieManager()
+        } else {
+            android.webkit.CookieManager.getInstance()
+        }
+        manager?.getCookie(url)
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+
+    /** The tap-time identity for one download, from its record. */
+    fun identityOf(record: BrowserStore.DownloadRecord): DownloadIdentity =
+        DownloadIdentity(record.referer, record.cookie, record.userAgent)
+
+    /**
      * The one plain-download request builder, shared by enqueue and
      * retry: phone Downloads folder, completed notification,
-     * description naming the car browser. There is exactly one place
-     * in the tree that builds a plain-download request.
+     * description naming the car browser, the download's identity
+     * as request headers (Mariner's buildRequest shape), and a
+     * hidden notification for private downloads (Mariner F-M6).
+     * There is exactly one place in the tree that builds a
+     * plain-download request.
      */
-    private fun buildRequest(url: String, fileName: String): DownloadManager.Request =
-        DownloadManager.Request(Uri.parse(url))
+    private fun buildRequest(
+        url: String,
+        fileName: String,
+        identity: DownloadIdentity,
+        isPrivate: Boolean,
+    ): DownloadManager.Request {
+        val request = DownloadManager.Request(Uri.parse(url))
             .setTitle(fileName)
             .setDescription("Downloaded from the car browser")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setNotificationVisibility(downloadNotificationVisibility(isPrivate))
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+        downloadHeaders(identity, includeCredentials = true).forEach { (name, value) ->
+            request.addRequestHeader(name, value)
+        }
+        return request
+    }
 
     /**
      * Enqueue one download and record it, or null when enqueue
@@ -205,15 +351,27 @@ object BrowserDownloads {
         mimeType: String?,
         isPrivate: Boolean,
         isMedia: Boolean? = null,
+        referer: String? = null,
+        userAgent: String? = null,
     ): BrowserStore.DownloadRecord? {
         val effectiveMedia = isMedia ?: isMediaMime(mimeType)
+        // r203: the tap-time identity — the page as Referer, the
+        // session cookies for this URL from the jar the tab uses,
+        // and the tab's user agent — rides every engine below and
+        // is stored on the record, so retries reuse the cookies
+        // that were live at tap time.
+        val identity = DownloadIdentity(
+            referer = referer?.takeIf { it.isNotBlank() },
+            cookie = cookiesForDownload(url, isPrivate),
+            userAgent = userAgent?.takeIf { it.isNotBlank() },
+        )
         when (routeFor(url, effectiveMedia, BrowserStore.segmentedDownloadsEnabled(context))) {
             DownloadRoute.HLS_WORKER ->
-                return enqueueWorkerDownload(context, url, contentDisposition, mimeType, isPrivate)
+                return enqueueWorkerDownload(context, url, contentDisposition, mimeType, isPrivate, identity)
             DownloadRoute.DASH_WORKER ->
-                return enqueueDashDownload(context, url, contentDisposition, mimeType, isPrivate)
+                return enqueueDashDownload(context, url, contentDisposition, mimeType, isPrivate, identity)
             DownloadRoute.SEGMENTED_WORKER ->
-                return enqueueSegmentedDownload(context, url, contentDisposition, mimeType, isPrivate)
+                return enqueueSegmentedDownload(context, url, contentDisposition, mimeType, isPrivate, identity)
             DownloadRoute.PLAIN -> Unit
         }
         if (shouldWaitForWifi(
@@ -232,6 +390,9 @@ object BrowserDownloads {
                 isPrivate = isPrivate,
                 createdAtMs = System.currentTimeMillis(),
                 isMedia = effectiveMedia,
+                referer = identity.referer,
+                cookie = identity.cookie,
+                userAgent = identity.userAgent,
             )
             BrowserStore.addDownload(context, record)
             GearslipLog.i("car browser download waiting for Wi-Fi: $fileName")
@@ -241,7 +402,7 @@ object BrowserDownloads {
             val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
             val dm = context.getSystemService(DownloadManager::class.java)
                 ?: return@runCatching null
-            val dmId = dm.enqueue(buildRequest(url, fileName))
+            val dmId = dm.enqueue(buildRequest(url, fileName, identity, isPrivate))
             val record = BrowserStore.DownloadRecord(
                 id = UUID.randomUUID().toString(),
                 url = url,
@@ -252,6 +413,9 @@ object BrowserDownloads {
                 isPrivate = isPrivate,
                 createdAtMs = System.currentTimeMillis(),
                 isMedia = isMedia ?: isMediaMime(mimeType),
+                referer = identity.referer,
+                cookie = identity.cookie,
+                userAgent = identity.userAgent,
             )
             BrowserStore.addDownload(context, record)
             GearslipLog.i("car browser download started: $fileName")
@@ -274,6 +438,7 @@ object BrowserDownloads {
         contentDisposition: String?,
         mimeType: String?,
         isPrivate: Boolean,
+        identity: DownloadIdentity,
     ): BrowserStore.DownloadRecord? {
         val guessed = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val fileName = if (guessed.lowercase().endsWith(".m3u8")) {
@@ -293,6 +458,9 @@ object BrowserDownloads {
             isMedia = true,
             progress = -1,
             kind = BrowserStore.DownloadKind.HLS,
+            referer = identity.referer,
+            cookie = identity.cookie,
+            userAgent = identity.userAgent,
         )
         BrowserStore.addDownload(context, record)
         return runCatching {
@@ -325,6 +493,7 @@ object BrowserDownloads {
         contentDisposition: String?,
         mimeType: String?,
         isPrivate: Boolean,
+        identity: DownloadIdentity,
     ): BrowserStore.DownloadRecord? {
         val guessed = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val fileName = if (guessed.lowercase().endsWith(".mpd")) {
@@ -344,6 +513,9 @@ object BrowserDownloads {
             isMedia = true,
             progress = -1,
             kind = BrowserStore.DownloadKind.DASH,
+            referer = identity.referer,
+            cookie = identity.cookie,
+            userAgent = identity.userAgent,
         )
         BrowserStore.addDownload(context, record)
         return runCatching {
@@ -375,6 +547,7 @@ object BrowserDownloads {
         contentDisposition: String?,
         mimeType: String?,
         isPrivate: Boolean,
+        identity: DownloadIdentity,
     ): BrowserStore.DownloadRecord? {
         val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
         val record = BrowserStore.DownloadRecord(
@@ -389,6 +562,9 @@ object BrowserDownloads {
             isMedia = true,
             progress = -1,
             kind = BrowserStore.DownloadKind.SEGMENTED,
+            referer = identity.referer,
+            cookie = identity.cookie,
+            userAgent = identity.userAgent,
         )
         BrowserStore.addDownload(context, record)
         return runCatching {
@@ -502,7 +678,7 @@ object BrowserDownloads {
             return
         }
         runCatching {
-            val dmId = dm.enqueue(buildRequest(current.url, current.fileName))
+            val dmId = dm.enqueue(buildRequest(current.url, current.fileName, identityOf(current), current.isPrivate))
             val updated = BrowserStore.retried(current, dmId)
             BrowserStore.updateDownload(context, updated)
             GearslipLog.i("car browser download started after Wi-Fi wait: ${current.fileName}")
@@ -630,7 +806,7 @@ object BrowserDownloads {
             return failed
         }
         return runCatching {
-            val dmId = dm.enqueue(buildRequest(record.url, record.fileName))
+            val dmId = dm.enqueue(buildRequest(record.url, record.fileName, identityOf(record), record.isPrivate))
             val updated = BrowserStore.retried(record, dmId)
             BrowserStore.updateDownload(context, updated)
             GearslipLog.i("car browser download retried: ${record.fileName}")

@@ -11,7 +11,6 @@ import app.autospace.GearslipLog
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -59,16 +58,28 @@ class HlsDownloadWorker(
             ?: return@withContext Result.failure()
         if (record.state == BrowserStore.DownloadState.COMPLETE) return@withContext Result.success()
         if (record.kind != BrowserStore.DownloadKind.HLS) return@withContext Result.failure()
+        // r203: the tap-time identity — the page as Referer, the
+        // session cookies, and the tab's user agent — rides every
+        // fetch below. The snapshot is host-scoped: it is replayed
+        // only to the playlist's own host.
+        val identity = BrowserDownloads.identityOf(record)
+        val snapshot = identity.cookie?.takeIf { it.isNotBlank() }?.let { cookie ->
+            BrowserDownloads.hostOfUrl(playlistUrl)?.let { BrowserDownloads.CookieSnapshot(it, cookie) }
+        }
         try {
             updateProgress(recordId, 0)
-            val masterText = fetchText(playlistUrl)
+            // Referer chaining (Mariner Beta.58(3)): the playlist
+            // fetch carries the page referer; the variant fetch
+            // carries the master URL; segments and the init
+            // segment carry the media playlist URL.
+            val masterText = fetchText(playlistUrl, identity, snapshot, record.isPrivate)
             val variantUri = HlsPlaylist.selectVariant(masterText)
             val mediaUrl = if (variantUri != null) {
                 HlsPlaylist.resolveUrl(playlistUrl, variantUri)
             } else {
                 playlistUrl
             }
-            val mediaText = fetchText(mediaUrl)
+            val mediaText = fetchText(mediaUrl, identityWithReferer(identity, playlistUrl), snapshot, record.isPrivate)
             val parsed = HlsPlaylist.parseMediaPlaylist(mediaText)
             if (parsed.encrypted || !parsed.hasEndList || parsed.segments.isEmpty()) {
                 markFailed(recordId)
@@ -90,7 +101,7 @@ class HlsDownloadWorker(
                 if (target.exists() && target.length() > 0L) {
                     done++
                 } else {
-                    fetchToFile(segmentUrl, target)
+                    fetchToFile(segmentUrl, target, identityWithReferer(identity, mediaUrl), snapshot, record.isPrivate)
                     done++
                 }
                 updateProgress(recordId, done * 100 / segmentUrls.size)
@@ -99,7 +110,7 @@ class HlsDownloadWorker(
             val initFile = parsed.initSegmentUri?.let { initUri ->
                 val initTarget = File(tempDir, "init.m4s")
                 if (!initTarget.exists() || initTarget.length() == 0L) {
-                    fetchToFile(HlsPlaylist.resolveUrl(mediaUrl, initUri), initTarget)
+                    fetchToFile(HlsPlaylist.resolveUrl(mediaUrl, initUri), initTarget, identityWithReferer(identity, mediaUrl), snapshot, record.isPrivate)
                 }
                 initTarget
             }
@@ -167,12 +178,16 @@ class HlsDownloadWorker(
         }
     }
 
-    private fun fetchText(url: String): String {
-        val connection = URL(url).openConnection() as HttpURLConnection
+    private fun fetchText(
+        url: String,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ): String {
+        val connection = downloadConnection(url, identity, snapshot, isPrivate)
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
-            connection.setRequestProperty("User-Agent", "AutoSpace")
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("HTTP ${connection.responseCode} for $url")
             }
@@ -188,13 +203,18 @@ class HlsDownloadWorker(
      * so a resumed run never mistakes a half-written segment for a
      * finished one (the resume check also requires length > 0).
      */
-    private fun fetchToFile(url: String, target: File) {
+    private fun fetchToFile(
+        url: String,
+        target: File,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ) {
         val tmp = File(target.parentFile, "${target.name}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = downloadConnection(url, identity, snapshot, isPrivate)
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
-            connection.setRequestProperty("User-Agent", "AutoSpace")
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("HTTP ${connection.responseCode} for $url")
             }
@@ -248,6 +268,9 @@ class HlsDownloadWorker(
     companion object {
         const val KEY_RECORD_ID = "record_id"
         const val KEY_URL = "url"
+        const val KEY_REFERER = "referer"
+        const val KEY_COOKIE = "cookie"
+        const val KEY_USER_AGENT = "user_agent"
 
         /** The unique-work name for one record's HLS download. */
         fun workName(recordId: String): String = "hls-download-$recordId"
@@ -264,6 +287,9 @@ class HlsDownloadWorker(
                     workDataOf(
                         KEY_RECORD_ID to record.id,
                         KEY_URL to record.url,
+                        KEY_REFERER to (record.referer ?: ""),
+                        KEY_COOKIE to (record.cookie ?: ""),
+                        KEY_USER_AGENT to (record.userAgent ?: ""),
                     ),
                 )
                 .setConstraints(workerNetworkConstraints(wifiOnly))
@@ -284,6 +310,12 @@ class HlsDownloadWorker(
         }
     }
 }
+
+/** A copy of [identity] carrying [referer] instead of the tap-time page URL (r203 referer chaining). */
+internal fun identityWithReferer(
+    identity: BrowserDownloads.DownloadIdentity,
+    referer: String,
+): BrowserDownloads.DownloadIdentity = identity.copy(referer = referer)
 
 /** Private-app-storage temp dir for one record's segments and joined file. */
 internal fun workerTempDir(context: Context, recordId: String): File =

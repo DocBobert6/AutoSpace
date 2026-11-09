@@ -604,8 +604,14 @@ fun WebApp(content: String) {
      * match the old listener behavior, so the long-press row gains the
      * same notices the listener always showed.
      */
-    fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null, isMedia: Boolean? = null) {
-        val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate, isMedia)
+    fun downloadUrl(url: String, isPrivate: Boolean, contentDisposition: String? = null, mimeType: String? = null, isMedia: Boolean? = null, referer: String? = null, userAgent: String? = null) {
+        // r203: the tap-time identity — the page as Referer and
+        // the tab's UA — rides into enqueueDownload, which reads
+        // the session cookies live from the tab's own jar and
+        // stores all three on the record. A null referer sends no
+        // Referer; a null UA falls back to the default mobile
+        // agent inside enqueueDownload.
+        val record = BrowserDownloads.enqueueDownload(context, url, contentDisposition, mimeType, isPrivate, isMedia, referer, userAgent)
         if (record != null) {
             if (record.state == BrowserStore.DownloadState.WAITING) {
                 CarToasts.show(context, "Waiting for Wi-Fi", CarToast.LENGTH_SHORT)
@@ -1949,7 +1955,20 @@ fun WebApp(content: String) {
                 // Downloads list shows. The tab's private flag rides
                 // along, so private downloads stay unlisted and die
                 // with the private profile.
-                downloadUrl(url, tab.isPrivate, contentDisposition, mimeType)
+                // r203: the page URL rides along as the Referer,
+                // and the tab's current UA travels with it, so a
+                // session-gated or hotlink-protected download
+                // carries the same identity as the page it came
+                // from. The cookies are read live inside
+                // enqueueDownload, from the tab's own jar.
+                downloadUrl(
+                    url,
+                    tab.isPrivate,
+                    contentDisposition,
+                    mimeType,
+                    referer = tab.currentUrl,
+                    userAgent = tabUserAgent(tab),
+                )
             })
             addJavascriptInterface(
                 FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
@@ -3050,7 +3069,9 @@ fun WebApp(content: String) {
                 // it lands in the Offline library. The sheet stays open
                 // so more than one item can be downloaded.
                 onDownload = { item ->
-                    downloadUrl(item.url, activeTab.isPrivate, isMedia = true)
+                    // r203: the media row downloads as the page it
+                    // was found on (see the listener site).
+                    downloadUrl(item.url, activeTab.isPrivate, isMedia = true, referer = activeTab.currentUrl, userAgent = tabUserAgent(activeTab))
                 },
                 onClose = { sheetOpen = false },
             )
@@ -3322,7 +3343,9 @@ fun WebApp(content: String) {
                             }, modifier = Modifier.fillMaxWidth()) { Text("View image") }
                             GsButton(onClick = {
                                 longPressTarget = null
-                                downloadUrl(longPress.url, activeTab.isPrivate, isMedia = false)
+                                // r203: the long-press row downloads as the
+                                // page it was pressed on (see the listener site).
+                                downloadUrl(longPress.url, activeTab.isPrivate, isMedia = false, referer = activeTab.currentUrl, userAgent = tabUserAgent(activeTab))
                             }, modifier = Modifier.fillMaxWidth()) { Text("Download") }
                         }
                         GsButton(onClick = {
@@ -4339,6 +4362,16 @@ private enum class RuleEditType { BLOCK_HOST, BLOCK_URL, ALLOW_HOST }
  * surfaces the error, it does not offer to go past it.
  */
 internal fun httpErrorMessage(statusCode: Int): String = "This page answered $statusCode"
+
+/**
+ * The user agent the page in [tab] actually wears (r203): the
+ * WebView's own string — the desktop constant on a desktop tab,
+ * the WebView default on a mobile tab. Null while the tab has no
+ * WebView yet (a start page); the download then falls back to the
+ * default mobile agent.
+ */
+private fun tabUserAgent(tab: BrowserTab): String? =
+    tab.view?.settings?.userAgentString?.takeIf { it.isNotBlank() }
 
 /**
  * r190 (parity Phase 7): a same-page anchor link — the target is the

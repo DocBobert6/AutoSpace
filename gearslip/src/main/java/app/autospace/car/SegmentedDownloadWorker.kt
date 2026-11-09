@@ -8,7 +8,6 @@ import app.autospace.GearslipLog
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -57,11 +56,17 @@ class SegmentedDownloadWorker(
             ?: return@withContext Result.failure()
         if (record.state == BrowserStore.DownloadState.COMPLETE) return@withContext Result.success()
         if (record.kind != BrowserStore.DownloadKind.SEGMENTED) return@withContext Result.failure()
+        // r203: the tap-time identity rides every fetch below; the
+        // snapshot is host-scoped to the file's own host.
+        val identity = BrowserDownloads.identityOf(record)
+        val snapshot = identity.cookie?.takeIf { it.isNotBlank() }?.let { cookie ->
+            BrowserDownloads.hostOfUrl(fileUrl)?.let { BrowserDownloads.CookieSnapshot(it, cookie) }
+        }
         try {
             updateWorkerProgress(applicationContext, recordId, 0)
             val tempDir = downloadTempDir(applicationContext, BrowserStore.DownloadKind.SEGMENTED, recordId)
             if (!tempDir.exists()) tempDir.mkdirs()
-            val totalBytes = probeTotalBytes(fileUrl)
+            val totalBytes = probeTotalBytes(fileUrl, identity, snapshot, record.isPrivate)
             val joined: File
             if (totalBytes != null) {
                 joined = File(tempDir, "joined.bin")
@@ -81,7 +86,7 @@ class SegmentedDownloadWorker(
                     if (target.exists() && target.length() == expected) {
                         doneBytes += expected
                     } else {
-                        fetchRangeToFile(fileUrl, range, target)
+                        fetchRangeToFile(fileUrl, range, target, identity, snapshot, record.isPrivate)
                         doneBytes += expected
                     }
                     updateWorkerProgress(applicationContext, recordId, (doneBytes * 100L / totalBytes).toInt())
@@ -96,7 +101,7 @@ class SegmentedDownloadWorker(
                 // tracks bytes when the server reports a length,
                 // and otherwise stays at zero until the file lands.
                 joined = File(tempDir, "whole.bin")
-                fetchWholeToFile(fileUrl, joined, recordId)
+                fetchWholeToFile(fileUrl, joined, recordId, identity, snapshot, record.isPrivate)
                 val current = BrowserStore.downloadById(applicationContext, recordId)
                 if (current == null || current.state != BrowserStore.DownloadState.IN_PROGRESS) {
                     return@withContext Result.success()
@@ -155,13 +160,17 @@ class SegmentedDownloadWorker(
      * that as range-less too, and the stream itself will fail
      * honestly if the server is truly unreachable.
      */
-    private fun probeTotalBytes(url: String): Long? {
+    private fun probeTotalBytes(
+        url: String,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ): Long? {
         return runCatching {
-            val connection = URL(url).openConnection() as HttpURLConnection
+            val connection = downloadConnection(url, identity, snapshot, isPrivate)
             try {
                 connection.connectTimeout = 15_000
                 connection.readTimeout = 30_000
-                connection.setRequestProperty("User-Agent", "AutoSpace")
                 connection.setRequestProperty("Range", "bytes=0-0")
                 if (connection.responseCode != HttpURLConnection.HTTP_PARTIAL) return@runCatching null
                 val contentRange = connection.getHeaderField("Content-Range") ?: return@runCatching null
@@ -180,13 +189,19 @@ class SegmentedDownloadWorker(
      * the full expected length). A non-206 answer is a failure,
      * not a silent whole file wearing a part's name.
      */
-    private fun fetchRangeToFile(url: String, range: LongRange, target: File) {
+    private fun fetchRangeToFile(
+        url: String,
+        range: LongRange,
+        target: File,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ) {
         val tmp = File(target.parentFile, "${target.name}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = downloadConnection(url, identity, snapshot, isPrivate)
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
-            connection.setRequestProperty("User-Agent", "AutoSpace")
             connection.setRequestProperty("Range", "bytes=${range.first}-${range.last}")
             if (connection.responseCode != HttpURLConnection.HTTP_PARTIAL) {
                 throw IOException("HTTP ${connection.responseCode} for range $range of $url")
@@ -209,13 +224,19 @@ class SegmentedDownloadWorker(
      * reports a content length; without one it stays at zero
      * until the file lands, which the caller set at the start.
      */
-    private fun fetchWholeToFile(url: String, target: File, recordId: String) {
+    private fun fetchWholeToFile(
+        url: String,
+        target: File,
+        recordId: String,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ) {
         val tmp = File(target.parentFile, "${target.name}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = downloadConnection(url, identity, snapshot, isPrivate)
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
-            connection.setRequestProperty("User-Agent", "AutoSpace")
             if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                 throw IOException("HTTP ${connection.responseCode} for $url")
             }
@@ -251,6 +272,9 @@ class SegmentedDownloadWorker(
     companion object {
         const val KEY_RECORD_ID = "record_id"
         const val KEY_URL = "url"
+        const val KEY_REFERER = "referer"
+        const val KEY_COOKIE = "cookie"
+        const val KEY_USER_AGENT = "user_agent"
 
         /** One segment's size: 1 MiB parts keep resume granularity fine without file spam. */
         const val PART_SIZE_BYTES: Long = 1024L * 1024L
@@ -276,6 +300,9 @@ class SegmentedDownloadWorker(
                     workDataOf(
                         KEY_RECORD_ID to record.id,
                         KEY_URL to record.url,
+                        KEY_REFERER to (record.referer ?: ""),
+                        KEY_COOKIE to (record.cookie ?: ""),
+                        KEY_USER_AGENT to (record.userAgent ?: ""),
                     ),
                 )
                 .setConstraints(workerNetworkConstraints(wifiOnly))

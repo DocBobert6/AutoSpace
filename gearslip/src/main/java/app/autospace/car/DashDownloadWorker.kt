@@ -1,8 +1,17 @@
 package app.autospace.car
 
 import android.content.Context
+import android.webkit.CookieManager
 import androidx.media3.common.MediaItem
+import androidx.media3.common.util.Clock
+import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultAssetLoaderFactory
+import androidx.media3.transformer.DefaultDecoderFactory
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
@@ -61,6 +70,13 @@ class DashDownloadWorker(
             ?: return@withContext Result.failure()
         if (record.state == BrowserStore.DownloadState.COMPLETE) return@withContext Result.success()
         if (record.kind != BrowserStore.DownloadKind.DASH) return@withContext Result.failure()
+        // r203: the tap-time identity rides the export's fetches
+        // (see exportDash); the snapshot is host-scoped to the
+        // manifest's own host.
+        val identity = BrowserDownloads.identityOf(record)
+        val snapshot = identity.cookie?.takeIf { it.isNotBlank() }?.let { cookie ->
+            BrowserDownloads.hostOfUrl(manifestUrl)?.let { BrowserDownloads.CookieSnapshot(it, cookie) }
+        }
         try {
             updateWorkerProgress(applicationContext, recordId, 0)
             val tempDir = downloadTempDir(applicationContext, BrowserStore.DownloadKind.DASH, recordId)
@@ -72,7 +88,7 @@ class DashDownloadWorker(
                 // this run exports from scratch.
                 exportFile.delete()
             }
-            val exported = exportDash(applicationContext, manifestUrl, exportFile)
+            val exported = exportDash(applicationContext, manifestUrl, exportFile, identity, snapshot, record.isPrivate)
             if (!exported) {
                 markWorkerFailed(applicationContext, recordId)
                 return@withContext Result.failure()
@@ -125,10 +141,59 @@ class DashDownloadWorker(
      * and suspends until it completes or fails. Cancellation
      * cancels the export, so a paused run never keeps encoding
      * after its record has moved on.
+     *
+     * Identity (r203): Transformer has no per-request header hook
+     * of its own, so the export runs through an asset loader
+     * built on a resolving data source — the PlayerNet shape —
+     * which attaches the tab's user agent (on the HTTP factory),
+     * the page Referer, and the session cookie (HTTPS only, the
+     * tap-time snapshot for its own host, else the live jar for a
+     * non-private download) to the manifest and segment fetches.
+     * The factory otherwise replicates Transformer's default
+     * (same decoder factory, same bitmap loader shape), so an
+     * ungated export behaves exactly as before.
      */
-    private suspend fun exportDash(context: Context, manifestUrl: String, outputFile: File): Boolean =
+    private suspend fun exportDash(
+        context: Context,
+        manifestUrl: String,
+        outputFile: File,
+        identity: BrowserDownloads.DownloadIdentity,
+        snapshot: BrowserDownloads.CookieSnapshot?,
+        isPrivate: Boolean,
+    ): Boolean =
         suspendCancellableCoroutine { continuation ->
-            val transformer = Transformer.Builder(context).build()
+            val http = DefaultHttpDataSource.Factory()
+                .setUserAgent(BrowserDownloads.downloadUserAgent(identity.userAgent))
+                .setAllowCrossProtocolRedirects(true)
+            val resolving = ResolvingDataSource.Factory(
+                DefaultDataSource.Factory(context, http),
+            ) { spec ->
+                val uri = spec.uri.toString()
+                val cookie = BrowserDownloads.cookieForDownloadRequest(uri, snapshot, isPrivate) { liveDashCookie(it) }
+                val extra = BrowserDownloads.downloadHeaders(
+                    BrowserDownloads.DownloadIdentity(identity.referer, cookie, identity.userAgent),
+                    includeCredentials = BrowserDownloads.isHttpsUrl(uri),
+                    includeUserAgent = false,
+                )
+                if (extra.isEmpty()) {
+                    spec
+                } else {
+                    spec.buildUpon()
+                        .setHttpRequestHeaders(HashMap(spec.httpRequestHeaders).apply { putAll(extra) })
+                        .build()
+                }
+            }
+            val transformer = Transformer.Builder(context)
+                .setAssetLoaderFactory(
+                    DefaultAssetLoaderFactory(
+                        context,
+                        DefaultDecoderFactory.Builder(context).build(),
+                        Clock.DEFAULT,
+                        DefaultMediaSourceFactory(resolving),
+                        DataSourceBitmapLoader.Builder(context).build(),
+                    ),
+                )
+                .build()
             transformer.addListener(object : Transformer.Listener {
                 override fun onCompleted(composition: Composition, exportResult: ExportResult) {
                     if (continuation.isActive) continuation.resume(true)
@@ -152,9 +217,17 @@ class DashDownloadWorker(
             }
         }
 
+    /** Live cookie lookup for one URL from the default jar (non-private DASH exports only). */
+    private fun liveDashCookie(url: String): String? =
+        runCatching { CookieManager.getInstance().getCookie(url) }
+            .getOrNull()?.takeIf { it.isNotBlank() }
+
     companion object {
         const val KEY_RECORD_ID = "record_id"
         const val KEY_URL = "url"
+        const val KEY_REFERER = "referer"
+        const val KEY_COOKIE = "cookie"
+        const val KEY_USER_AGENT = "user_agent"
 
         /** The unique-work name for one record's DASH download. */
         fun workName(recordId: String): String = "dash-download-$recordId"
@@ -177,6 +250,9 @@ class DashDownloadWorker(
                     workDataOf(
                         KEY_RECORD_ID to record.id,
                         KEY_URL to record.url,
+                        KEY_REFERER to (record.referer ?: ""),
+                        KEY_COOKIE to (record.cookie ?: ""),
+                        KEY_USER_AGENT to (record.userAgent ?: ""),
                     ),
                 )
                 .setConstraints(workerNetworkConstraints(wifiOnly))

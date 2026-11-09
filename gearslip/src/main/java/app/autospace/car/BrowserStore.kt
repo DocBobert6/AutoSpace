@@ -844,6 +844,9 @@ object BrowserStore {
         val isMedia: Boolean = false,
         val progress: Int = -1,
         val kind: DownloadKind = DownloadKind.PLAIN,
+        val referer: String? = null,
+        val cookie: String? = null,
+        val userAgent: String? = null,
     )
 
     private const val KEY_DOWNLOADS = "browser_downloads"
@@ -865,7 +868,11 @@ object BrowserStore {
      * | engine kind name (r159; pre-slice rows have no eleventh field
      * and decode as plain, unknown names also decode as plain;
      * r160 adds DASH and SEGMENTED as real kind names, and WAITING
-     * as a real state name).
+     * as a real state name) | referer (r203; pre-r203 rows have no
+     * twelfth field and decode with null identity) | cookie
+     * snapshot (r203, same rule) | user agent (r203, same rule).
+     * The identity values are URL-encoded like every other
+     * string field; a blank field decodes to null.
      */
     fun encodeDownloads(records: List<DownloadRecord>): String =
         records.joinToString("\n") { record ->
@@ -881,6 +888,9 @@ object BrowserStore {
                 if (record.isMedia) "1" else "0",
                 record.progress.toString(),
                 record.kind.name,
+                encDownload(record.referer ?: ""),
+                encDownload(record.cookie ?: ""),
+                encDownload(record.userAgent ?: ""),
             ).joinToString("|")
         }
 
@@ -889,7 +899,7 @@ object BrowserStore {
         if (raw.isBlank()) return emptyList()
         return raw.lines().mapNotNull { line ->
             val parts = line.split("|")
-            if (parts.size != 8 && parts.size != 9 && parts.size != 11) return@mapNotNull null
+            if (parts.size != 8 && parts.size != 9 && parts.size != 11 && parts.size != 14) return@mapNotNull null
             val id = decDownload(parts[0])
             val url = decDownload(parts[1])
             if (id.isBlank() || url.isBlank()) return@mapNotNull null
@@ -910,6 +920,9 @@ object BrowserStore {
                 kind = parts.getOrNull(10)?.let {
                     runCatching { DownloadKind.valueOf(it) }.getOrDefault(DownloadKind.PLAIN)
                 } ?: DownloadKind.PLAIN,
+                referer = parts.getOrNull(11)?.let { decDownload(it) }?.takeIf { it.isNotBlank() },
+                cookie = parts.getOrNull(12)?.let { decDownload(it) }?.takeIf { it.isNotBlank() },
+                userAgent = parts.getOrNull(13)?.let { decDownload(it) }?.takeIf { it.isNotBlank() },
             )
         }
     }

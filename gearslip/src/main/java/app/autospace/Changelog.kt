@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            161, "0.4.150-alpha",
+            listOf(
+                "Downloads carry the page's identity now: a file you download sends the page it came from, the page's sign-in cookies, and the tab's browser details, so downloads that used to fail on protected sites work the way they do from the page itself. Private-tab downloads stay hidden from the notification shade.",
+            ),
+        ),
+        Release(
             160, "0.4.149-alpha",
             listOf(
                 "Popups work like Mariner's now: a login, payment check, or video window that opens a popup gets a real popup tab instead of dragging the page you were on away with it, and a popup that closes itself closes its tab. Blocked popups still show the notice with Open once, Open all, and Allow or Block for the site.",

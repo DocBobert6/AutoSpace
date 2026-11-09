@@ -231,6 +231,17 @@ object PrivateProfile {
         if (!supported()) return
         runCatching { ProfileStore.getInstance().deleteProfile(NAME) }
     }
+
+    /**
+     * The private profile's cookie manager, or null when profiles
+     * are unsupported. Read-only use: the download path reads the
+     * cookies for one URL at tap time. The profile exists while a
+     * private tab is open, so this is a read, not a creation.
+     */
+    fun cookieManager(): android.webkit.CookieManager? {
+        if (!supported()) return null
+        return runCatching { ProfileStore.getInstance().getOrCreateProfile(NAME).cookieManager }.getOrNull()
+    }
 }
 
 /**
