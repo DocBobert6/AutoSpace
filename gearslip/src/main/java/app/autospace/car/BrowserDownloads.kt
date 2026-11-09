@@ -878,6 +878,17 @@ object BrowserDownloads {
                 context.getSystemService(DownloadManager::class.java)?.remove(record.downloadManagerId)
             }
         }
+        // r205: an imported video is a pointer at the phone's file,
+        // not a copy — deleting the row drops the record and lets go
+        // of the persisted permission, never the original file.
+        if (VideoImport.isImportedRecord(record)) {
+            runCatching {
+                context.contentResolver.releasePersistableUriPermission(
+                    android.net.Uri.parse(record.url),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+            }
+        }
         BrowserStore.removeDownload(context, record.id)
     }
 

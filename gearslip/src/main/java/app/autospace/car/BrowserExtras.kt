@@ -265,6 +265,12 @@ fun applyWebHardening(settings: android.webkit.WebSettings) {
     @Suppress("DEPRECATION")
     settings.saveFormData = false
     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+    // r205: Mariner's zoom controls (BrowserScreen.kt:2375-2377) —
+    // pinch zoom stays available, and the on-screen +/- controls
+    // Mariner hides stay hidden here too.
+    settings.setSupportZoom(true)
+    settings.builtInZoomControls = true
+    settings.displayZoomControls = false
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
         settings.safeBrowsingEnabled = true
     }

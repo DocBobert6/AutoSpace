@@ -26,6 +26,9 @@ object VideoUrl {
         return if ('.' in last) last.substringAfterLast('.').lowercase() else ""
     }
 
+    /** True when the extension is a direct video file the player can open. */
+    fun isVideoExtension(ext: String): Boolean = ext in VIDEO_EXTS
+
     fun kindOf(raw: String): Kind? {
         if (raw.startsWith("blob:") || raw.startsWith("data:") || raw.startsWith("javascript:")) return null
         if (!raw.startsWith("http://") && !raw.startsWith("https://")) return null

@@ -128,6 +128,9 @@ fun BrowserListsSheet(
     onPauseLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onResumeLibrary: (BrowserStore.DownloadRecord) -> Unit,
     onCancelLibrary: (BrowserStore.DownloadRecord) -> Unit,
+    // r205: import a video from the phone into the Offline library.
+    // The caller owns the picker; the sheet only offers the row.
+    onImportLibrary: () -> Unit,
     // r162: Newsstand (saved articles only — the caller passes the
     // stored list; the sheet itself never touches BrowserStore).
     // Open reopens the saved article in the reader overlay; Delete
@@ -439,6 +442,11 @@ fun BrowserListsSheet(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.onGloballyPositioned { libraryY = it.positionInParent().y.toInt() },
                 )
+                // r205: import a video from the phone. The file
+                // itself stays where it is — the row points at it.
+                GsButton(onClick = onImportLibrary, modifier = Modifier.fillMaxWidth()) {
+                    Text("Import a video")
+                }
                 if (shownLibrary.isEmpty()) {
                     Text(
                         if (listQuery.isBlank()) "No offline media yet." else "No offline media matches \"$listQuery\".",

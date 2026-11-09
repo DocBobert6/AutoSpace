@@ -392,6 +392,10 @@ fun WebApp(content: String) {
     // state. The find bar follows tab switches: the active-tab
     // effect below re-runs the query on the new tab's WebView.
     var textZoom by remember { mutableStateOf(BrowserStore.textZoom(context)) }
+    // r205: this host's zoom (0 = unset, the global size above
+    // applies). Refreshed on tab switches and navigations, and
+    // whenever the settings sheet changes it.
+    var siteZoom by remember { mutableStateOf(BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))) }
     var findOpen by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findMatches by remember { mutableStateOf("") }
@@ -691,12 +695,26 @@ fun WebApp(content: String) {
     // pin added in one tab shows on a new tab's start page.
     LaunchedEffect(activeTabId) {
         web = activeTab.view
-        web?.settings?.textZoom = textZoom
+        // r205: per-site zoom wins for this tab's host, else the
+        // global size — applied here and on navigation, so a tab
+        // switch never shows another site's zoom.
+        web?.settings?.textZoom = BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
+        siteZoom = BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))
         if (findOpen && findQuery.isNotEmpty()) web?.findAllAsync(findQuery)
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
         recentlyClosed = BrowserStore.recentlyClosed(context)
         pins = BrowserStore.pins(context)
+    }
+    // r205: per-site zoom follows navigation — a tab's WebView
+    // keeps its settings across loads, so a move to another host
+    // must re-apply that host's zoom (site zoom wins, else the
+    // global size). currentUrl is snapshot state, so this re-runs
+    // on every navigation commit.
+    LaunchedEffect(activeTab.currentUrl) {
+        activeTab.view?.settings?.textZoom =
+            BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
+        siteZoom = BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))
     }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
@@ -1107,6 +1125,34 @@ fun WebApp(content: String) {
                         CarToasts.show(context, "Download file is gone", CarToast.LENGTH_LONG)
                     BrowserDownloads.LibraryResult.COPY_FAILED ->
                         CarToasts.show(context, "Couldn't save that copy", CarToast.LENGTH_LONG)
+                }
+                refreshLists()
+            }
+        }
+    }
+    // r205: import a video from the phone into the Offline library.
+    // The picker is a hand-built ACTION_OPEN_DOCUMENT intent (not
+    // the OpenDocument contract) so the grant carries
+    // FLAG_GRANT_PERSISTABLE_URI_PERMISSION — the library keeps
+    // access to the picked file across restarts. The file itself
+    // is never copied or moved: the record points at the phone's
+    // file, and deleting the row only drops the record (and the
+    // persisted permission), never the original.
+    val importVideoLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val uri = result.data?.data ?: return@rememberLauncherForActivityResult
+        scope.launch(Dispatchers.IO) {
+            val importResult = VideoImport.importFromUri(context, uri)
+            withContext(Dispatchers.Main) {
+                when (importResult) {
+                    is VideoImportResult.Added ->
+                        CarToasts.show(context, "Added to your offline library", CarToast.LENGTH_SHORT)
+                    is VideoImportResult.Refused ->
+                        CarToasts.show(context, importResult.reason, CarToast.LENGTH_LONG)
+                    is VideoImportResult.Failed ->
+                        CarToasts.show(context, importResult.reason, CarToast.LENGTH_LONG)
                 }
                 refreshLists()
             }
@@ -1635,7 +1681,9 @@ fun WebApp(content: String) {
             // Audit fix (2026-10-25, A2): new tabs
             // start at the stored text zoom, and
             // report find matches for the find bar.
-            settings.textZoom = BrowserStore.textZoom(context)
+            // r205: a per-site zoom wins for this tab's
+            // host, else the global size.
+            settings.textZoom = BrowserStore.effectiveZoom(context, hostOf(tab.currentUrl))
             setFindListener { active, matches, _ ->
                 mainHandler.post {
                     findMatches = if (matches > 0) "$active of $matches" else ""
@@ -2731,7 +2779,21 @@ fun WebApp(content: String) {
                     val clamped = zoom.coerceIn(50, 200)
                     BrowserStore.setTextZoom(context, clamped)
                     textZoom = clamped
-                    activeTab.view?.settings?.textZoom = clamped
+                    // r205: the live tab wears its effective zoom —
+                    // a site zoom still wins over the new global.
+                    activeTab.view?.settings?.textZoom =
+                        BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
+                },
+                // r205: per-site zoom for the current host
+                // (Mariner P-m8) — 0 means "use the global
+                // size above". Applies live, no reload: textZoom
+                // re-lays the page out at once.
+                siteZoom = siteZoom,
+                onSiteZoom = { zoom ->
+                    BrowserStore.setSiteZoom(context, hostOf(activeTab.currentUrl), zoom)
+                    siteZoom = zoom
+                    activeTab.view?.settings?.textZoom =
+                        BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
                 },
                 // Audit fix (2026-10-25, A3): share intent to the
                 // phone browser. The car tab is untouched — nothing
@@ -3019,6 +3081,9 @@ fun WebApp(content: String) {
                     BrowserDownloads.cancelWorkerDownload(context, record)
                     refreshLists()
                 },
+                // r205: import a video from the phone into the
+                // Offline library (same build as the per-site zoom).
+                onImportLibrary = { importVideoLauncher.launch(VideoImport.pickIntent()) },
                 // r162: Newsstand. Open closes the sheet and reopens
                 // the saved article in the reader overlay; Delete drops
                 // the row and refreshes, so the sheet never shows a
@@ -3863,6 +3928,10 @@ private fun BrowserSettingsMenu(
     // all from this same sheet.
     textZoom: Int,
     onTextZoom: (Int) -> Unit,
+    // r205: per-site zoom for the current host (Mariner P-m8),
+    // 0 = unset, use the global size above.
+    siteZoom: Int,
+    onSiteZoom: (Int) -> Unit,
     onOpenOnPhone: () -> Unit,
     // r183: current-page "Open in app" — shown only when a handler
     // exists, computed by the caller when the menu opens.
@@ -4084,6 +4153,38 @@ private fun BrowserSettingsMenu(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // r205: per-site zoom (Mariner P-m8) — this site
+                // only, remembered per host. Hidden on start pages,
+                // which have no host. Applies live, no reload.
+                if (currentHost.isNotBlank()) {
+                    Text(
+                        "Zoom for this site",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        GsButton(onClick = { onSiteZoom(BrowserStore.siteZoomStepDown(siteZoom)) }, modifier = Modifier.weight(1f)) { Text("−") }
+                        Text(
+                            if (siteZoom <= 0) "Default" else "$siteZoom%",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                            modifier = Modifier.widthIn(min = 56.dp),
+                        )
+                        GsButton(onClick = { onSiteZoom(BrowserStore.siteZoomStepUp(siteZoom)) }, modifier = Modifier.weight(1f)) { Text("+") }
+                        if (siteZoom > 0) {
+                            GsButton(onClick = { onSiteZoom(0) }) { Text("Reset") }
+                        }
+                    }
+                    Text(
+                        "Zoom for $currentHost only, 50% to 200%. Saved per site, so it sticks when you come back; other sites keep the size above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 // r185: Find in page, Reader mode, and Desktop site
                 // moved to the browser menu sheet (parity Phase 2);
                 // the Page section keeps Open on phone (+ Open in app).

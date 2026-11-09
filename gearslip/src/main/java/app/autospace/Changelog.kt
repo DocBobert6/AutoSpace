@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            163, "0.4.152-alpha",
+            listOf(
+                "The browser has a zoom control for each site now: in the settings menu under Text size, a Zoom for this site row lets you zoom a too-large page out (or in) from 50% to 200%, and it remembers the size for that site. The Offline library has an Import a video row: pick a video from your phone and it plays in the browser's player, with the file staying right where it is.",
+            ),
+        ),
+        Release(
             162, "0.4.151-alpha",
             listOf(
                 "Error pages work like Mariner's now: a site that answers with a 403, 404, or 500 shows its own page instead of hiding it behind an error screen. A site with a certificate problem now names the exact problem, and offers to load the plain-http version when the site has never loaded securely — there is never a way to proceed past a bad certificate.",

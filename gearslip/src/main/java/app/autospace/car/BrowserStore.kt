@@ -949,6 +949,10 @@ object BrowserStore {
         AppSettings.putString(context, KEY_DOWNLOADS, encodeDownloads(list))
     }
 
+    /** True while the downloads list has room for one more record. */
+    fun canAddDownload(context: Context): Boolean =
+        downloads(context).size < MAX_DOWNLOADS
+
     fun updateDownload(context: Context, record: DownloadRecord) {
         val list = downloads(context).map { if (it.id == record.id) record else it }
         AppSettings.putString(context, KEY_DOWNLOADS, encodeDownloads(list))
@@ -1120,6 +1124,70 @@ object BrowserStore {
 
     fun setTextZoom(context: Context, zoom: Int) {
         AppSettings.putString(context, KEY_TEXT_ZOOM, zoom.coerceIn(50, 200).toString())
+    }
+
+    // ---- Per-site text zoom (r205, Mariner P-m8) ----
+    // One line per host — encHost|zoom — under browser_site_zoom.
+    // Absent (or 0) means unset: the global text zoom applies.
+    // Mariner's range and step, 50..200 by 25; the codec clamps
+    // what it reads, so a hand-edited or older value cannot
+    // wedge a page. Hosts are lowercased on both sides so
+    // "Example.COM" and "example.com" are one site.
+    private const val KEY_SITE_ZOOM = "browser_site_zoom"
+
+    /** Pure codec: one `encHost|zoom` line per set host. */
+    fun encodeSiteZooms(zooms: Map<String, Int>): String =
+        zooms.entries.sortedBy { it.key }.joinToString("\n") { (host, zoom) ->
+            "${URLEncoder.encode(host.lowercase(), "UTF-8")}|${zoom.coerceIn(50, 200)}"
+        }
+
+    /** Pure codec: malformed lines are skipped, out-of-range zooms clamped. */
+    fun decodeSiteZooms(raw: String): Map<String, Int> {
+        if (raw.isBlank()) return emptyMap()
+        val out = LinkedHashMap<String, Int>()
+        for (line in raw.lines()) {
+            val parts = line.split("|")
+            if (parts.size != 2) continue
+            val host = runCatching { URLDecoder.decode(parts[0], "UTF-8") }.getOrDefault(parts[0])
+            val zoom = parts[1].toIntOrNull() ?: continue
+            if (host.isBlank() || zoom <= 0) continue
+            out[host.lowercase()] = zoom.coerceIn(50, 200)
+        }
+        return out
+    }
+
+    /** This host's zoom, 0 when unset (the global size applies). */
+    fun siteZoomForHost(zooms: Map<String, Int>, host: String): Int =
+        zooms[host.lowercase()] ?: 0
+
+    /** Pure: a set site zoom wins over the global size. */
+    fun effectiveTextZoom(siteZoom: Int, globalZoom: Int): Int =
+        if (siteZoom > 0) siteZoom else globalZoom
+
+    /** Pure steppers, Mariner's shape: from unset, minus lands on 75, plus on 125. */
+    fun siteZoomStepDown(current: Int): Int =
+        ((if (current <= 0) 100 else current) - 25).coerceAtLeast(50)
+
+    fun siteZoomStepUp(current: Int): Int =
+        ((if (current <= 0) 100 else current) + 25).coerceAtMost(200)
+
+    fun siteZooms(context: Context): Map<String, Int> =
+        decodeSiteZooms(AppSettings.getString(context, KEY_SITE_ZOOM, ""))
+
+    fun siteZoom(context: Context, host: String): Int =
+        siteZoomForHost(siteZooms(context), host)
+
+    /** The zoom the live tab should wear: site zoom wins, else global. */
+    fun effectiveZoom(context: Context, host: String): Int =
+        effectiveTextZoom(siteZoom(context, host), textZoom(context))
+
+    /** Store a per-site zoom; 0 or below removes the site's entry. */
+    fun setSiteZoom(context: Context, host: String, zoom: Int) {
+        val key = host.lowercase()
+        if (key.isBlank()) return
+        val map = siteZooms(context).toMutableMap()
+        if (zoom <= 0) map.remove(key) else map[key] = zoom.coerceIn(50, 200)
+        AppSettings.putString(context, KEY_SITE_ZOOM, encodeSiteZooms(map))
     }
 }
 
