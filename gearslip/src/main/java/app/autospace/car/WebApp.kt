@@ -393,9 +393,12 @@ fun WebApp(content: String) {
     // effect below re-runs the query on the new tab's WebView.
     var textZoom by remember { mutableStateOf(BrowserStore.textZoom(context)) }
     // r205: this host's zoom (0 = unset, the global size above
-    // applies). Refreshed on tab switches and navigations, and
-    // whenever the settings sheet changes it.
-    var siteZoom by remember { mutableStateOf(BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))) }
+    // applies). Starts 0 — hostOf is declared below this line, and
+    // Kotlin local funs must be declared before use — and the
+    // tab-switch effect below sets the real value on first
+    // composition, before the sheet can open. Refreshed on tab
+    // switches and navigations, and whenever the sheet changes it.
+    var siteZoom by remember { mutableStateOf(0) }
     var findOpen by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findMatches by remember { mutableStateOf("") }
