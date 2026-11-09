@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            160, "0.4.149-alpha",
+            listOf(
+                "Popups work like Mariner's now: a login, payment check, or video window that opens a popup gets a real popup tab instead of dragging the page you were on away with it, and a popup that closes itself closes its tab. Blocked popups still show the notice with Open once, Open all, and Allow or Block for the site.",
+            ),
+        ),
+        Release(
             159, "0.4.148-alpha",
             listOf(
                 "Web pages can no longer play video or audio on their own unless you let them: a new Autoplay row in the settings menu under Ads & trackers cycles Allowed, Blocked, and Muted only. Blocked waits for your tap, and Muted only starts silent and unmutes at your first tap or key press.",

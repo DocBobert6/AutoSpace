@@ -137,6 +137,15 @@ private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? =
     var currentUrl by mutableStateOf(initialUrl)
     /** Private tabs (r21): own WebView profile, never in history, session, or recently closed. */
     var isPrivate by mutableStateOf(false)
+    /**
+     * r202 (compat findings 1+6): a popup tab — Mariner's isPopupWin.
+     * A real tab whose WebView IS the popup window, so window.opener,
+     * postMessage and window.close() stay live. Popup tabs show in the
+     * switcher and count like any tab in their privacy class; closing
+     * one (including via window.close()) activates the neighbouring
+     * tab, like any other tab close.
+     */
+    var isPopup by mutableStateOf(false)
     /** Per-tab desktop user agent (r21); remembered per host in BrowserStore. */
     var desktopMode by mutableStateOf(false)
     /** A new-tab start page (r21): no WebView yet — the start page composable shows instead. */
@@ -485,10 +494,14 @@ fun WebApp(content: String) {
      * background when false -- the tab is created and saved, but the
      * current tab stays active and the address bar untouched, so the
      * page keeps its place (Mariner's openBackgroundTab shape).
+     * [isPopup] marks a popup window's tab (r202): a real tab whose
+     * WebView is the popup, created for an allowed popup or opened
+     * from the popup notice.
      */
-    fun newUrlTab(url: String, isPrivate: Boolean = false, activate: Boolean = true) {
+    fun newUrlTab(url: String, isPrivate: Boolean = false, activate: Boolean = true, isPopup: Boolean = false) {
         val tab = BrowserTab(nextTabId++, url)
         tab.isPrivate = isPrivate
+        tab.isPopup = isPopup
         tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
         tabs.add(tab)
         if (activate) {
@@ -567,6 +580,16 @@ fun WebApp(content: String) {
             if (wasPrivate && tabs.none { it.isPrivate }) BrowserDownloads.deletePrivateDownloads(context)
         }
         saveSessionNow()
+    }
+    /**
+     * r202 (compat finding 6): window.close() from a popup — Mariner
+     * honours it by closing the popup's tab, or the opener hangs
+     * waiting on a dead window. Only popup tabs close this way; a
+     * plain tab asking to close itself is ignored, as in Mariner.
+     */
+    fun closePopupWindow(window: WebView?) {
+        val t = tabs.firstOrNull { it.view === window }
+        if (t != null && t.isPopup) closeTab(t)
     }
     /**
      * Downloads [url] through the phone Downloads folder — the single
@@ -660,14 +683,15 @@ fun WebApp(content: String) {
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
     var jsDialog by remember { mutableStateOf<JsDialogState?>(null) }
-    // Phase 8 strict popup blocking (Notscape's model, car-adapted):
-    // strict ON by default; a blocked target is captured (up to 5, in
-    // arrival order) and offered from a frost-panel notice; a per-site
-    // Allow loads it in the tab that opened it (Phase 10 tabs; popups
-    // never open a new tab on their own); a per-site Block always silences
-    // it with no notice. Captured transport WebViews are never shown —
-    // they exist only to learn the popup's URL — and are destroyed when
-    // the notice is cleared.
+    // Phase 8 strict popup blocking (Notscape's model, car-adapted),
+    // r202 reworked the allowed path into a real window: strict ON by
+    // default; a blocked target is captured (up to 5, in arrival order)
+    // and offered from a frost-panel notice; a per-site Allow — or
+    // strict off — opens a REAL popup tab whose WebView is the popup
+    // window; a per-site Block always silences it with no notice.
+    // Captured transport WebViews are never shown — they exist only
+    // to learn the popup's URL — and are destroyed when the notice
+    // is cleared.
     var popupStrict by remember { mutableStateOf(BrowserStore.popupStrict(context)) }
     var popupSettingForHost by remember { mutableStateOf(BrowserStore.PopupSetting.STRICT) }
     val pendingPopups = remember { mutableStateListOf<String>() }
@@ -681,10 +705,11 @@ fun WebApp(content: String) {
         capturedPopupViews.forEach { runCatching { it.destroy() } }
         capturedPopupViews.clear()
     }
-    // Phase 10 popup behaviour, unchanged except for tabs: an allowed
-    // popup loads in the tab that opened it (and switches to it), and
-    // opening a captured popup loads it in its originating tab too and
-    // switches to it. Popups never open a new tab on their own.
+    // r202 popup behaviour: an allowed popup opens as a real popup
+    // tab (and switches to it), and opening a captured popup opens
+    // it as a real popup tab too. A popup tab is an ordinary tab in
+    // its privacy class — it shows in the switcher, counts, and
+    // closes like any tab, including via window.close().
     var popupTabId by remember { mutableStateOf<Int?>(null) }
     // Audit/browser build: address bar position (Notscape's barPosition,
     // persisted in BrowserStore; default top, the position AutoSpace has
@@ -910,31 +935,31 @@ fun WebApp(content: String) {
     fun openFirstPopup() {
         val url = pendingPopups.firstOrNull() ?: return
         pendingPopups.removeAt(0)
-        val tab = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUpgraded(tab, url)
-        if (tab.id != activeTabId) activeTabId = tab.id
+        val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
+        // r202 (compat findings 1+6): a notice-approved popup opens as
+        // a REAL popup tab — Mariner's shape — instead of loading into
+        // the originating tab, so the opener keeps its place and the
+        // popup is a live window (window.opener, postMessage,
+        // window.close()). The driver explicitly tapped Open, so the
+        // new tab is switched to foreground.
+        newUrlTab(url, isPrivate = origin.isPrivate, activate = true, isPopup = true)
         if (pendingPopups.isEmpty()) {
             showPopupNotice = false
             capturedPopupViews.forEach { runCatching { it.destroy() } }
             capturedPopupViews.clear()
         }
     }
-    // Audit/browser build, Notscape's "Open all": the first captured URL
-    // loads in its originating tab (as Open once does); every further
-    // URL opens as a NEW tab — but only because the driver explicitly
-    // tapped Open all, never on a popup's own initiative, which is what
-    // the never-a-new-tab rule forbids. The new tabs are not switched
-    // to; the driver lands back on the originating tab.
+    // Audit/browser build, Notscape's "Open all": every captured URL
+    // opens in its own popup tab (Mariner's openPendingPopups) — each
+    // activated in turn, so the driver lands on the last one — and the
+    // notice clears. Opening is always the driver's explicit tap, never
+    // a popup's own initiative.
     fun openAllPopups() {
         val urls = pendingPopups.toList()
         if (urls.isEmpty()) return
         val origin = tabs.firstOrNull { it.id == popupTabId } ?: activeTab
-        loadUpgraded(origin, urls.first())
-        if (origin.id != activeTabId) activeTabId = origin.id
-        urls.drop(1).forEach { url ->
-            val tab = BrowserTab(nextTabId++, url)
-            tab.desktopMode = BrowserStore.desktopForHost(context, hostOf(url))
-            tabs.add(tab)
+        urls.forEach { url ->
+            newUrlTab(url, isPrivate = origin.isPrivate, activate = true, isPopup = true)
         }
         clearPendingPopups()
     }
@@ -959,11 +984,13 @@ fun WebApp(content: String) {
             GearslipLog.i("car browser popunder over cap for $pageHost, dropped")
         }
     }
-    fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView, allowed: Boolean) {        if (allowed) {
-            runCatching { transport.destroy() }
-            loadUpgraded(tab, url)
-            if (tab.id != activeTabId) activeTabId = tab.id
-        } else if (pendingPopups.size < 5) {
+    // r202 (compat findings 1+6): only the strict-capture path reaches
+    // here now — an allowed popup takes the real-tab path in
+    // onCreateWindow instead, so there is no allowed branch here. The
+    // captured transport is held until the notice clears (or the
+    // 5-popup cap drops the extra), then destroyed.
+    fun onPopupUrl(tab: BrowserTab, host: String, url: String, transport: WebView) {
+        if (pendingPopups.size < 5) {
             capturedPopupViews.add(transport)
             pendingPopups.add(url)
             popupHost = host
@@ -1543,6 +1570,395 @@ fun WebApp(content: String) {
                 }
             }
     }
+    /**
+     * r202 (compat findings 1+6): create a real popup tab for an
+     * allowed popup — Mariner's shape. A new tab whose WebView IS the
+     * popup (built by [buildView]), so window.opener, postMessage and
+     * window.close() stay live. The tab inherits the opener's privacy
+     * class (a private opener's popup stays private) and starts at a
+     * blank URL with the mobile user agent — Mariner's empty-URL popup
+     * tab does the same; no per-site desktop memory applies because
+     * the target host is not known yet. The tab is switched to
+     * foreground at once, like Mariner. Returns the popup's WebView,
+     * or null when it could not be built — in which case no tab is
+     * added and the caller reports the popup as unhandled.
+     */
+    fun createPopupTab(
+        opener: BrowserTab,
+        buildView: (BrowserTab) -> WebView,
+    ): WebView? {
+        val tab = BrowserTab(nextTabId++, "")
+        tab.isPrivate = opener.isPrivate
+        tab.isPopup = true
+        val view = runCatching { buildView(tab) }.getOrNull() ?: return null
+        tabs.add(tab)
+        activeTabId = tab.id
+        addressEditing = false
+        addressSelected = false
+        tabsOpen = false
+        resetBarScrollHide()
+        saveSessionNow()
+        return view
+    }
+
+    /**
+     * r202 (compat findings 1+6): the shared tab-WebView factory.
+     * Every tab WebView — main tabs and popup tabs alike — is built
+     * here, so a popup's WebView is a real tab WebView with the same
+     * settings, hardening, cookie/autoplay/GPC handling and clients.
+     * It loads NOTHING: the caller loads the tab's URL (normal tabs,
+     * via the AndroidView factory) or hands the view to the popup
+     * transport and lets Chromium load it (popup tabs, via
+     * createPopupTab). [tab] is the tab the view belongs to; the view
+     * is stored on [tab.view] before returning.
+     */
+    fun createTabWebView(context: android.content.Context, tab: BrowserTab): WebView {
+        return WebView(context).apply {
+            // Audit fix (2026-10-25, A2): new tabs
+            // start at the stored text zoom, and
+            // report find matches for the find bar.
+            settings.textZoom = BrowserStore.textZoom(context)
+            setFindListener { active, matches, _ ->
+                mainHandler.post {
+                    findMatches = if (matches > 0) "$active of $matches" else ""
+                }
+            }
+            settings.javaScriptEnabled = true
+            // r196 (adblock A1): cookie controls —
+            // accept (global), third-party (per
+            // WebView), DOM storage; replaces the
+            // hardcoded domStorageEnabled = true.
+            applyCookieSettings(context, this)
+            // r201 (adblock A6): web autoplay — only
+            // "block" needs a user gesture; the muted
+            // half rides a document-start script below.
+            applyAutoplaySettings(context, this)
+            settings.loadWithOverviewMode = true
+            settings.useWideViewPort = true
+            // Hardening baseline (r21): applied to every
+            // tab WebView at creation (see BrowserExtras
+            // for the geolocation / JS-interface notes).
+            applyWebHardening(settings)
+            // r202 (compat findings 1+6): multiple
+            // windows MUST be on, or onCreateWindow
+            // never fires and every popup link just
+            // navigates the current tab — Mariner
+            // sets the same flag in its shared
+            // WebView factory for exactly this
+            // reason. Popup tabs get it too, since
+            // they are built here as well.
+            settings.setSupportMultipleWindows(true)
+            // Desktop site (r21): a desktop tab wears
+            // the desktop user agent; a mobile tab
+            // keeps the WebView default. Per-site
+            // memory is applied at tab creation and
+            // on toggle (see toggleDesktop).
+            if (tab.desktopMode) {
+                settings.userAgentString =
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+            }
+            // Private tabs (r21): the private profile
+            // must be assigned BEFORE anything loads.
+            if (tab.isPrivate) PrivateProfile.applyTo(this)
+            // Long-press link/image menu (r21): the
+            // hit test tells link from image; anything
+            // else keeps the default behaviour.
+            setOnLongClickListener {
+                val hr = hitTestResult
+                val extra = hr?.extra
+                if (extra == null) {
+                    false
+                } else when (hr.type) {
+                    WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                    WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                        mainHandler.post {
+                            longPressTarget = LongPressTarget(extra, false)
+                        }
+                        true
+                    }
+                    WebView.HitTestResult.IMAGE_TYPE -> {
+                        mainHandler.post {
+                            longPressTarget = LongPressTarget(extra, true)
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
+            // Scroll-hide (Robert 2026-10-25 06:20):
+            // the tab's own scroll drives only the
+            // bar row (see onWebScroll). The listener
+            // rides this WebView, so a tab switch
+            // (re-attach reuses the same view) keeps
+            // it, and leaving the browser destroys
+            // the view with it.
+            setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                mainHandler.post { onWebScroll(tab.id, scrollY, oldScrollY) }
+            }
+            webViewClient = BrowserClient(
+                ring = ring,
+                // r197 (adblock A2): the tab id for
+                // per-tab blocked counts.
+                tabId = { tab.id },
+                onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
+                onPageStart = {
+                    mainHandler.post {
+                        tab.foundMedia.clear()
+                        tab.loadError = null
+                        // A new page load restores
+                        // the bar (active tab only;
+                        // in immersive mode the
+                        // header/nav bar stay hidden
+                        // until immersive exit).
+                        if (tab.id == activeTabId) resetBarScrollHide()
+                    }
+                },
+                onHistory = { url, title, back, forward ->
+                    mainHandler.post {
+                        tab.currentUrl = url
+                        tab.canGoBack = back
+                        tab.canGoForward = forward
+                        // Private tabs (r21) never
+                        // write history — and the
+                        // session saves with them
+                        // filtered out too.
+                        if (!tab.isPrivate) {
+                            BrowserStore.recordHistory(context, url, title)
+                        }
+                        saveSessionNow()
+                    }
+                },
+                onMainFrameError = { message ->
+                    mainHandler.post { tab.loadError = message }
+                },
+                onPopunder = { url, host ->
+                    mainHandler.post { capturePopunder(url, host) }
+                },
+                // r85: the tab's current page host,
+                // read per request for scoped rules.
+                pageHost = { hostOf(tab.currentUrl) },
+                // r183: tapped non-http(s) links — the
+                // gate + privacy state, read per tap.
+                openInAppAllowed = { !CarMotion.moving || latestPassengerAllowed.value },
+                isPrivateTab = { tab.isPrivate },
+                // r190: the tab URL for the anchor
+                // check, and the new-tab open for a
+                // tapped link when the toggle is on.
+                currentUrl = { tab.currentUrl },
+                onOpenLinkNewTab = { url ->
+                    mainHandler.post { newUrlTab(url, isPrivate = tab.isPrivate) }
+                },
+                // r199 (adblock A4): HTTPS-first state
+                // for this tab — the upgrade records
+                // the plain original; the interstitial
+                // and fallback decisions read the tab
+                // per call, like pageHost.
+                httpsUpgradeLink = { raw ->
+                    httpsUpgradeFor(tab.httpOnlyHosts, raw)
+                        ?.also { tab.pendingHttpOriginal = raw }
+                },
+                httpsWarnFor = { target ->
+                    if (httpsWarnNeeded(
+                            BrowserStore.httpsOnly(context),
+                            httpsOnceHosts,
+                            BrowserStore.httpsExceptionsRaw(context),
+                            target,
+                        )
+                    ) {
+                        mainHandler.post {
+                            httpsWarnUrl = target
+                            httpsWarnTabId = tab.id
+                        }
+                        true
+                    } else false
+                },
+                httpsLoadFailed = { failedUrl, errorCode ->
+                    val original = tab.pendingHttpOriginal
+                    val connectivity = errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
+                        errorCode == WebViewClient.ERROR_CONNECT ||
+                        errorCode == WebViewClient.ERROR_TIMEOUT ||
+                        errorCode == WebViewClient.ERROR_IO
+                    // The failed load must be the
+                    // upgraded one (same host as the
+                    // plain original): a redirect chain
+                    // that fails on another host is not
+                    // this upgrade's failure, so the
+                    // error stands. SSL handshake
+                    // failures are never a fallback:
+                    // without a cert-proceed UI the
+                    // error is the safe answer.
+                    if (original != null && connectivity &&
+                        httpsHostOf(failedUrl) == httpsHostOf(original)
+                    ) {
+                        tab.pendingHttpOriginal = null
+                        val host = httpsHostOf(original)
+                        if (host.isNotEmpty() && host in tab.httpsSeenHosts) {
+                            // A host this tab has
+                            // already loaded over HTTPS
+                            // never falls back — the
+                            // error stands (Mariner
+                            // S-m2).
+                            false
+                        } else if (BrowserStore.httpsOnly(context) &&
+                            !BrowserStore.isHttpsException(context, host)
+                        ) {
+                            mainHandler.post {
+                                httpsWarnUrl = original
+                                httpsWarnTabId = tab.id
+                            }
+                            true
+                        } else {
+                            if (host.isNotEmpty()) tab.httpOnlyHosts.add(host)
+                            mainHandler.post {
+                                tab.view?.let { loadUrlWithGpc(context, it, original) }
+                            }
+                            true
+                        }
+                    } else {
+                        if (original != null) tab.pendingHttpOriginal = null
+                        false
+                    }
+                },
+                httpsFinished = { finishedUrl ->
+                    if (finishedUrl != null && finishedUrl.startsWith("https://")) {
+                        tab.pendingHttpOriginal = null
+                        httpsHostOf(finishedUrl).takeIf { it.isNotEmpty() }
+                            ?.let { tab.httpsSeenHosts.add(it) }
+                    }
+                },
+            )
+            // Document-start cosmetics (r85): the
+            // generic hiding sheet is registered
+            // before the page's own scripts run,
+            // so ad containers never paint — when
+            // lists were already loaded at tab
+            // creation. Lists landing later apply
+            // via the page-finish injection in
+            // onPageFinished instead. A WebView
+            // created before lists load gets an
+            // empty script and is never
+            // re-registered; that tab still gets
+            // the page-finish sheet on every load.
+            if (BrowserStore.blockingEnabled(context) &&
+                androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                val dsScript = FilterEngine.documentStartScript
+                if (dsScript.isNotEmpty()) {
+                    runCatching {
+                        androidx.webkit.WebViewCompat
+                            .addDocumentStartJavaScript(this, dsScript, setOf("*"))
+                    }
+                }
+            }
+            // r192 (parity G1): the GPC DOM flag rides
+            // its own document-start script, independent
+            // of the cosmetic sheet above — Mariner's
+            // privacy signals live in a separate script
+            // too. Registered once per WebView, like the
+            // sheet, so flipping the toggle applies to
+            // new tabs; the header half re-reads the
+            // toggle on every navigation instead.
+            if (BrowserStore.gpcEnabled(context) &&
+                androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                runCatching {
+                    androidx.webkit.WebViewCompat
+                        .addDocumentStartJavaScript(this, FilterEngine.GPC_SCRIPT, setOf("*"))
+                }
+            }
+            // r201 (adblock A6): muted autoplay rides
+            // its own document-start script, Mariner's
+            // P-m17 snippet — every media element starts
+            // muted and unmutes at the first tap or key
+            // press. Registered once per WebView, like
+            // the GPC script, so flipping the mode
+            // applies to new tabs; the gesture flag half
+            // re-applies to the live tab at once.
+            if (BrowserStore.autoplayMode(context) == "muted" &&
+                androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                runCatching {
+                    androidx.webkit.WebViewCompat
+                        .addDocumentStartJavaScript(this, FilterEngine.AUTOPLAY_MUTE_SCRIPT, setOf("*"))
+                }
+            }
+            webChromeClient = BrowserChrome(
+                context = context,
+                onPopupUrl = { host, url, transport ->
+                    mainHandler.post { onPopupUrl(tab, host, url, transport) }
+                },
+                // r202 (compat findings 1+6): an
+                // allowed popup gets a real tab — the
+                // factory is handed in so the tab can
+                // be built here — and window.close()
+                // closes the popup's tab. The popup tab
+                // is created synchronously from the
+                // chrome callback: the transport must
+                // be handed over before the result
+                // message is sent.
+                onCreatePopupTab = { createPopupTab(tab) { t -> createTabWebView(context, t) } },
+                onClosePopup = { window ->
+                    mainHandler.post { closePopupWindow(window) }
+                },
+                onProgress = { p -> mainHandler.post { tab.progress = p } },
+                onTitle = { t ->
+                    mainHandler.post {
+                        tab.title = t?.takeIf { it.isNotBlank() }
+                        // r191 (parity G2): a title
+                        // that arrives after the visit
+                        // was recorded fills the
+                        // history row's blank title.
+                        // Private tabs never wrote
+                        // history, so there is
+                        // nothing to fill there.
+                        if (!tab.isPrivate && t != null) {
+                            BrowserStore.updateHistoryTitle(context, tab.currentUrl, t)
+                        }
+                    }
+                },
+                onShowFullscreen = { view, callback ->
+                    // Fullscreen / dialogs belong to the
+                    // tab in front: a background tab's
+                    // video must not seize the screen.
+                    if (tab.id == activeTabId) {
+                        mainHandler.post {
+                            fullscreenView = view
+                            fullscreenCallback = callback
+                        }
+                    }
+                },
+                onHideFullscreen = { mainHandler.post { hideFullscreen() } },
+                onJsDialog = { dialog ->
+                    if (tab.id == activeTabId) {
+                        mainHandler.post { jsDialog = dialog }
+                    }
+                },
+            )
+            setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
+                // Phase 3.4, item 4: downloads go to the phone Downloads
+                // folder with a started/failed notice, instead of silently
+                // doing nothing (the old behaviour). r157: the listener
+                // no longer enqueues itself — it funnels through the
+                // single downloadUrl path, which writes the record the
+                // Downloads list shows. The tab's private flag rides
+                // along, so private downloads stay unlisted and die
+                // with the private profile.
+                downloadUrl(url, tab.isPrivate, contentDisposition, mimeType)
+            })
+            addJavascriptInterface(
+                FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                "GearslipField",
+            )
+            tab.view = this
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             // Audit/browser build: the ScreenHeader exit arrow is GONE
@@ -1618,334 +2034,13 @@ fun WebApp(content: String) {
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
                         factory = { context ->
-                            activeTab.view?.also { web = it } ?: WebView(context).apply {
-                                // Audit fix (2026-10-25, A2): new tabs
-                                // start at the stored text zoom, and
-                                // report find matches for the find bar.
-                                settings.textZoom = BrowserStore.textZoom(context)
-                                setFindListener { active, matches, _ ->
-                                    mainHandler.post {
-                                        findMatches = if (matches > 0) "$active of $matches" else ""
-                                    }
-                                }
-                                settings.javaScriptEnabled = true
-                                // r196 (adblock A1): cookie controls —
-                                // accept (global), third-party (per
-                                // WebView), DOM storage; replaces the
-                                // hardcoded domStorageEnabled = true.
-                                applyCookieSettings(context, this)
-                                // r201 (adblock A6): web autoplay — only
-                                // "block" needs a user gesture; the muted
-                                // half rides a document-start script below.
-                                applyAutoplaySettings(context, this)
-                                settings.loadWithOverviewMode = true
-                                settings.useWideViewPort = true
-                                // Hardening baseline (r21): applied to every
-                                // tab WebView at creation (see BrowserExtras
-                                // for the geolocation / JS-interface notes).
-                                applyWebHardening(settings)
-                                val tab = activeTab
-                                // Desktop site (r21): a desktop tab wears
-                                // the desktop user agent; a mobile tab
-                                // keeps the WebView default. Per-site
-                                // memory is applied at tab creation and
-                                // on toggle (see toggleDesktop).
-                                if (tab.desktopMode) {
-                                    settings.userAgentString =
-                                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-                                }
-                                // Private tabs (r21): the private profile
-                                // must be assigned BEFORE anything loads.
-                                if (tab.isPrivate) PrivateProfile.applyTo(this)
-                                // Long-press link/image menu (r21): the
-                                // hit test tells link from image; anything
-                                // else keeps the default behaviour.
-                                setOnLongClickListener {
-                                    val hr = hitTestResult
-                                    val extra = hr?.extra
-                                    if (extra == null) {
-                                        false
-                                    } else when (hr.type) {
-                                        WebView.HitTestResult.SRC_ANCHOR_TYPE,
-                                        WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
-                                            mainHandler.post {
-                                                longPressTarget = LongPressTarget(extra, false)
-                                            }
-                                            true
-                                        }
-                                        WebView.HitTestResult.IMAGE_TYPE -> {
-                                            mainHandler.post {
-                                                longPressTarget = LongPressTarget(extra, true)
-                                            }
-                                            true
-                                        }
-                                        else -> false
-                                    }
-                                }
-                                // Scroll-hide (Robert 2026-10-25 06:20):
-                                // the tab's own scroll drives only the
-                                // bar row (see onWebScroll). The listener
-                                // rides this WebView, so a tab switch
-                                // (re-attach reuses the same view) keeps
-                                // it, and leaving the browser destroys
-                                // the view with it.
-                                setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-                                    mainHandler.post { onWebScroll(tab.id, scrollY, oldScrollY) }
-                                }
-                                webViewClient = BrowserClient(
-                                    ring = ring,
-                                    // r197 (adblock A2): the tab id for
-                                    // per-tab blocked counts.
-                                    tabId = { tab.id },
-                                    onMedia = { url, title -> mainHandler.post { addMedia(tab, url, title) } },
-                                    onPageStart = {
-                                        mainHandler.post {
-                                            tab.foundMedia.clear()
-                                            tab.loadError = null
-                                            // A new page load restores
-                                            // the bar (active tab only;
-                                            // in immersive mode the
-                                            // header/nav bar stay hidden
-                                            // until immersive exit).
-                                            if (tab.id == activeTabId) resetBarScrollHide()
-                                        }
-                                    },
-                                    onHistory = { url, title, back, forward ->
-                                        mainHandler.post {
-                                            tab.currentUrl = url
-                                            tab.canGoBack = back
-                                            tab.canGoForward = forward
-                                            // Private tabs (r21) never
-                                            // write history — and the
-                                            // session saves with them
-                                            // filtered out too.
-                                            if (!tab.isPrivate) {
-                                                BrowserStore.recordHistory(context, url, title)
-                                            }
-                                            saveSessionNow()
-                                        }
-                                    },
-                                    onMainFrameError = { message ->
-                                        mainHandler.post { tab.loadError = message }
-                                    },
-                                    onPopunder = { url, host ->
-                                        mainHandler.post { capturePopunder(url, host) }
-                                    },
-                                    // r85: the tab's current page host,
-                                    // read per request for scoped rules.
-                                    pageHost = { hostOf(tab.currentUrl) },
-                                    // r183: tapped non-http(s) links — the
-                                    // gate + privacy state, read per tap.
-                                    openInAppAllowed = { !CarMotion.moving || latestPassengerAllowed.value },
-                                    isPrivateTab = { tab.isPrivate },
-                                    // r190: the tab URL for the anchor
-                                    // check, and the new-tab open for a
-                                    // tapped link when the toggle is on.
-                                    currentUrl = { tab.currentUrl },
-                                    onOpenLinkNewTab = { url ->
-                                        mainHandler.post { newUrlTab(url, isPrivate = tab.isPrivate) }
-                                    },
-                                    // r199 (adblock A4): HTTPS-first state
-                                    // for this tab — the upgrade records
-                                    // the plain original; the interstitial
-                                    // and fallback decisions read the tab
-                                    // per call, like pageHost.
-                                    httpsUpgradeLink = { raw ->
-                                        httpsUpgradeFor(tab.httpOnlyHosts, raw)
-                                            ?.also { tab.pendingHttpOriginal = raw }
-                                    },
-                                    httpsWarnFor = { target ->
-                                        if (httpsWarnNeeded(
-                                                BrowserStore.httpsOnly(context),
-                                                httpsOnceHosts,
-                                                BrowserStore.httpsExceptionsRaw(context),
-                                                target,
-                                            )
-                                        ) {
-                                            mainHandler.post {
-                                                httpsWarnUrl = target
-                                                httpsWarnTabId = tab.id
-                                            }
-                                            true
-                                        } else false
-                                    },
-                                    httpsLoadFailed = { failedUrl, errorCode ->
-                                        val original = tab.pendingHttpOriginal
-                                        val connectivity = errorCode == WebViewClient.ERROR_HOST_LOOKUP ||
-                                            errorCode == WebViewClient.ERROR_CONNECT ||
-                                            errorCode == WebViewClient.ERROR_TIMEOUT ||
-                                            errorCode == WebViewClient.ERROR_IO
-                                        // The failed load must be the
-                                        // upgraded one (same host as the
-                                        // plain original): a redirect chain
-                                        // that fails on another host is not
-                                        // this upgrade's failure, so the
-                                        // error stands. SSL handshake
-                                        // failures are never a fallback:
-                                        // without a cert-proceed UI the
-                                        // error is the safe answer.
-                                        if (original != null && connectivity &&
-                                            httpsHostOf(failedUrl) == httpsHostOf(original)
-                                        ) {
-                                            tab.pendingHttpOriginal = null
-                                            val host = httpsHostOf(original)
-                                            if (host.isNotEmpty() && host in tab.httpsSeenHosts) {
-                                                // A host this tab has
-                                                // already loaded over HTTPS
-                                                // never falls back — the
-                                                // error stands (Mariner
-                                                // S-m2).
-                                                false
-                                            } else if (BrowserStore.httpsOnly(context) &&
-                                                !BrowserStore.isHttpsException(context, host)
-                                            ) {
-                                                mainHandler.post {
-                                                    httpsWarnUrl = original
-                                                    httpsWarnTabId = tab.id
-                                                }
-                                                true
-                                            } else {
-                                                if (host.isNotEmpty()) tab.httpOnlyHosts.add(host)
-                                                mainHandler.post {
-                                                    tab.view?.let { loadUrlWithGpc(context, it, original) }
-                                                }
-                                                true
-                                            }
-                                        } else {
-                                            if (original != null) tab.pendingHttpOriginal = null
-                                            false
-                                        }
-                                    },
-                                    httpsFinished = { finishedUrl ->
-                                        if (finishedUrl != null && finishedUrl.startsWith("https://")) {
-                                            tab.pendingHttpOriginal = null
-                                            httpsHostOf(finishedUrl).takeIf { it.isNotEmpty() }
-                                                ?.let { tab.httpsSeenHosts.add(it) }
-                                        }
-                                    },
-                                )
-                                // Document-start cosmetics (r85): the
-                                // generic hiding sheet is registered
-                                // before the page's own scripts run,
-                                // so ad containers never paint — when
-                                // lists were already loaded at tab
-                                // creation. Lists landing later apply
-                                // via the page-finish injection in
-                                // onPageFinished instead. A WebView
-                                // created before lists load gets an
-                                // empty script and is never
-                                // re-registered; that tab still gets
-                                // the page-finish sheet on every load.
-                                if (BrowserStore.blockingEnabled(context) &&
-                                    androidx.webkit.WebViewFeature.isFeatureSupported(
-                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
-                                    )
-                                ) {
-                                    val dsScript = FilterEngine.documentStartScript
-                                    if (dsScript.isNotEmpty()) {
-                                        runCatching {
-                                            androidx.webkit.WebViewCompat
-                                                .addDocumentStartJavaScript(this, dsScript, setOf("*"))
-                                        }
-                                    }
-                                }
-                                // r192 (parity G1): the GPC DOM flag rides
-                                // its own document-start script, independent
-                                // of the cosmetic sheet above — Mariner's
-                                // privacy signals live in a separate script
-                                // too. Registered once per WebView, like the
-                                // sheet, so flipping the toggle applies to
-                                // new tabs; the header half re-reads the
-                                // toggle on every navigation instead.
-                                if (BrowserStore.gpcEnabled(context) &&
-                                    androidx.webkit.WebViewFeature.isFeatureSupported(
-                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
-                                    )
-                                ) {
-                                    runCatching {
-                                        androidx.webkit.WebViewCompat
-                                            .addDocumentStartJavaScript(this, FilterEngine.GPC_SCRIPT, setOf("*"))
-                                    }
-                                }
-                                // r201 (adblock A6): muted autoplay rides
-                                // its own document-start script, Mariner's
-                                // P-m17 snippet — every media element starts
-                                // muted and unmutes at the first tap or key
-                                // press. Registered once per WebView, like
-                                // the GPC script, so flipping the mode
-                                // applies to new tabs; the gesture flag half
-                                // re-applies to the live tab at once.
-                                if (BrowserStore.autoplayMode(context) == "muted" &&
-                                    androidx.webkit.WebViewFeature.isFeatureSupported(
-                                        androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
-                                    )
-                                ) {
-                                    runCatching {
-                                        androidx.webkit.WebViewCompat
-                                            .addDocumentStartJavaScript(this, FilterEngine.AUTOPLAY_MUTE_SCRIPT, setOf("*"))
-                                    }
-                                }
-                                webChromeClient = BrowserChrome(
-                                    context = context,
-                                    onPopupUrl = { host, url, transport, allowed ->
-                                        mainHandler.post { onPopupUrl(tab, host, url, transport, allowed) }
-                                    },
-                                    onProgress = { p -> mainHandler.post { tab.progress = p } },
-                                    onTitle = { t ->
-                                        mainHandler.post {
-                                            tab.title = t?.takeIf { it.isNotBlank() }
-                                            // r191 (parity G2): a title
-                                            // that arrives after the visit
-                                            // was recorded fills the
-                                            // history row's blank title.
-                                            // Private tabs never wrote
-                                            // history, so there is
-                                            // nothing to fill there.
-                                            if (!tab.isPrivate && t != null) {
-                                                BrowserStore.updateHistoryTitle(context, tab.currentUrl, t)
-                                            }
-                                        }
-                                    },
-                                    onShowFullscreen = { view, callback ->
-                                        // Fullscreen / dialogs belong to the
-                                        // tab in front: a background tab's
-                                        // video must not seize the screen.
-                                        if (tab.id == activeTabId) {
-                                            mainHandler.post {
-                                                fullscreenView = view
-                                                fullscreenCallback = callback
-                                            }
-                                        }
-                                    },
-                                    onHideFullscreen = { mainHandler.post { hideFullscreen() } },
-                                    onJsDialog = { dialog ->
-                                        if (tab.id == activeTabId) {
-                                            mainHandler.post { jsDialog = dialog }
-                                        }
-                                    },
-                                )
-                                setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
-                                    // Phase 3.4, item 4: downloads go to the phone Downloads
-                                    // folder with a started/failed notice, instead of silently
-                                    // doing nothing (the old behaviour). r157: the listener
-                                    // no longer enqueues itself — it funnels through the
-                                    // single downloadUrl path, which writes the record the
-                                    // Downloads list shows. The tab's private flag rides
-                                    // along, so private downloads stay unlisted and die
-                                    // with the private profile.
-                                    downloadUrl(url, tab.isPrivate, contentDisposition, mimeType)
-                                })
-                                addJavascriptInterface(
-                                    FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                                    "GearslipField",
-                                )
-                                if (tab.rawHtml != null) {
-                                    loadDataWithBaseURL(null, tab.rawHtml, "text/html", "utf-8", null)
+                            activeTab.view?.also { web = it } ?: createTabWebView(context, activeTab).also { created ->
+                                if (activeTab.rawHtml != null) {
+                                    created.loadDataWithBaseURL(null, activeTab.rawHtml, "text/html", "utf-8", null)
                                 } else {
-                                    loadUpgraded(tab, tab.currentUrl, this)
+                                    loadUpgraded(activeTab, activeTab.currentUrl, created)
                                 }
-                                tab.view = this
-                                web = this
+                                web = created
                             }
                         },
                         // Phase 3.0: pages are NOT themed. Never re-enable algorithmic darkening here.
@@ -2876,12 +2971,11 @@ fun WebApp(content: String) {
         // panel floating over the page — NOT a Gs sheet — naming the site
         // and offering Open once / Open all (Notscape's buttons), Allow
         // popups for this site (Notscape's whitelist-then-open), Block
-        // always for this site, and Dismiss. Open once / Open all load
-        // into the originating tab (Open all adds further URLs as new
-        // tabs only on the explicit tap — see openAllPopups); popups
-        // never open a new tab on their own. Audit/browser build: the
-        // notice rides on the opposite edge from a bottom bar (top,
-        // below the header) so it never sits under the bar or keyboard.
+        // always for this site, and Dismiss. Open once / Open all open
+        // each URL in its own popup tab (see openFirstPopup /
+        // openAllPopups). Audit/browser build: the notice rides on the
+        // opposite edge from a bottom bar (top, below the header) so it
+        // never sits under the bar or keyboard.
         if (showPopupNotice && pendingPopups.isNotEmpty()) {
             val host = popupHost?.takeIf { it.isNotBlank() }
                 ?: hostOf(pendingPopups.first()).takeIf { it.isNotBlank() }
@@ -3290,6 +3384,13 @@ internal fun tabClassCount(
     val wanted = isPrivateFlags[activeIndex]
     return isPrivateFlags.count { it == wanted }
 }
+
+// r202 (compat findings 1+6): the popup-allow decision, Mariner's
+// rule — strict off lets every popup through as a real tab; strict
+// on lets through only a per-site Allow. A per-site Block is decided
+// before this is ever consulted (silenced entirely, no notice).
+internal fun popupAllowed(popupStrict: Boolean, setting: BrowserStore.PopupSetting): Boolean =
+    !popupStrict || setting == BrowserStore.PopupSetting.ALLOW
 
 // Phase 6 (r186): the local suggestions card — matches from this
 // device's own bookmarks and history only; nothing is sent anywhere.
@@ -4625,7 +4726,9 @@ private class BrowserClient(
  */
 private class BrowserChrome(
     private val context: android.content.Context,
-    private val onPopupUrl: (host: String, url: String, transport: WebView, allowed: Boolean) -> Unit,
+    private val onPopupUrl: (host: String, url: String, transport: WebView) -> Unit,
+    private val onCreatePopupTab: () -> WebView?,
+    private val onClosePopup: (WebView?) -> Unit,
     private val onProgress: (Int) -> Unit,
     private val onTitle: (String?) -> Unit = {},
     private val onShowFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
@@ -4641,21 +4744,22 @@ private class BrowserChrome(
     }
 
     /**
-     * Phase 8 strict popup blocking (Notscape's onCreateWindow, car-adapted).
-     * window.open / target=_blank never opens a window silently and never
-     * navigates the main view silently:
+     * Popup windows (Notscape's onCreateWindow, car-adapted; r202
+     * reworked the allowed path into a real window). window.open /
+     * target=_blank never opens a window silently and never navigates
+     * the main view silently:
      *  - per-site Block always: dropped silently, no notice, no transport.
-     *  - allowed (strict off globally, or per-site Allow): the target's URL
-     *    is captured and loaded in the tab that opened it (Phase 10;
-     *    popups never open a new tab); the browser's Back control is the
-     *    way back from it.
+     *  - allowed (strict off globally, or per-site Allow): a REAL tab
+     *    whose WebView IS the popup (see onCreatePopupTab) — Mariner's
+     *    shape — so window.opener, postMessage and window.close()
+     *    stay live. The popup tab is switched to foreground at once.
      *  - strict default: the target's URL is captured and reported, and the
      *    notice offers it, up to 5 in arrival order.
-     * In the captured cases a transport WebView is still created and handed
+     * In the captured case a transport WebView is still created and handed
      * to the message — without it window.open returns null and some pages
      * treat the popup as blocked and retry in a loop. The transport view is
      * never attached or shown; it exists only to learn the URL, then the
-     * caller destroys it (allowed) or holds it until the notice clears.
+     * caller holds it until the notice clears.
      */
     override fun onCreateWindow(
         view: WebView?,
@@ -4670,18 +4774,38 @@ private class BrowserChrome(
             GearslipLog.i("car browser popup blocked silently for $pageHost (block always)")
             return false
         }
-        val allowed = !BrowserStore.popupStrict(context) || setting == BrowserStore.PopupSetting.ALLOW
+        val allowed = popupAllowed(BrowserStore.popupStrict(context), setting)
+        if (allowed) {
+            // r202 (compat findings 1+6): an allowed popup gets a real
+            // window. The tab is created synchronously — the transport
+            // must be handed over before the result message is sent,
+            // or Chromium loads the popup into nothing.
+            val popupView = onCreatePopupTab() ?: return false
+            val popupTransport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+            popupTransport.webView = popupView
+            resultMsg.sendToTarget()
+            GearslipLog.i("car browser popup opened as a real tab for $pageHost")
+            return true
+        }
         val transport = WebView(view?.context ?: context).apply {
             settings.javaScriptEnabled = true
             // Hardening baseline (r21) applies to captured popup
             // transports too, even though they are never shown.
             applyWebHardening(settings)
-            webViewClient = PopupCaptureClient { url -> onPopupUrl(pageHost, url, this, allowed) }
+            webViewClient = PopupCaptureClient { url -> onPopupUrl(pageHost, url, this) }
         }
         (resultMsg.obj as? WebView.WebViewTransport)?.webView = transport
         resultMsg.sendToTarget()
         GearslipLog.i("car browser popup captured for $pageHost (allowed=$allowed)")
         return true
+    }
+
+    override fun onCloseWindow(window: WebView?) {
+        // r202 (compat finding 6): window.close() from a popup —
+        // Mariner honours it by closing the popup's tab. Only popup
+        // tabs close this way; a plain tab asking to close itself is
+        // ignored, as in Mariner (see closePopupWindow).
+        if (window != null) onClosePopup(window)
     }
 
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
