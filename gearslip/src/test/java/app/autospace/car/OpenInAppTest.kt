@@ -25,8 +25,7 @@ class OpenInAppTest {
     fun tapActionNeverHijacksHttp() {
         assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("https://example.com/page"))
         assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("http://example.com/page"))
-        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("mailto:someone@example.com"))
-        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("myapp://open"))
+        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("example.com"))
         assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("example.com"))
         assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction(""))
     }
@@ -50,6 +49,39 @@ class OpenInAppTest {
                 "intent://scan/#Intent;S.browser_fallback_url=myapp%3A%2F%2Fopen;end",
             ),
         )
+    }
+
+    @Test
+    fun tapActionRoutesDirectLaunchSchemes() {
+        assertEquals(OpenInApp.TapAction.LAUNCH, OpenInApp.tapAction("mailto:someone@example.com"))
+        assertEquals(OpenInApp.TapAction.LAUNCH, OpenInApp.tapAction("MAILTO:Someone@Example.com"))
+        assertEquals(OpenInApp.TapAction.LAUNCH, OpenInApp.tapAction("geo:37.7749,-122.4194"))
+        assertEquals(OpenInApp.TapAction.LAUNCH, OpenInApp.tapAction("sms:+15551234567"))
+        assertEquals(OpenInApp.TapAction.LAUNCH, OpenInApp.tapAction("SMS:+15551234567?body=hi"))
+    }
+
+    @Test
+    fun tapActionAsksFirstForUnknownSchemes() {
+        assertEquals(OpenInApp.TapAction.ASK, OpenInApp.tapAction("myapp://open"))
+        assertEquals(OpenInApp.TapAction.ASK, OpenInApp.tapAction("spotify:track:123"))
+        assertEquals(OpenInApp.TapAction.ASK, OpenInApp.tapAction("whatsapp://send?phone=15551234567"))
+    }
+
+    @Test
+    fun tapActionKeepsBlockedSchemesDead() {
+        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("intent://scan/#Intent;scheme=zxing;end"))
+        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("file:///sdcard/page.html"))
+        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("data:text/html,<b>hi</b>"))
+        assertEquals(OpenInApp.TapAction.NONE, OpenInApp.tapAction("about:blank"))
+    }
+
+    @Test
+    fun telNumberStripsParamsAndQuery() {
+        assertEquals("+15551234567", OpenInApp.telNumber("tel:+15551234567"))
+        assertEquals("911", OpenInApp.telNumber("TEL:911"))
+        assertEquals("+15551234567", OpenInApp.telNumber("tel:+15551234567;phone-context=example.com"))
+        assertEquals("911", OpenInApp.telNumber("tel:911?body=help"))
+        assertEquals("", OpenInApp.telNumber("tel:"))
     }
 
     @Test

@@ -385,6 +385,10 @@ fun WebApp(content: String) {
     // r199 (adblock A4): the HTTPS-only interstitial — the plain-http URL waiting on the driver's choice, and the tab it belongs to. Mariner's httpsWarnUrl shape, with the tab id riding along so the choice loads into the right tab. The one-time allowance set below is session-only: "Continue once" remembers the host only until the browser is left.
     var httpsWarnUrl by remember { mutableStateOf<String?>(null) }
     var httpsWarnTabId by remember { mutableStateOf(-1) }
+    // r207 (compat finding 8): an unknown-scheme tap waiting on the
+    // driver's choice — Mariner's pendingExternalUri, cleared by either
+    // button of the ask-first overlay below.
+    var pendingExternalUri by remember { mutableStateOf<String?>(null) }
     val httpsOnceHosts = remember { mutableSetOf<String>() }
     // r130: which section the lists sheet opens at. The bar star button
     // opens at the top; the settings sheet's Library rows jump straight
@@ -2228,6 +2232,11 @@ fun WebApp(content: String) {
                         mainHandler.post { jsDialog = dialog }
                     }
                 },
+                // r207 (compat finding 8): an unknown-scheme tap asks
+                // first, naming its target — Mariner's pendingExternalUri.
+                onExternalScheme = { url ->
+                    mainHandler.post { pendingExternalUri = url }
+                },
                 onWebPermissionRequest = { request ->
                     mainHandler.post { handlePermissionRequest(request, tab.isPrivate) }
                 },
@@ -3374,6 +3383,20 @@ fun WebApp(content: String) {
                 onGoBack = { httpsWarnUrl = null },
             )
         }
+        // r207 (compat finding 8): the external-scheme confirmation —
+        // a page wants to open an app link in another app. Same
+        // in-composition overlay pattern as HttpsWarnOverlay, never a
+        // real Dialog (virtual-display rule).
+        pendingExternalUri?.let { extUri ->
+            ExternalSchemeOverlay(
+                uri = extUri,
+                onOpen = {
+                    pendingExternalUri = null
+                    OpenInApp.launchExternal(context, extUri)
+                },
+                onStayHere = { pendingExternalUri = null },
+            )
+        }
         // r206 (compat finding 7): the site-permission prompt — camera,
         // microphone, or location — Mariner's PermPrompt shape, drawn as
         // an in-composition overlay like JsDialogOverlay, never a real
@@ -3729,19 +3752,26 @@ fun WebApp(content: String) {
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (!longPress.isImage) {
-                            GsButton(onClick = {
-                                longPressTarget = null
-                                newUrlTab(longPress.url)
-                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in new tab") }
-                            GsButton(onClick = {
-                                longPressTarget = null
-                                newUrlTab(longPress.url, activeTab.isPrivate, activate = false)
-                                CarToasts.show(context, "Opened in background tab", CarToast.LENGTH_SHORT)
-                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in background tab") }
-                            GsButton(onClick = {
-                                longPressTarget = null
-                                newUrlTab(longPress.url, isPrivate = true)
-                            }, modifier = Modifier.fillMaxWidth()) { Text("Open in private tab") }
+                            // r207 (compat finding 8): only an http(s)
+                            // link can load in a tab — the new-tab rows
+                            // stay hidden for a scheme link, whose tap
+                            // action is the way out instead.
+                            val linkScheme = OpenInApp.schemeOf(longPress.url)
+                            if (linkScheme == "http" || linkScheme == "https") {
+                                GsButton(onClick = {
+                                    longPressTarget = null
+                                    newUrlTab(longPress.url)
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Open in new tab") }
+                                GsButton(onClick = {
+                                    longPressTarget = null
+                                    newUrlTab(longPress.url, activeTab.isPrivate, activate = false)
+                                    CarToasts.show(context, "Opened in background tab", CarToast.LENGTH_SHORT)
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Open in background tab") }
+                                GsButton(onClick = {
+                                    longPressTarget = null
+                                    newUrlTab(longPress.url, isPrivate = true)
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Open in private tab") }
+                            }
                             // r183: "Open in app" for a link another app
                             // handles — host-specific handlers only, so
                             // a generic browser never earns this row.
@@ -3751,6 +3781,29 @@ fun WebApp(content: String) {
                                 GsButton(onClick = {
                                     longPressTarget = null
                                     if (!CarMotion.moving || passengerAllowed) OpenInApp.openInApp(context, longPress.url)
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Open in app") }
+                            }
+                            // r207: a scheme link gets the same "Open in
+                            // app" row its tap would fire — a call asks
+                            // first, a mail/map/message link launches at
+                            // once, anything else asks first naming its
+                            // target. Like the tap, this row is not
+                            // parked/private-gated (Mariner's shape).
+                            val linkAction = OpenInApp.tapAction(longPress.url)
+                            val linkNumber = OpenInApp.telNumber(longPress.url)
+                            if (linkAction == OpenInApp.TapAction.LAUNCH ||
+                                linkAction == OpenInApp.TapAction.ASK ||
+                                (linkAction == OpenInApp.TapAction.CALL &&
+                                    linkNumber.isNotBlank() && OpenInApp.canCall(context))
+                            ) {
+                                GsButton(onClick = {
+                                    longPressTarget = null
+                                    when (linkAction) {
+                                        OpenInApp.TapAction.CALL -> CallPrompt.ask(linkNumber, linkNumber)
+                                        OpenInApp.TapAction.LAUNCH -> OpenInApp.launchExternal(context, longPress.url)
+                                        OpenInApp.TapAction.ASK -> pendingExternalUri = longPress.url
+                                        else -> Unit
+                                    }
                                 }, modifier = Modifier.fillMaxWidth()) { Text("Open in app") }
                             }
                         } else {
@@ -5016,6 +5069,8 @@ private class BrowserClient(
     // r183: open-in-app tap gating, read per tap, never cached: the
     // car must be parked (or a passenger allowance live) and the tab
     // must not be private, or a tapped link keeps today's dead-end.
+    // r207: the gate applies only to VIEW and FALLBACK — CALL, LAUNCH
+    // and ASK are ungated (Mariner's shape).
     private val openInAppAllowed: () -> Boolean = { true },
     private val isPrivateTab: () -> Boolean = { false },
     // r197 (adblock A2): the tab id for per-tab blocked counts,
@@ -5043,6 +5098,9 @@ private class BrowserClient(
     // r204 (compat finding 4): a cert error for this tab — the
     // failing URL and its primary error, for the cert page.
     private val onSslError: (String, Int) -> Unit = { _, _ -> },
+    // r207 (compat finding 8): an unknown-scheme tap — the URL, for
+    // the ask-first overlay. Set by the caller like onSslError.
+    private val onExternalScheme: (String) -> Unit = {},
 ) : WebViewClient() {
 
     // r204 (compat finding 4): the URL of the cert error currently
@@ -5119,8 +5177,11 @@ private class BrowserClient(
         // tap may hand a URL to another app, ask to place a call, or
         // load a fallback page — script-driven hops (no gesture)
         // fall through untouched, and http(s) taps are never hijacked
-        // here: they load in the tab as before. A closed gate or a
-        // private tab returns false, which is exactly today's dead-end.
+        // here: they load in the tab as before. r207: the parked /
+        // private gate applies only to VIEW and FALLBACK — a call, a
+        // mail/map/message launch, and the ask-first path are ungated
+        // (Mariner's shape), so a closed gate returns false only for
+        // those two actions, which is exactly today's dead-end.
         if (request?.isForMainFrame == true && request.hasGesture() && url != null) {
             when (OpenInApp.tapAction(url)) {
                 OpenInApp.TapAction.VIEW -> {
@@ -5133,10 +5194,13 @@ private class BrowserClient(
                     return false
                 }
                 OpenInApp.TapAction.CALL -> {
-                    val number = url.substringAfter(':').substringBefore(';').substringBefore('?')
-                    if (openInAppAllowed() && !isPrivateTab() && number.isNotBlank() &&
-                        OpenInApp.canCall(view?.context)
-                    ) {
+                    // r207 (compat finding 8): the parked/private
+                    // gates are gone for a call — Mariner launches
+                    // a tel: tap with no such gates, the car's own
+                    // dialer (placeCall) is ungated too, and the
+                    // call still asks first on the car screen.
+                    val number = OpenInApp.telNumber(url)
+                    if (number.isNotBlank() && OpenInApp.canCall(view?.context)) {
                         // The existing call confirmation, not a blind
                         // dial: the overlay in the root composition
                         // asks first, then dials through placeCall.
@@ -5160,6 +5224,23 @@ private class BrowserClient(
                         }
                     }
                     return false
+                }
+                OpenInApp.TapAction.LAUNCH -> {
+                    // r207: mailto:/geo:/sms: launch at once, Mariner's
+                    // shape — a plain VIEW intent, runCatching-guarded,
+                    // no handler pre-check (so no new manifest queries
+                    // entry) and no parked/private gate: the tap is an
+                    // explicit user action, and a missing handler is a
+                    // silent no-op, like Mariner and r183's openInApp.
+                    view?.context?.let { OpenInApp.launchExternal(it, url) }
+                    return true
+                }
+                OpenInApp.TapAction.ASK -> {
+                    // r207: any other app scheme asks first, naming its
+                    // target — Mariner's pendingExternalUri dialog, as
+                    // an in-composition overlay (virtual-display rule).
+                    onExternalScheme(url)
+                    return true
                 }
                 OpenInApp.TapAction.NONE -> Unit
             }
@@ -5586,6 +5667,48 @@ private fun PermissionPromptOverlay(
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         GsButton(onClick = onAllow, modifier = Modifier.weight(1f)) { Text("Allow") }
                         GsButton(onClick = onDeny, modifier = Modifier.weight(1f)) { Text("Deny") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * r207 (compat finding 8): the external-scheme confirmation, Mariner's
+ * pendingExternalUri dialog shape (title + the target named in full),
+ * as an in-composition overlay like HttpsWarnOverlay — a kit panel over
+ * a dimmed page, never a real Dialog (virtual-display rule). "Open"
+ * fires the VIEW intent for the scheme; "Stay here" drops it.
+ */
+@Composable
+private fun ExternalSchemeOverlay(
+    uri: String,
+    onOpen: () -> Unit,
+    onStayHere: () -> Unit,
+) {
+    Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Phase 8: a kit panel, not a raw Material surface.
+            GsPanelCard(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Open in another app?", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        "This page wants to open this in another app:\n$uri",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Open") }
+                        GsButton(onClick = onStayHere, modifier = Modifier.weight(1f)) { Text("Stay here") }
                     }
                 }
             }

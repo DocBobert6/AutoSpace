@@ -9,17 +9,21 @@ import android.net.Uri
  * Open-in-app (r183): hand a page or link to another app on the phone,
  * instead of the browser's old bare "Could not load" dead-end for
  * non-http(s) schemes. Everything a unit test can pin lives here as
- * pure functions; the two Context calls ([hasAppHandler], [openInApp])
- * are the only seams that need a device.
+ * pure functions; the Context calls ([hasAppHandler], [openInApp],
+ * [launchExternal]) are the only seams that need a device.
  *
  * Rules, exactly as ordered:
  * - Tapped links: only a real tap (never a script-driven hop) may
  *   leave the browser, and only for market: (VIEW), tel: (the
- *   [placeCall] path behind the existing call confirmation), or an
- *   intent: URL carrying an http(s) fallback (loaded in the tab).
- *   http(s) taps are NEVER hijacked here — they load in the tab as
- *   before. mailto: and every other custom scheme keep today's
- *   dead-end. Sign-in/OAuth flows are never handed off.
+ *   [placeCall] path behind the existing call confirmation),
+ *   mailto:/geo:/sms: (LAUNCH, at once), an unknown scheme (ASK,
+ *   ask-first naming its target), or an intent: URL carrying an
+ *   http(s) fallback (loaded in the tab). http(s) taps are NEVER
+ *   hijacked here — they load in the tab as before. Sign-in/OAuth
+ *   flows are never handed off. r207: the tel: gates are gone (a
+ *   call asks first and dials even while driving or from a private
+ *   tab, Mariner's shape); mailto:/geo:/sms: launch ungated too,
+ *   with no handler pre-check, so no new manifest queries entry.
  * - Rows (long-press menu, current-page menu row): only for
  *   http(s)/market: URLs, only in a non-private tab, only while
  *   parked or with a live passenger allowance, and only when a
@@ -34,7 +38,7 @@ import android.net.Uri
 internal object OpenInApp {
 
     /** What a tapped non-http(s) link does. NONE means "today's behavior". */
-    enum class TapAction { VIEW, CALL, FALLBACK, NONE }
+    enum class TapAction { VIEW, CALL, LAUNCH, ASK, FALLBACK, NONE }
 
     /** The scheme of [url], lowercased, or "" when there is none. */
     fun schemeOf(url: String): String {
@@ -76,8 +80,35 @@ internal object OpenInApp {
         return when (schemeOf(url)) {
             "market" -> TapAction.VIEW
             "tel" -> TapAction.CALL
+            "mailto", "geo", "sms" -> TapAction.LAUNCH
             "intent" -> if (fallbackUrl(url) != null) TapAction.FALLBACK else TapAction.NONE
-            else -> TapAction.NONE
+            // r207 (compat finding 8): Mariner's table — http(s)/about
+            // load in the tab, data:/file: never launch, and anything
+            // else asks first, naming its target. intent: without a
+            // fallback stays NONE, as in r183.
+            "http", "https", "about", "data", "file" -> TapAction.NONE
+            "" -> TapAction.NONE
+            else -> TapAction.ASK
+        }
+    }
+
+    /** The phone number of a tel: URL, without params or a query. */
+    fun telNumber(url: String): String =
+        url.substringAfter(':').substringBefore(';').substringBefore('?')
+
+    /**
+     * Fire a VIEW intent for [url]: mailto:/geo:/sms: (and any scheme
+     * the ask-first overlay confirmed) launch at once, Mariner's
+     * shape — a plain intent, runCatching-guarded, with no handler
+     * pre-check, so no new manifest queries entry is needed. A
+     * missing handler is a silent no-op. Callers classify first.
+     */
+    fun launchExternal(context: Context, url: String) {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 

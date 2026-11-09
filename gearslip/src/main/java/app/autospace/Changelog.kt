@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            165, "0.4.154-alpha",
+            listOf(
+                "Tapping an email, map, or text-message link in the browser opens your mail, maps, or messaging app now, instead of stopping at a dead end. Any other app link asks first, naming where it wants to go, before it opens. A phone-number link asks you to confirm the call first, and it works even while driving or from a private tab.",
+            ),
+        ),
+        Release(
             164, "0.4.153-alpha",
             listOf(
                 "Web pages can ask to use your microphone or location now: a page that wants either shows a prompt naming the site, and your choice is remembered for that site. A page's file picker opens the phone's file picker with the kinds of files the page asked for. Camera requests are refused for now — the app does not declare the camera permission yet.",
