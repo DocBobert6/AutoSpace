@@ -42,24 +42,6 @@ class ErrorEmptyStatesTest {
         assertEquals(AgendaResult.Events(events), agendaResult(true, events))
     }
 
-    // 5-15: main-frame HTTP error -------------------------------------------------------
-
-    @Test
-    fun http404NamesItsCode() {
-        assertEquals("This page answered 404", httpErrorMessage(404))
-    }
-
-    @Test
-    fun http500NamesItsCode() {
-        assertEquals("This page answered 500", httpErrorMessage(500))
-    }
-
-    @Test
-    fun httpErrorMessageNeverOffersProceed() {
-        assertFalse(httpErrorMessage(404).contains("Proceed"))
-        assertFalse(httpErrorMessage(403).contains("Proceed"))
-    }
-
     // 5-16: browse notice ---------------------------------------------------------------
 
     @Test

@@ -3,6 +3,7 @@ package app.autospace.car
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
@@ -12,6 +13,7 @@ import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -132,6 +134,13 @@ import org.json.JSONObject
  * payload that is not a URL (the old loadDataWithBaseURL path); a new
  * tab is a start page (r21), never a bare search page.
  */
+/**
+ * r204 (compat finding 4): a cert error for this tab — the failing
+ * URL and its primary error. The cert page names the problem; there
+ * is no proceed path. Cleared on page start and on Go back.
+ */
+internal data class CertError(val url: String, val primaryError: Int)
+
 private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? = null) {
     var title by mutableStateOf<String?>(null)
     var currentUrl by mutableStateOf(initialUrl)
@@ -154,6 +163,8 @@ private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? =
     var canGoForward by mutableStateOf(false)
     var progress by mutableStateOf(0)
     var loadError by mutableStateOf<String?>(null)
+    /** r204 (compat finding 4): this tab's cert error, if it has one. */
+    var certError by mutableStateOf<CertError?>(null)
     // r199 (adblock A4): HTTPS-first state, Mariner's shape. [pendingHttpOriginal] is the plain-http URL an upgrade came from, so a failed secure load can fall back; [httpOnlyHosts] are hosts that already failed an upgrade in this tab, so the tab stops re-trying https for them; [httpsSeenHosts] are hosts that have loaded over HTTPS in this tab, so a later failure never silently downgrades them. Session-only, never persisted.
     var pendingHttpOriginal by mutableStateOf<String?>(null)
     val httpOnlyHosts = mutableSetOf<String>()
@@ -546,6 +557,7 @@ fun WebApp(content: String) {
             tab.title = null
             tab.foundMedia.clear()
             tab.loadError = null
+            tab.certError = null
             val v = tab.view
             tab.view = null
             mainHandler.post {
@@ -1711,6 +1723,7 @@ fun WebApp(content: String) {
                     mainHandler.post {
                         tab.foundMedia.clear()
                         tab.loadError = null
+                        tab.certError = null
                         // A new page load restores
                         // the bar (active tab only;
                         // in immersive mode the
@@ -1736,6 +1749,18 @@ fun WebApp(content: String) {
                 },
                 onMainFrameError = { message ->
                     mainHandler.post { tab.loadError = message }
+                },
+                // r204 (compat finding 4): a cert error lands on the
+                // tab as its own state (the cert page), never as a
+                // generic load failure. The server did answer over
+                // TLS, so an HTTPS-first upgrade reached it — the
+                // plain original is forgotten here, like Mariner.
+                onSslError = { failingUrl, primaryError ->
+                    mainHandler.post {
+                        tab.pendingHttpOriginal = null
+                        tab.certError = CertError(failingUrl, primaryError)
+                        tab.loadError = null
+                    }
                 },
                 onPopunder = { url, host ->
                     mainHandler.post { capturePopunder(url, host) }
@@ -2511,6 +2536,87 @@ fun WebApp(content: String) {
                                 activeTab.foundMedia.clear()
                                 saveSessionNow()
                             }) { Text("Home") }
+                        }
+                    }
+                }
+            }
+        }
+        // r204 (compat finding 4): the cert page — Mariner's
+        // CertErrorPage shape, minus its proceed (cert-proceed is
+        // permanently excluded). The panel names the exact problem;
+        // "Continue with http" is the ask-first plain-http fallback,
+        // offered only when this tab has never loaded the host over
+        // HTTPS (Mariner S-m2). The cancelled load never replaced
+        // the page, so Go back just dismisses — a fresh tab with
+        // nothing loaded resets to the start page instead.
+        if (activeTab.certError != null) {
+            val cert = activeTab.certError!!
+            val certHost = httpsHostOf(cert.url)
+            val httpUrl = httpFallbackFor(cert.url)
+            val fallbackAllowed = httpUrl != null &&
+                certHttpFallbackAllowed(certHost, activeTab.httpsSeenHosts)
+            Box(
+                Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                GsPanelCard(Modifier.fillMaxWidth().padding(32.dp)) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            "Certificate warning",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                        )
+                        Text(
+                            cert.url,
+                            maxLines = 2,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Text(
+                            certErrorMessage(cert.primaryError, certHost),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Text(
+                            "Someone could be watching or tampering with this connection. Only continue if you know and trust this site.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            GsButton(onClick = {
+                                activeTab.certError = null
+                                if (web?.url.isNullOrBlank() || web?.url == "about:blank") {
+                                    activeTab.isStartPage = true
+                                    activeTab.currentUrl = ""
+                                    activeTab.title = null
+                                    activeTab.foundMedia.clear()
+                                    saveSessionNow()
+                                }
+                            }) { Text("Go back") }
+                            if (fallbackAllowed) {
+                                GsButton(onClick = {
+                                    val target = httpUrl!!
+                                    activeTab.certError = null
+                                    activeTab.httpOnlyHosts.add(certHost)
+                                    // r199: loadUpgraded routes through
+                                    // the HTTPS-only interstitial when
+                                    // the mode is on; with the host in
+                                    // httpOnlyHosts the upgrade is
+                                    // skipped, so the plain load goes
+                                    // at once when the mode is off. The
+                                    // tap on this page IS the ask —
+                                    // never silent.
+                                    openUrlInTab(activeTab, target)
+                                }) { Text("Continue with http") }
+                            }
                         }
                     }
                 }
@@ -4356,12 +4462,37 @@ private fun TabSwitcherSheet(
 private enum class RuleEditType { BLOCK_HOST, BLOCK_URL, ALLOW_HOST }
 
 /**
- * Pure main-frame HTTP error message (r169, audit §5 5-15): an HTTP error is its own
- * error state, not a generic load failure — the status code is the message. Never a
- * Proceed option: cert-proceed is permanently out (r21 scope cuts), and this path
- * surfaces the error, it does not offer to go past it.
+ * r204 (compat finding 4): the cert problem, named — Mariner's
+ * CertErrorPage strings, verbatim. Pure, so unit tests can pin the
+ * wording per primary error. Never a Proceed option: cert-proceed
+ * is permanently out (r21 scope cuts); the page diagnoses, it does
+ * not offer to go past the bad certificate.
  */
-internal fun httpErrorMessage(statusCode: Int): String = "This page answered $statusCode"
+internal fun certErrorMessage(primaryError: Int, host: String): String = when (primaryError) {
+    SslError.SSL_EXPIRED -> "The certificate for $host has expired."
+    SslError.SSL_NOTYETVALID -> "The certificate for $host isn't valid yet."
+    SslError.SSL_IDMISMATCH -> "The certificate doesn't match the site name $host."
+    SslError.SSL_UNTRUSTED -> "The certificate for $host isn't trusted by this device."
+    SslError.SSL_DATE_INVALID -> "The certificate's dates are invalid — the device clock may be wrong."
+    else -> "The certificate for $host couldn't be verified."
+}
+
+/**
+ * r204 (compat finding 4): the plain-http version of an https URL,
+ * for the cert page's ask-first fallback. Null for anything that
+ * is not an https URL.
+ */
+internal fun httpFallbackFor(url: String): String? =
+    if (url.startsWith("https://")) "http://" + url.substringAfter("https://") else null
+
+/**
+ * r204 (compat finding 4): whether the cert page may offer the
+ * plain-http fallback for [host] — Mariner S-m2: a host this tab
+ * has already loaded over HTTPS never falls back. An empty host
+ * never offers it either.
+ */
+internal fun certHttpFallbackAllowed(host: String, httpsSeenHosts: Set<String>): Boolean =
+    host.isNotEmpty() && host !in httpsSeenHosts
 
 /**
  * The user agent the page in [tab] actually wears (r203): the
@@ -4495,7 +4626,16 @@ private class BrowserClient(
     private val httpsWarnFor: (String) -> Boolean = { false },
     private val httpsLoadFailed: (String, Int) -> Boolean = { _, _ -> false },
     private val httpsFinished: (String?) -> Unit = {},
+    // r204 (compat finding 4): a cert error for this tab — the
+    // failing URL and its primary error, for the cert page.
+    private val onSslError: (String, Int) -> Unit = { _, _ -> },
 ) : WebViewClient() {
+
+    // r204 (compat finding 4): the URL of the cert error currently
+    // showing for this tab. The handshake failure that follows a
+    // cancelled cert load must not overwrite the cert page with the
+    // generic panel — see onReceivedError. Cleared on page start.
+    private var sslErrorUrl: String? = null
 
     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
         request?.url?.toString()?.let { url ->
@@ -4662,6 +4802,7 @@ private class BrowserClient(
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+        sslErrorUrl = null
         onPageStart()
         // r197 (adblock A2): a navigation resets this tab's
         // blocked count, Mariner's shape.
@@ -4733,20 +4874,48 @@ private class BrowserClient(
             // r199 (adblock A4): a failed HTTPS-first upgrade is
             // handled before the error panel — see httpsLoadFailed.
             if (httpsLoadFailed(request.url.toString(), error?.errorCode ?: 0)) return
+            // r204 (compat finding 4): the cert error already showed
+            // its own page — the handshake failure that follows
+            // handler.cancel() must not overwrite it with the generic
+            // panel. Any other error still takes the panel path.
+            if (error?.errorCode == WebViewClient.ERROR_FAILED_SSL_HANDSHAKE &&
+                sslErrorUrl != null && sslErrorUrl == request.url.toString()
+            ) {
+                GearslipLog.i("car web page cert failure already shown for ${GearslipLog.loggableUrl(request.url.toString())}")
+                return
+            }
             GearslipLog.e("car web page FAILED: ${GearslipLog.loggableUrl(request.url.toString())} - ${error?.errorCode} ${error?.description}")
             onMainFrameError("Could not load ${request.url}. ${error?.description ?: "Check the connection and try again."}")
         }
     }
 
+    override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler, error: SslError) {
+        // r204 (compat finding 4): a cert problem is diagnosed, not
+        // swallowed — Mariner's CertErrorPage shape, minus its proceed
+        // (cert-proceed is permanently excluded). Cancel the load and
+        // show the page naming the exact problem. The handshake
+        // failure that follows the cancel is suppressed in
+        // onReceivedError (see sslErrorUrl), so the cert page is
+        // never overwritten by the generic panel.
+        handler.cancel()
+        val failingUrl = error.url ?: ""
+        sslErrorUrl = failingUrl
+        GearslipLog.w("car web page cert error ${error.primaryError} for ${GearslipLog.loggableUrl(failingUrl)}")
+        onSslError(failingUrl, error.primaryError)
+    }
+
     override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
         if (request?.isForMainFrame == true) {
+            // r204 (compat finding 3): the server's page renders —
+            // Mariner has no such override. A main-frame HTTP error
+            // is still recorded (the log line below, URL + status),
+            // but it no longer hides the page behind the error
+            // panel: anti-bot 403s, custom 404s and challenge pages
+            // carry usable content the driver needs to see. This
+            // retires the r169 (audit §5 5-15) overlay, not its
+            // intent — the error is recorded, it just doesn't hide
+            // content. Sub-frame HTTP errors stay log-only, as before.
             GearslipLog.w("car web page HTTP ${response?.statusCode} for ${GearslipLog.loggableUrl(request.url.toString())}")
-            // r169 (audit §5 5-15): a main-frame HTTP error is a real error state, not a
-            // silent log line — it rides the same path as a load failure, with its own
-            // status-code message. Sub-frame HTTP errors stay log-only, as before.
-            val code = response?.statusCode
-            if (code != null) onMainFrameError(httpErrorMessage(code))
-            else onMainFrameError("Could not load ${request.url}.")
         }
     }
 }
