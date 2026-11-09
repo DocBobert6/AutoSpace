@@ -5351,7 +5351,7 @@ private class BrowserChrome(
     private val onHideFullscreen: () -> Unit,
     private val onJsDialog: (JsDialogState) -> Unit,
     private val onWebPermissionRequest: (PermissionRequest) -> Unit = {},
-    private val onWebGeolocationPrompt: (String, GeolocationPermissions.Callback) -> Unit = {},
+    private val onWebGeolocationPrompt: (String, GeolocationPermissions.Callback) -> Unit = { _, _ -> },
     private val onWebFileChooser: (ValueCallback<Array<Uri>>, FileChooserParams) -> Boolean = { _, _ -> false },
 ) : WebChromeClient() {
     override fun onProgressChanged(view: WebView?, newProgress: Int) {
