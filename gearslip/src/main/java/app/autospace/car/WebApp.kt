@@ -10,15 +10,18 @@ import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.DownloadListener
+import android.webkit.GeolocationPermissions
 import android.webkit.JavascriptInterface
 import android.webkit.JsPromptResult
 import android.webkit.JsResult
+import android.webkit.PermissionRequest
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.webkit.ValueCallback
 import android.webkit.WebViewClient
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1161,6 +1164,204 @@ fun WebApp(content: String) {
             }
         }
     }
+
+    // r206 (compat finding 7): site permissions — camera, microphone,
+    // location — Mariner's PermPrompt shape. A page asking for a
+    // resource gets an ask-first prompt naming the site; the choice
+    // is remembered per site (private tabs ask every time and never
+    // store). The OS permission is requested first when missing, and
+    // the web request is granted only the resources the OS allowed.
+    // Camera is NOT grantable in this build: android.permission.CAMERA
+    // is not declared in the manifest, so camera requests are denied
+    // with a log line (see the r206 blocker in the delivery note) —
+    // grantablePermissionResources enforces that, one word flips it
+    // once the declaration lands.
+    var permPrompt by remember { mutableStateOf<PermPrompt?>(null) }
+    var pendingPermGrant by remember { mutableStateOf<Triple<PermPrompt, List<String>, List<String>>?>(null) }
+    val permOsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { results ->
+        val grant = pendingPermGrant ?: return@rememberLauncherForActivityResult
+        pendingPermGrant = null
+        val (prompt, asked, _) = grant
+        val granted = asked.filter { res ->
+            val perm = when (res) {
+                "camera" -> android.Manifest.permission.CAMERA
+                "microphone" -> android.Manifest.permission.RECORD_AUDIO
+                else -> android.Manifest.permission.ACCESS_FINE_LOCATION
+            }
+            results[perm] == true
+        }
+        if (granted.isNotEmpty()) prompt.onGrant(granted) else prompt.onDeny()
+    }
+    // r206 (compat finding 7): the web page's file chooser — Mariner's
+    // onShowFileChooser shape. The pending callback is cancelled
+    // (null) when a new pick starts, and a cancelled pick delivers
+    // null, so a page never hangs waiting for an answer.
+    var pendingFileChooser by remember { mutableStateOf<android.webkit.ValueCallback<Array<Uri>>?>(null) }
+    val fileChooserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val cb = pendingFileChooser
+        pendingFileChooser = null
+        if (cb == null) return@rememberLauncherForActivityResult
+        val clipUris = result.data?.clipData?.let { clip ->
+            (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri?.toString() }
+        } ?: emptyList()
+        val uris = fileChooserResultUris(result.resultCode, result.data?.data?.toString(), clipUris)
+        runCatching { cb.onReceiveValue(uris?.map { Uri.parse(it) }?.toTypedArray()) }
+    }
+
+    /** Mariner's grantWithOsCheck: grant [prompt]'s resources, requesting
+     *  any missing OS permission first; resources the OS denies are not
+     *  granted. Declared before createTabWebView — a local fun must be
+     *  declared before use, even from a callback that runs later. */
+    fun grantWithOsCheck(prompt: PermPrompt, resources: List<String>) {
+        val missing = resources.mapNotNull { res ->
+            val perm = when (res) {
+                "camera" -> android.Manifest.permission.CAMERA
+                "microphone" -> android.Manifest.permission.RECORD_AUDIO
+                else -> android.Manifest.permission.ACCESS_FINE_LOCATION
+            }
+            if (androidx.core.content.ContextCompat.checkSelfPermission(
+                    context, perm,
+                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) null else perm
+        }
+        if (missing.isEmpty()) {
+            prompt.onGrant(resources)
+        } else {
+            pendingPermGrant = Triple(prompt, resources, missing)
+            permOsLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    /** Mariner's onPermissionRequest, car-adapted: map the WebView
+     *  resources to names, drop the ungrantable ones (camera, until
+     *  the manifest declares it), then follow the stored per-site
+     *  decision — allowed ones granted through the OS check, asked
+     *  ones prompted, denied ones refused. Mixed: the prompt asks
+     *  about the undecided ones only, and answering grants the
+     *  decided ones together with the newly allowed ones, while
+     *  denying still grants the decided ones. Private tabs ask
+     *  every time and never read or store a decision. */
+    fun handlePermissionRequest(request: android.webkit.PermissionRequest, isPrivate: Boolean) {
+        val origin = request.origin.toString()
+        val host = request.origin.host ?: ""
+        val wanted = grantablePermissionResources(
+            permissionResourceNames(request.resources),
+            cameraDeclared = false,
+        )
+        if (wanted.isEmpty()) {
+            GearslipLog.i("car browser permission request for $host denied: no grantable resource (camera needs android.permission.CAMERA, not declared)")
+            runCatching { request.deny() }
+            return
+        }
+        val toWebRes = { names: List<String> ->
+            names.mapNotNull { name ->
+                when (name) {
+                    "camera" -> android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                    "microphone" -> android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE
+                    else -> null
+                }
+            }.toTypedArray()
+        }
+        val prompt = PermPrompt(
+            origin, wanted,
+            onGrant = { granted ->
+                if (granted.isNotEmpty()) runCatching { request.grant(toWebRes(granted)) }
+                else runCatching { request.deny() }
+            },
+            onDeny = { runCatching { request.deny() } },
+            isPrivate = isPrivate,
+        )
+        if (isPrivate) {
+            permPrompt = prompt
+            return
+        }
+        val decisions = wanted.map { BrowserStore.sitePermission(context, host, it) }
+        val split = splitPermissionDecisions(wanted, decisions)
+        when {
+            split.asked.isEmpty() -> {
+                if (split.allowed.isNotEmpty()) grantWithOsCheck(prompt, split.allowed)
+                else runCatching { request.deny() }
+            }
+            split.allowed.isEmpty() -> permPrompt = prompt
+            else -> {
+                // Mixed: ask about the undecided ones; answering grants
+                // the decided ones together with the newly allowed ones,
+                // and denying still grants the decided ones.
+                permPrompt = prompt.copy(
+                    resources = split.asked,
+                    onGrant = { grantedAsked ->
+                        val combined = split.allowed + grantedAsked
+                        if (combined.isNotEmpty()) runCatching { request.grant(toWebRes(combined)) }
+                        else runCatching { request.deny() }
+                    },
+                    onDeny = {
+                        if (split.allowed.isNotEmpty()) runCatching { request.grant(toWebRes(split.allowed)) }
+                        else runCatching { request.deny() }
+                    },
+                )
+            }
+        }
+    }
+
+    /** Mariner's onGeolocationPermissionsShowPrompt: the stored
+     *  per-site decision rules — allow goes through the OS check,
+     *  deny refuses, anything else prompts. Private tabs ask every
+     *  time and never read or store a decision. */
+    fun handleGeolocationRequest(
+        origin: String,
+        callback: android.webkit.GeolocationPermissions.Callback,
+        isPrivate: Boolean,
+    ) {
+        val host = runCatching { Uri.parse(origin).host ?: "" }.getOrDefault("")
+        val prompt = PermPrompt(
+            origin, listOf("geolocation"),
+            onGrant = { granted ->
+                if (granted.isNotEmpty()) runCatching { callback.invoke(origin, true, false) }
+                else runCatching { callback.invoke(origin, false, false) }
+            },
+            onDeny = { runCatching { callback.invoke(origin, false, false) } },
+            isPrivate = isPrivate,
+        )
+        if (isPrivate) {
+            permPrompt = prompt
+            return
+        }
+        when (BrowserStore.sitePermission(context, host, "geolocation")) {
+            "allow" -> grantWithOsCheck(prompt, listOf("geolocation"))
+            "deny" -> runCatching { callback.invoke(origin, false, false) }
+            else -> permPrompt = prompt
+        }
+    }
+
+    /** Mariner's onShowFileChooser: cancel any chooser still pending
+     *  from an earlier tap, then open the system picker with the
+     *  page's own intent (accept types and single/multiple mode ride
+     *  along). A failed launch delivers null and reports false. */
+    fun handleFileChooser(
+        filePathCallback: android.webkit.ValueCallback<Array<Uri>>,
+        fileChooserParams: android.webkit.WebChromeClient.FileChooserParams,
+    ): Boolean {
+        pendingFileChooser?.onReceiveValue(null)
+        pendingFileChooser = filePathCallback
+        val intent = runCatching { fileChooserParams.createIntent() }.getOrNull()
+        if (intent == null) {
+            pendingFileChooser = null
+            runCatching { filePathCallback.onReceiveValue(null) }
+            return false
+        }
+        return runCatching {
+            fileChooserLauncher.launch(intent)
+            true
+        }.onFailure {
+            pendingFileChooser = null
+            runCatching { filePathCallback.onReceiveValue(null) }
+        }.getOrDefault(false)
+    }
+
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
@@ -1190,7 +1391,7 @@ fun WebApp(content: String) {
             return
         }
         if (addressEditing || fieldText != null || settingsMenuOpen || menuOpen || customizeOpen || tabsOpen ||
-            sheetOpen || listsOpen || jsDialog != null || showPopupNotice ||
+            sheetOpen || listsOpen || jsDialog != null || permPrompt != null || showPopupNotice ||
             fullscreenView != null || gateOpen || findOpen) return
         val delta = scrollY - oldScrollY
         if (delta > 0) {
@@ -1708,6 +1909,12 @@ fun WebApp(content: String) {
             // tab WebView at creation (see BrowserExtras
             // for the geolocation / JS-interface notes).
             applyWebHardening(settings)
+            // r206 (compat finding 7): geolocation is ON here only so
+            // the prompt can gate it — Mariner's shape (Audit P-M2):
+            // an undecided origin is denied, never silently allowed.
+            // The per-site decision lives in BrowserStore; there is
+            // no global toggle, as in Mariner.
+            settings.setGeolocationEnabled(true)
             // r202 (compat findings 1+6): multiple
             // windows MUST be on, or onCreateWindow
             // never fires and every popup link just
@@ -2021,6 +2228,13 @@ fun WebApp(content: String) {
                         mainHandler.post { jsDialog = dialog }
                     }
                 },
+                onWebPermissionRequest = { request ->
+                    mainHandler.post { handlePermissionRequest(request, tab.isPrivate) }
+                },
+                onWebGeolocationPrompt = { origin, callback ->
+                    mainHandler.post { handleGeolocationRequest(origin, callback, tab.isPrivate) }
+                },
+                onWebFileChooser = { callback, params -> handleFileChooser(callback, params) },
             )
             setDownloadListener(DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 // Phase 3.4, item 4: downloads go to the phone Downloads
@@ -3160,6 +3374,35 @@ fun WebApp(content: String) {
                 onGoBack = { httpsWarnUrl = null },
             )
         }
+        // r206 (compat finding 7): the site-permission prompt — camera,
+        // microphone, or location — Mariner's PermPrompt shape, drawn as
+        // an in-composition overlay like JsDialogOverlay, never a real
+        // Dialog (virtual-display rule). Allow stores "allow" for the
+        // asked resources and grants through the OS check; Deny stores
+        // "deny". Private tabs never read or store a decision — they
+        // ask every time.
+        permPrompt?.let { prompt ->
+            val host = runCatching { Uri.parse(prompt.origin).host ?: prompt.origin }
+                .getOrDefault(prompt.origin)
+            PermissionPromptOverlay(
+                host = host,
+                resources = prompt.resources,
+                onAllow = {
+                    if (!prompt.isPrivate) {
+                        prompt.resources.forEach { BrowserStore.setSitePermission(context, host, it, "allow") }
+                    }
+                    permPrompt = null
+                    grantWithOsCheck(prompt, prompt.resources)
+                },
+                onDeny = {
+                    if (!prompt.isPrivate) {
+                        prompt.resources.forEach { BrowserStore.setSitePermission(context, host, it, "deny") }
+                    }
+                    permPrompt = null
+                    prompt.onDeny()
+                },
+            )
+        }
         // Phase 8 popup notice (Notscape's popup notice, car-sized): a frost
         // panel floating over the page — NOT a Gs sheet — naming the site
         // and offering Open once / Open all (Notscape's buttons), Allow
@@ -3588,6 +3831,73 @@ internal fun tabClassCount(
 // before this is ever consulted (silenced entirely, no notice).
 internal fun popupAllowed(popupStrict: Boolean, setting: BrowserStore.PopupSetting): Boolean =
     !popupStrict || setting == BrowserStore.PopupSetting.ALLOW
+
+// r206 (compat finding 7): the site-permission decision, Mariner's
+// rule — the pure seams, pinned by BrowserPermissionsTest.
+
+/** The WebView resources a page asked for, as the names Mariner uses. */
+internal fun permissionResourceNames(resources: Array<String>): List<String> =
+    resources.mapNotNull { res ->
+        when (res) {
+            android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "camera"
+            android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "microphone"
+            else -> null
+        }
+    }
+
+/** Only resources the app can actually grant: camera drops out
+ *  while android.permission.CAMERA is not declared in the
+ *  manifest (r206 blocker — one word flips it once declared). */
+internal fun grantablePermissionResources(wanted: List<String>, cameraDeclared: Boolean): List<String> =
+    if (cameraDeclared) wanted else wanted.filter { it != "camera" }
+
+/** Split the wanted resources by their stored per-site decision. */
+internal data class PermissionDecisionSplit(
+    val allowed: List<String>,
+    val asked: List<String>,
+    val denied: List<String>,
+)
+
+internal fun splitPermissionDecisions(
+    wanted: List<String>,
+    decisions: List<String>,
+): PermissionDecisionSplit {
+    val allowed = mutableListOf<String>()
+    val asked = mutableListOf<String>()
+    val denied = mutableListOf<String>()
+    wanted.forEachIndexed { i, resource ->
+        when (decisions.getOrNull(i)) {
+            "allow" -> allowed.add(resource)
+            "deny" -> denied.add(resource)
+            else -> asked.add(resource)
+        }
+    }
+    return PermissionDecisionSplit(allowed, asked, denied)
+}
+
+/** The prompt's resource names, as the driver reads them. */
+internal fun permissionPromptLabel(resource: String): String =
+    when (resource) {
+        "camera" -> "your camera"
+        "microphone" -> "your microphone"
+        else -> "your location"
+    }
+
+/** The file picker's answer: the clip URIs when the page asked for
+ *  several, else the single picked URI; null when the pick was
+ *  cancelled or picked nothing. */
+internal fun fileChooserResultUris(
+    resultCode: Int,
+    singleUri: String?,
+    clipUris: List<String>,
+): List<String>? {
+    if (resultCode != android.app.Activity.RESULT_OK) return null
+    return when {
+        clipUris.isNotEmpty() -> clipUris
+        singleUri != null -> listOf(singleUri)
+        else -> null
+    }
+}
 
 // Phase 6 (r186): the local suggestions card — matches from this
 // device's own bookmarks and history only; nothing is sent anywhere.
@@ -5040,6 +5350,9 @@ private class BrowserChrome(
     private val onShowFullscreen: (View, WebChromeClient.CustomViewCallback) -> Unit,
     private val onHideFullscreen: () -> Unit,
     private val onJsDialog: (JsDialogState) -> Unit,
+    private val onWebPermissionRequest: (PermissionRequest) -> Unit = {},
+    private val onWebGeolocationPrompt: (String, GeolocationPermissions.Callback) -> Unit = {},
+    private val onWebFileChooser: (ValueCallback<Array<Uri>>, FileChooserParams) -> Boolean = { _, _ -> false },
 ) : WebChromeClient() {
     override fun onProgressChanged(view: WebView?, newProgress: Int) {
         onProgress(newProgress)
@@ -5114,6 +5427,23 @@ private class BrowserChrome(
         if (window != null) onClosePopup(window)
     }
 
+    override fun onPermissionRequest(request: PermissionRequest) {
+        onWebPermissionRequest(request)
+    }
+
+    override fun onGeolocationPermissionsShowPrompt(
+        origin: String,
+        callback: GeolocationPermissions.Callback,
+    ) {
+        onWebGeolocationPrompt(origin, callback)
+    }
+
+    override fun onShowFileChooser(
+        webView: WebView?,
+        filePathCallback: ValueCallback<Array<Uri>>,
+        fileChooserParams: FileChooserParams,
+    ): Boolean = onWebFileChooser(filePathCallback, fileChooserParams)
+
     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
         if (view != null && callback != null) onShowFullscreen(view, callback)
     }
@@ -5181,6 +5511,22 @@ private class PopupCaptureClient(
     }
 }
 
+/**
+ * r206 (compat finding 7): a pending site-permission decision —
+ * Mariner's PermPrompt shape: the origin, the resources it asked
+ * for ("camera", "microphone", "geolocation"), and the callbacks
+ * that grant a subset or deny all. isPrivate marks a prompt from
+ * a private tab: it is never stored, and the stored decision is
+ * never consulted for it.
+ */
+private data class PermPrompt(
+    val origin: String,
+    val resources: List<String>,
+    val onGrant: (List<String>) -> Unit,
+    val onDeny: () -> Unit,
+    val isPrivate: Boolean = false,
+)
+
 /** A JS dialog waiting for the driver, with its result object to answer through. */
 private sealed interface JsDialogState {
     val message: String
@@ -5204,6 +5550,46 @@ private sealed interface JsDialogState {
     ) : JsDialogState {
         fun confirmWith(value: String) { result.confirm(value) }
         override fun cancel() { result.cancel() }
+    }
+}
+
+/**
+ * r206 (compat finding 7): the site-permission prompt — Mariner's
+ * PermPrompt dialog shape (title names the host, text names the
+ * resources), as an in-composition overlay like HttpsWarnOverlay.
+ */
+@Composable
+private fun PermissionPromptOverlay(
+    host: String,
+    resources: List<String>,
+    onAllow: () -> Unit,
+    onDeny: () -> Unit,
+) {
+    Box(
+        Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            GsPanelCard(Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Allow $host to use", style = MaterialTheme.typography.headlineSmall)
+                    Text(
+                        resources.joinToString(", ") { permissionPromptLabel(it) } + "?",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GsButton(onClick = onAllow, modifier = Modifier.weight(1f)) { Text("Allow") }
+                        GsButton(onClick = onDeny, modifier = Modifier.weight(1f)) { Text("Deny") }
+                    }
+                }
+            }
+        }
     }
 }
 

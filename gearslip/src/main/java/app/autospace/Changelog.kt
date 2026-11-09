@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            164, "0.4.153-alpha",
+            listOf(
+                "Web pages can ask to use your microphone or location now: a page that wants either shows a prompt naming the site, and your choice is remembered for that site. A page's file picker opens the phone's file picker with the kinds of files the page asked for. Camera requests are refused for now — the app does not declare the camera permission yet.",
+            ),
+        ),
+        Release(
             163, "0.4.152-alpha",
             listOf(
                 "The browser has a zoom control for each site now: in the settings menu under Text size, a Zoom for this site row lets you zoom a too-large page out (or in) from 50% to 200%, and it remembers the size for that site. The Offline library has an Import a video row: pick a video from your phone and it plays in the browser's player, with the file staying right where it is.",

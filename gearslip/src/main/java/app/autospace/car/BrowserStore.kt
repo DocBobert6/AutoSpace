@@ -1189,5 +1189,77 @@ object BrowserStore {
         if (zoom <= 0) map.remove(key) else map[key] = zoom.coerceIn(50, 200)
         AppSettings.putString(context, KEY_SITE_ZOOM, encodeSiteZooms(map))
     }
+
+    // One line per (host, resource, decision) — encHost|resource|decision —
+    // under browser_site_permissions. Mariner's siteperm:$host:$resource
+    // shape, flattened into the same line codec as the per-site zooms
+    // (r205) so the pure codec stays JVM-testable without org.json.
+    // Absent means "ask": the page gets a prompt, never a silent grant.
+    // Only "allow" and "deny" are stored; anything else is dropped.
+    private const val KEY_SITE_PERMISSIONS = "browser_site_permissions"
+
+    /** Pure codec: one `encHost|resource|decision` line per stored decision. */
+    fun encodeSitePermissions(perms: Map<String, Map<String, String>>): String =
+        perms.entries.sortedBy { it.key }.flatMap { (host, byResource) ->
+            byResource.entries.sortedBy { it.key }.map { (resource, decision) ->
+                "${URLEncoder.encode(host.lowercase(), "UTF-8")}|$resource|$decision"
+            }
+        }.joinToString("\n")
+
+    /** Pure codec: malformed lines and unknown decisions are skipped. */
+    fun decodeSitePermissions(raw: String): Map<String, Map<String, String>> {
+        if (raw.isBlank()) return emptyMap()
+        val out = LinkedHashMap<String, LinkedHashMap<String, String>>()
+        for (line in raw.lines()) {
+            val parts = line.split("|")
+            if (parts.size != 3) continue
+            val host = runCatching { URLDecoder.decode(parts[0], "UTF-8") }.getOrDefault(parts[0])
+            val resource = parts[1]
+            val decision = parts[2]
+            if (host.isBlank() || resource.isBlank() || (decision != "allow" && decision != "deny")) continue
+            out.getOrPut(host.lowercase()) { LinkedHashMap() }[resource] = decision
+        }
+        return out
+    }
+
+    /** This host's decision for a resource: "allow", "deny", or "ask" when unset. */
+    fun sitePermissionForHost(perms: Map<String, Map<String, String>>, host: String, resource: String): String =
+        perms[host.lowercase()]?.get(resource) ?: "ask"
+
+    /** Pure update: "allow"/"deny" store, anything else removes the entry (back to "ask"). */
+    fun sitePermissionMapWith(
+        perms: Map<String, Map<String, String>>,
+        host: String,
+        resource: String,
+        decision: String,
+    ): Map<String, Map<String, String>> {
+        val key = host.lowercase()
+        if (key.isBlank() || resource.isBlank()) return perms
+        val out = perms.mapValues { it.value.toMutableMap() }.toMutableMap()
+        if (decision == "allow" || decision == "deny") {
+            out.getOrPut(key) { mutableMapOf() }[resource] = decision
+        } else {
+            out[key]?.remove(resource)
+            if (out[key].isNullOrEmpty()) out.remove(key)
+        }
+        return out
+    }
+
+    fun sitePermissions(context: Context): Map<String, Map<String, String>> =
+        decodeSitePermissions(AppSettings.getString(context, KEY_SITE_PERMISSIONS, ""))
+
+    fun sitePermission(context: Context, host: String, resource: String): String =
+        sitePermissionForHost(sitePermissions(context), host, resource)
+
+    /** Store a per-site decision; "ask" (or anything else) clears it. */
+    fun setSitePermission(context: Context, host: String, resource: String, decision: String) {
+        val key = host.lowercase()
+        if (key.isBlank() || resource.isBlank()) return
+        AppSettings.putString(
+            context,
+            KEY_SITE_PERMISSIONS,
+            encodeSitePermissions(sitePermissionMapWith(sitePermissions(context), key, resource, decision)),
+        )
+    }
 }
 
