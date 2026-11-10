@@ -936,11 +936,6 @@ fun WebApp(content: String) {
     var gpcOn by remember { mutableStateOf(BrowserStore.gpcEnabled(context)) }
     // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
     var httpsOnlyOn by remember { mutableStateOf(BrowserStore.httpsOnly(context)) }
-    // r214: HTTPS exceptions list — the stored per-host
-    // "Continue for this site" choices, revocable from the sheet.
-    var httpsExceptions by remember {
-        mutableStateOf(BrowserStore.parseHttpsExceptions(BrowserStore.httpsExceptionsRaw(context)).sorted())
-    }
     // r200 (adblock A5): delete browsing data on exit, OFF by default
     // as in Mariner (beta.63 #25, Robert's condition).
     var deleteOnExitOn by remember { mutableStateOf(BrowserStore.deleteOnExit(context)) }
@@ -1134,7 +1129,6 @@ fun WebApp(content: String) {
         blockTrackersOn = BrowserStore.blockTrackers(context)
         gpcOn = BrowserStore.gpcEnabled(context)
         httpsOnlyOn = BrowserStore.httpsOnly(context)
-        httpsExceptions = BrowserStore.parseHttpsExceptions(BrowserStore.httpsExceptionsRaw(context)).sorted()
         acceptCookiesOn = BrowserStore.acceptCookies(context)
         blockThirdPartyOn = BrowserStore.blockThirdPartyCookies(context)
         sessionOnlyCookiesOn = BrowserStore.sessionOnlyCookies(context)
@@ -3196,11 +3190,6 @@ fun WebApp(content: String) {
                     BrowserStore.setHttpsOnly(context, on)
                     httpsOnlyOn = on
                 },
-                httpsExceptions = httpsExceptions,
-                onRevokeHttpsException = { host ->
-                    BrowserStore.setHttpsException(context, host, false)
-                    httpsExceptions = BrowserStore.parseHttpsExceptions(BrowserStore.httpsExceptionsRaw(context)).sorted()
-                },
                 deleteOnExitOn = deleteOnExitOn,
                 onDeleteOnExit = { on ->
                     BrowserStore.setDeleteOnExit(context, on)
@@ -4473,10 +4462,6 @@ private fun BrowserSettingsMenu(
     // r199 (adblock A4): HTTPS-only mode, OFF by default as in Mariner.
     httpsOnlyOn: Boolean,
     onHttpsOnly: (Boolean) -> Unit,
-    // r214: HTTPS exceptions list + revoke — the stored
-    // per-host "Continue for this site" choices.
-    httpsExceptions: List<String>,
-    onRevokeHttpsException: (String) -> Unit,
     // r200 (adblock A5): delete-on-exit toggle + the clear-data sheet opener.
     deleteOnExitOn: Boolean,
     onDeleteOnExit: (Boolean) -> Unit,
@@ -4832,7 +4817,16 @@ private fun BrowserSettingsMenu(
                 // r214: HTTPS exceptions — the stored per-host
                 // "Continue for this site" choices, each revocable
                 // from here; revoking warns again on the next
-                // plain-http visit to that host.
+                // plain-http visit to that host. The list lives
+                // here, in the sheet, and re-reads the store every
+                // time the sheet opens (it is composed only while
+                // open); a revoke updates the store and this list
+                // at once. Nothing about it grows the WebApp body,
+                // which is at its method-size ceiling (r209) — a
+                // state initializer there tipped it over.
+                var httpsExceptions by remember {
+                    mutableStateOf(BrowserStore.parseHttpsExceptions(BrowserStore.httpsExceptionsRaw(menuContext)).sorted())
+                }
                 Text(
                     "Sites allowed over plain http",
                     style = MaterialTheme.typography.titleMedium,
@@ -4858,7 +4852,10 @@ private fun BrowserSettingsMenu(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            GsButton(onClick = { onRevokeHttpsException(host) }) { Text("Remove") }
+                            GsButton(onClick = {
+                                BrowserStore.setHttpsException(menuContext, host, false)
+                                httpsExceptions = BrowserStore.parseHttpsExceptions(BrowserStore.httpsExceptionsRaw(menuContext)).sorted()
+                            }) { Text("Remove") }
                         }
                     }
                 }
