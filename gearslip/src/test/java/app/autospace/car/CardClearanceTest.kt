@@ -228,4 +228,49 @@ class CardClearanceTest {
         // Unmeasured card: no overlap claimed, same first-frame rule as controls.
         assertFalse(cardOverlapsColumn(MediaCardDock.END, 800f, 480f, 320f, 0f, passengerColumn, 0f))
     }
+
+    // r213: the widget column's span, cleared of the controls strip.
+    // Fixtures use the 800x480 short frame: box width 776 (frame minus
+    // the 12dp pads), natural column 280dp passenger / 233dp driver
+    // (30% of 776), strip 72dp (no action row) or 244dp (three-button row).
+
+    @Test fun clearedSpanNoStripPassengerIsToday() {
+        // Box 776 - 280 = 496; frame left 12 + 496 = 508, right 788 —
+        // exactly the passengerColumn fixture above.
+        assertEquals(496f to 280f, widgetColumnClearedSpan(776f, true, 280f, null))
+    }
+
+    @Test fun clearedSpanNoStripDriverIsToday() {
+        assertEquals(0f to 233f, widgetColumnClearedSpan(776f, false, 233f, null))
+    }
+
+    @Test fun clearedSpanPassengerShiftsLeftByStrip() {
+        // Strip left (box) 704; the 280dp column keeps its width and its
+        // right edge lands exactly on the strip's left edge (frame 716).
+        assertEquals(424f to 280f, widgetColumnClearedSpan(776f, true, 280f, 72f))
+    }
+
+    @Test fun clearedSpanDriverKeepsWidthWhenItClears() {
+        assertEquals(0f to 233f, widgetColumnClearedSpan(776f, false, 233f, 72f))
+    }
+
+    @Test fun clearedSpanWideRowNarrowsDriverColumn() {
+        // 460-wide frame, three-button row (244dp): strip left (box) 192;
+        // the driver column narrows 200 -> 192 so its right edge clears.
+        assertEquals(0f to 192f, widgetColumnClearedSpan(436f, false, 200f, 244f))
+    }
+
+    @Test fun clearedSpanWideRowShiftsPassengerColumn() {
+        // Same frame, passenger side: the column narrows to the 192dp
+        // span and sits at the box's start — its right edge clears the strip.
+        assertEquals(0f to 192f, widgetColumnClearedSpan(436f, true, 200f, 244f))
+    }
+
+    @Test fun clearedSpanRightEdgeTouchesStripLeft() {
+        // The passenger span's right edge is exactly the strip's left
+        // edge: edges merely touching is clear, not covered (rectsOverlap).
+        val (left, width) = widgetColumnClearedSpan(776f, true, 280f, 72f)
+        val stripLeftFrame = 800f - 12f - 72f
+        assertEquals(stripLeftFrame, 12f + left + width)
+    }
 }

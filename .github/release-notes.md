@@ -1,4 +1,4 @@
-AutoSpace 0.5.0-beta.4 is the fourth public beta — a prerelease, following the alpha line.
+AutoSpace 0.5.0-beta.5 is the fifth public beta — a prerelease, following the alpha line.
 
 ## New features
 - No new features in this release.
@@ -7,7 +7,7 @@ AutoSpace 0.5.0-beta.4 is the fourth public beta — a prerelease, following the
 - No improvements in this release.
 
 ## Bug fixes
-- The floating music card no longer stays visible during a conversation with the assistant: it steps aside while the conversation is live and comes back when it ends. Ordinary playback is unchanged — the card only hides for a conversation.
+- The home widgets no longer slide under the map's right-edge buttons while navigating: the widget column now sits clear of them on either side of the screen. The widgets themselves are unchanged.
 
 ## Maintenance
 - No maintenance changes in this release.

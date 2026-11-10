@@ -186,6 +186,56 @@ fun cardOverlapsColumn(
     return rectsOverlap(cardLeft, cardTop, cardRight, cardBottom, column.leftDp, column.topDp, column.rightDp, column.bottomDp)
 }
 
+/**
+ * r213: the widget column's horizontal span, cleared of the template's
+ * right-edge controls strip (photo 3, 2026-10-28: the passenger-side
+ * column sat under RightEdgeControls at the top corner).
+ *
+ * The strip is the chrome's own column: 12dp in from the frame's right
+ * edge and [stripWidthDp] wide (72dp with no action row, up to 244dp
+ * with a three-button row — see controlsWidthDp). The column's right
+ * edge must not extend under it. Pure, so the unit test pins it.
+ *
+ * Inputs are in the 12dp-padded box's coordinates (see the Home slot):
+ * [boxWidthDp] is the BoxWithConstraints maxWidth — the frame minus the
+ * 12dp pads — so the box's left edge is frame 12dp and its right edge is
+ * frame width minus 12dp. [stripWidthDp] is null when the chrome has no
+ * controls at all (bare map, or a template with no drawable actions);
+ * then the span is exactly today's.
+ *
+ * The bound is applied to the layout itself, awake or asleep: the
+ * strip's buttons are laid out there whether or not they are faded in
+ * (they still take the waking touch), so a wake-dependent shift would
+ * slide the whole column under the driver's finger and cancel the
+ * waking tap — the r77 first-tap race, applied to widgets. Reserving
+ * the strip permanently costs nothing on the bare map (no strip, no
+ * shift) and keeps the column still.
+ *
+ * The passenger side shifts left by the strip width, keeping its width;
+ * the driver side caps the width — the same bound either way, so both
+ * placements clear. On frames too narrow for the full width the column
+ * narrows to the space between the left pad and the strip; that only
+ * happens below ~224dp + strip width, where the template's own chrome
+ * (336dp turn card + strip) cannot fit either, so no frame the app
+ * actually renders on shrinks a card. Returns (leftDp, widthDp) in box
+ * coordinates; the call site adds the 12dp box pad for frame coordinates.
+ */
+fun widgetColumnClearedSpan(
+    boxWidthDp: Float,
+    passengerSide: Boolean,
+    columnWidthDp: Float,
+    stripWidthDp: Float?,
+): Pair<Float, Float> {
+    if (stripWidthDp == null) {
+        return if (passengerSide) Pair(boxWidthDp - columnWidthDp, columnWidthDp)
+        else Pair(0f, columnWidthDp)
+    }
+    val stripLeftDp = boxWidthDp - stripWidthDp
+    val widthDp = minOf(columnWidthDp, maxOf(0f, stripLeftDp))
+    val leftDp = if (passengerSide) maxOf(0f, stripLeftDp - widthDp) else 0f
+    return Pair(leftDp, widthDp)
+}
+
 
 /**
  * The clearance-adjusted dock for the slot's card. Pure, so the unit

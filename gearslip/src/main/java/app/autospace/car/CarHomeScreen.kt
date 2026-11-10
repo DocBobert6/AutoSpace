@@ -478,7 +478,7 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                 if (!shouldHideWhileDriving(moving, WidgetDrivingGlance.recalled)) {
                     BoxWithConstraints(
                         Modifier.fillMaxSize().padding(12.dp),
-                        contentAlignment = if (widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE) Alignment.TopEnd else Alignment.TopStart,
+                        contentAlignment = Alignment.TopStart,
                     ) {
                         // r181 break 2: the column's laid-out rect is the
                         // card's second obstacle. Width is the fixed column
@@ -487,18 +487,34 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                         // measured, never estimated. The effect clears on
                         // dispose, so a hidden or departed column never
                         // leaves a stale rect behind.
-                        val columnWidth = widgetColumnWidth(maxWidth)
+                        // r213: the span is cleared of the template's
+                        // right-edge controls strip (see
+                        // widgetColumnClearedSpan): the passenger side
+                        // shifts left by the strip width, the driver side
+                        // caps the width, so both placements clear the
+                        // strip. The column is placed with start padding
+                        // inside this TopStart box, so the laid-out rect
+                        // and the reported geometry share one source of
+                        // truth. The strip width comes from the chrome's
+                        // own report (CardClearanceState.controls, present
+                        // whenever the chrome has drawable actions, asleep
+                        // or awake); with no strip the span is exactly
+                        // today's.
+                        val controls = CardClearanceState.controls
+                        val (columnLeftInnerDp, columnWidthValue) = widgetColumnClearedSpan(
+                            maxWidth.value,
+                            widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE,
+                            widgetColumnWidth(maxWidth).value,
+                            controls?.widthDp,
+                        )
+                        val columnWidth = columnWidthValue.dp
                         val columnDensity = LocalDensity.current
-                        val columnLeftDp = if (widgetPlacement == WidgetColumnPlacement.PASSENGER_SIDE) {
-                            maxWidth.value - 12f - columnWidth.value
-                        } else {
-                            12f
-                        }
+                        val columnLeftDp = 12f + columnLeftInnerDp
                         DisposableEffect(Unit) {
                             onDispose { CardClearanceState.clearColumn() }
                         }
                         WidgetColumn(
-                            maxWidth.value, moving, Modifier.width(columnWidth).onSizeChanged {
+                            maxWidth.value, moving, Modifier.padding(start = columnLeftInnerDp.dp).width(columnWidth).onSizeChanged {
                                 CardClearanceState.reportColumn(
                                     WidgetColumnGeometry(
                                         columnLeftDp, 12f, columnLeftDp + columnWidth.value,
