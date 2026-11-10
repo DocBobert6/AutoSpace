@@ -421,7 +421,8 @@ class BrowserStoreTest {
     @Test
     fun httpsExceptionsRemoveDropsOnlyThatHost() {
         assertEquals("a.com,c.com", BrowserStore.withoutHttpsException("a.com,b.com,c.com", "B.com"))
-        assertEquals("a.com", BrowserStore.withoutHttpsException("a.com", "a.com"))
+        // Removing the only host leaves an empty list.
+        assertEquals("", BrowserStore.withoutHttpsException("a.com", "a.com"))
         assertEquals("a.com,b.com", BrowserStore.withoutHttpsException("a.com,b.com", "other.com"))
     }
 
@@ -431,3 +432,4 @@ class BrowserStoreTest {
         assertFalse(BrowserStore.isHttpsException("a.com", "b.com"))
     }
 }
+
