@@ -463,7 +463,7 @@ private fun TravelEstimateBar(estimate: TravelEstimate, modifier: Modifier = Mod
                 "Stop navigating",
                 { CarServices.nav.stopNavigating() },
                 colors = if (meridian) GsColors(Color(MapChromeColors.MERIDIAN_STOP_BACKGROUND), Color(MapChromeColors.MERIDIAN_STOP_CONTENT)) else GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface),
-                size = 40.dp,
+                size = DismissTargetSize,
                 iconSize = 20.dp,
             )
             Spacer(Modifier.width(10.dp))

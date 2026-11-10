@@ -91,6 +91,7 @@ import androidx.compose.material3.Text
 import app.autospace.GearslipLog
 import app.autospace.ProjectedContent
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.DismissTargetSize
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsPanelCard
 import app.autospace.car.theme.frostBar
@@ -2859,7 +2860,7 @@ fun WebApp(content: String) {
                         Box(Modifier.size(44.dp).clickable { web?.findNext(true) }, contentAlignment = Alignment.Center) {
                             androidx.compose.material3.Icon(Icons.Filled.KeyboardArrowDown, "Next match", tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp))
                         }
-                        GsIconButton(Icons.Filled.Close, "Close find", { findOpen = false; web?.clearMatches() }, size = 44.dp, iconSize = 24.dp)
+                        GsIconButton(Icons.Filled.Close, "Close find", { findOpen = false; web?.clearMatches() }, size = DismissTargetSize, iconSize = 24.dp)
                     }
                 }
             }
@@ -4237,7 +4238,7 @@ private fun BrowserStartPage(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = 44.dp, iconSize = 22.dp)
+                        GsIconButton(Icons.Filled.Close, "Remove pin", { onRemovePin(pin.url) }, size = DismissTargetSize, iconSize = 22.dp)
                     }
                 }
             }
@@ -5007,7 +5008,7 @@ private fun TabSwitcherRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = 44.dp, iconSize = 22.dp)
+        GsIconButton(Icons.Filled.Close, "Close tab", { onCloseTab(tab) }, size = DismissTargetSize, iconSize = 22.dp)
     }
 }
 

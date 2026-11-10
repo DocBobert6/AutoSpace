@@ -323,7 +323,7 @@ internal fun SearchField(
                     "Clear",
                     onClear,
                     colors = GsColors(androidx.compose.ui.graphics.Color.Transparent, muted),
-                    size = 42.dp,
+                    size = DismissTargetSize,
                     iconSize = 22.dp,
                 )
             }

@@ -1,10 +1,10 @@
-AutoSpace 0.5.0-beta.8 is the eighth public beta — a prerelease, on the beta line.
+AutoSpace 0.5.0-beta.9 is the ninth public beta — a prerelease, on the beta line.
 
 ## New features
 - No new features in this release.
 
 ## Improvements
-- The guide buttons on the car screen — the one shown when calendar access is off, and the one shown when no car apps are found — now open AutoSpace's own app settings on the phone, where the permissions the guide asks for can be granted, instead of opening the phone app.
+- Seven small buttons around the app — Back and Search in the media screen, Stop navigating on the map, Clear in search fields, and Close find, Remove pin, and Close tab in the browser — now reach the full 48dp touch size, with the glyphs unchanged.
 
 ## Bug fixes
 - No bug fixes in this release.
