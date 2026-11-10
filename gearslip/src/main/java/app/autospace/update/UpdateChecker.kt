@@ -802,7 +802,9 @@ object UpdateChecker {
     /**
      * "0.2.00-alpha" beats "0.1.10-alpha": the numbers before the dash compare one by one. With the
      * same numbers, a plain release beats a beta, and a beta beats an alpha, so "0.3.0" reaches
-     * someone on "0.3.0-beta".
+     * someone on "0.3.0-beta". With the same numbers and the same stage, the number after the
+     * stage word decides, so "0.5.0-beta.9" reaches someone on "0.5.0-beta.4" — without it a
+     * newer beta looked the same as the one already installed and the updater said up to date.
      */
     internal fun isNewer(candidate: String, installed: String): Boolean {
         fun parts(v: String) = v.removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
@@ -815,6 +817,16 @@ object UpdateChecker {
                 else -> 0
             }
         }
+        fun suffix(v: String): Int {
+            // The number after the stage word ("beta.9" -> 9); a bare stage ("beta") has none.
+            val tag = v.substringAfter('-', "").lowercase()
+            val afterStage = when {
+                "beta" in tag -> tag.substringAfter("beta")
+                "alpha" in tag -> tag.substringAfter("alpha")
+                else -> return 0
+            }
+            return afterStage.trimStart('.', '-', '_').takeWhile { it.isDigit() }.toIntOrNull() ?: 0
+        }
         val a = parts(candidate)
         val b = parts(installed)
         for (i in 0 until maxOf(a.size, b.size)) {
@@ -822,6 +834,9 @@ object UpdateChecker {
             val y = b.getOrElse(i) { 0 }
             if (x != y) return x > y
         }
-        return stage(candidate) > stage(installed)
+        val stageA = stage(candidate)
+        val stageB = stage(installed)
+        if (stageA != stageB) return stageA > stageB
+        return suffix(candidate) > suffix(installed)
     }
 }

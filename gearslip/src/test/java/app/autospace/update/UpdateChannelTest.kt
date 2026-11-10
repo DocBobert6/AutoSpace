@@ -1,6 +1,8 @@
 package app.autospace.update
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -46,5 +48,32 @@ class UpdateChannelTest {
     fun unparseableSavedNameFallsThroughToStage() {
         assertEquals(UpdateChecker.Channel.ALPHA, UpdateChecker.resolveChannel("BOGUS", false, "0.4.0-alpha"))
         assertEquals(UpdateChecker.Channel.STABLE, UpdateChecker.resolveChannel("BOGUS", false, "1.0.0"))
+    }
+
+    // r219 — the number after the stage word decides when the numbers and the
+    // stage match, or a newer beta looks the same as the one already installed.
+    @Test
+    fun newerBetaBeatsOlderBeta() {
+        assertTrue(UpdateChecker.isNewer("0.5.0-beta.9", "0.5.0-beta.4"))
+        assertTrue(UpdateChecker.isNewer("0.5.0-beta.10", "0.5.0-beta.9"))
+        assertTrue(UpdateChecker.isNewer("0.5.0-beta.1", "0.4.155-alpha"))
+    }
+
+    @Test
+    fun sameBetaIsNotNewer() {
+        assertFalse(UpdateChecker.isNewer("0.5.0-beta.1", "0.5.0-beta.1"))
+        assertFalse(UpdateChecker.isNewer("0.5.0-beta.4", "0.5.0-beta.9"))
+    }
+
+    @Test
+    fun plainReleaseBeatsBetaWithSuffix() {
+        assertTrue(UpdateChecker.isNewer("0.5.0", "0.5.0-beta.9"))
+        assertFalse(UpdateChecker.isNewer("0.5.0-beta.9", "0.5.0"))
+    }
+
+    @Test
+    fun bareStageCountsAsSuffixZero() {
+        assertTrue(UpdateChecker.isNewer("0.5.0-beta.1", "0.5.0-beta"))
+        assertFalse(UpdateChecker.isNewer("0.5.0-beta", "0.5.0-beta"))
     }
 }

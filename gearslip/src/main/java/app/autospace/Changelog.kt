@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            177, "0.5.0-beta.11",
+            listOf(
+                "The updater can now see a newer beta: it used to compare only the version numbers and the stage, so a newer beta looked the same as the one you already had and the app said you were up to date. Checking for updates now offers the newest beta.",
+            ),
+        ),
+        Release(
             176, "0.5.0-beta.10",
             listOf(
                 "Settings has a new E-reader page: a switch for automatically shelving downloaded EPUBs onto your bookshelf. It is on by default, as before \u2014 the switch only makes the choice visible.",
