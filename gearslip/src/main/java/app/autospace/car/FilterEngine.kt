@@ -940,6 +940,33 @@ object FilterEngine {
     }
 
     /**
+     * r210 (compat finding 11): True when [host] carries a list
+     * exception that lifts $document enforcement for this
+     * navigation — a bare @@||host^ rule, a scoped $document
+     * exception whose scope matches this navigation, or a
+     * neverBlock host. The exception half of
+     * [isDocumentBlocked], consulted by the popunder guard so
+     * the PopunderHosts fallback arm cannot defeat a list
+     * exception Mariner honours: a hop to an excepted host
+     * loads, while a non-excepted host still gets the popup
+     * captured. $important document rules need no handling
+     * here — [isDocumentBlocked] already returns true for
+     * them before its exception checks, so the guard's first
+     * arm fires regardless. Plain strings, so the unit tests
+     * pin it without a device.
+     */
+    fun isDocumentExcepted(host: String, path: String, pageHost: String): Boolean {
+        val h = host.lowercase()
+        if (h.isEmpty()) return false
+        if (matches(neverBlockHosts, h)) return true
+        if (matches(exceptionHosts, h)) return true
+        return scopedRuleMatch(
+            h, path.lowercase(), pageHost.lowercase(),
+            wantException = true, onlyDocument = true,
+        ) != null
+    }
+
+    /**
      * Beta.63 #64 (r198, adblock A3): full $document/$popup enforcement at request
      * level. True when the main-frame load of [host]/[path] is covered by a
      * document rule — a pure ||host^$document/$popup rule, or a scoped one

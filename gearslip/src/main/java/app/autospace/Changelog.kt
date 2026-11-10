@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            168, "0.5.0-beta.2",
+            listOf(
+                "When a page sends you to a site your filter lists allow, that site now loads instead of the hop being captured as a blocked popup. A hop to a site with no such allowance is still captured, as before.",
+            ),
+        ),
+        Release(
             167, "0.5.0-beta.1",
             listOf(
                 "First public beta. Fullscreen video in the browser now takes the whole display: the side rail hides and the video fills the screen, with an Exit fullscreen button and the head-unit BACK button to leave it. A playing video also gets a small pop-up button on the page itself — tap it to open that video in the fullscreen player, or turn the button off for just that site from the media sheet.",

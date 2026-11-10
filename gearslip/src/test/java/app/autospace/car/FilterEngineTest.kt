@@ -372,6 +372,45 @@ class FilterEngineTest {
         assertFalse(FilterEngine.isDocumentHost("youtube.com"))
     }
 
+    // ---- r210: popunder guard honours list exceptions (finding 11) ----
+
+    @Test
+    fun documentExceptedCoversBareScopedAndNeverBlockExceptions() {
+        install(
+            "||pop.example.com^\$popup\n" +
+            "@@||safe.example.com^\n" +
+            "@@||popads.net^\n" +
+            "||scoped.example.com^\$document,domain=news.example.com\n" +
+            "@@||scoped.example.com^\$document,domain=news.example.com\n",
+        )
+        // A bare @@ exception lifts the guard, for the host and its subdomains.
+        assertTrue(FilterEngine.isDocumentExcepted("safe.example.com", "/", ""))
+        assertTrue(FilterEngine.isDocumentExcepted("www.safe.example.com", "/", ""))
+        // The same holds for a built-in popunder host carrying a list exception.
+        assertTrue(FilterEngine.isDocumentExcepted("popads.net", "/", ""))
+        // A scoped $document exception lifts it only on its matching page.
+        assertTrue(FilterEngine.isDocumentExcepted("scoped.example.com", "/", "news.example.com"))
+        assertFalse(FilterEngine.isDocumentExcepted("scoped.example.com", "/", "other.example.com"))
+        // A $document host with no exception stays enforced, as does an empty host.
+        assertFalse(FilterEngine.isDocumentExcepted("pop.example.com", "/", ""))
+        assertFalse(FilterEngine.isDocumentExcepted("", "/", ""))
+        // A neverBlock host is excepted too.
+        assertTrue(FilterEngine.isDocumentExcepted("youtube.com", "/", ""))
+    }
+
+    @Test
+    fun documentExceptedDoesNotLiftImportantDocumentRules() {
+        install(
+            "||hard.example.com^\$document,important\n" +
+            "@@||hard.example.com^\n",
+        )
+        // The helper reports the exception, but isDocumentBlocked still
+        // returns true — $important beats exceptions, so the guard's
+        // first arm fires and the hop is still captured.
+        assertTrue(FilterEngine.isDocumentExcepted("hard.example.com", "/", ""))
+        assertTrue(FilterEngine.isDocumentBlocked("hard.example.com", "/", ""))
+    }
+
     // ---- r192: Global Privacy Control ----
 
     @Test

@@ -5336,9 +5336,13 @@ private class BrowserClient(
     // a pure ||host^$document/$popup rule or a scoped document rule
     // whose scope matches this navigation; PopunderHosts' built-in
     // set stays as the fallback until the first lists load, when
-    // isDocumentBlocked has nothing parsed yet. Returning false for
-    // everything else preserves the previous behaviour exactly
-    // (WebView handles http(s) itself).
+    // isDocumentBlocked has nothing parsed yet. r210 (compat
+    // finding 11): the PopunderHosts arm is exception-aware —
+    // a hop to a host carrying a list exception (bare @@, scoped
+    // $document, or neverBlock) loads instead of being captured,
+    // Mariner's shape; a non-excepted host still gets the popup
+    // captured. Returning false for everything else preserves the
+    // previous behaviour exactly (WebView handles http(s) itself).
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
         val url = request?.url?.toString()
         // r183: a tapped non-http(s) link gets the open treatment
@@ -5456,7 +5460,8 @@ private class BrowserClient(
             val hereHost = runCatching { Uri.parse(view?.url ?: "").host ?: "" }.getOrDefault("")
             if (targetHost.isNotEmpty() && targetHost != hereHost &&
                 (FilterEngine.isDocumentBlocked(targetHost, targetPath, hereHost) ||
-                    PopunderHosts.isDocumentHost(targetHost))
+                    (PopunderHosts.isDocumentHost(targetHost) &&
+                        !FilterEngine.isDocumentExcepted(targetHost, targetPath, hereHost)))
             ) {
                 onPopunder(url, hereHost)
                 return true

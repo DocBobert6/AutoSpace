@@ -1,15 +1,13 @@
-AutoSpace 0.5.0-beta.1 is the first public beta — a prerelease, following the alpha line.
+AutoSpace 0.5.0-beta.2 is the second public beta — a prerelease, following the alpha line.
 
 ## New features
-- Fullscreen video in the browser takes the whole display now: the side rail hides and the video fills the screen.
-- A playing video gets a small pop-up button on the page itself: tap it to open that video in the fullscreen player, long-press it to open the media sheet. The button can be turned off for just that site from the media sheet.
+- No new features in this release.
 
 ## Improvements
-- A video going fullscreen attaches at once, with no posted handoff.
-- Leaving fullscreen — the Exit fullscreen button, or head-unit BACK — restores the page and the rail at once.
+- No changes in this release.
 
 ## Bug fixes
-- Fullscreen video no longer letterboxes inside the browser's inset area with the rail strip still reserved.
+- A page that hops to a site your filter lists allow now loads it, instead of the hop being captured as a blocked popup. A hop to a site with no such allowance is still captured, as before.
 
 ## Maintenance
-- The release signing fingerprint is published in the README with this first beta, so a download can be checked before installing.
+- No maintenance changes in this release.
