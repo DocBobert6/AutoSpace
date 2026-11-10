@@ -21,7 +21,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
       - name: Install Android SDK platform 37
         # API 37 (Android 17, "Cinnamon Bun") is a preview platform: the stable
         # repository only lists up to android-36, and sdkmanager's
