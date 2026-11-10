@@ -21,6 +21,7 @@ class UpdateChannelTest {
     fun betaVersionDefaultsToBeta() {
         assertEquals(UpdateChecker.Channel.BETA, UpdateChecker.defaultChannelForVersion("1.0.0-beta"))
         assertEquals(UpdateChecker.Channel.BETA, UpdateChecker.defaultChannelForVersion("0.5.0-beta.1"))
+        assertEquals(UpdateChecker.Channel.BETA, UpdateChecker.defaultChannelForVersion("0.5.0-beta.7"))
     }
 
     @Test

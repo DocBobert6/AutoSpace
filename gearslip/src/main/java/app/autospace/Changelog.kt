@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            173, "0.5.0-beta.7",
+            listOf(
+                "The app now calls itself Beta everywhere it used to say alpha: the welcome screen on first setup said \"alpha\" even though this has been a beta since the first public beta, and the same for the version note in the app's description. Nothing else changes.",
+            ),
+        ),
+        Release(
             172, "0.5.0-beta.6",
             listOf(
                 "Sites you allowed over plain http in HTTPS-only mode can now be taken back: the browser settings list every allowed site, and removing one makes the warning appear again the next time you visit it.",

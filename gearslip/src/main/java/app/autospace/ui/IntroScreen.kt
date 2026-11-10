@@ -321,7 +321,7 @@ private fun Welcome(c: IntroColors, cq: (Float) -> Dp, cqSp: (Float) -> TextUnit
                 modifier = Modifier.offset(x = -cq(1.5f)).pop(entrance(key, 250, 900)),
             )
             Text(
-                "alpha · the big one", color = c.onTertiaryC,
+                "beta · the big one", color = c.onTertiaryC,
                 style = TextStyle(fontSize = cqSp(4f), fontWeight = FontWeight.Bold),
                 modifier = Modifier.padding(top = cq(4f)).up(entrance(key, 700), cq(7f))
                     .clip(RoundedCornerShape(50)).background(c.tertiaryC).padding(horizontal = cq(4.4f), vertical = cq(2.2f)),

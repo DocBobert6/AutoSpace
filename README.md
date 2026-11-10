@@ -231,7 +231,7 @@ to `keystore.properties`, fill in your own values, and run
 `./gradlew :gearslip:assembleRelease`. Git ignores both the properties
 file and the keystore. Never commit a release key.
 
-Current line: 0.4.55-alpha, versionCode 66 (release package
+Current line: 0.5.0-beta.7, versionCode 173 (release package
 `app.autospace`; debug builds install as `app.autospace.dev`).
 
 ## How AutoSpace talks to cars
