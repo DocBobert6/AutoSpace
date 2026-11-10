@@ -62,12 +62,12 @@ android {
     // "AutoSpace Experimental") for testing audit fixes before they
     // reach the beta. Same versionName/versionCode counter, same signing
     // key; only the package, the label, and the icon differ.
-    flavorDimensions("edition")
+    flavorDimensions += "edition"
     productFlavors {
-        standard {
+        create("standard") {
             dimension = "edition"
         }
-        experimental {
+        create("experimental") {
             dimension = "edition"
             applicationIdSuffix = ".experimental"
             manifestPlaceholders["appLabel"] = "AutoSpace Experimental"
