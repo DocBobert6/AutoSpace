@@ -479,6 +479,9 @@ object AiAssistant {
     private val TIME_WORDS = setOf(
         "today", "tonight", "tomorrow", "this", "next", "weekend", "week", "morning",
         "afternoon", "evening", "now", "currently", "later",
+        // §6 N2 (r211): time units, so "weather in 5 minutes" leaves no
+        // place token behind (see the digit guard in [placePhrase]).
+        "minute", "minutes", "hour", "hours",
     )
     private val PLACE_PREPOSITIONS = setOf("in", "at", "near", "around", "for")
 
@@ -503,7 +506,10 @@ object AiAssistant {
      * branch). Everything else keeps the old coverage: the "going to rain" /
      * "gonna rain" phrases and "temperature" + "outside" still claim, and a
      * bare weather question ("what's the weather", "weather in dry ridge")
-     * behaves exactly as before — that boundary stays until §6 N2 is blessed.
+     * behaves exactly as before. §6 N2 (r211) widened the branch itself
+     * to the whole place-dependent weather class — see
+     * [isLocalWeatherQuestion] — so this rule stays the guarded core,
+     * not the whole trigger.
      * Honest limit, stated rather than papered over: a standalone "weather"
      * token still claims idioms and product names that contain one ("under
      * the weather", "weather stripping"). Excluding those would need a
@@ -533,12 +539,20 @@ object AiAssistant {
      * reads the user's own words, which is the whole point of option 1.
      * r117: the phrase itself, so the place rule and the weather
      * command can reuse the exact match [hasPlace] already pins.
+     * §6 N2 (r211): the capture accepts digits, so a ZIP code parses
+     * ("weather in 90210" → "90210", and "in 90210 tomorrow" still
+     * counts after the time word is stripped). A bare digit token only
+     * counts when it is five digits long — "weather in 5 minutes" is
+     * a time phrase, not a place, so the "5" is dropped and the
+     * question falls back to the current location instead of asking
+     * the Geocoder for a town called "5".
      */
     fun placePhrase(normalized: String): String? {
         val t = normalized.lowercase()
-        val match = Regex("""\b(in|at|near|around|for)\s+([a-z][a-z ]*)$""").find(t) ?: return null
+        val match = Regex("""\b(in|at|near|around|for)\s+([a-z0-9][a-z0-9 -]*)$""").find(t) ?: return null
         val placeTokens = match.groupValues[2].trim().split(Regex("\\s+"))
             .filter { it.isNotEmpty() && it !in TIME_WORDS && it !in PLACE_PREPOSITIONS }
+            .filter { !(it.all { c -> c.isDigit() } && it.length != 5) }
         if (placeTokens.isEmpty()) return null
         return placeTokens.joinToString(" ")
     }
@@ -560,6 +574,50 @@ object AiAssistant {
         }
         return null
     }
+
+    /**
+     * Audit §6 N2 (r211): the ONE place resolution for weather questions.
+     * A weather question is answered for exactly one of:
+     * - a place the user named in the utterance ("weather in Dry Ridge"),
+     * - a place named earlier in this conversation (session inheritance),
+     * - the current location, announced as such — for a bare question, and
+     *   for "near me" / "at home", which are current-location phrases,
+     *   never Geocoder searches for towns called "me" or "home".
+     * A named place the Geocoder cannot resolve is the caller's honest
+     * "I couldn't find weather for <place>." — never silently replaced
+     * with the current location.
+     */
+    sealed interface WeatherPlace {
+        /** Answer for the device's current location, announced as local. */
+        data object Local : WeatherPlace
+        /** Answer for the named place. */
+        data class Named(val place: String) : WeatherPlace
+    }
+
+    fun resolveWeatherPlace(normalized: String, sessionHistory: List<ConversationTurn>): WeatherPlace {
+        val phrase = placePhrase(normalized) ?: placeFromSession(sessionHistory)
+        return when (phrase) {
+            null, "me", "home" -> WeatherPlace.Local
+            else -> WeatherPlace.Named(phrase)
+        }
+    }
+
+    /**
+     * Audit §6 N2 (r211): the LOCAL weather branch's trigger, shared by
+     * [AssistantCommands.infoCommand] and [AssistantPreview] so preview and
+     * live agree. It is the r165 N1 token rule widened to the whole
+     * place-dependent weather class: "what's the forecast", "will it
+     * snow", and "how humid is it" used to fall through to the AI place
+     * rule and ask "For which place?", while "what's the weather"
+     * answered locally — same semantic class, opposite behavior. Now
+     * every place-dependent weather question is answered locally, and
+     * a bare one means the current location ([resolveWeatherPlace]).
+     * The N1 rule stays the guarded core inside this union; the AI
+     * place rule itself is untouched, so a non-weather place-dependent
+     * question still asks "For which place?" exactly as before.
+     */
+    fun isLocalWeatherQuestion(normalized: String): Boolean =
+        isLocalWeatherTrigger(normalized) || isPlaceDependentQuestion(normalized)
 
     // --- Log redaction: a Gemini API key must never survive into a log, trace, or report. ---
 

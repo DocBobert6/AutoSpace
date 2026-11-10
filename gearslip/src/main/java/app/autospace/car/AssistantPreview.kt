@@ -205,11 +205,12 @@ object AssistantPreview {
             heard == "how far" || heard == "eta" || heard == "how much further" ->
                 return Trace(utterance, heard, handler = Handler.BUILTIN, detail = "ETA readout (read-only, runnable)", spoken = "… to go.")
             // Audit §6 N7: weather mirrors live infoCommand — the same
-            // N1-narrowed trigger list and the same place rule (place from
-            // the utterance, else the current location), BUILTIN with no
-            // confirmation. The spoken forecast itself is live-only, so
-            // the trace names the routing, not the answer.
-            AiAssistant.isLocalWeatherTrigger(heard) ->
+            // §6 N2 trigger (the whole place-dependent weather class)
+            // and the same place rule (place from the utterance, else
+            // the current location), BUILTIN with no confirmation. The
+            // spoken forecast itself is live-only, so the trace names
+            // the routing, not the answer.
+            AiAssistant.isLocalWeatherQuestion(heard) ->
                 return Trace(
                     utterance, heard, handler = Handler.BUILTIN,
                     detail = "Local weather (built-in, no confirmation)",
@@ -407,9 +408,11 @@ object AssistantPreview {
         Case("tell me a joke", Handler.AI, "AI fallback sample — skipped when gates closed"),
         Case("weather in dry ridge", Handler.BUILTIN, "Local weather, place present — mirrors live infoCommand"),
         Case("what is the weather today", Handler.BUILTIN, "Local weather, bare question — current location, mirrors live infoCommand"),
+        Case("what is the forecast", Handler.BUILTIN, "Local weather, bare question — current location, mirrors live infoCommand (§6 N2)"),
+        Case("will it snow", Handler.BUILTIN, "Local weather, bare question — current location, mirrors live infoCommand (§6 N2)"),
         Case("what is the latest news", Handler.AI, "Grounded current-facts path, skipped when gates closed"),
         Case("what was the score of the bengals game yesterday", Handler.AI, "Groq AI fallback sample — skipped when gates closed"),
-        Case("will it rain in cincinnati tomorrow", Handler.AI, "Groq grounded path — place present, skipped when gates closed"),
+        Case("will it rain in cincinnati tomorrow", Handler.BUILTIN, "Local weather, place present — mirrors live infoCommand (§6 N2)"),
         Case("call Mom and navigate home", Handler.AMBIGUOUS, "Two actions — two confirmations, never one batch"),
         Case("navigate to fish and chips", Handler.BUILTIN, "and inside a place name is not a second action"),
         Case("call dan and dave", Handler.BUILTIN, "and inside a contact name is not a second action"),

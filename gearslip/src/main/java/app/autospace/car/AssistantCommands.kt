@@ -1317,31 +1317,36 @@ object AssistantCommands {
     private suspend fun infoCommand(context: Context, heard: String): String? = when {
         "what time" in heard || "what's the time" in heard || heard == "time" || "the time" in heard ->
             "It's ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date())}."
-        // Audit §6 N1 (guarded): the weather branch uses the shared
-        // isLocalWeatherTrigger rule — how-hot/how-cold need an outside/out
-        // token, "weather" must be a whole token. Bare-weather behavior is
-        // unchanged (see that function's KDoc for the honest limit).
-        AiAssistant.isLocalWeatherTrigger(heard) -> {
-            // r117: weather honors a place — from the utterance first, then from the
-            // session (same lookup as the AI place rule), and always announces the
-            // place it answers for, so a forecast for somewhere else never reads
-            // as the local one. A place the geocoder cannot resolve is answered
-            // honestly, never silently replaced with the current location.
-            val place = AiAssistant.placePhrase(heard)
-                ?: AiAssistant.placeFromSession(ConversationSession.historyForRequest())
-            if (place != null) {
-                // Audit §6 N8: a hung device Geocoder must not stall the turn
-                // indefinitely — the timeout degrades to exactly the honest
-                // unresolvable-place reply below, never a substituted place.
-                val data = withContext(Dispatchers.IO) {
-                    withTimeoutOrNull(WEATHER_FETCH_TIMEOUT_MS) { Weather.fetchForPlace(context, place) }
+        // Audit §6 N2 (r211, unification): the weather branch claims the
+        // whole place-dependent weather class via the shared
+        // isLocalWeatherQuestion rule — "what's the forecast", "will it
+        // snow", and "how humid is it" used to fall through to the AI
+        // place rule and ask "For which place?", while "what's the
+        // weather" answered locally. One shared place resolution
+        // ([AiAssistant.resolveWeatherPlace]) decides the place once:
+        // named in the utterance, inherited from the session, or the
+        // current location for a bare question — always announced, so
+        // a forecast for somewhere else never reads as the local one.
+        // A place the geocoder cannot resolve is answered honestly,
+        // never silently replaced with the current location. The r165
+        // N1 token rule stays the guarded core inside the trigger.
+        AiAssistant.isLocalWeatherQuestion(heard) -> {
+            when (val resolved = AiAssistant.resolveWeatherPlace(heard, ConversationSession.historyForRequest())) {
+                is AiAssistant.WeatherPlace.Named -> {
+                    // Audit §6 N8: a hung device Geocoder must not stall the turn
+                    // indefinitely — the timeout degrades to exactly the honest
+                    // unresolvable-place reply below, never a substituted place.
+                    val data = withContext(Dispatchers.IO) {
+                        withTimeoutOrNull(WEATHER_FETCH_TIMEOUT_MS) { Weather.fetchForPlace(context, resolved.place) }
+                    }
+                    if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
+                    else "I couldn't find weather for ${resolved.place}."
                 }
-                if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
-                else "I couldn't find weather for $place."
-            } else {
-                val data = (Weather.state.value as? WeatherState.Ready)?.data
-                if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
-                else "I don't have the weather yet."
+                AiAssistant.WeatherPlace.Local -> {
+                    val data = (Weather.state.value as? WeatherState.Ready)?.data
+                    if (data != null) "${data.temp}${data.tempUnit} and ${Weather.describe(data.code)} in ${data.place}."
+                    else "I don't have the weather yet."
+                }
             }
         }
         else -> null

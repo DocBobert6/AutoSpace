@@ -2,6 +2,7 @@ package app.autospace.car
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -51,9 +52,10 @@ class AiAssistantTest {
         val result = AssistantPreview.runSuite(AssistantPreview.FIXTURE_KEYWORDS, aiGates = false)
         assertEquals(0, result.failed)
         // Audit §6 N7: the two weather cases are BUILTIN now, not AI, so
-        // they run with gates closed — 6 AI cases skip, not 8.
-        assertEquals(6, result.skipped)
-        assertEquals(AssistantPreview.CANNED_CASES.size - 6, result.passed)
+        // they run with gates closed — and §6 N2 (r211) made "will it
+        // rain in cincinnati tomorrow" BUILTIN too, so 5 AI cases skip.
+        assertEquals(5, result.skipped)
+        assertEquals(AssistantPreview.CANNED_CASES.size - 5, result.passed)
     }
 
     // --- Confirmation defaults: silence / timeout / ambiguity / unknown = DECLINE ---
@@ -228,6 +230,64 @@ class AiAssistantTest {
         assertFalse(AiAssistant.hasPlace("what is the weather today"))
         assertFalse(AiAssistant.hasPlace("will it rain tomorrow"))
         assertFalse(AiAssistant.hasPlace("weather for today"))
+    }
+
+    // --- §6 N2 (r211): weather unification — one place resolution, bare = local ---
+
+    @Test fun placePhraseAcceptsZipCodes() {
+        assertEquals("90210", AiAssistant.placePhrase("weather in 90210"))
+        assertEquals("90210", AiAssistant.placePhrase("weather in 90210 tomorrow"))
+        assertEquals("dry ridge", AiAssistant.placePhrase("weather in dry ridge"))
+    }
+
+    @Test fun placePhraseTimePhrasesAreNotPlaces() {
+        // "in 5 minutes" is a time phrase, not a place — the digit is
+        // dropped and no place is returned, so the question falls back
+        // to the current location instead of asking the Geocoder for
+        // a town called "5".
+        assertNull(AiAssistant.placePhrase("weather in 5 minutes"))
+        assertNull(AiAssistant.placePhrase("weather for today"))
+    }
+
+    @Test fun localWeatherQuestionClaimsWholeWeatherClass() {
+        assertTrue(AiAssistant.isLocalWeatherQuestion("what is the forecast"))
+        assertTrue(AiAssistant.isLocalWeatherQuestion("will it snow"))
+        assertTrue(AiAssistant.isLocalWeatherQuestion("how humid is it"))
+        assertTrue(AiAssistant.isLocalWeatherQuestion("what is the weather today"))
+        assertTrue(AiAssistant.isLocalWeatherQuestion("weather in dry ridge"))
+        assertFalse(AiAssistant.isLocalWeatherQuestion("how hot is the oven"))
+        assertFalse(AiAssistant.isLocalWeatherQuestion("what is the capital of france"))
+    }
+
+    @Test fun resolveWeatherPlaceBareIsLocal() {
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("what is the weather today", emptyList()))
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("what is the forecast", emptyList()))
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("will it snow", emptyList()))
+    }
+
+    @Test fun resolveWeatherPlaceNearMeAndAtHomeAreLocal() {
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("weather near me", emptyList()))
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("weather at home", emptyList()))
+    }
+
+    @Test fun resolveWeatherPlaceNamedAndSession() {
+        assertEquals(
+            AiAssistant.WeatherPlace.Named("dry ridge"),
+            AiAssistant.resolveWeatherPlace("weather in dry ridge", emptyList()),
+        )
+        assertEquals(
+            AiAssistant.WeatherPlace.Named("90210"),
+            AiAssistant.resolveWeatherPlace("weather in 90210", emptyList()),
+        )
+        val history = listOf(ConversationTurn("weather in cincinnati", "Sunny."))
+        assertEquals(
+            AiAssistant.WeatherPlace.Named("cincinnati"),
+            AiAssistant.resolveWeatherPlace("what is the forecast", history),
+        )
+        // A session place of "me" is still the current location, never a
+        // Geocoder search for a town called "me".
+        val meHistory = listOf(ConversationTurn("weather near me", "Sunny."))
+        assertEquals(AiAssistant.WeatherPlace.Local, AiAssistant.resolveWeatherPlace("what is the forecast", meHistory))
     }
 
     // --- r41: grounded answers get a glyph beside the badge, never a text line ---

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            169, "0.5.0-beta.3",
+            listOf(
+                "Weather questions all work the same way now: asking for the forecast, snow, or humidity answers with your local weather, just like asking for the weather does, instead of asking which place you mean. A question with a place in it — a town name, or a ZIP code — still answers for that place, and \"near me\" or \"at home\" means right here.",
+            ),
+        ),
+        Release(
             168, "0.5.0-beta.2",
             listOf(
                 "When a page sends you to a site your filter lists allow, that site now loads instead of the hop being captured as a blocked popup. A hop to a site with no such allowance is still captured, as before.",
