@@ -1,10 +1,10 @@
-AutoSpace 0.5.0-beta.9 is the ninth public beta — a prerelease, on the beta line.
+AutoSpace 0.5.0-beta.10 is the tenth public beta — a prerelease, on the beta line.
 
 ## New features
-- No new features in this release.
+- Settings has a new E-reader page with a switch for automatically shelving downloaded EPUBs onto your bookshelf. It is on by default, as before — the switch only makes the choice visible.
 
 ## Improvements
-- Seven small buttons around the app — Back and Search in the media screen, Stop navigating on the map, Clear in search fields, and Close find, Remove pin, and Close tab in the browser — now reach the full 48dp touch size, with the glyphs unchanged.
+- No improvements in this release.
 
 ## Bug fixes
 - No bug fixes in this release.

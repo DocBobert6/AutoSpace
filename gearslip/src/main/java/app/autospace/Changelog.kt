@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            176, "0.5.0-beta.10",
+            listOf(
+                "Settings has a new E-reader page: a switch for automatically shelving downloaded EPUBs onto your bookshelf. It is on by default, as before \u2014 the switch only makes the choice visible.",
+            ),
+        ),
+        Release(
             175, "0.5.0-beta.9",
             listOf(
                 "Seven small buttons around the app \u2014 Back and Search in the media screen, Stop navigating on the map, Clear in search fields, and Close find, Remove pin, and Close tab in the browser \u2014 now reach the full 48dp touch size, with the glyphs unchanged.",

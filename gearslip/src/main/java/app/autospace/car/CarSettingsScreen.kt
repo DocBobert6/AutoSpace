@@ -129,6 +129,7 @@ fun CarSettingsScreen() {
                     SettingsCategory.AUDIO_AND_CALLS -> AudioAndCallsPage()
                     SettingsCategory.VOICE -> VoicePage()
                     SettingsCategory.BROWSER_AND_VIDEO -> BrowserAndVideoPage(webPageKeyboardSlot)
+                    SettingsCategory.E_READER -> EReaderPage()
                     SettingsCategory.SCREEN_AND_SHARING -> ScreenAndSharingPage()
                     SettingsCategory.CONNECTION -> ConnectionPage()
                     SettingsCategory.ABOUT -> AboutPage()
@@ -167,6 +168,10 @@ private enum class SettingsCategory(val title: String, val description: String) 
     BROWSER_AND_VIDEO(
         "Browser & video",
         "Browser start page, video skip seconds, subtitles",
+    ),
+    E_READER(
+        "E-reader",
+        "Bookshelf: automatically shelve downloaded EPUBs",
     ),
     SCREEN_AND_SHARING(
         "Screen & sharing",
@@ -833,6 +838,27 @@ private fun BrowserAndVideoPage(webPageKeyboardSlot: WebPageKeyboardSlot) {
     )
 
     SubtitleSettings()
+}
+
+/**
+ * r218: the e-reader page — one switch, the auto-shelf choice r161
+ * shipped without a row. It reads and writes the same stored key
+ * the download completion receiver reads ([BookAutoShelf]), so the
+ * switch and the shelving agree; the default stays ON.
+ */
+@Composable
+private fun EReaderPage() {
+    val context = LocalContext.current
+    var autoShelf by remember { mutableStateOf(BookAutoShelf.autoShelfEnabled(context)) }
+
+    SettingsToggleRow(
+        "Automatically shelve downloaded EPUBs",
+        "When an EPUB download finishes, it is added to your bookshelf. Turn this off and downloads stay in Downloads.",
+        autoShelf,
+    ) {
+        autoShelf = it
+        BookAutoShelf.setAutoShelfEnabled(context, it)
+    }
 }
 
 @Composable

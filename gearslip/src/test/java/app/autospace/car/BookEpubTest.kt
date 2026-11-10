@@ -303,6 +303,14 @@ class BookEpubTest {
     }
 
     @Test
+    fun autoShelfStoredKeyIsStable() {
+        // The Settings row writes this exact string, and the download
+        // completion receiver reads it; renaming it would orphan the
+        // choice for everyone who already set it.
+        assertEquals("car_epub_auto_shelf", BookLibrary.KEY_AUTO_SHELF)
+    }
+
+    @Test
     fun shouldAutoShelfMatrix() {
         fun check(
             on: Boolean = true,
