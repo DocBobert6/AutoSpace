@@ -154,8 +154,11 @@ class ConversationHistory {
 object ConversationSession {
     private val history = ConversationHistory()
 
-    fun record(user: String, assistant: String, fromAi: Boolean = false) {
-        history.record(user, assistant, SystemClock.elapsedRealtime(), fromAi)
+    // r220: returns whether a turn was appended, so the CarUi collector
+    // knows whether the turn joined the session (the durable-memory hook
+    // learns only from session-joined turns).
+    fun record(user: String, assistant: String, fromAi: Boolean = false): Boolean {
+        return history.record(user, assistant, SystemClock.elapsedRealtime(), fromAi)
     }
 
     /** r117: gated built-in record — true when the turn joined the session, false when the gate refused it. */

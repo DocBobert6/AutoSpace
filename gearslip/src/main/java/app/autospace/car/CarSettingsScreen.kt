@@ -816,6 +816,14 @@ private fun VoicePage() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    // r220: read-only, like the AI line above — memory is managed on the
+    // phone only; the car just says whether it is on.
+    val memoryOn by remember { mutableStateOf(AiMemory.isEnabled(context)) }
+    Text(
+        "Assistant memory: ${if (memoryOn) "on" else "off"} — manage on your phone in Settings > AI assistant.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

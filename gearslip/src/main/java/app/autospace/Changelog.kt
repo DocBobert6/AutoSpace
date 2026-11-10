@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            178, "0.5.0-beta.12",
+            listOf(
+                "The assistant can now remember what you tell it — your home place and your name — when you turn memory on in Settings > AI assistant. It stays on this phone only, you can see everything remembered and delete any of it, and turning memory off deletes it all. It is off by default.",
+            ),
+        ),
+        Release(
             177, "0.5.0-beta.11",
             listOf(
                 "The updater can now see a newer beta: it used to compare only the version numbers and the stage, so a newer beta looked the same as the one you already had and the app said you were up to date. Checking for updates now offers the newest beta.",

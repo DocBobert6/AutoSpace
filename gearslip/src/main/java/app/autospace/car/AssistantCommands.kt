@@ -238,6 +238,8 @@ object AssistantCommands {
             ?: infoCommand(context, heard)
             ?: batteryCommand(context, heard)
             ?: emergencyCommand(context, heard)
+            // r220: memory before calls — "call me Bob" is a name, not a call.
+            ?: memoryCommand(context, heard)
             ?: callCommand(context, heard)
             ?: messagesCommand(context, heard)
             // Custom voice shortcuts (r19) sit here on purpose: every exact built-in above has
@@ -1331,7 +1333,13 @@ object AssistantCommands {
         // never silently replaced with the current location. The r165
         // N1 token rule stays the guarded core inside the trigger.
         AiAssistant.isLocalWeatherQuestion(heard) -> {
-            when (val resolved = AiAssistant.resolveWeatherPlace(heard, ConversationSession.historyForRequest())) {
+            // r220: "weather at home" uses the remembered home place when
+            // one is stored; without one it falls through to the shared
+            // resolution exactly as before (current location, announced).
+            val rememberedHome = AiMemory.homeWeatherPlace(heard, AiMemory.homePlace(context))
+            val resolved = if (rememberedHome != null) AiAssistant.WeatherPlace.Named(rememberedHome)
+                else AiAssistant.resolveWeatherPlace(heard, ConversationSession.historyForRequest())
+            when (resolved) {
                 is AiAssistant.WeatherPlace.Named -> {
                     // Audit §6 N8: a hung device Geocoder must not stall the turn
                     // indefinitely — the timeout degrades to exactly the honest
@@ -1350,6 +1358,38 @@ object AssistantCommands {
             }
         }
         else -> null
+    }
+
+    /**
+     * r220: durable-memory commands. Gated on memory being on: with
+     * memory off these utterances fall through exactly as before (AI
+     * fallback or unmatched), so the toggle really is the whole feature.
+     * A statement ("my home is in Dry Ridge", "my name is Robert",
+     * "call me Bob") stores the fact and confirms it aloud; the
+     * questions ("what's my name", "where is home", "what do you
+     * remember") answer from the durable store only, never the session
+     * and never the network. Emergency phrasings never match here, and
+     * this command never touches the emergency window.
+     */
+    private fun memoryCommand(context: Context, heard: String): String? {
+        if (!AiMemory.isEnabled(context)) return null
+        AiMemory.learnFact(context, heard)?.let { fact ->
+            return when (fact.kind) {
+                AiMemory.FactKind.HOME_PLACE -> "Got it — I'll remember home is in ${fact.value}."
+                AiMemory.FactKind.NAME -> "Got it — I'll remember your name is ${fact.value}."
+            }
+        }
+        return when (heard) {
+            "what is my name", "what's my name" ->
+                AiMemory.preferredName(context)?.let { "Your name is $it." }
+                    ?: "You haven't told me your name yet."
+            "where is home", "where do i live" ->
+                AiMemory.homePlace(context)?.let { "Home is in $it." }
+                    ?: "You haven't told me where home is yet."
+            "what do you remember", "what do you remember about me" ->
+                AiMemory.summarize(AiMemory.facts(context), AiMemory.summary(context))
+            else -> null
+        }
     }
 
     private suspend fun callCommand(context: Context, heard: String): String? {

@@ -296,12 +296,31 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
                         sourceCount = AssistantCommands.lastReplySourceCount,
                         provider = AssistantCommands.lastReplyProvider,
                         onPlaybackStarted = {
-                            if (wasAi) {
+                            // r220: durable memory learns only from turns
+                            // that actually joined the session — the record
+                            // calls' return values say so (a lone built-in
+                            // the gate refused teaches nothing, and a
+                            // superseded turn never reaches here). AI turns
+                            // can state a fact mid-conversation ("my name
+                            // is Robert"); built-in turns only update the
+                            // summary, because the one built-in that teaches
+                            // — the memory command — already stored its
+                            // fact when it ran.
+                            val joinedSession = if (wasAi) {
                                 ConversationSession.record(
                                     aiUtterance ?: heard, reply, fromAi = true,
                                 )
                             } else if (wasBuiltin) {
                                 ConversationSession.recordBuiltin(heard, reply)
+                            } else {
+                                false
+                            }
+                            if (joinedSession) {
+                                if (wasAi) {
+                                    AiMemory.learnFromAiTurn(appContext, aiUtterance ?: heard)
+                                } else {
+                                    AiMemory.noteTurn(appContext, heard)
+                                }
                             }
                         },
                     )

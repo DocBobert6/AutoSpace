@@ -44,6 +44,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.autospace.car.AiAssistant
+import app.autospace.car.AiMemory
 import app.autospace.car.AiKeyStore
 import app.autospace.car.AssistantPreview
 import app.autospace.car.GeminiClient
@@ -97,6 +98,10 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
                 )
             },
         )
+        SettingsDivider()
+        // r220: durable memory — opt-in, on-phone only; the toggle and the
+        // remembered facts live here, in the AI assistant section.
+        MemorySection()
         SettingsDivider()
         // r40: the provider picker. Groq is the default; Gemini is labelled
         // experimental wherever it is shown. Switching never moves a key.
@@ -154,6 +159,135 @@ internal fun AiAssistantSection(onOpenPreview: () -> Unit) {
             dismissButton = { TextButton(onClick = { showNotice = false }) { Text("Not now") } },
         )
     }
+}
+
+
+/**
+ * r220: durable AI memory — opt-in, default off, on-phone only. The
+ * toggle lives here, in the AI assistant section, next to the AI
+ * answers switch. Memory works whether AI answers are on or off,
+ * because the local memory commands run in the local chain. Turning
+ * memory off deletes everything remembered. The remembered facts and
+ * the summary are listed here, with per-item delete and a
+ * forget-everything button.
+ */
+@Composable
+private fun MemorySection() {
+    val context = LocalContext.current
+    var memoryOn by remember { mutableStateOf(false) }
+    var facts by remember { mutableStateOf<List<AiMemory.Fact>>(emptyList()) }
+    var summary by remember { mutableStateOf(AiMemory.Summary.EMPTY) }
+    var showTurnOffConfirm by remember { mutableStateOf(false) }
+    var showForgetConfirm by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        memoryOn = AiMemory.isEnabled(context)
+        facts = AiMemory.facts(context)
+        summary = AiMemory.summary(context)
+    }
+
+    LaunchedEffect(context) { refresh() }
+
+    SettingsRow(
+        "Remember what I tell the assistant",
+        subtitle = if (memoryOn) "On — home place and name stay on this phone only"
+            else "Off — nothing is remembered; turning it off deletes what was remembered",
+        trailing = {
+            Switch(
+                checked = memoryOn,
+                onCheckedChange = { on ->
+                    if (on) {
+                        AiMemory.setEnabled(context, true)
+                        refresh()
+                    } else if (facts.isNotEmpty() || summary.turns > 0) {
+                        showTurnOffConfirm = true
+                    } else {
+                        AiMemory.setEnabled(context, false)
+                        refresh()
+                    }
+                },
+            )
+        },
+    )
+    if (memoryOn) {
+        if (facts.isEmpty() && summary.turns == 0) {
+            Text(
+                "Nothing remembered yet. Say “my home is in Dry Ridge” or “my name is Robert” and the assistant will remember it.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+        } else {
+            facts.forEach { fact ->
+                SettingsRow(
+                    when (fact.kind) {
+                        AiMemory.FactKind.HOME_PLACE -> "Home place"
+                        AiMemory.FactKind.NAME -> "Name"
+                    },
+                    subtitle = fact.value,
+                    trailing = {
+                        OutlinedButton(onClick = {
+                            AiMemory.deleteFact(context, fact.kind)
+                            refresh()
+                        }) { Text("Delete") }
+                    },
+                )
+            }
+            Text(
+                memorySummaryLine(summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            OutlinedButton(
+                onClick = { showForgetConfirm = true },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            ) { Text("Forget everything") }
+        }
+    }
+    if (showTurnOffConfirm) {
+        AlertDialog(
+            onDismissRequest = { showTurnOffConfirm = false },
+            title = { Text("Turn off memory?") },
+            text = { Text("Everything the assistant remembers will be deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    AiMemory.setEnabled(context, false)
+                    showTurnOffConfirm = false
+                    refresh()
+                }) { Text("Forget everything") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTurnOffConfirm = false }) { Text("Keep memory on") }
+            },
+        )
+    }
+    if (showForgetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showForgetConfirm = false },
+            title = { Text("Forget everything?") },
+            text = { Text("Everything the assistant remembers will be deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    AiMemory.clearAll(context)
+                    showForgetConfirm = false
+                    refresh()
+                }) { Text("Forget everything") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgetConfirm = false }) { Text("Keep it") }
+            },
+        )
+    }
+}
+
+/** One line for the remembered summary: turn count, last date, recent places. */
+private fun memorySummaryLine(summary: AiMemory.Summary): String {
+    if (summary.turns == 0) return "No conversations noted yet."
+    val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM)
+        .format(java.util.Date(summary.lastMs))
+    val places = if (summary.places.isEmpty()) "" else " Places mentioned: ${summary.places.joinToString(", ")}."
+    return "From ${summary.turns} ${if (summary.turns == 1) "turn" else "turns"}, last $date.$places"
 }
 
 /**
