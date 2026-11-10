@@ -104,21 +104,18 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     val navPanMode by CarServices.nav.panMode.collectAsStateWithLifecycle()
     val mediaCardDock by CarSettings.mediaCardDock.collectAsStateWithLifecycle()
     val dockEnabled by CarSettings.mediaCardDockEnabled.collectAsStateWithLifecycle()
-    // r106: motion poll for the media-card drag gate, plus the
-    // free-drag offset and the card's measured size. CarMotion.moving
-    // is a plain value, not a flow — poll it 1 s like MiniVideo and
-    // the widget column do (GPS only updates every 2 s). This poll
-    // lives here, not in the widget column's block, because the card
-    // slot sits outside that block; its name differs from that
-    // block's scoped `moving` on purpose, so nothing shadows.
+    // r106: motion for the media-card drag gate, plus the
+    // free-drag offset and the card's measured size. r221 (audit P-08):
+    // the shared motion flow, not a poll. This read lives here, not in
+    // the widget column's block, because the card slot sits outside that
+    // block; its name differs from that block's scoped `moving` on
+    // purpose, so nothing shadows.
     // The offset and size are session-only: remember in CarHome,
     // never written to CarSettings, so a dragged position resets
     // when Home leaves composition and survives card hide/show,
     // mini video, and live-widget swaps. Both are in dp, matching
     // the slot's dp-space geometry (see MediaCardDrag).
-    val cardDragMoving by produceState(CarMotion.moving) {
-        while (true) { value = CarMotion.moving; delay(1_000) }
-    }
+    val cardDragMoving by CarMotion.movingFlow.collectAsStateWithLifecycle(initialValue = CarMotion.moving)
     var mediaCardDragOffsetDp by remember { mutableStateOf(Offset.Zero) }
     var mediaCardDragSizeDp by remember { mutableStateOf(Offset.Zero) }
     val miniVideoItem by MiniVideoState.active.collectAsStateWithLifecycle()
@@ -448,15 +445,11 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
                 }
             }
             if (showWidgetColumn) {
-                // CarMotion.moving is a plain value, not a flow — poll it
-                // like VideoPlayerScreen/CarWhatsNew do (1 s; GPS only
-                // updates every 2 s). It gates the narrow-frame parked
-                // exception AND the r58 hide-while-driving rule; the poll
-                // runs only while the column could render, never
-                // while the lyrics split is up.
-                val moving by produceState(CarMotion.moving) {
-                    while (true) { value = CarMotion.moving; delay(1_000) }
-                }
+                // r221 (audit P-08): the shared motion flow, not a poll.
+                // It gates the narrow-frame parked exception AND the r58
+                // hide-while-driving rule; the read runs only while the
+                // column could render, never while the lyrics split is up.
+                val moving by CarMotion.movingFlow.collectAsStateWithLifecycle(initialValue = CarMotion.moving)
                 // r58: a glance ends when motion stops — the normal
                 // rules resume from a stop, so the recall must not leak
                 // into the next drive.

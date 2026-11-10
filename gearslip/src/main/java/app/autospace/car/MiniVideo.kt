@@ -23,8 +23,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -79,7 +79,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * fresh open after the app was closed, when the holder is empty.
  *
  * The passenger gate is the SAME gate as video today (see
- * PassengerGate.kt): moving is polled 1 s from CarMotion.moving; while
+ * PassengerGate.kt): moving comes from CarMotion.movingFlow (one 1 s
+ * ticker); while
  * the gate is open and unanswered the video branch stays composed, so
  * video keeps playing behind the dialog's dim; "Yes" (driver) drops to
  * the audio-only branch (no PlayerView attached, so no video frame is
@@ -338,17 +339,11 @@ fun MiniVideoCard(
 ) {
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
-    // CarMotion.moving is a plain value, not a flow — poll it 1 s like
-    // VideoPlayerScreen and the widget column do (GPS only updates
-    // every 2 s). The effect below mirrors the full player's gate
-    // lifecycle exactly: parked closes the gate and lapses a driver's
-    // answer; moving with no passenger allowance opens it.
-    val moving by produceState(CarMotion.moving) {
-        while (true) {
-            value = CarMotion.moving
-            delay(1_000)
-        }
-    }
+    // r221 (audit P-08): the shared motion flow, not a poll. The effect
+    // below mirrors the full player's gate lifecycle exactly: parked
+    // closes the gate and lapses a driver's answer; moving with no
+    // passenger allowance opens it.
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     LaunchedEffect(moving) {
         if (!moving) MiniVideoState.onParked()
         else if (!MiniVideoState.passengerAllowed) MiniVideoState.onMovingUnanswered()
@@ -426,12 +421,21 @@ fun MiniVideoCard(
         }
     }
     // r118: the live write half of the shared position. The full
-    // player polls the same way, so whichever player is alive keeps
+    // player writes the same way, so whichever player is alive keeps
     // the holder fresh; switches themselves are written
     // synchronously in expand()/minimize, never left to this poll.
+    // r221 (audit P-10): only while playing, and only when the position
+    // moved at least a second (or backwards, a seek) — not every tick.
+    var lastWrittenPos by remember { mutableLongStateOf(-1L) }
     LaunchedEffect(player) {
         while (true) {
-            VideoPositionSync.update(item.url, player.currentPosition.coerceAtLeast(0L))
+            if (player.isPlaying) {
+                val pos = player.currentPosition.coerceAtLeast(0L)
+                if (pos < lastWrittenPos || pos - lastWrittenPos >= 1_000) {
+                    VideoPositionSync.update(item.url, pos)
+                    lastWrittenPos = pos
+                }
+            }
             delay(1_000)
         }
     }

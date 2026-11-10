@@ -177,7 +177,7 @@ object FilterEngine {
         emptyList()
         set(value) {
             field = value
-            cssCache = null
+            synchronized(cssCache) { cssCache.clear() }
         }
 
     /** The document-start cosmetic script, rebuilt whenever filter
@@ -225,7 +225,15 @@ object FilterEngine {
      */
     fun gpcHeaders(enabled: Boolean): Map<String, String> =
         if (enabled) mapOf("Sec-GPC" to "1") else emptyMap()
-    @Volatile private var cssCache: Pair<String, String>? = null
+    /**
+     * r221 (audit C-02): the cosmetic sheet per host, last 6 hosts — the
+     * old single-pair cache rebuilt the sheet on every host swap. A plain
+     * LinkedHashMap (not thread-safe), so every access is synchronized:
+     * the sheet is built on WebView threads. Empty sheets are not cached,
+     * as before.
+     */
+    private val cssCache = LinkedHashMap<String, String>(16, 0.75f, true)
+    private const val CSS_CACHE_MAX_HOSTS = 6
 
     /** Installs a parsed [FilterData] as the live rule set and
      *  rebuilds the document-start script. Called by FilterLists
@@ -241,7 +249,7 @@ object FilterEngine {
         cosmeticExcGeneric = data.excGeneric
         cosmeticExcDomain = data.excDomain
         genericHideOffHosts = data.hideOff
-        cssCache = null
+        synchronized(cssCache) { cssCache.clear() }
         documentStartScript = buildDocumentStartScript(
             chunkCosmeticSelectors(
                 genericSelectors.filter { it !in cosmeticExcGeneric },
@@ -711,8 +719,12 @@ object FilterEngine {
         wantException: Boolean,
         onlyImportant: Boolean = false,
         onlyDocument: Boolean = false,
+        chain: List<String>? = null,
     ): ScopedRule? {
-        for (h in hostChain(reqHost)) {
+        // r221 (audit P-02): the caller may pass a host chain computed
+        // once, so a decision that scans several rule sets does not
+        // rebuild it per scan.
+        for (h in chain ?: hostChain(reqHost)) {
             val rules = scopedRules[h] ?: continue
             for (r in rules) {
                 if (r.exception != wantException) continue
@@ -743,7 +755,8 @@ object FilterEngine {
         pageHost: String,
         wantException: Boolean,
         onlyImportant: Boolean = false,
-    ): Boolean = scopedRuleMatch(reqHost, path, pageHost, wantException, onlyImportant) != null
+        chain: List<String>? = null,
+    ): Boolean = scopedRuleMatch(reqHost, path, pageHost, wantException, onlyImportant, chain = chain) != null
 
     /**
      * The blocking decision for one subresource request, attributed
@@ -795,14 +808,20 @@ object FilterEngine {
         if (matches(neverBlockHosts, h)) return null
         val p = path.lowercase()
         val page = pageHost.lowercase()
+        // r221 (audit P-02): the host chain is built once and shared by
+        // the three scoped scans below, instead of once per scan.
+        val chain = hostChain(h)
         // $important block rules beat every exception — when their
         // category's toggle is on; a disabled category falls
-        // through to the exception checks below it.
-        scopedRuleMatch(h, p, page, wantException = false, onlyImportant = true)
-            ?.takeIf { categoryEnabled(it.category, blockAds, blockTrackers) }
-            ?.let { return it.category }
+        // through to the exception checks below it. Skipped outright
+        // when there are no scoped rules at all (the common case).
+        if (scopedRules.isNotEmpty()) {
+            scopedRuleMatch(h, p, page, wantException = false, onlyImportant = true, chain = chain)
+                ?.takeIf { categoryEnabled(it.category, blockAds, blockTrackers) }
+                ?.let { return it.category }
+        }
         if (matches(exceptionHosts, h)) return null
-        if (scopedMatch(h, p, page, wantException = true)) return null
+        if (scopedMatch(h, p, page, wantException = true, chain = chain)) return null
         if (blockTrackers && matches(builtinHosts, h)) return CAT_TRACKER
         if ((blockAds || blockTrackers) && matches(listHosts, h)) {
             return if (matches(trackerHosts, h)) {
@@ -811,7 +830,7 @@ object FilterEngine {
                 if (blockAds) CAT_ADS else null
             }
         }
-        scopedRuleMatch(h, p, page, wantException = false)
+        scopedRuleMatch(h, p, page, wantException = false, chain = chain)
             ?.takeIf { categoryEnabled(it.category, blockAds, blockTrackers) }
             ?.let { return it.category }
         if (blockAds) {
@@ -1089,7 +1108,7 @@ object FilterEngine {
     fun cosmeticCss(pageHost: String): String {
         val host = pageHost.lowercase()
         if (host.isEmpty()) return ""
-        cssCache?.let { if (it.first == host) return it.second }
+        synchronized(cssCache) { cssCache[host] }?.let { return it }
         val sels = orderedSelectors(
             host,
             genericSelectors,
@@ -1106,9 +1125,15 @@ object FilterEngine {
         // the whole sheet. Rules are CHUNKED 25 selectors at a time.
         val css = chunkCosmeticSelectors(sels, budget = 200_000)
         if (css.isEmpty()) return ""
-        cssCache = host to css
+        synchronized(cssCache) {
+            cssCache[host] = css
+            while (cssCache.size > CSS_CACHE_MAX_HOSTS) cssCache.remove(cssCache.keys.first())
+        }
         return css
     }
+
+    /** Test seam: how many hosts the cosmetic cache currently holds. */
+    internal fun cosmeticCacheSize(): Int = synchronized(cssCache) { cssCache.size }
 }
 
 /**

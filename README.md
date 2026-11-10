@@ -217,7 +217,7 @@ You need Android Studio, or the Android SDK with JDK 21. Gradle downloads
 the NDK, CMake, and the speech library on the first build.
 
 ```
-./gradlew :gearslip:assembleDebug
+./gradlew :gearslip:assembleStandardDebug
 ```
 
 CI (`.github/workflows/debug.yml`, on every push to `main` and every pull
@@ -228,7 +228,7 @@ APK and publishes it as a prerelease.
 
 A release build needs a signing key. Copy `keystore.properties.example`
 to `keystore.properties`, fill in your own values, and run
-`./gradlew :gearslip:assembleRelease`. Git ignores both the properties
+`./gradlew :gearslip:assembleStandardRelease`. Git ignores both the properties
 file and the keystore. Never commit a release key.
 
 Current line: 0.5.0-beta.7, versionCode 173 (release package

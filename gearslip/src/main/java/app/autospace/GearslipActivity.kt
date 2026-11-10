@@ -164,10 +164,12 @@ class GearslipActivity : ComponentActivity(), Projection {
         // open leaves its profile on disk — deleting it at startup is
         // the second half of "deleted when the last private tab closes".
         // A no-op where the WebView lacks multi-profile support.
-        app.autospace.car.PrivateProfile.wipe()
-        // r157: private downloads from that dead process die here too,
-        // the same as they do on a last-private-tab close.
-        app.autospace.car.BrowserDownloads.deletePrivateDownloads(this)
+        // r221 (audit P-04): the wipe runs on the prefetch worker, not
+        // the main thread — it is queued here, before Prefetch.warm
+        // below, so it runs first. r157: private downloads from that
+        // dead process die with it too, the same as on a last-private-tab
+        // close.
+        Prefetch.startupCleanup(this)
         AppSettings.applyGearslipEnabled(this)
         // A capture that died without tidying up would leave notifications exposed to every
         // later screen share. Nothing is capturing if the service is not running, so undo it.
@@ -244,6 +246,9 @@ class GearslipActivity : ComponentActivity(), Projection {
 
     override fun onDestroy() {
         super.onDestroy()
+        // r221 (audit B-01 step 1): clear it if the activity is ever left
+        // without a session, so the flag cannot outlive the drive.
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         app.autospace.wireless.WirelessLink.onConnected = null
         runCatching { unregisterReceiver(detachReceiver) }
         PhoneMirror.onStartRequested = null
@@ -927,6 +932,9 @@ class GearslipActivity : ComponentActivity(), Projection {
         // Before the car UI goes, while the media connection is still up.
         app.autospace.car.CarServices.pausePhoneMedia()
         runOnUiThread {
+            // r221 (audit B-01 step 1): the drive is over — the screen
+            // no longer needs to stay on.
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             PhoneMirror.requestStop()
             app.autospace.car.CarKeys.focusSink = null
             screenProjector?.stop()

@@ -87,7 +87,7 @@ fun GamesScreen() {
     val scope = rememberCoroutineScope()
     var page by remember { mutableStateOf<GamesPage>(GamesPage.Home) }
     var games by remember { mutableStateOf(GameImport.load(context)) }
-    var moving by remember { mutableStateOf(CarMotion.moving) }
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     var importing by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf<String?>(null) }
     var gameActions by remember { mutableStateOf<GameEntry?>(null) }
@@ -112,13 +112,7 @@ fun GamesScreen() {
     // exits with the game.
     val gameImmersive by GameImmersiveState.immersive.collectAsState()
 
-    // Parked gate, live: a plain property, not a flow, so it is polled.
-    LaunchedEffect(Unit) {
-        while (true) {
-            moving = CarMotion.moving
-            delay(1000)
-        }
-    }
+    // Parked gate, live (r221, audit P-08): the shared motion flow.
 
     fun refresh() {
         games = GameImport.load(context)

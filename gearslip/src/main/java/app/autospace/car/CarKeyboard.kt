@@ -614,9 +614,18 @@ fun CarKeyboard(
                 // appears at mic-tap (listening-ready breathe, before the
                 // first word), breathes while talking, and fades out at
                 // finish/cancel (bandAlpha, 300ms) rather than vanishing.
-                val breathe by rememberInfiniteTransition(label = "dictation").animateFloat(
-                    0.55f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dictation",
-                )
+                // r221 (audit G-06): the breathe transition exists only
+                // while dictating — the old code created it (and ran it) on
+                // every frame of the keyboard, even with the band invisible.
+                // While fading out the band holds 1f, so the 300 ms fade
+                // still reads as a fade.
+                val breathe = if (dictating) {
+                    rememberInfiniteTransition(label = "dictation").animateFloat(
+                        0.55f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "dictation",
+                    ).value
+                } else {
+                    1f
+                }
                 val bandAlpha by animateFloatAsState(if (dictating) 1f else 0f, tween(300), label = "dictation")
                 if (bandAlpha > 0.01f) {
                     val bandColor = MaterialTheme.colorScheme.primary

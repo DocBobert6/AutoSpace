@@ -163,7 +163,7 @@ private enum class SettingsCategory(val title: String, val description: String) 
     ),
     VOICE(
         "Voice",
-        "Spoken directions, spoken voices, hotword, phone microphone, voice trace, voice shortcuts",
+        "Spoken directions, spoken voices, hotword, phone microphone, voice trace, voice shortcuts, AI assistant",
     ),
     BROWSER_AND_VIDEO(
         "Browser & video",
@@ -348,8 +348,16 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "carbon black, white text, red and yellow, no blue, always " +
             "dark. Circuit is black with blue, red, and yellow accents " +
             "(white in its light variant). Heritage is deep racing green " +
-            "with cream text and brass gold accents. Circuit and Heritage " +
-            "follow the mode control; Auto night still switches " +
+            "with cream text and brass gold accents. Verve is dark ink " +
+            "with vivid violet, hot coral, and sunny accents. Horizon is " +
+            "deep navy dark with a mint secondary and a green tertiary. " +
+            "Meridian is near-black navy with a teal primary, always dark. " +
+            "Workshop is charcoal linen dark with a brass primary, a copper " +
+            "secondary, and an olive tertiary. Aurora Field is deep ocean " +
+            "dark with a spring-green primary, a sky secondary, and a lime " +
+            "tertiary. Canvas, Circuit, Heritage, Verve, Horizon, Workshop, " +
+            "and Aurora Field follow the mode control; Auto night still " +
+            "switches " +
             "every scheme to Nocturne.",
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -817,8 +825,10 @@ private fun VoicePage() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     // r220: read-only, like the AI line above — memory is managed on the
-    // phone only; the car just says whether it is on.
-    val memoryOn by remember { mutableStateOf(AiMemory.isEnabled(context)) }
+    // phone only; the car just says whether it is on. r221 (audit U-11):
+    // the live flow, not a one-time snapshot, mirroring the AI line.
+    androidx.compose.runtime.LaunchedEffect(context) { AiMemory.ensureLoaded(context) }
+    val memoryOn by AiMemory.enabled.collectAsState()
     Text(
         "Assistant memory: ${if (memoryOn) "on" else "off"} — manage on your phone in Settings > AI assistant.",
         style = MaterialTheme.typography.bodyMedium,

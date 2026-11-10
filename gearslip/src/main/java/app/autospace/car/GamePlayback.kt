@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -206,7 +207,7 @@ fun gameImmersiveHidesChrome(screenIsGames: Boolean, immersive: Boolean): Boolea
 @Composable
 fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
     val context = LocalContext.current
-    var moving by remember { mutableStateOf(CarMotion.moving) }
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     var expanded by remember { mutableStateOf(false) }
     // r148: immersive fullscreen follows expanded exactly —
     // entering fullscreen publishes, shrinking exits, and the
@@ -306,12 +307,7 @@ fun GamePlaybackScreen(game: GameEntry, onExit: () -> Unit) {
 
     // Parked gate, live, like the menus: driving swaps the whole
     // screen for the blocked notice. There is no passenger bypass.
-    LaunchedEffect(Unit) {
-        while (true) {
-            moving = CarMotion.moving
-            delay(1000)
-        }
-    }
+    // r221 (audit P-08): the shared motion flow.
 
     // Disconnect-pause: losing a controller pauses at once and opens
     // the pause menu, where Resume clears the pause.

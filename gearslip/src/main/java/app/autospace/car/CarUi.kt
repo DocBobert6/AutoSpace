@@ -1356,11 +1356,8 @@ private fun NavDividerVertical(meridian: Boolean = false) {
  */
 @Composable
 private fun NavWidgetsPopupButton(navigator: CarNavigator, meridian: Boolean = false) {
-    // CarMotion.moving is a plain value, not a flow — poll it like
-    // CarHome does (1 s).
-    val movingBar by produceState(CarMotion.moving) {
-        while (true) { value = CarMotion.moving; delay(1_000) }
-    }
+    // r221 (audit P-08): the shared motion flow, not a poll.
+    val movingBar by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     val dismissedBar by CarSettings.widgetsDismissed.collectAsState()
     GsIconButton(
         Icons.Filled.Widgets, "Widgets",

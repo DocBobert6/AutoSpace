@@ -223,6 +223,18 @@ object UpdateChecker {
     }
 
     /**
+     * r221 (experimental flavor): a build only ever offers releases from its
+     * own line. The standard (beta) build never offers an experimental tag,
+     * and the experimental build never offers a beta or plain tag. The gate
+     * lives here, in the shared updater code, so it applies on every channel
+     * and on both the list and the single-release (Stable) fetch paths.
+     * Pure, so the unit test pins it in both flavor variants.
+     */
+    internal fun acceptsTag(tag: String): Boolean =
+        if (BuildConfig.FLAVOR == "experimental") tag.contains("-exp", ignoreCase = true)
+        else !tag.contains("-exp", ignoreCase = true)
+
+    /**
      * Resolves the effective channel from its three inputs, in precedence order: an
      * explicitly saved channel always wins; the old beta on/off switch means Alpha
      * (it used to mean every pre-release); otherwise the version's stage decides.
@@ -612,7 +624,8 @@ object UpdateChecker {
         )
     }
 
-    /** The newest release with an APK that [channel] takes. Drafts never count. */
+    /** The newest release with an APK that [channel] takes. Drafts never count.
+     * r221: the flavor gate ([acceptsTag]) keeps each build on its own line. */
     private fun fetchNewest(channel: Channel): Release? {
         val stable = channel == Channel.STABLE
         val conn = (URL(if (stable) LATEST else ALL).openConnection() as HttpURLConnection).apply {
@@ -634,7 +647,7 @@ object UpdateChecker {
             }
             if (conn.responseCode !in 200..299) error("GitHub answered ${conn.responseCode}")
             val body = conn.inputStream.bufferedReader().use { it.readText() }
-            if (stable) return release(JSONObject(body))
+            if (stable) return release(JSONObject(body))?.takeIf { acceptsTag(it.version) }
             val list = org.json.JSONArray(body)
             return (0 until list.length()).map { list.getJSONObject(it) }
                 .filterNot { it.optBoolean("draft") }
@@ -642,6 +655,8 @@ object UpdateChecker {
                     channel == Channel.ALPHA || !it.optBoolean("prerelease") ||
                         it.optString("tag_name").contains("beta", ignoreCase = true)
                 }
+                // r221: a build only ever sees its own line's tags.
+                .filter { acceptsTag(it.optString("tag_name")) }
                 .mapNotNull(::release)
                 .reduceOrNull { best, next -> if (isNewer(next.version, best.version)) next else best }
         } finally {
@@ -805,6 +820,9 @@ object UpdateChecker {
      * someone on "0.3.0-beta". With the same numbers and the same stage, the number after the
      * stage word decides, so "0.5.0-beta.9" reaches someone on "0.5.0-beta.4" — without it a
      * newer beta looked the same as the one already installed and the updater said up to date.
+     * An experimental tag ("0.5.0-exp.1") is a stage of its own below beta, so it never beats a
+     * beta — and its suffix decides between experimental builds, so "0.5.0-exp.2" reaches
+     * someone on "0.5.0-exp.1".
      */
     internal fun isNewer(candidate: String, installed: String): Boolean {
         fun parts(v: String) = v.removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
@@ -818,11 +836,12 @@ object UpdateChecker {
             }
         }
         fun suffix(v: String): Int {
-            // The number after the stage word ("beta.9" -> 9); a bare stage ("beta") has none.
+            // The number after the stage word ("beta.9" -> 9, "exp.2" -> 2); a bare stage ("beta") has none.
             val tag = v.substringAfter('-', "").lowercase()
             val afterStage = when {
                 "beta" in tag -> tag.substringAfter("beta")
                 "alpha" in tag -> tag.substringAfter("alpha")
+                "exp" in tag -> tag.substringAfter("exp")
                 else -> return 0
             }
             return afterStage.trimStart('.', '-', '_').takeWhile { it.isDigit() }.toIntOrNull() ?: 0

@@ -344,6 +344,19 @@ class FilterEngineTest {
     }
 
     @Test
+    fun cosmeticCacheKeepsLastSixHosts() {
+        // r221 (audit C-02): the cosmetic sheet is cached per host, last 6.
+        install("##.ad-banner\\n")
+        val hosts = (1..7).map { "host$it.example.org" }
+        hosts.forEach { FilterEngine.cosmeticCss(it) }
+        assertEquals(6, FilterEngine.cosmeticCacheSize())
+        // The first host was evicted; rebuilding it gives the same sheet.
+        val again = FilterEngine.cosmeticCss(hosts[0])
+        assertTrue(again.contains(".ad-banner"))
+        assertEquals(6, FilterEngine.cosmeticCacheSize())
+    }
+
+    @Test
     fun cosmeticSelectorsChunkedAtTwentyFive() {
         val sels = (1..26).map { ".ad-$it" }
         val css = FilterEngine.chunkCosmeticSelectors(sels, budget = 200_000)

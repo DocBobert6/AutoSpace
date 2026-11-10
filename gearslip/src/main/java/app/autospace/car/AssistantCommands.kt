@@ -29,6 +29,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
+// r221 (audit C-01): regex patterns compiled once, not on every voice
+// turn / utterance / chapter parse. Same patterns, same call sites —
+// no behavior change.
+private val profanityRegex = Regex("(fuck|f\\*+) (you|off)( too)?")
+private val punctuationRegex = Regex("[.,!?]")
+private val whitespaceRegex = Regex("\\s+")
+private val useWithRegex = Regex("^(?:use|using|with|open|in|on) (.+?) (?:to |and )(.+)$")
+private val setBrightnessRegex = Regex("^set (the )?brightness to (\\d{1,3})( percent)?$")
+private val brightnessRegex = Regex("^brightness (\\d{1,3})(?: percent)?$")
+private val timerMinutesRegex = Regex("^(?:remind me in|set a timer for|timer for) (\\d+) minutes?$")
+private val timerHourRegex = Regex("^(?:remind me in|set a timer for|timer for) an? hour$")
+private val timerHoursRegex = Regex("^(?:remind me in|set a timer for|timer for) (\\d+) hours?$")
+private val textMessageRegex = Regex("^(?:text|message) (.+?) that (.+)$")
+private val callNameRegex = Regex("^give (.+) a (?:call|ring)$")
+private val callSuffixRegex = Regex(" (?:on|at) (?:their |his |her )?(?:mobile|cell|phone|home|work)$")
+
 /**
  * Module map (r174 audit §2 CLEAN-N09): the assistant is three objects with
  * deliberately overlapping names. [CarAssistant] is the voice — listening
@@ -165,7 +181,7 @@ object AssistantCommands {
         // Audit fix (2026-10-25, B8/F8): the old reply swore back
         // aloud through the car speakers. Wording only — this branch
         // keeps its position before the emergency-confirmation block.
-        if (heard.matches(Regex("(fuck|f\\*+) (you|off)( too)?"))) return "Let's keep it friendly — what can I do for you?"
+        if (heard.matches(profanityRegex)) return "Let's keep it friendly — what can I do for you?"
 
         // A pending emergency confirmation is answered first: a yes dials, a no or any
         // other command cancels it, and silence cancels it once the window lapses (the
@@ -623,7 +639,7 @@ object AssistantCommands {
      * "please", "thanks". Each command below then only has to know its own words.
      */
     private fun natural(raw: String): String {
-        var t = raw.lowercase().replace(Regex("[.,!?]"), " ").replace(Regex("\\s+"), " ").trim()
+        var t = raw.lowercase().replace(punctuationRegex, " ").replace(whitespaceRegex, " ").trim()
         var changed = true
         while (changed) {
             changed = false
@@ -676,7 +692,7 @@ object AssistantCommands {
         // "use Organic Maps to get to X", "open OsmAnd and navigate to X": the app comes first.
         var text = heard
         var leadingApp: String? = null
-        Regex("^(?:use|using|with|open|in|on) (.+?) (?:to |and )(.+)$").find(text)?.let { m ->
+        useWithRegex.find(text)?.let { m ->
             if (after(m.groupValues[2], NAVIGATE_TRIGGERS) != null) {
                 leadingApp = m.groupValues[1]
                 text = m.groupValues[2]
@@ -911,7 +927,7 @@ object AssistantCommands {
     private fun synonymCommand(context: Context, navigator: CarNavigator, heard: String): String? {
         val tokens = heard.split(" ")
         if (tokens.any { it in FUZZY_GUARD_TOKENS }) return null
-        val numeric = Regex("^set (the )?brightness to (\\d{1,3})( percent)?$").find(heard)
+        val numeric = setBrightnessRegex.find(heard)
         val canon = SYNONYMS[heard]
             ?: numeric?.let { "brightness ${it.groupValues[2]}" }
             ?: fuzzyCanonical(heard)
@@ -1120,7 +1136,7 @@ object AssistantCommands {
             CarSettings.setBrightness(current - 0.1f)
             return "Brightness ${(CarSettings.brightness.value * 100).toInt()} percent."
         }
-        val percent = Regex("^brightness (\\d{1,3})(?: percent)?$").find(heard)?.groupValues?.get(1)?.toIntOrNull()
+        val percent = brightnessRegex.find(heard)?.groupValues?.get(1)?.toIntOrNull()
             ?: return null
         CarSettings.setBrightness(percent / 100f)
         return "Brightness ${(CarSettings.brightness.value * 100).toInt()} percent."
@@ -1135,10 +1151,10 @@ object AssistantCommands {
             if (!cancelTimer()) return "No timer is running."
             return "Timer canceled."
         }
-        val minutes = Regex("^(?:remind me in|set a timer for|timer for) (\\d+) minutes?$").find(heard)
+        val minutes = timerMinutesRegex.find(heard)
             ?.groupValues?.get(1)?.toIntOrNull()
-            ?: Regex("^(?:remind me in|set a timer for|timer for) an? hour$").find(heard)?.let { 60 }
-            ?: Regex("^(?:remind me in|set a timer for|timer for) (\\d+) hours?$").find(heard)
+            ?: timerHourRegex.find(heard)?.let { 60 }
+            ?: timerHoursRegex.find(heard)
                 ?.groupValues?.get(1)?.toIntOrNull()?.times(60)
             ?: return null
         if (minutes <= 0 || minutes > 240) return "I can time up to 4 hours."
@@ -1213,7 +1229,7 @@ object AssistantCommands {
             }
             return "${history.size} message${if (history.size == 1) "" else "s"}. " + lines.joinToString(". ") + "."
         }
-        val send = Regex("^(?:text|message) (.+?) that (.+)$").find(heard) ?: return null
+        val send = textMessageRegex.find(heard) ?: return null
         val name = send.groupValues[1].trim()
         val message = send.groupValues[2].trim()
         if (name.isBlank() || message.isBlank()) return "Say it as: text [name] that [message]."
@@ -1395,9 +1411,9 @@ object AssistantCommands {
     private suspend fun callCommand(context: Context, heard: String): String? {
         val name = (
             after(heard, CALL_TRIGGERS)
-                ?: Regex("^give (.+) a (?:call|ring)$").find(heard)?.groupValues?.get(1)
+                ?: callNameRegex.find(heard)?.groupValues?.get(1)
                 ?: return null
-            ).replace(Regex(" (?:on|at) (?:their |his |her )?(?:mobile|cell|phone|home|work)$"), "").trim()
+            ).replace(callSuffixRegex, "").trim()
         if (name.isBlank()) return "Who should I call?"
         if (!hasCallPermissions(context)) return "AutoSpace needs the phone and contacts permissions first, from the phone screen."
 

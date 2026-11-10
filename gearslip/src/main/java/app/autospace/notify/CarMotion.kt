@@ -9,9 +9,17 @@ import android.location.LocationManager
 import android.os.SystemClock
 import app.autospace.GearslipLog
 import app.autospace.car.CarEnvironment
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.shareIn
 
 /**
  * Whether the car is moving, judged from the phone's GPS speed.
@@ -65,6 +73,28 @@ object CarMotion {
                 SimMode.AUTO -> realMoving()
             }
         }
+
+    /**
+     * r221 (audit P-08): the moving state as a shared flow — one 1 s
+     * ticker here, instead of a poll loop on every screen that reads it.
+     * A SharedFlow (not a StateFlow) on purpose: the passenger gate
+     * counts CONSECUTIVE moving polls, and a StateFlow only emits on
+     * change, which would starve the streak and the gate would never
+     * open while moving. Equal values do not recompose, so the per-second
+     * ticks cost nothing at state sites. The upstream runs on the main
+     * thread (the same thread the old polls read [moving] on) and stops
+     * 5 s after the last collector leaves.
+     */
+    val movingFlow: SharedFlow<Boolean> = flow {
+        while (true) {
+            emit(moving)
+            delay(1_000)
+        }
+    }.shareIn(
+        CoroutineScope(SupervisorJob() + Dispatchers.Main),
+        SharingStarted.WhileSubscribed(5000),
+        replay = 1,
+    )
 
     private fun realMoving(): Boolean =
         SystemClock.elapsedRealtime() - fixAt < STALE_MS && speed > MOVING_MS

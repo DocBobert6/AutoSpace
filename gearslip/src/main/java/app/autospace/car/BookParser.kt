@@ -45,10 +45,43 @@ sealed interface BookPart {
 
 private val imageTokenRegex = Regex("""\[\[img:(\w+)]]""")
 
+// r221 (audit C-01): regex patterns compiled once, not on every
+// chapter parse. Same patterns, same call sites — no behavior
+// change. The image-token pattern below reuses the existing
+// imageTokenRegex (line 46) instead of compiling it twice.
+private val whitespaceRunRegex = Regex("""\s{2,}""")
+private val opfPathRegex = Regex("""full-path="([^"]+)"""")
+private val dcTitleRegex = Regex("""<dc:title[^>]*>([^<]+)</dc:title>""")
+private val dcCreatorRegex = Regex("""<dc:creator[^>]*>([^<]+)</dc:creator>""")
+private val itemIdHrefRegex = Regex("""<item\s+[^>]*id="([^"]+)"[^>]*href="([^"]+)"""")
+private val itemHrefIdRegex = Regex("""<item\s+[^>]*href="([^"]+)"[^>]*id="([^"]+)"""")
+private val itemIdHrefSqRegex = Regex("""<item\s+[^>]*id='([^']+)'[^>]*href='([^']+)'""")
+private val itemHrefIdSqRegex = Regex("""<item\s+[^>]*href='([^']+)'[^>]*id='([^']+)'""")
+private val spineItemrefRegex = Regex("""<itemref\s+[^>]*idref="([^"]+)"""")
+private val labelWhitespaceRegex = Regex("""\s+""")
+private val imgTagRegex = Regex("<(?:img|image)\\b[^>]*>", RegexOption.IGNORE_CASE)
+private val imgSrcRegex = Regex("(?:src|xlink:href|href)\\s*=\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+private val imgSrcSqRegex = Regex("(?:src|xlink:href|href)\\s*=\\s*'([^']+)'", RegexOption.IGNORE_CASE)
+private val coverRefRegex = Regex("<reference[^>]*type=\"cover\"[^>]*href=\"([^\"]+)\"")
+private val coverRefRevRegex = Regex("<reference[^>]*href=\"([^\"]+)\"[^>]*type=\"cover\"")
+private val imgTagSimpleRegex = Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE)
+private val svgImageTagRegex = Regex("""<image\b[^>]*>""", RegexOption.IGNORE_CASE)
+private val srcAttrRegex = Regex("""(?:src|xlink:href|href)\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+private val srcAttrSqRegex = Regex("""(?:src|xlink:href|href)\s*=\s*'([^']+)'""", RegexOption.IGNORE_CASE)
+private val titleTagRegex = Regex("""<title[^>]*>([^<]+)</title>""", RegexOption.IGNORE_CASE)
+private val headingTagRegex = Regex("""<h[12][^>]*>(.*?)</h[12]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val scriptRegex = Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val styleRegex = Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+private val blockBreakRegex = Regex("""<(br|/p|/div|/h[1-6]|/li|/tr)[^>]*>""", RegexOption.IGNORE_CASE)
+private val tagStripRegex = Regex("""<[^>]+>""")
+private val spaceRunRegex = Regex("""[ \t\x0B\f]+""")
+private val newlineSpaceRegex = Regex("""\n[ ]+""")
+private val newlineRunRegex = Regex("""\n{3,}""")
+
 /** Remove every image token from [text] (speech and the like). */
 fun stripImageTokens(text: String): String =
     imageTokenRegex.replace(text, "")
-        .replace(Regex("""\s{2,}"""), " ").trim()
+        .replace(whitespaceRunRegex, " ").trim()
 
 /**
  * Split chapter paragraphs into display parts: a token anywhere in a
@@ -199,7 +232,7 @@ object EpubParser {
 
         val container = readEntry("META-INF/container.xml")
             ?: throw IllegalStateException("Not an EPUB (no container.xml)")
-        val opfPath = Regex("""full-path="([^"]+)"""").find(container)?.groupValues?.get(1)
+        val opfPath = opfPathRegex.find(container)?.groupValues?.get(1)
             ?: throw IllegalStateException("Not an EPUB (no rootfile)")
         val opf = readEntry(opfPath) ?: throw IllegalStateException("Missing OPF")
         val opfDir = opfPath.substringBeforeLast('/', "")
@@ -248,27 +281,27 @@ object EpubParser {
             }
         } else {
             // Regex fallback for packages whose OPF won't parse.
-            title = Regex("""<dc:title[^>]*>([^<]+)</dc:title>""").find(opf)
+            title = dcTitleRegex.find(opf)
                 ?.groupValues?.get(1)?.trim() ?: title
-            author = Regex("""<dc:creator[^>]*>([^<]+)</dc:creator>""").find(opf)
+            author = dcCreatorRegex.find(opf)
                 ?.groupValues?.get(1)?.trim() ?: ""
-            Regex("""<item\s+[^>]*id="([^"]+)"[^>]*href="([^"]+)"""").findAll(opf).forEach {
+            itemIdHrefRegex.findAll(opf).forEach {
                 manifest[it.groupValues[1]] = ManifestItem(it.groupValues[2])
             }
-            Regex("""<item\s+[^>]*href="([^"]+)"[^>]*id="([^"]+)"""").findAll(opf).forEach {
+            itemHrefIdRegex.findAll(opf).forEach {
                 val id = it.groupValues[2]
                 if (id !in manifest) manifest[id] = ManifestItem(it.groupValues[1])
             }
-            Regex("""<item\s+[^>]*id='([^']+)'[^>]*href='([^']+)'""").findAll(opf).forEach {
+            itemIdHrefSqRegex.findAll(opf).forEach {
                 if (it.groupValues[1] !in manifest) {
                     manifest[it.groupValues[1]] = ManifestItem(it.groupValues[2])
                 }
             }
-            Regex("""<item\s+[^>]*href='([^']+)'[^>]*id='([^']+)'""").findAll(opf).forEach {
+            itemHrefIdSqRegex.findAll(opf).forEach {
                 val id = it.groupValues[2]
                 if (id !in manifest) manifest[id] = ManifestItem(it.groupValues[1])
             }
-            spineIds = Regex("""<itemref\s+[^>]*idref="([^"]+)"""").findAll(opf)
+            spineIds = spineItemrefRegex.findAll(opf)
                 .map { it.groupValues[1] }.toList()
         }
 
@@ -287,7 +320,7 @@ object EpubParser {
         // for a target wins.
         val toc = mutableMapOf<String, String>()
         fun addToc(baseDir: String, href: String, label: String) {
-            val clean = label.replace(Regex("""\s+"""), " ").trim()
+            val clean = label.replace(labelWhitespaceRegex, " ").trim()
             if (clean.isEmpty() || href.isBlank()) return
             val key = resolvePath(baseDir, href)
             if (key !in toc) toc[key] = clean.take(120)
@@ -335,11 +368,11 @@ object EpubParser {
         }
         fun imageFromXhtml(xhtml: ByteArray, baseDir: String): ByteArray? {
             val s = xhtml.toString(Charsets.UTF_8)
-            val tag = Regex("<(?:img|image)\\b[^>]*>", RegexOption.IGNORE_CASE)
+            val tag = imgTagRegex
                 .find(s)?.value ?: return null
-            val src = Regex("(?:src|xlink:href|href)\\s*=\\s*\"([^\"]+)\"", RegexOption.IGNORE_CASE)
+            val src = imgSrcRegex
                 .find(tag)?.groupValues?.get(1)
-                ?: Regex("(?:src|xlink:href|href)\\s*=\\s*'([^']+)'", RegexOption.IGNORE_CASE)
+                ?: imgSrcSqRegex
                     .find(tag)?.groupValues?.get(1) ?: return null
             val bytes = readEntryBytes(resolvePath(baseDir, src))
             return if (looksLikeImage(bytes)) bytes else null
@@ -360,9 +393,9 @@ object EpubParser {
                 ?.allNamed("reference")
                 ?.firstOrNull { it.getAttribute("type") == "cover" }
                 ?.getAttribute("href")?.takeIf { it.isNotBlank() }
-                ?: Regex("<reference[^>]*type=\"cover\"[^>]*href=\"([^\"]+)\"")
+                ?: coverRefRegex
                     .find(opf)?.groupValues?.get(1)
-                ?: Regex("<reference[^>]*href=\"([^\"]+)\"[^>]*type=\"cover\"")
+                ?: coverRefRevRegex
                     .find(opf)?.groupValues?.get(1)
             if (guideHref != null) coverBytes = coverBytesFor(guideHref)
         }
@@ -377,10 +410,10 @@ object EpubParser {
             }
         val images = mutableMapOf<String, ByteArray>()
         var imageSeq = 0
-        val imgTag = Regex("""<img\b[^>]*>""", RegexOption.IGNORE_CASE)
-        val svgImageTag = Regex("""<image\b[^>]*>""", RegexOption.IGNORE_CASE)
-        val srcAttr = Regex("""(?:src|xlink:href|href)\s*=\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
-        val srcAttrSq = Regex("""(?:src|xlink:href|href)\s*=\s*'([^']+)'""", RegexOption.IGNORE_CASE)
+        val imgTag = imgTagSimpleRegex
+        val svgImageTag = svgImageTagRegex
+        val srcAttr = srcAttrRegex
+        val srcAttrSq = srcAttrSqRegex
 
         val chapters = mutableListOf<BookChapter>()
         var index = 0
@@ -417,9 +450,9 @@ object EpubParser {
             if (text.isBlank()) continue
             index++
             val chTitle = toc[path]
-                ?: Regex("""<title[^>]*>([^<]+)</title>""", RegexOption.IGNORE_CASE)
+                ?: titleTagRegex
                     .find(html)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
-                ?: Regex("""<h[12][^>]*>(.*?)</h[12]>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+                ?: headingTagRegex
                     .find(html)?.groupValues?.get(1)?.let { htmlToText(it) }?.takeIf { it.isNotBlank() }
                 ?: "Chapter $index"
             chapters.add(BookChapter(chTitle.take(120), text))
@@ -436,7 +469,7 @@ object EpubParser {
                 .sumOf { it.trim().length }
             var body = ch.text
             val carriesCover = coverRef != null && imgParas.any { p ->
-                Regex("""\[\[img:(\w+)\]\]""").findAll(p).any { m ->
+                imageTokenRegex.findAll(p).any { m ->
                     images[m.groupValues[1]]?.contentEquals(coverRef) == true
                 }
             }
@@ -516,19 +549,19 @@ object EpubParser {
      */
     fun htmlToText(html: String): String {
         var s = html
-        s = s.replace(Regex("""<script[^>]*>.*?</script>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), " ")
-        s = s.replace(Regex("""<style[^>]*>.*?</style>""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), " ")
-        s = s.replace(Regex("""<(br|/p|/div|/h[1-6]|/li|/tr)[^>]*>""", RegexOption.IGNORE_CASE), "\n")
+        s = s.replace(scriptRegex, " ")
+        s = s.replace(styleRegex, " ")
+        s = s.replace(blockBreakRegex, "\n")
         val rendered = runCatching {
             @Suppress("DEPRECATION")
             android.text.Html.fromHtml(s, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
         }.getOrElse {
-            s.replace(Regex("""<[^>]+>"""), " ")
+            s.replace(tagStripRegex, " ")
         }
         return rendered
-            .replace(Regex("""[ \t\x0B\f]+"""), " ")
-            .replace(Regex("""\n[ ]+"""), "\n")
-            .replace(Regex("""\n{3,}"""), "\n\n")
+            .replace(spaceRunRegex, " ")
+            .replace(newlineSpaceRegex, "\n")
+            .replace(newlineRunRegex, "\n\n")
             .trim()
     }
 }

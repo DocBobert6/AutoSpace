@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.produceState
 import app.autospace.notify.CarMotion
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.drawBehind
@@ -87,13 +86,8 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     // While moving, confirmations are voice-only (r25 §5.4): the sheet hides, so a moving
     // driver never faces a tap target — the spoken question plus yes/no still works.
-    // CarMotion.moving is a polled value, so poll it while a proposal is open.
-    val moving by produceState(initialValue = false, pending) {
-        while (pending != null) {
-            value = app.autospace.notify.CarMotion.moving
-            delay(2_000)
-        }
-    }
+    // r221 (audit P-08): the shared motion flow, not a poll.
+    val moving by CarMotion.movingFlow.collectAsState(initial = false)
     // Expiry clears the proposal silently: no unsolicited speech while driving. A voice
     // answer after expiry is handled by the next handle() call, which declines it the
     // same way.
@@ -218,15 +212,9 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
             }
         }
         if (overlayConversationRowVisible(state.phase)) {
-        // r140: history lives inside the overlay now. CarMotion.moving
-        // is a plain value, not a flow — poll it 1 s, the same way
-        // the retired widget did (GPS only updates every 2 s).
-        val movingNow by produceState(CarMotion.moving) {
-            while (true) {
-                value = CarMotion.moving
-                delay(1_000)
-            }
-        }
+        // r140: history lives inside the overlay now. r221 (audit P-08):
+        // the shared motion flow, not a poll.
+        val movingNow by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
         val displayTurns = overlayConversationTurns(
             ConversationSession.historyForRequest(),
             state.heard, state.reply, movingNow, currentFromAi = state.fromAi,

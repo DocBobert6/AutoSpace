@@ -127,14 +127,14 @@ private fun AgendaCard(context: Context) {
             null -> Text("Loading calendar…", style = MaterialTheme.typography.bodyMedium)
             AgendaResult.Denied -> {
                 Text(
-                    "Calendar access is off — turn it on in the setup guide",
+                    "Calendar access is off — turn it on in AutoSpace's app settings on the phone",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 // r216: the guide button opens AutoSpace's own system app settings
                 // page instead of the phone app (r169's launcher handoff) — the
                 // calendar permission the guide asks for is granted there.
-                GsButton(onClick = { openAppSettings(context) }) { Text("Open on phone") }
+                GsButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
             }
             AgendaResult.Empty -> Text(
                 "Nothing in the next week.",

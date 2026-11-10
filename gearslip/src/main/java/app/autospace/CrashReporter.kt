@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
 import java.io.File
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -109,7 +110,22 @@ object CrashReporter {
      */
     fun install(context: Context) {
         val app = context.applicationContext
-        runCatching { checkUncleanShutdown(app) }
+        // r221 (audit P-04): the unclean-shutdown check reads the previous
+        // session's log tail and writes a report — disk work that used to
+        // run on the main thread at startup. The cheap inputs (the marker
+        // text and the previous log's file reference) are snapshotted here,
+        // synchronously, while the previous session's log is still the newest
+        // one; the read + write run on a daemon thread.
+        val markerText = if (markerFile(app).isFile) {
+            runCatching { markerFile(app).readText().trim() }.getOrDefault("(unreadable marker)")
+        } else {
+            null
+        }
+        val prevLog = previousSessionLog(app)
+        Thread(
+            { runCatching { checkUncleanShutdownAsync(app, markerText, prevLog) } },
+            "crash-report-unclean",
+        ).apply { isDaemon = true; start() }
         runCatching {
             markerFile(app).writeText(
                 "started=${stamp()} version=${appVersion(app)} epoch=${System.currentTimeMillis()}\n",
@@ -145,11 +161,16 @@ object CrashReporter {
         runCatching { markerFile(context.applicationContext).delete() }
     }
 
-    private fun checkUncleanShutdown(app: Context) {
-        val marker = markerFile(app)
-        if (!marker.isFile) return
-        val started = runCatching { marker.readText().trim() }.getOrDefault("(unreadable marker)")
-        val prevLog = previousSessionLog(app)
+    /**
+     * r221 (audit P-04): the unclean-shutdown check, on a daemon thread.
+     * The marker text and the previous log's file reference were snapshotted
+     * synchronously in [install] (before this run's marker was written and
+     * before GearslipLog.init creates the new log); only the log read and
+     * the report write happen here. [started] is null when there was no
+     * marker, meaning the previous run exited cleanly.
+     */
+    private fun checkUncleanShutdownAsync(app: Context, started: String?, prevLog: File?) {
+        if (started == null) return
         val tail = prevLog?.let { readTail(it) } ?: listOf("(previous session log not found)")
         writeReport(
             app,
@@ -174,9 +195,61 @@ object CrashReporter {
             ?.maxByOrNull { it.lastModified() }
     }
 
-    private fun readTail(file: File): List<String> {
-        val lines = runCatching { file.readLines() }.getOrDefault(emptyList())
-        return lines.takeLast(TAIL_LINES)
+    /**
+     * r221 (audit P-04): the last [TAIL_LINES] raw lines of [file], read
+     * backwards in 8KB chunks so a multi-megabyte log is never loaded whole
+     * at startup. Byte-identical to readLines().takeLast(TAIL_LINES) for
+     * the cases the unit tests pin: a trailing newline adds no empty line,
+     * a lone trailing newline is one empty line, and a line split across a
+     * chunk boundary (including a multi-byte character) is reassembled
+     * before it is decoded, so UTF-8 is never cut mid-character. A
+     * trailing carriage return is stripped (readLines strips \r\n).
+     * Internal so the unit tests can pin it without a Context.
+     */
+    internal fun readTail(file: File): List<String> {
+        val raf = runCatching { RandomAccessFile(file, "r") }.getOrNull() ?: return emptyList()
+        return raf.use {
+            val size = it.length()
+            if (size == 0L) return emptyList()
+            val chunk = ByteArray(8192)
+            val lines = ArrayDeque<ByteArray>()
+            var pending = ByteArray(0)
+            var pos = size
+            while (pos > 0 && lines.size < TAIL_LINES) {
+                val take = minOf(8192L, pos).toInt()
+                pos -= take
+                it.seek(pos)
+                it.readFully(chunk, 0, take)
+                var segEnd = take
+                var i = take - 1
+                while (i >= 0) {
+                    if (chunk[i] == '\n'.code.toByte()) {
+                        // A newline as the file's very last byte ends the
+                        // last line; it does not create an empty line
+                        // after it (readLines drops that piece).
+                        if (pos + i == size - 1L && pending.isEmpty()) {
+                            segEnd = i
+                            i--
+                            continue
+                        }
+                        val lineBytes = chunk.copyOfRange(i + 1, segEnd) + pending
+                        lines.addFirst(lineBytes)
+                        pending = ByteArray(0)
+                        segEnd = i
+                        if (lines.size >= TAIL_LINES) break
+                    }
+                    i--
+                }
+                if (lines.size >= TAIL_LINES) break
+                if (segEnd > 0) pending = chunk.copyOfRange(0, segEnd) + pending
+            }
+            // Whatever is left is the file's first line (possibly empty,
+            // when the file starts with a newline).
+            if (lines.size < TAIL_LINES && pos == 0L) {
+                lines.addFirst(pending)
+            }
+            lines.map { String(it, Charsets.UTF_8).removeSuffix("\r") }
+        }
     }
 
     private fun appVersion(app: Context): String {

@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -59,6 +60,9 @@ fun BlockedDetailSheet(
     val sessionCounts by FilterLists.blockedByCategory.collectAsState()
     val recentByTab by FilterLists.blockedRecent.collectAsState()
     val history by FilterLists.blockedHistory.collectAsState()
+    // r221 (audit P-03): the derived flows publish at most every 250 ms —
+    // force one refresh on open, so the sheet never shows stale counts.
+    LaunchedEffect(Unit) { FilterLists.refreshBlockedNow() }
     val tab = tabCounts[tabId] ?: listOf(0L, 0L, 0L)
     val recent = recentByTab[tabId] ?: emptyList()
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {

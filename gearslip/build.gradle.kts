@@ -56,6 +56,24 @@ android {
         buildConfigField("String", "STATS_URL", "\"${project.findProperty("gearslipStatsUrl") ?: ""}\"")
     }
 
+    // r221 (experimental flavor): two editions of the same app. The
+    // standard flavor is the beta line (package app.autospace); the
+    // experimental flavor installs beside it (app.autospace.experimental,
+    // "AutoSpace Experimental") for testing audit fixes before they
+    // reach the beta. Same versionName/versionCode counter, same signing
+    // key; only the package, the label, and the icon differ.
+    flavorDimensions("edition")
+    productFlavors {
+        standard {
+            dimension = "edition"
+        }
+        experimental {
+            dimension = "edition"
+            applicationIdSuffix = ".experimental"
+            manifestPlaceholders["appLabel"] = "AutoSpace Experimental"
+        }
+    }
+
     signingConfigs {
         // A committed DEBUG key (debug.keystore, standard debug credentials).
         // Debug keys are not production secrets; this one exists so CI
@@ -150,12 +168,12 @@ android {
 }
 
 // Audit 5-09: a release build without the signing key used to come out unsigned, and an
-// unsigned release APK cannot install as an update. Fail fast on assembleRelease only, so
+// unsigned release APK cannot install as an update. Fail fast on the release assembles only, so
 // keyless clones still build debug and run tests. Safe for CI: release.yml writes
-// keystore.properties before assembleRelease, and no other workflow runs assembleRelease.
+// keystore.properties before a release assemble, and no other workflow runs one.
 // Lazy matching (like renameApk below): tasks.named() here fails configuration, because
 // AGP creates the assembleRelease task only after evaluation.
-tasks.matching { it.name == "assembleRelease" }.configureEach {
+tasks.matching { it.name == "assembleStandardRelease" || it.name == "assembleExperimentalRelease" }.configureEach {
     doFirst {
         val storeFile = keystoreProperties.getProperty("storeFile")
         if (storeFile == null || !rootProject.file(storeFile).exists()) {
@@ -178,7 +196,16 @@ tasks.register("renameApk") {
             .filter { it.extension == "apk" }
             .toList()
             .forEach { apk ->
-                val renamed = File(rootBuildDir, "AutoSpace-${apk.parentFile.name}.apk")
+                // r221 (experimental flavor): the flavored variant dirs are
+                // standardRelease / experimentalRelease; map them back to the
+                // stable asset names so the beta keeps AutoSpace-release.apk
+                // and the experimental build is AutoSpace-experimental.apk.
+                val variant = when (apk.parentFile.name) {
+                    "standardRelease" -> "release"
+                    "experimentalRelease" -> "experimental"
+                    else -> apk.parentFile.name
+                }
+                val renamed = File(rootBuildDir, "AutoSpace-$variant.apk")
                 apk.copyTo(renamed, overwrite = true)
                 apk.delete()
             }

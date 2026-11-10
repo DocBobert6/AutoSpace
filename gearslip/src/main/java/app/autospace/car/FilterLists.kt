@@ -154,6 +154,17 @@ object FilterLists {
      *  recompose the detail page per request. */
     private val lastHistoryPublish = AtomicLong(0)
 
+    /**
+     * r221 (audit P-03): the same shape for the three derived blocked
+     * flows (by category, per tab, recent hosts): publishing their map
+     * copies on every blocked request recomposes the detail sheet per
+     * request. The session total (blockedFlow) is a single Long and
+     * stays immediate. The throttle is 250 ms; the sheet forces one
+     * refresh when it opens, so it never shows stale counts.
+     */
+    private const val DERIVED_PUBLISH_MS = 250L
+    private val lastDerivedPublish = AtomicLong(0)
+
     @Volatile private var started = false
 
     private fun dir(context: Context) =
@@ -201,6 +212,54 @@ object FilterLists {
         // stale sheet.
     }
 
+    /**
+     * r221 (audit P-02): the blocking config, parsed once and cached in
+     * memory — the per-site exception host set plus the two toggles. The
+     * request path (shouldInterceptRequest) used to decode the host set
+     * and read both toggles from prefs on every subresource; now it reads
+     * this snapshot. Invalidated on every write of the three keys, so a
+     * flipped toggle is never silently ignored.
+     */
+    data class BlockingConfig(
+        val siteBlockingOff: Set<String>,
+        val blockAds: Boolean,
+        val blockTrackers: Boolean,
+    )
+
+    @Volatile private var cachedBlockingConfig: BlockingConfig? = null
+
+    /** The cached blocking config, parsed from prefs on the first call. */
+    fun blockingConfig(context: Context): BlockingConfig =
+        cachedBlockingConfig ?: blockingConfigFor(
+            BrowserStore.siteBlockingOffHosts(context),
+            BrowserStore.blockAds(context),
+            BrowserStore.blockTrackers(context),
+        ).also { cachedBlockingConfig = it }
+
+    /** Pure construction of a [BlockingConfig], so the unit tests can pin
+     *  the snapshot without a Context. */
+    internal fun blockingConfigFor(
+        siteBlockingOff: Set<String>,
+        blockAds: Boolean,
+        blockTrackers: Boolean,
+    ): BlockingConfig = BlockingConfig(siteBlockingOff, blockAds, blockTrackers)
+
+    /** Drops the cached blocking config; called from every writer of the
+     *  three blocking keys (BrowserStore.setBlockAds, setBlockTrackers,
+     *  setSiteBlockingOff). */
+    fun invalidateBlockingConfig() {
+        cachedBlockingConfig = null
+    }
+
+    /** Test seam: the cached config, so the unit tests can pin the cache
+     *  and the invalidation without a Context. */
+    internal fun cachedBlockingConfigForTest(): BlockingConfig? = cachedBlockingConfig
+
+    /** Test seam: install a config directly, mirroring the production path. */
+    internal fun setCachedBlockingConfigForTest(config: BlockingConfig?) {
+        cachedBlockingConfig = config
+    }
+
     /** Records one blocked subresource against its tab and
      *  category (r197, adblock A2): Mariner's noteBlockedFor
      *  shape — session total, per-tab and per-category counts,
@@ -210,17 +269,15 @@ object FilterLists {
     fun noteBlockedFor(tabId: Int, category: Int, host: String, isPrivate: Boolean) {
         blockedFlow.value = blockedAtomic.incrementAndGet()
         FilterEngine.noteBlockedFor(tabId, category, host, isPrivate)
-        blockedByCategoryFlow.value = FilterEngine.blockedByCategory()
-        blockedPerTabFlow.value = FilterEngine.perTabBlocked()
-        blockedRecentFlow.value = recentSnapshot()
+        publishDerivedThrottled()
         publishHistoryThrottled()
     }
 
     /** A navigation resets the tab's count, Mariner's shape. */
     fun resetTabCount(tabId: Int) {
         FilterEngine.resetTabCount(tabId)
-        blockedPerTabFlow.value = FilterEngine.perTabBlocked()
-        blockedRecentFlow.value = recentSnapshot()
+        // A navigation is infrequent: publish at once, unthrottled.
+        publishDerived()
     }
 
     /** Total blocked on this tab since its last navigation. */
@@ -244,6 +301,39 @@ object FilterLists {
 
     private fun recentSnapshot(): Map<Int, List<Pair<String, Int>>> =
         FilterEngine.perTabBlocked().keys.associateWith { FilterEngine.recentBlockedHosts(it) }
+
+    /** Pure throttle decision for the derived blocked flows, so the unit
+     *  tests can pin the 250 ms boundary without a clock. */
+    internal fun shouldPublishDerived(now: Long, last: Long): Boolean =
+        now - last >= DERIVED_PUBLISH_MS
+
+    /** Publishes the three derived blocked flows, at most once per
+     *  [DERIVED_PUBLISH_MS]. The session total is published immediately
+     *  in [noteBlockedFor] and is not throttled. */
+    private fun publishDerivedThrottled() {
+        val now = System.currentTimeMillis()
+        val last = lastDerivedPublish.get()
+        if (shouldPublishDerived(now, last) && lastDerivedPublish.compareAndSet(last, now)) {
+            publishDerived()
+        }
+    }
+
+    /** Publishes the three derived blocked flows at once, unthrottled. */
+    private fun publishDerived() {
+        blockedByCategoryFlow.value = FilterEngine.blockedByCategory()
+        blockedPerTabFlow.value = FilterEngine.perTabBlocked()
+        blockedRecentFlow.value = recentSnapshot()
+    }
+
+    /**
+     * Forces one refresh of the derived blocked flows and resets the
+     * throttle clock — called when the detail sheet opens, so it never
+     * shows counts older than the throttle window.
+     */
+    fun refreshBlockedNow() {
+        lastDerivedPublish.set(System.currentTimeMillis())
+        publishDerived()
+    }
 
     private fun publishHistoryThrottled() {
         val now = System.currentTimeMillis()

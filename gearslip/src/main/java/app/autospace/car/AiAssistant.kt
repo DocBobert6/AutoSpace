@@ -24,6 +24,14 @@ package app.autospace.car
  * an address, a number that is not in the user's words or existing data — is refused here,
  * not confirmed: confirmation verifies understanding, it does not launder guesses.
  */
+
+// r221 (audit C-01): regex patterns compiled once, not on every voice
+// turn / utterance / chapter parse. Same patterns, same call sites —
+// no behavior change.
+private val nonAlnumRegex = Regex("[^a-z0-9]+")
+private val whitespaceRegex = Regex("\\s+")
+private val sentenceSplitRegex = Regex("(?<=[.!?])\\s+")
+private val placePhraseRegex = Regex("""\b(in|at|near|around|for)\s+([a-z0-9][a-z0-9 -]*)$""")
 object AiAssistant {
 
     // --- Pinned model + endpoint (verified 2026-10-26 against Google's docs) ---
@@ -371,8 +379,8 @@ object AiAssistant {
      */
     fun sharesWordWith(destination: String, utterance: String): Boolean {
         val stop = setOf("the", "a", "an", "to", "me", "my", "please")
-        val uttered = utterance.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 && it !in stop }.toSet()
-        val dest = destination.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 3 && it !in stop }.toSet()
+        val uttered = utterance.lowercase().split(nonAlnumRegex).filter { it.length >= 3 && it !in stop }.toSet()
+        val dest = destination.lowercase().split(nonAlnumRegex).filter { it.length >= 3 && it !in stop }.toSet()
         return uttered.intersect(dest).isNotEmpty()
     }
 
@@ -408,13 +416,13 @@ object AiAssistant {
     }
 
     fun capAnswer(text: String): String {
-        val words = text.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        val words = text.trim().split(whitespaceRegex).filter { it.isNotEmpty() }
         if (words.size <= ANSWER_WORD_CAP) return text.trim()
-        val sentences = text.trim().split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+        val sentences = text.trim().split(sentenceSplitRegex).filter { it.isNotBlank() }
         val kept = StringBuilder()
         var count = 0
         for (sentence in sentences) {
-            val n = sentence.split(Regex("\\s+")).count { it.isNotEmpty() }
+            val n = sentence.split(whitespaceRegex).count { it.isNotEmpty() }
             if (kept.isNotEmpty() && count + n > ANSWER_WORD_CAP) break
             if (kept.isNotEmpty()) kept.append(' ')
             kept.append(sentence.trim())
@@ -487,7 +495,7 @@ object AiAssistant {
 
     /** True when the normalized utterance asks something that needs a place to answer. */
     fun isPlaceDependentQuestion(normalized: String): Boolean {
-        val tokens = normalized.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        val tokens = normalized.lowercase().split(nonAlnumRegex).filter { it.isNotEmpty() }
         if (tokens.any { it in PLACE_DEPENDENT_WORDS }) return true
         // "how hot/cold is it outside" is a weather question; without "outside" it is
         // ambiguous ("how hot is the oven") and is left to the model, not this guard.
@@ -517,7 +525,7 @@ object AiAssistant {
      * ("tell me the weather"), so they stay claimed under this rule.
      */
     fun isLocalWeatherTrigger(normalized: String): Boolean {
-        val tokens = normalized.lowercase().split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        val tokens = normalized.lowercase().split(nonAlnumRegex).filter { it.isNotEmpty() }
         if ("weather" in tokens) return true
         val joined = tokens.joinToString(" ")
         if (joined.contains("going to rain") || joined.contains("gonna rain")) return true
@@ -549,8 +557,8 @@ object AiAssistant {
      */
     fun placePhrase(normalized: String): String? {
         val t = normalized.lowercase()
-        val match = Regex("""\b(in|at|near|around|for)\s+([a-z0-9][a-z0-9 -]*)$""").find(t) ?: return null
-        val placeTokens = match.groupValues[2].trim().split(Regex("\\s+"))
+        val match = placePhraseRegex.find(t) ?: return null
+        val placeTokens = match.groupValues[2].trim().split(whitespaceRegex)
             .filter { it.isNotEmpty() && it !in TIME_WORDS && it !in PLACE_PREPOSITIONS }
             .filter { !(it.all { c -> c.isDigit() } && it.length != 5) }
         if (placeTokens.isEmpty()) return null

@@ -43,4 +43,4 @@ jobs:
           fi
           ls "$ANDROID_HOME/platforms"
       - name: Run unit tests
-        run: ./gradlew :gearslip:testDebugUnitTest --stacktrace
+        run: ./gradlew :gearslip:testStandardDebugUnitTest :gearslip:testExperimentalDebugUnitTest --stacktrace

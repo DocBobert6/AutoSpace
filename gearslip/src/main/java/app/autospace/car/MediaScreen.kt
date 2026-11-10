@@ -106,7 +106,7 @@ fun MediaScreen(app: MediaApp, onExit: () -> Unit) {
                             "${app.label} keeps its library to itself.",
                             "AutoSpace can still control it once it has Notification access on the phone. " +
                                 "Allow it under Settings > Notifications > Notification access.",
-                            action = "Open on phone" to {
+                            action = "Open notification settings" to {
                                 val app = context.applicationContext
                                 runCatching {
                                     app.startActivity(

@@ -23,7 +23,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -48,13 +47,8 @@ fun CarWhatsNew(contentPadding: PaddingValues = PaddingValues()) {
     val afterUpdates by CarSettings.whatsNewAfterUpdates.collectAsState()
     val seen by CarSettings.whatsNewSeen.collectAsState()
     val open by CarSettings.whatsNewOpen.collectAsState()
-    // Polled: CarMotion is a plain value, and the card should appear once the car stops.
-    val moving by produceState(CarMotion.moving) {
-        while (true) {
-            value = CarMotion.moving
-            delay(5_000)
-        }
-    }
+    // r221 (audit P-08): the shared motion flow — the card appears once the car stops.
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     val due = afterUpdates && seen < release.versionCode && !moving
     if (!open && !due) return
     val close = { CarSettings.closeWhatsNew(release.versionCode) }

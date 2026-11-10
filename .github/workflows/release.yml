@@ -42,22 +42,42 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: ./gradlew :gearslip:assembleRelease
+        run: |
+          if [[ "${{ github.ref_name }}" == *"-exp"* ]]; then
+            ./gradlew :gearslip:assembleExperimentalRelease
+          else
+            ./gradlew :gearslip:assembleStandardRelease
+          fi
 
       - name: Locate APK
         id: apk
         run: |
           # The build moves its APKs to <root>/build/AutoSpace-<variant>.apk (see renameApk).
-          apk=build/AutoSpace-release.apk
+          if [[ "${{ github.ref_name }}" == *"-exp"* ]]; then
+            apk=build/AutoSpace-experimental.apk
+          else
+            apk=build/AutoSpace-release.apk
+          fi
           test -f "$apk" || { echo "no APK at $apk"; ls -R build | head -50; exit 1; }
           echo "path=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Choose release notes
+        id: notes
+        run: |
+          # r221: experimental tags get their own notes file, so the beta
+          # notes are never overwritten with experimental content.
+          if [[ "${{ github.ref_name }}" == *"-exp"* ]]; then
+            echo "path=.github/release-notes-experimental.md" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=.github/release-notes.md" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.apk.outputs.path }}
           # The hand-written notes go first; GitHub adds the full changelog link under them.
-          body_path: .github/release-notes.md
+          body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: true
           # Every release starts as a pre-release: only phones on the Alpha update channel get it.
           # Once it's tested, untick pre-release on GitHub and everyone gets it.

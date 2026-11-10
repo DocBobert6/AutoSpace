@@ -102,6 +102,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -144,6 +145,9 @@ import org.json.JSONObject
  * is no proceed path. Cleared on page start and on Go back.
  */
 internal data class CertError(val url: String, val primaryError: Int)
+
+// r221 (audit R-11): the per-tab found-media cap — first-seen order, stop adding past it.
+private const val MAX_FOUND_MEDIA_PER_TAB = 50
 
 private class BrowserTab(val id: Int, initialUrl: String, val rawHtml: String? = null) {
     var title by mutableStateOf<String?>(null)
@@ -398,6 +402,9 @@ fun WebApp(content: String) {
     var tabsOpen by remember { mutableStateOf(false) }
     fun addMedia(tab: BrowserTab, url: String, title: String?) {
         if (!VideoUrl.isPlayableUrl(url)) return
+        // r221 (audit R-11): first-seen order, capped — a page that keeps
+        // serving new media URLs no longer grows this list without bound.
+        if (tab.foundMedia.size >= MAX_FOUND_MEDIA_PER_TAB) return
         if (tab.foundMedia.none { it.url == url }) {
             tab.foundMedia.add(0, FoundMedia(url, title?.takeIf { it.isNotBlank() }))
         }
@@ -620,6 +627,9 @@ fun WebApp(content: String) {
         saveSessionNow()
     }
     fun closeTab(tab: BrowserTab) {
+        // r221 (audit R-05): a closed tab's counts reset at once, on both
+        // paths below (reset-in-place and remove).
+        FilterLists.resetTabCount(tab.id)
         val wasPrivate = tab.isPrivate
         if (tabs.size == 1) {
             // Never zero tabs: reset the last tab to a fresh start page
@@ -1026,14 +1036,17 @@ fun WebApp(content: String) {
         fieldText != null || addressEditing || findOpen || engineEditing
     )
     val latestPassengerAllowed = rememberUpdatedState(passengerAllowed)
+    // r221 (audit P-08): the gate reads the shared motion flow — one
+    // 1 s ticker in CarMotion, not a poll per screen. The streak
+    // semantics are unchanged (onPoll still counts consecutive moving
+    // polls; the flow emits every second, moving or not).
     LaunchedEffect(Unit) {
-        while (true) {
-            when (gateTrigger.onPoll(CarMotion.moving, latestTypingActive.value, latestPassengerAllowed.value)) {
+        CarMotion.movingFlow.collect { mv ->
+            when (gateTrigger.onPoll(mv, latestTypingActive.value, latestPassengerAllowed.value)) {
                 GateSignal.OPEN -> gateOpen = true
                 GateSignal.CLOSE -> gateOpen = false
                 GateSignal.NONE -> Unit
             }
-            delay(1_000)
         }
     }
     // Immersive + keyboard: an address cannot be edited while the
@@ -1499,6 +1512,9 @@ fun WebApp(content: String) {
             // behaviour for the single WebView); switching tabs does not.
             val hadPrivate = tabs.any { it.isPrivate }
             tabs.forEach { runCatching { it.view?.destroy() } }
+            // r221 (audit R-05): every tab's blocked counts reset as the
+            // browser is left, so a later entry never shows stale counts.
+            tabs.forEach { FilterLists.resetTabCount(it.id) }
             // Session restore (r21): leaving saves the session, and a
             // private profile dies with its last private tab — leaving
             // with private tabs open destroys those views too.
@@ -5324,8 +5340,9 @@ private class BrowserClient(
             // Ad/tracker blocking (r21 bundled list, r85 full engine):
             // subresources only — a main-frame load is NEVER blocked,
             // so blocking cannot break a page load itself. Runs off
-            // the UI thread, so the toggle is read straight from
-            // BrowserStore. GET/HEAD only (Mariner's Phase G repair):
+            // the UI thread, so the blocking config comes from the
+            // cached snapshot (FilterLists.blockingConfig, invalidated
+            // on write). GET/HEAD only (Mariner's Phase G repair):
             // answering a POST/PUT upload, form post or sign-in with
             // an empty response kills the action silently, so those
             // pass through untouched. The bundled host list still
@@ -5346,16 +5363,23 @@ private class BrowserClient(
                     // network blocking for this page host entirely
                     // (both toggles), so the call never runs and
                     // nothing is counted for the host either.
-                    val blockingOff = BrowserStore.isSiteBlockingOff(ctx, pageHost())
+                    // r221 (audit P-02): the page host and the blocking
+                    // config are read once per request, not once per
+                    // toggle — the config is the cached snapshot, so a
+                    // subresource no longer decodes the host set and
+                    // reads both toggles from prefs.
+                    val page = pageHost()
+                    val config = FilterLists.blockingConfig(ctx)
+                    val blockingOff = BrowserStore.isSiteHostIn(config.siteBlockingOff, page)
                     val blockCat = if (blockingOff) null else FilterEngine.blockCategory(
                         scheme = uri.scheme ?: "",
                         host = uri.host ?: "",
                         path = uri.path ?: "",
                         urlString = url,
                         isForMainFrame = false,
-                        blockAds = BrowserStore.blockAds(ctx),
-                        blockTrackers = BrowserStore.blockTrackers(ctx),
-                        pageHost = pageHost(),
+                        blockAds = config.blockAds,
+                        blockTrackers = config.blockTrackers,
+                        pageHost = page,
                     )
                     if (blockCat != null) {
                         FilterLists.noteBlockedFor(

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            179, "0.5.0-exp.1",
+            listOf(
+                "EXPERIMENTAL build, for testing only — it installs beside the beta and never replaces it. Startup is faster, the screen no longer stays on after a drive ends, and the setup-guide words now name the place they actually open.",
+            ),
+        ),
+        Release(
             178, "0.5.0-beta.12",
             listOf(
                 "The assistant can now remember what you tell it — your home place and your name — when you turn memory on in Settings > AI assistant. It stays on this phone only, you can see everything remembered and delete any of it, and turning memory off deletes it all. It is off by default.",

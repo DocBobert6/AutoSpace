@@ -13,6 +13,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -70,8 +73,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -549,11 +552,9 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         }
     }
 
-    // CarMotion.moving is a plain value, not a flow — poll it like CarWhatsNew does.
-    // 1 s here (GPS only updates every 2 s) keeps video-blanking lag to ~1–3 s.
-    val moving by produceState(CarMotion.moving) {
-        while (true) { value = CarMotion.moving; delay(1_000) }
-    }
+    // r221 (audit P-08): the shared motion flow — 1 s ticks (GPS only
+    // updates every 2 s) keep video-blanking lag to ~1–3 s.
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     // Passenger gate, same per-session, never-persisted rule as
     // the browser's (corrected 2026-10-25: stopping does NOT clear
     // the allowance, so moving again does not re-ask a passenger
@@ -566,29 +567,29 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
         if (!moving) { gateOpen = false }
         else if (!passengerAllowed) { gateOpen = true }
     }
-    val position by produceState(0L to C.TIME_UNSET) {
+    // r221 (audit P-10): the position read lives in scrubberRow now — the
+    // only place that displays it. The index mirror stays here: the
+    // track-change effects key on currentIndex and must run even while the
+    // scrubber is hidden (or the player is paused), so the mirror reads the
+    // two indices on the same 500 ms cadence as the old poll. Two int reads
+    // only — no position read, no duration read, no sync write.
+    LaunchedEffect(player) {
         while (true) {
-            value = player.currentPosition to player.duration
             currentIndex = player.currentMediaItemIndex
             lastSeenIndex = player.currentMediaItemIndex
             delay(500)
         }
     }
-    val (pos, dur) = position
-    // r118: the live write half of the shared position, mirroring
-    // the mini card's poll — whichever player is alive keeps the
-    // holder fresh. Switches themselves are written synchronously
-    // in expand()/minimize, never left to this poll.
-    LaunchedEffect(pos) {
-        urls.getOrNull(currentIndex)?.let { VideoPositionSync.update(it, pos.coerceAtLeast(0L)) }
-    }
-    val isLive = dur == C.TIME_UNSET || player.isCurrentMediaItemLive
     val currentTitle = titles.getOrNull(currentIndex) ?: urls.getOrNull(currentIndex) ?: "Video"
     val currentUrl = urls.getOrNull(currentIndex) ?: ""
 
     fun seekBy(deltaMs: Long) {
-        val target = (pos + deltaMs).coerceAtLeast(0L)
-        player.seekTo(if (dur > 0) target.coerceAtMost(dur) else target)
+        // r221 (audit P-10): the position lives in scrubberRow now — read
+        // the player directly instead of a cached tick.
+        val cur = player.currentPosition
+        val d = player.duration
+        val target = (cur + deltaMs).coerceAtLeast(0L)
+        player.seekTo(if (d > 0) target.coerceAtMost(d) else target)
     }
     fun cycleSpeed() {
         val steps = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -840,22 +841,28 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
             // and the icon is onSurface, not onPrimary: the old Gs
             // Primary box (primary background, onPrimary icon) is gone.
             PlayerCircle(96.dp, { if (isPlaying) player.pause() else player.play(); touchControls() }) {
+                // r221 (audit G-10): the buffering fill is drawn, not laid
+                // out — the old inner Box re-measured on every animation
+                // frame. The transition exists only while buffering, and
+                // the colour is read once at composition, not per frame.
+                val bufferFill = if (isBuffering) {
+                    rememberInfiniteTransition(label = "bufferFill").animateFloat(
+                        initialValue = 0f, targetValue = 1f,
+                        animationSpec = infiniteRepeatable(animation = tween(1600), repeatMode = RepeatMode.Reverse),
+                        label = "bufferFillFrac",
+                    )
+                } else {
+                    null
+                }
+                val bufferFillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
                 Box(
-                    Modifier.size(96.dp).clip(CircleShape),
+                    Modifier.size(96.dp).clip(CircleShape)
+                        .drawBehind {
+                            val frac = bufferFill?.value ?: 0f
+                            if (frac > 0f) drawRect(bufferFillColor, Offset.Zero, Size(size.width * frac, size.height))
+                        },
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (isBuffering) {
-                        val cycle = rememberInfiniteTransition(label = "bufferFill")
-                        val fillFrac = cycle.animateFloat(
-                            initialValue = 0f, targetValue = 1f,
-                            animationSpec = infiniteRepeatable(animation = tween(1600), repeatMode = RepeatMode.Reverse),
-                            label = "bufferFillFrac",
-                        )
-                        Box(
-                            Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(fillFrac.value)
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                        )
-                    }
                     Icon(
                         if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
@@ -880,6 +887,29 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
     }
     @Composable
     fun scrubberRow(onVideo: Boolean = true) {
+        // r221 (audit P-10): the 2 Hz position read lives here — the only
+        // place that displays it — and only while playing, so a paused
+        // player is never woken to read a position nobody watches. The
+        // shared-position write fires only when the position moved at least
+        // a second (or backwards, a seek), not on every tick.
+        var position by remember { mutableStateOf(player.currentPosition to player.duration) }
+        var lastWrittenPos by remember { mutableLongStateOf(-1L) }
+        LaunchedEffect(player) {
+            while (true) {
+                if (player.isPlaying) {
+                    position = player.currentPosition to player.duration
+                }
+                delay(500)
+            }
+        }
+        val (pos, dur) = position
+        LaunchedEffect(pos) {
+            if (pos < lastWrittenPos || pos - lastWrittenPos >= 1_000) {
+                urls.getOrNull(currentIndex)?.let { VideoPositionSync.update(it, pos.coerceAtLeast(0L)) }
+                lastWrittenPos = pos
+            }
+        }
+        val isLive = dur == C.TIME_UNSET || player.isCurrentMediaItemLive
         // Over video the times are white on the scrim; in the driving
         // audio layout they sit on the theme surface, so they take the
         // theme's colours instead (white there would be invisible).
@@ -899,7 +929,7 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                     PlayerScrubber(
                         fraction = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f),
                         ink = timeColor,
-                        onSeek = { fraction -> player.seekTo((fraction * dur).toLong()); touchControls() },
+                        onSeek = { fraction -> val target = (fraction * dur).toLong(); position = target to dur; player.seekTo(target); touchControls() },
                     )
                 }
                 Text(

@@ -401,13 +401,13 @@ fun CarLauncher() {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "No car apps found — check the setup guide",
+                    "No car apps found — check AutoSpace's app settings on the phone",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Spacer(Modifier.height(12.dp))
-                GsButton(onClick = { openAppSettings(context) }) { Text("Open on phone") }
+                GsButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
             }
         } else {
             if (pinned.isNotEmpty()) {

@@ -428,6 +428,7 @@ object BrowserStore {
 
     fun setBlockAds(context: Context, on: Boolean) {
         AppSettings.putString(context, KEY_BLOCK_ADS, on.toString())
+        FilterLists.invalidateBlockingConfig()
     }
 
     fun blockTrackers(context: Context): Boolean =
@@ -438,6 +439,7 @@ object BrowserStore {
 
     fun setBlockTrackers(context: Context, on: Boolean) {
         AppSettings.putString(context, KEY_BLOCK_TRACKERS, on.toString())
+        FilterLists.invalidateBlockingConfig()
     }
 
     /** True when either blocking toggle is on — the gate for
@@ -1319,6 +1321,7 @@ object BrowserStore {
             KEY_SITE_BLOCKING_OFF,
             encodeSiteHostSet(siteHostsWith(siteBlockingOffHosts(context), key, off)),
         )
+        FilterLists.invalidateBlockingConfig()
     }
 
     fun siteCookieExceptionHosts(context: Context): Set<String> =

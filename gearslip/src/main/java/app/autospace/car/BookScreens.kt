@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -239,7 +240,7 @@ fun BookshelfScreen() {
     val scope = rememberCoroutineScope()
     var page by remember { mutableStateOf<BookPage>(BookPage.Shelf) }
     var books by remember { mutableStateOf(BookImport.load(context)) }
-    var moving by remember { mutableStateOf(CarMotion.moving) }
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
     var importing by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf<String?>(null) }
     var deleteTarget by remember { mutableStateOf<BookRecord?>(null) }
@@ -253,13 +254,7 @@ fun BookshelfScreen() {
         onDispose { session.stop() }
     }
 
-    // Parked gate, live, games shape: a plain property, polled.
-    LaunchedEffect(Unit) {
-        while (true) {
-            moving = CarMotion.moving
-            delay(1000)
-        }
-    }
+    // Parked gate, live (r221, audit P-08): the shared motion flow.
 
     fun refresh() {
         books = BookImport.load(context)

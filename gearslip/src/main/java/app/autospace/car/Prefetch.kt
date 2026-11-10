@@ -38,6 +38,24 @@ object Prefetch {
         }
     }
 
+    /**
+     * r221 (audit P-04): the startup wipe of a dead process's private
+     * profile and downloads, on the prefetch worker instead of the main
+     * thread. Call this BEFORE [warm], so the cleanup is queued ahead of
+     * the prefetch loads. It bypasses the MIN_GAP throttle on purpose and
+     * must NOT become a step in [warm]: a force warm mid-session would
+     * wipe a live private profile.
+     */
+    fun startupCleanup(context: Context) {
+        val app = context.applicationContext
+        worker.execute {
+            step("private startup cleanup") {
+                PrivateProfile.wipe()
+                BrowserDownloads.deletePrivateDownloads(app)
+            }
+        }
+    }
+
     // One failing loader must not stop the others.
     private fun step(name: String, block: () -> Unit) {
         runCatching(block).onFailure { GearslipLog.w("prefetch: $name failed: ${it.message}") }

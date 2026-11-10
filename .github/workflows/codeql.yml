@@ -56,7 +56,7 @@ jobs:
           tar -xzf /tmp/oboe.tar.gz -C third_party/oboe --strip-components=1
 
       - if: matrix.build-mode == 'manual'
-        run: ./gradlew :gearslip:assembleDebug --no-daemon
+        run: ./gradlew :gearslip:assembleStandardDebug --no-daemon
 
       - uses: github/codeql-action/analyze@v4
         with:

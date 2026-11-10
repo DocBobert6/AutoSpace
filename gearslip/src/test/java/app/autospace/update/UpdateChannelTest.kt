@@ -1,5 +1,6 @@
 package app.autospace.update
 
+import app.autospace.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -75,5 +76,47 @@ class UpdateChannelTest {
     fun bareStageCountsAsSuffixZero() {
         assertTrue(UpdateChecker.isNewer("0.5.0-beta.1", "0.5.0-beta"))
         assertFalse(UpdateChecker.isNewer("0.5.0-beta", "0.5.0-beta"))
+    }
+
+    // r221 (experimental flavor): the suffix also decides between experimental
+    // builds, and an experimental tag never beats a beta.
+    @Test
+    fun newerExpBeatsOlderExp() {
+        assertTrue(UpdateChecker.isNewer("0.5.0-exp.2", "0.5.0-exp.1"))
+        assertTrue(UpdateChecker.isNewer("0.5.0-exp.10", "0.5.0-exp.9"))
+    }
+
+    @Test
+    fun sameExpIsNotNewer() {
+        assertFalse(UpdateChecker.isNewer("0.5.0-exp.1", "0.5.0-exp.1"))
+        assertFalse(UpdateChecker.isNewer("0.5.0-exp.1", "0.5.0-exp.2"))
+    }
+
+    @Test
+    fun expNeverBeatsBeta() {
+        assertFalse(UpdateChecker.isNewer("0.5.0-exp.1", "0.5.0-beta.12"))
+        assertFalse(UpdateChecker.isNewer("0.5.0-exp.1", "0.5.0-beta.4"))
+        assertTrue(UpdateChecker.isNewer("0.5.0-beta.12", "0.5.0-exp.1"))
+    }
+
+    @Test
+    fun expVersionDefaultsToStable() {
+        assertEquals(UpdateChecker.Channel.STABLE, UpdateChecker.defaultChannelForVersion("0.5.0-exp.1"))
+    }
+
+    // r221: the flavor gate — each build only ever accepts its own line's tags.
+    // This test runs in BOTH flavor variants (testStandardDebugUnitTest and
+    // testExperimentalDebugUnitTest), so both sides of the gate are covered.
+    @Test
+    fun flavorGateAcceptsOnlyItsOwnLine() {
+        if (BuildConfig.FLAVOR == "experimental") {
+            assertTrue(UpdateChecker.acceptsTag("v0.5.0-exp.1"))
+            assertFalse(UpdateChecker.acceptsTag("v0.5.0-beta.12"))
+            assertFalse(UpdateChecker.acceptsTag("v0.5.0"))
+        } else {
+            assertFalse(UpdateChecker.acceptsTag("v0.5.0-exp.1"))
+            assertTrue(UpdateChecker.acceptsTag("v0.5.0-beta.12"))
+            assertTrue(UpdateChecker.acceptsTag("v0.5.0"))
+        }
     }
 }
