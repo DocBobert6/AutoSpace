@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            172, "0.5.0-beta.6",
+            listOf(
+                "Sites you allowed over plain http in HTTPS-only mode can now be taken back: the browser settings list every allowed site, and removing one makes the warning appear again the next time you visit it.",
+            ),
+        ),
+        Release(
             171, "0.5.0-beta.5",
             listOf(
                 "The home widgets no longer slide under the map's right-edge buttons while you are navigating: the widget column now sits clear of them on either side of the screen. The widgets themselves are unchanged.",

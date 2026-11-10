@@ -403,4 +403,31 @@ class BrowserStoreTest {
         assertEquals("Muted only", BrowserStore.autoplayModeLabel("muted"))
         assertEquals("Allowed", BrowserStore.autoplayModeLabel("whatever"))
     }
+
+    // r214: the HTTPS exceptions list + revoke row rides on these
+    // pure helpers — the revoke path is withoutHttpsException.
+    @Test
+    fun httpsExceptionsParseIsCaseInsensitiveAndSkipsBlanks() {
+        assertEquals(setOf("example.com", "foo.org"), BrowserStore.parseHttpsExceptions("Example.COM, ,foo.org,"))
+        assertEquals(emptySet<String>(), BrowserStore.parseHttpsExceptions(""))
+    }
+
+    @Test
+    fun httpsExceptionsAddDedupesAndSorts() {
+        assertEquals("a.com,b.com", BrowserStore.withHttpsException("b.com", "A.COM"))
+        assertEquals("a.com,b.com", BrowserStore.withHttpsException("a.com,b.com", "a.com"))
+    }
+
+    @Test
+    fun httpsExceptionsRemoveDropsOnlyThatHost() {
+        assertEquals("a.com,c.com", BrowserStore.withoutHttpsException("a.com,b.com,c.com", "B.com"))
+        assertEquals("a.com", BrowserStore.withoutHttpsException("a.com", "a.com"))
+        assertEquals("a.com,b.com", BrowserStore.withoutHttpsException("a.com,b.com", "other.com"))
+    }
+
+    @Test
+    fun httpsExceptionsLookupIsCaseInsensitive() {
+        assertTrue(BrowserStore.isHttpsException("a.com,b.com", "B.COM"))
+        assertFalse(BrowserStore.isHttpsException("a.com", "b.com"))
+    }
 }

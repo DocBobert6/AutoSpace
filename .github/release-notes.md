@@ -1,13 +1,13 @@
-AutoSpace 0.5.0-beta.5 is the fifth public beta — a prerelease, following the alpha line.
+AutoSpace 0.5.0-beta.6 is the sixth public beta — a prerelease, following the alpha line.
 
 ## New features
 - No new features in this release.
 
 ## Improvements
-- No improvements in this release.
+- Sites allowed over plain http in HTTPS-only mode are now listed in the browser settings, with a Remove button for each one. Removing a site makes the warning appear again the next time you visit it over plain http.
 
 ## Bug fixes
-- The home widgets no longer slide under the map's right-edge buttons while navigating: the widget column now sits clear of them on either side of the screen. The widgets themselves are unchanged.
+- No bug fixes in this release.
 
 ## Maintenance
 - No maintenance changes in this release.
