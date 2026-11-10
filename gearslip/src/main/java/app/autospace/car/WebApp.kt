@@ -202,6 +202,39 @@ object BrowserImmersiveState {
     fun exit() { immersive.value = false }
 }
 
+// r209 (compat finding 10, fix 1): the fullscreen exit pill — one shape
+// for both fullscreen modes (page-immersive and video). Extracted to a
+// file-level composable because the WebApp method hit the JVM 64KB
+// method-size limit with the pill inlined twice; the pill is
+// byte-identical in both places, only the exit action differs.
+@Composable
+private fun FullscreenExitPill(onExit: () -> Unit) {
+    Box(
+        Modifier.height(44.dp)
+            .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
+            .clickable { onExit() }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                Icons.Filled.FullscreenExit, "Exit fullscreen",
+                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+            )
+            Text(
+                "Exit fullscreen",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
@@ -2781,29 +2814,7 @@ fun WebApp(content: String) {
                 Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = pillTop, bottom = 12.dp),
                 contentAlignment = Alignment.TopEnd,
             ) {
-                Box(
-                    Modifier.height(44.dp)
-                        .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
-                        .clickable { BrowserImmersiveState.exit() }
-                        .padding(horizontal = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.FullscreenExit, "Exit fullscreen",
-                            tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
-                        )
-                        Text(
-                            "Exit fullscreen",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
+                FullscreenExitPill { BrowserImmersiveState.exit() }
             }
         }
         // Audit fix (2026-10-25, A2): find-in-page pill. It rides
@@ -3461,29 +3472,7 @@ fun WebApp(content: String) {
                     Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
                     contentAlignment = Alignment.TopEnd,
                 ) {
-                    Box(
-                        Modifier.height(44.dp)
-                            .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
-                            .clickable { hideFullscreen() }
-                            .padding(horizontal = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            androidx.compose.material3.Icon(
-                                Icons.Filled.FullscreenExit, "Exit fullscreen",
-                                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
-                            )
-                            Text(
-                                "Exit fullscreen",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    }
+                    FullscreenExitPill { hideFullscreen() }
                 }
             }
         }
