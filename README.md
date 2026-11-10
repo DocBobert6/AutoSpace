@@ -175,8 +175,8 @@ that mirrors the phone.
   ordinary app can pass another app's audio along.
 - **AutoSpace needs no adb, root, or Shizuku.** Every feature relies on an
   ordinary Android permission or an on-device consent dialog.
-- **First prerelease published: 0.4.0-alpha.** The first public release
-  after the alpha will be a beta, not a stable release. In-app updates
+- **First public beta published: 0.5.0-beta.1.** The beta line follows
+  the alpha; it is a prerelease, and the updater treats it as one. In-app updates
   are active: Stable, Beta, and Alpha channels, with the channel default
   following the build stage (alpha builds default to Alpha; a channel
   you save yourself always wins). Release builds ship as GitHub releases
@@ -186,13 +186,19 @@ that mirrors the phone.
 
 ## Verify your download
 
-The first prerelease (0.4.0-alpha) is published on the
-[releases page](https://github.com/DocBobert6/AutoSpace/releases), but
-its signing fingerprint is not published here yet: per the fork's plan
-it is published with the first beta release, under its own key. The
-block that used to sit here (a fingerprint for `app.autospace`) did
-**not** match any signing key used by this fork and has been removed,
-not carried forward.
+Releases are published on the
+[releases page](https://github.com/DocBobert6/AutoSpace/releases).
+The first public beta is 0.5.0-beta.1, a prerelease. The release
+package is `app.autospace`, signed with the fork's own permanent
+release key under v2-scheme-only signing. Its certificate SHA-256
+fingerprint, verified against the shipped beta APK, is:
+
+```
+4E:AA:F7:9C:7B:C5:07:9B:C4:3A:B0:36:03:9A:06:67:67:77:53:33:92:A0:6E:10:C5:EB:CC:44:D6:12:F1:31
+```
+
+Check your copy against that fingerprint before installing (AppVerifier
+or `apksigner verify --print-certs`).
 
 Debug builds are signed with the committed debug key in
 `gearslip/debug.keystore` (standard debug credentials — a shared debug
@@ -203,8 +209,7 @@ against both the keystore and the shipped debug APK, is:
 AB:7B:DB:B2:1E:F9:B3:5A:C9:26:11:5A:F5:C6:62:32:25:16:4A:9C:53:83:A1:A0:23:B6:FA:1E:33:62:06:2E
 ```
 
-Debug builds install as `app.autospace.dev`. The release fingerprint will
-be published here with the first beta release, under its own key.
+Debug builds install as `app.autospace.dev`.
 
 ## Building
 

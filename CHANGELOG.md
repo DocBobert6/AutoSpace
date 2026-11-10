@@ -1,5 +1,12 @@
 # AutoSpace changelog
 
+## 0.5.0-beta.1 (2026-11-10) — first public beta
+
+- New features: fullscreen video in the browser takes the whole display now, and a playing video gets a small pop-up button on the page that opens it in the fullscreen player.
+- Improvements: a video going fullscreen attaches at once and hides the side rail; leaving fullscreen (Exit fullscreen button, or head-unit BACK) restores the page and the rail at once.
+- Bug fixes: fullscreen video no longer letterboxes inside the browser's inset area with the rail strip still reserved.
+- Maintenance: the release signing fingerprint is published in the README with this first beta, so a download can be checked before installing.
+
 ## 0.4.0-alpha (2026-10-26) — first prerelease
 - First prerelease (not a stable release): version 0.4.0-alpha,
   versionCode 11, release package `app.autospace`, signed with the fork's

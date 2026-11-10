@@ -382,6 +382,27 @@ fun WebApp(content: String) {
     // r197 (adblock A2): the Blocked detail page — per-tab, per-category and
     // per-day counts, opened from the settings menu under Ads & trackers.
     var showBlockedDetail by remember { mutableStateOf(false) }
+    // r209 (compat finding 10): a tap on the in-page video pop-up
+    // (Mariner Beta.58 (5)). Anti-spoof, Mariner's rule: the URL
+    // must match a media entry the app's own finder saw — the page
+    // can never make the app open an arbitrary URL. A tap opens
+    // the video in the fullscreen player with the finder queue,
+    // the same path as the media sheet's Open; a long-press opens
+    // the media sheet instead, Mariner's runMediaScan half.
+    fun handleVideoPopupTap(url: String, longPress: Boolean) {
+        val entry = VideoPopup.allowCheck(url, activeTab.foundMedia) ?: return
+        if (longPress) {
+            sheetOpen = true
+            return
+        }
+        PlayerNet.referer = activeTab.currentUrl
+        navigator.videoPlayer(
+            activeTab.foundMedia.map { it.url },
+            activeTab.foundMedia.map { it.title },
+            activeTab.foundMedia.indexOf(entry).coerceAtLeast(0),
+            activeTab.isPrivate,
+        )
+    }
     // r199 (adblock A4): the HTTPS-only interstitial — the plain-http URL waiting on the driver's choice, and the tab it belongs to. Mariner's httpsWarnUrl shape, with the tab id riding along so the choice loads into the right tab. The one-time allowance set below is session-only: "Continue once" remembers the host only until the browser is left.
     var httpsWarnUrl by remember { mutableStateOf<String?>(null) }
     var httpsWarnTabId by remember { mutableStateOf(-1) }
@@ -1378,10 +1399,15 @@ fun WebApp(content: String) {
         }.getOrDefault(false)
     }
 
+    // r209 (compat finding 10): hide is synchronous, Mariner's shape —
+    // the view leaves its parent here, not on the next recomposition,
+    // and the immersive state the show path entered exits with it.
     fun hideFullscreen() {
         fullscreenCallback?.onCustomViewHidden()
         fullscreenCallback = null
+        (fullscreenView?.parent as? ViewGroup)?.removeView(fullscreenView)
         fullscreenView = null
+        BrowserImmersiveState.exit()
     }
     // Scroll-hide decision (Robert 2026-10-25 06:20): called on
     // the main thread for the ACTIVE tab only — a background
@@ -2200,6 +2226,22 @@ fun WebApp(content: String) {
                         .addDocumentStartJavaScript(this, FilterEngine.AUTOPLAY_MUTE_SCRIPT, setOf("*"))
                 }
             }
+            // r209 (compat finding 10): Mariner's video pop-up watcher
+            // (Beta.58 (5)) — a document-start script that parks a
+            // small button on the largest playing video. Registered
+            // unconditionally, Mariner's shape: the per-site opt-out
+            // is enforced in-script by the flag set on navigation
+            // below, and a locked-down page simply never shows the
+            // button. Best-effort and silent on failure.
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(
+                    androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT,
+                )
+            ) {
+                runCatching {
+                    androidx.webkit.WebViewCompat
+                        .addDocumentStartJavaScript(this, VideoPopup.WATCHER_JS, setOf("*"))
+                }
+            }
             webChromeClient = BrowserChrome(
                 context = context,
                 onPopupUrl = { host, url, transport ->
@@ -2238,14 +2280,24 @@ fun WebApp(content: String) {
                     // Fullscreen / dialogs belong to the
                     // tab in front: a background tab's
                     // video must not seize the screen.
+                    // r209 (compat finding 10): Mariner
+                    // attaches the custom view synchronously
+                    // in the callback — no posted handoff —
+                    // and enters immersive, so CarUi hides
+                    // the rail and frees its strip: the
+                    // video fills the full display width
+                    // instead of the browser's inset area.
+                    // The chrome callback runs on the UI
+                    // thread, so the state write is direct.
                     if (tab.id == activeTabId) {
-                        mainHandler.post {
-                            fullscreenView = view
-                            fullscreenCallback = callback
-                        }
+                        fullscreenView = view
+                        fullscreenCallback = callback
+                        BrowserImmersiveState.enter()
                     }
                 },
-                onHideFullscreen = { mainHandler.post { hideFullscreen() } },
+                // r209: the hide callback runs on the UI thread too —
+                // hideFullscreen is synchronous, no posted handoff.
+                onHideFullscreen = { hideFullscreen() },
                 onJsDialog = { dialog ->
                     if (tab.id == activeTabId) {
                         mainHandler.post { jsDialog = dialog }
@@ -2286,6 +2338,24 @@ fun WebApp(content: String) {
             addJavascriptInterface(
                 FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
                 "GearslipField",
+            )
+            // r209 (compat finding 10): Mariner's video pop-up bridge
+            // (Beta.58 (5)) — the watcher's button reports taps here.
+            // The bridge runs off the UI thread, so the tap handler
+            // is posted, Mariner's wv.post shape.
+            addJavascriptInterface(
+                object {
+                    @android.webkit.JavascriptInterface
+                    fun onVideoTap(url: String) {
+                        mainHandler.post { handleVideoPopupTap(url, false) }
+                    }
+
+                    @android.webkit.JavascriptInterface
+                    fun onVideoLongPress(url: String) {
+                        mainHandler.post { handleVideoPopupTap(url, true) }
+                    }
+                },
+                VideoPopup.BRIDGE_NAME,
             )
             tab.view = this
         }
@@ -3380,9 +3450,41 @@ fun WebApp(content: String) {
         }
         // Fullscreen video (Phase 3.4, item 3): the WebView's custom view fills the
         // car frame; Back (or the page) hides it via the chrome callbacks.
+        // r209 (compat finding 10): the show path enters immersive, so the rail
+        // is hidden and this box is the full display width — and the box
+        // carries its own exit pill, the page-immersive pill's shape, so
+        // leaving fullscreen never depends on knowing BACK exits it.
         fullscreenView?.let { view ->
             Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black)) {
                 AndroidView(factory = { _ -> view }, modifier = Modifier.fillMaxSize())
+                Box(
+                    Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    Box(
+                        Modifier.height(44.dp)
+                            .frostBar(gsButtonShape(RoundedCornerShape(50)), 6.dp)
+                            .clickable { hideFullscreen() }
+                            .padding(horizontal = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.FullscreenExit, "Exit fullscreen",
+                                tint = MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(24.dp),
+                            )
+                            Text(
+                                "Exit fullscreen",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                    }
+                }
             }
         }
         jsDialog?.let { dialog ->
@@ -3518,6 +3620,7 @@ fun WebApp(content: String) {
             }
         }
         if (sheetOpen) {
+            val popupHost = runCatching { Uri.parse(activeTab.currentUrl).host ?: "" }.getOrDefault("")
             MediaFinderSheet(
                 items = activeTab.foundMedia,
                 onOpen = { item ->
@@ -3545,6 +3648,15 @@ fun WebApp(content: String) {
                     // was found on (see the listener site).
                     downloadUrl(item.url, activeTab.isPrivate, isMedia = true, referer = activeTab.currentUrl, userAgent = tabUserAgent(activeTab))
                 },
+                // r209 (compat finding 10): Mariner's per-site video
+                // pop-up opt-out, the sheet footer — offered only
+                // for a normal tab on a named host, never private.
+                popupOff = if (!activeTab.isPrivate && popupHost.isNotBlank()) {
+                    BrowserStore.isVideoPopupOff(context, popupHost)
+                } else null,
+                onPopupOffChange = if (!activeTab.isPrivate && popupHost.isNotBlank()) {
+                    { off -> BrowserStore.setVideoPopupOff(context, popupHost, off) }
+                } else null,
                 onClose = { sheetOpen = false },
             )
         }
@@ -5427,6 +5539,15 @@ private class BrowserClient(
                         "}catch(e){}})()"
                     view.evaluateJavascript(js, null)
                 }
+            }
+            // r209 (compat finding 10): tell the video pop-up watcher
+            // whether this site opted out — the watcher re-reads the
+            // flag on every placement pass, Mariner's shape.
+            if (finishedHost.isNotEmpty()) {
+                view.evaluateJavascript(
+                    VideoPopup.popupOffJs(BrowserStore.isVideoPopupOff(view.context, finishedHost)),
+                    null,
+                )
             }
         }
         // r199 (adblock A4): a completed https load forgets the plain

@@ -1337,5 +1337,31 @@ object BrowserStore {
             encodeSiteHostSet(siteHostsWith(siteCookieExceptionHosts(context), key, excepted)),
         )
     }
+
+    // ---- Video pop-up opt-out (r209, compat finding 10, Mariner's
+    // VideoPopup isOff) ----
+    // One host set, the r205 zoom-codec shape, shared codec with the
+    // r208 exception sets. A host in the set never shows the in-page
+    // video pop-up button; absent means the button may show. Only a
+    // normal tab can write it (see WebApp) — a private tab never
+    // stores an opt-out, same as the r208 exceptions.
+    private const val KEY_VIDEO_POPUP_OFF = "browser_video_popup_off"
+
+    fun videoPopupOffHosts(context: Context): Set<String> =
+        decodeSiteHostSet(AppSettings.getString(context, KEY_VIDEO_POPUP_OFF, ""))
+
+    fun isVideoPopupOff(context: Context, host: String): Boolean =
+        isSiteHostIn(videoPopupOffHosts(context), host)
+
+    /** Store or clear a per-site video pop-up opt-out. */
+    fun setVideoPopupOff(context: Context, host: String, off: Boolean) {
+        val key = host.lowercase()
+        if (key.isBlank()) return
+        AppSettings.putString(
+            context,
+            KEY_VIDEO_POPUP_OFF,
+            encodeSiteHostSet(siteHostsWith(videoPopupOffHosts(context), key, off)),
+        )
+    }
 }
 

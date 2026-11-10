@@ -1,15 +1,15 @@
-Gearslip 0.3.01 connects wirelessly on more phones and dongles.
+AutoSpace 0.5.0-beta.1 is the first public beta — a prerelease, following the alpha line.
 
-## Fixed
-- Wireless works with dongles that send their Wi-Fi details before their address.
-- A VPN no longer stops a wireless drive without a word. Gearslip tries the phone's ordinary route around it, and if the VPN still blocks the car, Gearslip says so. To fix it for good, exclude Gearslip in your VPN app.
-- When Android won't ask for the Nearby devices permission, a button opens Gearslip's settings, where you can turn it on.
+## New features
+- Fullscreen video in the browser takes the whole display now: the side rail hides and the video fills the screen.
+- A playing video gets a small pop-up button on the page itself: tap it to open that video in the fullscreen player, long-press it to open the media sheet. The button can be turned off for just that site from the media sheet.
 
-## Changed
-- An app that someone else has re-signed, such as a modified Waze, no longer shows the red X when it accepts Gearslip.
-- Support Gearslip through Liberapay, Buy Me a Coffee, or Monero, in Settings.
-- Gearslip now belongs to Twink Software LLC, and its code lives at github.com/DocBobert6/AutoSpace. Old links still work.
-- The README lists Gearslip's signing certificate, so you can check your copy with AppVerifier.
+## Improvements
+- A video going fullscreen attaches at once, with no posted handoff.
+- Leaving fullscreen — the Exit fullscreen button, or head-unit BACK — restores the page and the rail at once.
 
-## Known issues
-- Phone calls are unstable right now and may drop or fail to connect.
+## Bug fixes
+- Fullscreen video no longer letterboxes inside the browser's inset area with the rail strip still reserved.
+
+## Maintenance
+- The release signing fingerprint is published in the README with this first beta, so a download can be checked before installing.

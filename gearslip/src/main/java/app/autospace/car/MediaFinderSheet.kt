@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -48,7 +49,7 @@ data class FoundMedia(val url: String, val title: String? = null) {
  * after tapping it, so more than one item can be downloaded.
  */
 @Composable
-fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit, onPopOut: ((FoundMedia) -> Unit)? = null, onDownload: ((FoundMedia) -> Unit)? = null) {
+fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onClose: () -> Unit, onPopOut: ((FoundMedia) -> Unit)? = null, onDownload: ((FoundMedia) -> Unit)? = null, popupOff: Boolean? = null, onPopupOffChange: ((Boolean) -> Unit)? = null) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         Box(
             Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).clickable(
@@ -149,6 +150,26 @@ fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onCl
                                 }
                             }
                         }
+                    }
+                }
+                // r209 (compat finding 10): Mariner's per-site video
+                // pop-up opt-out, the sheet footer — shown only when
+                // the caller passes both halves (a normal tab on a
+                // named host); a private tab never offers it.
+                if (popupOff != null && onPopupOffChange != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            "Don't show the video pop-up on this site",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = popupOff,
+                            onCheckedChange = onPopupOffChange,
+                        )
                     }
                 }
                 GsButton(onClick = onClose, modifier = Modifier.fillMaxWidth()) {

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            167, "0.5.0-beta.1",
+            listOf(
+                "First public beta. Fullscreen video in the browser now takes the whole display: the side rail hides and the video fills the screen, with an Exit fullscreen button and the head-unit BACK button to leave it. A playing video also gets a small pop-up button on the page itself — tap it to open that video in the fullscreen player, or turn the button off for just that site from the media sheet.",
+            ),
+        ),
+        Release(
             166, "0.4.155-alpha",
             listOf(
                 "A site that breaks with ad-blocking on can be allowed for just that site now: turn blocking off for the site you are on, and it stays on everywhere else. A site whose login needs a third-party cookie can be allowed one for just that site too. Both are remembered per site, and neither is offered in a private tab.",
