@@ -406,6 +406,14 @@ fun WebApp(content: String) {
     // composition, before the sheet can open. Refreshed on tab
     // switches and navigations, and whenever the sheet changes it.
     var siteZoom by remember { mutableStateOf(0) }
+    // r208: per-site exceptions (Mariner's SiteSetting
+    // disableBlocking / allowThirdPartyCookies) — blocking
+    // off and third-party cookies allowed for this host
+    // only. Start false — hostOf is declared below this
+    // line, and the tab-switch effect sets the real values
+    // on first composition, before the sheet can open.
+    var siteBlockingOff by remember { mutableStateOf(false) }
+    var siteCookieExcepted by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findMatches by remember { mutableStateOf("") }
@@ -710,6 +718,8 @@ fun WebApp(content: String) {
         // switch never shows another site's zoom.
         web?.settings?.textZoom = BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
         siteZoom = BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))
+        siteBlockingOff = BrowserStore.isSiteBlockingOff(context, hostOf(activeTab.currentUrl))
+        siteCookieExcepted = BrowserStore.isSiteCookieExcepted(context, hostOf(activeTab.currentUrl))
         if (findOpen && findQuery.isNotEmpty()) web?.findAllAsync(findQuery)
         bookmarks = BrowserStore.bookmarks(context)
         historyList = BrowserStore.history(context)
@@ -725,6 +735,8 @@ fun WebApp(content: String) {
         activeTab.view?.settings?.textZoom =
             BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
         siteZoom = BrowserStore.siteZoom(context, hostOf(activeTab.currentUrl))
+        siteBlockingOff = BrowserStore.isSiteBlockingOff(context, hostOf(activeTab.currentUrl))
+        siteCookieExcepted = BrowserStore.isSiteCookieExcepted(context, hostOf(activeTab.currentUrl))
     }
     var fullscreenView by remember { mutableStateOf<View?>(null) }
     var fullscreenCallback by remember { mutableStateOf<WebChromeClient.CustomViewCallback?>(null) }
@@ -3023,6 +3035,24 @@ fun WebApp(content: String) {
                     activeTab.view?.settings?.textZoom =
                         BrowserStore.effectiveZoom(context, hostOf(activeTab.currentUrl))
                 },
+                // r208: per-site exceptions for the current host.
+                // A private tab never writes one (r191/r206):
+                // the rows are hidden for private tabs, so there
+                // is nothing to store. The blocking flip takes
+                // effect for new requests at once; already-blocked
+                // parts of the open page need a reload to come back.
+                isPrivateTab = activeTab.isPrivate,
+                siteBlockingOff = siteBlockingOff,
+                onSiteBlockingOff = { off ->
+                    BrowserStore.setSiteBlockingOff(context, hostOf(activeTab.currentUrl), off)
+                    siteBlockingOff = off
+                },
+                siteCookieExcepted = siteCookieExcepted,
+                onSiteCookieExcepted = { excepted ->
+                    BrowserStore.setSiteCookieException(context, hostOf(activeTab.currentUrl), excepted)
+                    siteCookieExcepted = excepted
+                    applyCookieSettings(context, activeTab.view)
+                },
                 // Audit fix (2026-10-25, A3): share intent to the
                 // phone browser. The car tab is untouched — nothing
                 // here closes it, switches it, or reloads it — and
@@ -4300,6 +4330,15 @@ private fun BrowserSettingsMenu(
     // 0 = unset, use the global size above.
     siteZoom: Int,
     onSiteZoom: (Int) -> Unit,
+    // r208: per-site exceptions for the current host
+    // (Mariner's SiteSetting disableBlocking /
+    // allowThirdPartyCookies) — plus whether the active
+    // tab is private, so the rows can hide there.
+    isPrivateTab: Boolean,
+    siteBlockingOff: Boolean,
+    onSiteBlockingOff: (Boolean) -> Unit,
+    siteCookieExcepted: Boolean,
+    onSiteCookieExcepted: (Boolean) -> Unit,
     onOpenOnPhone: () -> Unit,
     // r183: current-page "Open in app" — shown only when a handler
     // exists, computed by the caller when the menu opens.
@@ -4582,6 +4621,27 @@ private fun BrowserSettingsMenu(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // r208 (compat finding 9): per-site exceptions,
+                // Mariner's SiteSetting shape — this host only,
+                // hidden on start pages and in private tabs.
+                // Mariner shows its blocking row for private tabs
+                // too, but a stored exception would outlive the
+                // private session, so AutoSpace hides these rows
+                // there instead (r191/r206 precedent).
+                if (currentHost.isNotBlank() && !isPrivateTab) {
+                    MenuRow("Blocking for this site", !siteBlockingOff) { onSiteBlockingOff(!siteBlockingOff) }
+                    Text(
+                        "Ads and trackers load for $currentHost only. New requests pass at once; parts of the open page that are already blocked need a reload to come back.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    MenuRow("Allow third-party cookies for this site", siteCookieExcepted) { onSiteCookieExcepted(!siteCookieExcepted) }
+                    Text(
+                        "Lets $currentHost use third-party cookies even while they are blocked everywhere else — the fix for embedded logins that need one.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 MenuSection("Ads & trackers")
                 MenuRow("Block ads", blockAdsOn) { onBlockAds(!blockAdsOn) }
                 Text(
@@ -5134,7 +5194,13 @@ private class BrowserClient(
                     // its category — the ads toggle gates ads, the
                     // trackers toggle gates trackers, and the count
                     // lands against this tab and category.
-                    val blockCat = FilterEngine.blockCategory(
+                    // r208 (compat finding 9): Mariner's
+                    // disableBlocking — a per-site exception skips
+                    // network blocking for this page host entirely
+                    // (both toggles), so the call never runs and
+                    // nothing is counted for the host either.
+                    val blockingOff = BrowserStore.isSiteBlockingOff(ctx, pageHost())
+                    val blockCat = if (blockingOff) null else FilterEngine.blockCategory(
                         scheme = uri.scheme ?: "",
                         host = uri.host ?: "",
                         path = uri.path ?: "",
@@ -5343,9 +5409,14 @@ private class BrowserClient(
         // (the document-start generic sheet, registered at WebView
         // creation below, covers pre-paint hiding when lists were
         // already loaded).
-        if (view != null && url != null && BrowserStore.blockingEnabled(view.context)) {
+        if (view != null && url != null) {
             val finishedHost = runCatching { Uri.parse(url).host ?: "" }.getOrDefault("")
-            if (finishedHost.isNotEmpty()) {
+            // r208 (compat finding 9): Mariner's injectCosmetic
+            // gate — the page-finish sheet skips a host with a
+            // blocking exception, same as network blocking.
+            if (finishedHost.isNotEmpty() && BrowserStore.blockingEnabled(view.context) &&
+                !BrowserStore.isSiteBlockingOff(view.context, finishedHost)
+            ) {
                 val css = FilterEngine.cosmeticCss(finishedHost)
                 if (css.isNotEmpty()) {
                     val js = "(function(){try{" +

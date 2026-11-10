@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            166, "0.4.155-alpha",
+            listOf(
+                "A site that breaks with ad-blocking on can be allowed for just that site now: turn blocking off for the site you are on, and it stays on everywhere else. A site whose login needs a third-party cookie can be allowed one for just that site too. Both are remembered per site, and neither is offered in a private tab.",
+            ),
+        ),
+        Release(
             165, "0.4.154-alpha",
             listOf(
                 "Tapping an email, map, or text-message link in the browser opens your mail, maps, or messaging app now, instead of stopping at a dead end. Any other app link asks first, naming where it wants to go, before it opens. A phone-number link asks you to confirm the call first, and it works even while driving or from a private tab.",

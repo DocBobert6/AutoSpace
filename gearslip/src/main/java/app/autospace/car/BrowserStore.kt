@@ -1261,5 +1261,81 @@ object BrowserStore {
             encodeSitePermissions(sitePermissionMapWith(sitePermissions(context), key, resource, decision)),
         )
     }
+
+    // ---- Per-site exceptions (r208, compat finding 9, Mariner's
+    // SiteSetting disableBlocking / allowThirdPartyCookies) ----
+    // Two host sets, one URL-encoded host per line, under their own
+    // keys (the r205 zoom-codec shape, one shared codec for both
+    // sets so the pure codec stays JVM-testable without org.json).
+    // A host in the set carries the exception; absent means the
+    // global rule applies. Both sets are read for every tab,
+    // private or not — an exception is a host rule, not history —
+    // but only a normal tab can write one (see WebApp).
+    private const val KEY_SITE_BLOCKING_OFF = "browser_site_blocking_off"
+    private const val KEY_SITE_COOKIE_EXCEPTIONS = "browser_site_cookie_exceptions"
+
+    /** Pure codec: one URL-encoded lowercase host per line, sorted so storage is stable. */
+    fun encodeSiteHostSet(hosts: Set<String>): String =
+        hosts.map { it.lowercase() }.filter { it.isNotBlank() }.sorted()
+            .joinToString("\n") { URLEncoder.encode(it, "UTF-8") }
+
+    /** Pure codec: blank lines are skipped, hosts lowercased. */
+    fun decodeSiteHostSet(raw: String): Set<String> {
+        if (raw.isBlank()) return emptySet()
+        val out = LinkedHashSet<String>()
+        for (line in raw.lines()) {
+            if (line.isBlank()) continue
+            val host = runCatching { URLDecoder.decode(line, "UTF-8") }.getOrDefault(line)
+            if (host.isNotBlank()) out.add(host.lowercase())
+        }
+        return out
+    }
+
+    /** Pure lookup: this host carries the exception. */
+    fun isSiteHostIn(hosts: Set<String>, host: String): Boolean =
+        hosts.contains(host.lowercase())
+
+    /** Pure update: true stores the host, false removes it. */
+    fun siteHostsWith(hosts: Set<String>, host: String, present: Boolean): Set<String> {
+        val key = host.lowercase()
+        if (key.isBlank()) return hosts
+        val out = hosts.toMutableSet()
+        if (present) out.add(key) else out.remove(key)
+        return out
+    }
+
+    fun siteBlockingOffHosts(context: Context): Set<String> =
+        decodeSiteHostSet(AppSettings.getString(context, KEY_SITE_BLOCKING_OFF, ""))
+
+    fun isSiteBlockingOff(context: Context, host: String): Boolean =
+        isSiteHostIn(siteBlockingOffHosts(context), host)
+
+    /** Store or clear a per-site blocking exception. */
+    fun setSiteBlockingOff(context: Context, host: String, off: Boolean) {
+        val key = host.lowercase()
+        if (key.isBlank()) return
+        AppSettings.putString(
+            context,
+            KEY_SITE_BLOCKING_OFF,
+            encodeSiteHostSet(siteHostsWith(siteBlockingOffHosts(context), key, off)),
+        )
+    }
+
+    fun siteCookieExceptionHosts(context: Context): Set<String> =
+        decodeSiteHostSet(AppSettings.getString(context, KEY_SITE_COOKIE_EXCEPTIONS, ""))
+
+    fun isSiteCookieExcepted(context: Context, host: String): Boolean =
+        isSiteHostIn(siteCookieExceptionHosts(context), host)
+
+    /** Store or clear a per-site third-party-cookie exception. */
+    fun setSiteCookieException(context: Context, host: String, excepted: Boolean) {
+        val key = host.lowercase()
+        if (key.isBlank()) return
+        AppSettings.putString(
+            context,
+            KEY_SITE_COOKIE_EXCEPTIONS,
+            encodeSiteHostSet(siteHostsWith(siteCookieExceptionHosts(context), key, excepted)),
+        )
+    }
 }
 

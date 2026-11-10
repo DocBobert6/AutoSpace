@@ -279,23 +279,34 @@ fun applyWebHardening(settings: android.webkit.WebSettings) {
 /**
  * Cookie controls (r196, adblock A1, Mariner's cookie shapes):
  * accept is global (CookieManager.setAcceptCookie); third-party is
- * per-WebView (setAcceptThirdPartyCookies) with no per-site exception
- * — the per-site panel is excluded, so the toggle is the whole rule;
- * DOM storage rides the WebView settings. Called at WebView creation
- * and again on every page start (Mariner re-evaluates the third-party
- * policy per page start), and from the settings-sheet callbacks so a
- * flip applies to the live tab at once instead of waiting for a
- * navigation. A null WebView still applies the global half.
+ * per-WebView (setAcceptThirdPartyCookies), blocked when the global
+ * toggle is on UNLESS this host carries a per-site exception
+ * (r208, compat finding 9, Mariner's applyCookiePolicy shape —
+ * the exception is what keeps SSO and embedded logins working).
+ * The exception only lifts the third-party block: with Accept
+ * cookies off, nothing is stored for any host. DOM storage rides
+ * the WebView settings. Called at WebView creation and again on
+ * every page start (Mariner re-evaluates the third-party policy
+ * per page start, from the tab's current host), and from the
+ * settings-sheet callbacks so a flip applies to the live tab at
+ * once instead of waiting for a navigation. A null WebView still
+ * applies the global half.
  */
 fun applyCookieSettings(context: Context, webView: WebView?) {
     runCatching {
         val manager = android.webkit.CookieManager.getInstance()
         manager.setAcceptCookie(BrowserStore.acceptCookies(context))
         if (webView != null) {
-            manager.setAcceptThirdPartyCookies(
-                webView,
-                !BrowserStore.blockThirdPartyCookies(context),
-            )
+            if (!BrowserStore.blockThirdPartyCookies(context)) {
+                manager.setAcceptThirdPartyCookies(webView, true)
+            } else {
+                val host = runCatching {
+                    android.net.Uri.parse(webView.url ?: "").host ?: ""
+                }.getOrDefault("")
+                val excepted = host.isNotBlank() &&
+                    BrowserStore.isSiteCookieExcepted(context, host)
+                manager.setAcceptThirdPartyCookies(webView, excepted)
+            }
             webView.settings.domStorageEnabled = BrowserStore.domStorageEnabled(context)
         }
     }
