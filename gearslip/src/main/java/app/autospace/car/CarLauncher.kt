@@ -394,6 +394,7 @@ fun CarLauncher() {
             // r169 (audit §5 5-17): a zero-app catalog gets its own branch with a
             // guide button, reusing the notifications empty-state pattern, instead of
             // rendering blank. The search pill above stays, so a driver can still type.
+            // r216: the guide button opens AutoSpace's app settings page (was the phone app).
             Column(
                 Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.Center,
@@ -406,7 +407,7 @@ fun CarLauncher() {
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
                 Spacer(Modifier.height(12.dp))
-                GsButton(onClick = { openPhoneApp(context) }) { Text("Open on phone") }
+                GsButton(onClick = { openAppSettings(context) }) { Text("Open on phone") }
             }
         } else {
             if (pinned.isNotEmpty()) {

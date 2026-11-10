@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            174, "0.5.0-beta.8",
+            listOf(
+                "The setup guide buttons on the car screen now open AutoSpace's own app settings on the phone, where the permissions the guide asks for can be granted, instead of opening the phone app.",
+            ),
+        ),
+        Release(
             173, "0.5.0-beta.7",
             listOf(
                 "The app now calls itself Beta everywhere it used to say alpha: the welcome screen on first setup said \"alpha\" even though this has been a beta since the first public beta, and the same for the version note in the app's description. Nothing else changes.",

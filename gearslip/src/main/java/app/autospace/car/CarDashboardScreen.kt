@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
+import android.net.Uri
 import android.provider.CalendarContract
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -129,11 +131,10 @@ private fun AgendaCard(context: Context) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                // r169 (audit §5 5-14): the setup guide lives in the phone app and the
-                // car surface has no destination for it, so the button hands off to the
-                // phone app — the guide shows there when setup has not been seen, and
-                // otherwise Home, from which Settings grants the permission.
-                GsButton(onClick = { openPhoneApp(context) }) { Text("Open on phone") }
+                // r216: the guide button opens AutoSpace's own system app settings
+                // page instead of the phone app (r169's launcher handoff) — the
+                // calendar permission the guide asks for is granted there.
+                GsButton(onClick = { openAppSettings(context) }) { Text("Open on phone") }
             }
             AgendaResult.Empty -> Text(
                 "Nothing in the next week.",
@@ -188,16 +189,20 @@ internal fun eventWhen(event: AgendaEvent): String {
 internal data class AgendaEvent(val title: String, val startMillis: Long, val allDay: Boolean)
 
 /**
- * Opens AutoSpace on the phone (r169, audit §5 5-14/5-17): the setup guide lives in the
- * phone app and the car surface has no destination for it, so the guide buttons hand
- * off to the phone app instead of inventing a car-side guide page. A no-op when the
- * phone app cannot be launched; it never requests a permission.
+ * Opens AutoSpace's own system app settings page (r216; was the phone app's launcher
+ * entry in r169, audit §5 5-14/5-17): the setup guide lives in the phone app and the
+ * car surface has no destination for it, so the guide buttons open the app's settings
+ * instead of inventing a car-side guide page — the permissions the guide asks for
+ * (calendar, car apps) are granted there. FLAG_ACTIVITY_NEW_TASK is required because
+ * the callers hand in the application context. A no-op when the settings page cannot
+ * be opened; it never requests a permission.
  */
-internal fun openPhoneApp(context: Context) {
+internal fun openAppSettings(context: Context) {
     runCatching {
-        context.packageManager.getLaunchIntentForPackage(context.packageName)
-            ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            ?.let(context::startActivity)
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 
