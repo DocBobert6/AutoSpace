@@ -17,25 +17,36 @@ class FloatingHomeTest {
 
     @Test
     fun cardShowsOnlyWhenEveryGatePasses() {
-        assertTrue(shouldShowFloatingCard(true, false, SidePanel.NONE, true))
+        assertTrue(shouldShowFloatingCard(true, false, SidePanel.NONE, true, false))
     }
 
     @Test
     fun cardHidesWhenAnyGateFails() {
         // Toggle off (the default): classic Home, no card.
         // Nothing playing: full-bleed map, no card.
-        assertFalse(shouldShowFloatingCard(false, false, SidePanel.NONE, true))
+        assertFalse(shouldShowFloatingCard(false, false, SidePanel.NONE, true, false))
         // Dismissed this session: map only, pill comes back.
-        assertFalse(shouldShowFloatingCard(true, true, SidePanel.NONE, true))
+        assertFalse(shouldShowFloatingCard(true, true, SidePanel.NONE, true, false))
         // Lyrics owns the side: classic split instead.
-        assertFalse(shouldShowFloatingCard(true, false, SidePanel.LYRICS, true))
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.LYRICS, true, false))
         // Not on Home: the card lives in CarHome only.
-        assertFalse(shouldShowFloatingCard(true, false, SidePanel.NONE, false))
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.NONE, false, false))
+        // A live conversation: the card steps aside for the overlay.
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.NONE, true, true))
     }
 
 
 
 
+
+    @Test
+    fun cardHidesWhileConversationIsLiveAndReturnsWhenItEnds() {
+        // r212: the conversation gate is the only change — every
+        // other gate still passes, and the card comes back the
+        // moment the conversation ends, with no dismiss involved.
+        assertFalse(shouldShowFloatingCard(true, false, SidePanel.NONE, true, true))
+        assertTrue(shouldShowFloatingCard(true, false, SidePanel.NONE, true, false))
+    }
 
     @Test
     fun playbackStartTransitionResurfacesButLevelDoesNot() {

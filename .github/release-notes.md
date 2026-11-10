@@ -1,13 +1,13 @@
-AutoSpace 0.5.0-beta.3 is the third public beta — a prerelease, following the alpha line.
+AutoSpace 0.5.0-beta.4 is the fourth public beta — a prerelease, following the alpha line.
 
 ## New features
 - No new features in this release.
 
 ## Improvements
-- Weather questions all work the same way now: asking for the forecast, snow, or humidity answers with your local weather, just like asking for the weather does, instead of asking which place you mean. A question with a place in it — a town name, or a ZIP code — still answers for that place, and "near me" or "at home" means right here.
+- No improvements in this release.
 
 ## Bug fixes
-- No bug fixes in this release.
+- The floating music card no longer stays visible during a conversation with the assistant: it steps aside while the conversation is live and comes back when it ends. Ordinary playback is unchanged — the card only hides for a conversation.
 
 ## Maintenance
 - No maintenance changes in this release.

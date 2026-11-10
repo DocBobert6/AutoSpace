@@ -44,6 +44,30 @@ class AssistantPhasePolicyTest {
     }
 
     @Test
+    fun conversationLiveInEveryNonIdlePhase() {
+        // r212: listening, thinking, speaking, and error are all
+        // live — the overlay is up in each, so the card hides.
+        assertTrue(isConversationLive(CarAssistant.Phase.LISTENING, hasPendingProposal = false))
+        assertTrue(isConversationLive(CarAssistant.Phase.THINKING, hasPendingProposal = false))
+        assertTrue(isConversationLive(CarAssistant.Phase.SPEAKING, hasPendingProposal = false))
+        assertTrue(isConversationLive(CarAssistant.Phase.ERROR, hasPendingProposal = false))
+    }
+
+    @Test
+    fun conversationLiveWhileProposalPendingEvenWhenIdle() {
+        // r212: the sheet outlives the spoken question, so the
+        // overlay stays up for a pending proposal after the phase
+        // returns to IDLE — and the card stays hidden with it.
+        assertTrue(isConversationLive(CarAssistant.Phase.IDLE, hasPendingProposal = true))
+        assertTrue(isConversationLive(CarAssistant.Phase.LISTENING, hasPendingProposal = true))
+    }
+
+    @Test
+    fun conversationNotLiveOnlyWhenIdleWithNoProposal() {
+        assertFalse(isConversationLive(CarAssistant.Phase.IDLE, hasPendingProposal = false))
+    }
+
+    @Test
     fun navHeldSkipsFollowUpWindow() {
         assertTrue(skipFollowUpWindow(navHeld = true))
     }

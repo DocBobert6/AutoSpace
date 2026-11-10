@@ -77,3 +77,17 @@ internal class PlaybackStartGate(private val onStarted: () -> Unit) {
         }
     }
 }
+
+/**
+ * r212: whether a conversation is live — the one condition the
+ * AssistantOverlay uses to stay on screen, shared so the floating
+ * audio card's hide can never drift from the overlay's visibility.
+ * Live while the assistant is in any non-idle phase (listening,
+ * thinking, speaking, or showing an error), and also while a
+ * proposal sheet is open even after the phase has returned to IDLE:
+ * the sheet must outlive the spoken question, so the overlay stays
+ * up for a pending proposal. Pure, so the unit tests pin it without
+ * the assistant object.
+ */
+internal fun isConversationLive(phase: CarAssistant.Phase, hasPendingProposal: Boolean): Boolean =
+    phase != CarAssistant.Phase.IDLE || hasPendingProposal

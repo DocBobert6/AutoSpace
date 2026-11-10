@@ -108,13 +108,18 @@ object FloatingHomeState {
  * session, actually on Home, and never while the lyrics column owns
  * the side (lyrics falls back to the split instead). r97 graduation:
  * the card is the only media treatment now — no toggle gates it.
+ * r212: never while a conversation is live — the AssistantOverlay is
+ * the one conversation surface, so the card steps aside for it and
+ * comes back when the conversation ends; ordinary playback with no
+ * conversation keeps the card exactly as today.
  */
 fun shouldShowFloatingCard(
     isPlaying: Boolean,
     dismissed: Boolean,
     sidePanel: SidePanel,
     onHome: Boolean,
-): Boolean = isPlaying && !dismissed && onHome && sidePanel != SidePanel.LYRICS
+    conversationLive: Boolean,
+): Boolean = isPlaying && !dismissed && onHome && sidePanel != SidePanel.LYRICS && !conversationLive
 
 
 

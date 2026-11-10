@@ -89,6 +89,14 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
+    // r212: the conversation state that hides the floating audio card
+    // while the AssistantOverlay is up — the same condition the
+    // overlay itself uses to stay on screen (see isConversationLive),
+    // so the card and the overlay can never disagree about whether a
+    // conversation is live. Parked and moving alike: the hide follows
+    // the conversation, not the motion state.
+    val assistantState by CarAssistant.state.collectAsStateWithLifecycle()
+    val aiPendingProposal by AssistantCommands.aiPending.collectAsStateWithLifecycle()
     val autoplayOffer by CarServices.autoplayOfferVisible.collectAsStateWithLifecycle()
     val widgetsDismissed by CarSettings.widgetsDismissed.collectAsStateWithLifecycle()
     val hiddenWidgets by CarSettings.hiddenWidgets.collectAsStateWithLifecycle()
@@ -184,11 +192,14 @@ fun CarHome(mapSurfaceStrip: Dp, mapSurfaceBottomStrip: Dp = 0.dp) {
     // the floating-card slot has no widget branch anymore.
     // Precedence is mini video first (hiding it would stop
     // playback — its player lives in composition), then the audio
-    // card, which now stays visible during a conversation exactly
-    // as it did before the widget existed.
+    // card. r212: the audio card hides while a conversation is
+    // live and comes back when it ends — the r140 consequence,
+    // approved 2026-11-10. Only the conversation hides it:
+    // ordinary playback with no conversation keeps the card.
     val showFloatingCard = shouldShowFloatingCard(
         phase == CarMedia.Phase.READY && now.isActive,
         FloatingHomeState.dismissed.value, panel, onHome,
+        isConversationLive(assistantState.phase, aiPendingProposal != null),
     ) && !showMiniVideo
     // r69: mini-player docking (A44/A45). The trip bar
     // sits at the bottom-start corner during guidance (see

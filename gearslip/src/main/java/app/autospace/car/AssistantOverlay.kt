@@ -73,10 +73,14 @@ import kotlinx.coroutines.launch
 fun AssistantOverlay(modifier: Modifier = Modifier) {
     val state by CarAssistant.state.collectAsState()
     val pending by AssistantCommands.aiPending.collectAsState()
-    // The sheet must outlive the spoken question: once the question finishes speaking the
-    // phase returns to IDLE, but the proposal stays open until its window lapses or the
-    // user answers — so the overlay stays up for a pending proposal even while idle.
-    if (state.phase == CarAssistant.Phase.IDLE && pending == null) return
+    // r212: the live condition lives in [isConversationLive] now — the
+    // floating audio card hides on exactly this condition, so the two
+    // can never drift apart. The sheet must outlive the spoken
+    // question: once the question finishes speaking the phase returns
+    // to IDLE, but the proposal stays open until its window lapses or
+    // the user answers — so the overlay stays up for a pending
+    // proposal even while idle.
+    if (!isConversationLive(state.phase, pending != null)) return
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
     val frame by CarEnvironment.frame.collectAsState()
