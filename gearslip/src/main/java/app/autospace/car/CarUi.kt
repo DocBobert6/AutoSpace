@@ -211,6 +211,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.MERIDIAN -> meridianScheme()
         ColorScheme.WORKSHOP -> workshopScheme(dark)
         ColorScheme.AURORA_FIELD -> auroraFieldScheme(dark)
+        ColorScheme.DASHBOARD -> dashboardScheme(dark)
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -2105,6 +2106,94 @@ private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorSc
  * white on #007AC2 and #007AC2 on black/white are both ~4.6:1 (AA);
  * tertiary #FFD659 always takes black text, never white.
  */
+/**
+ * r222: the Dashboard scheme — the Altima dash, dark + light. Dark is
+ * near-black with burnt-amber accents and a steel-blue secondary;
+ * light is mid-to-dark greys with warm-white text, amber for glows
+ * and fills, and a lightened steel blue. No red anywhere, in either
+ * mode (the error role is deep umber, not red). The surface
+ * containers step darker from the mid-grey light background, so a
+ * raised card still reads as raised. Follows the mode control (it is
+ * not in schemeForcesDark), exactly like Canvas and Horizon.
+ */
+private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+    return if (dark) {
+        darkColorScheme(
+            background = Color(DashboardPalette.backgroundDark),
+            onBackground = Color(DashboardPalette.onSurfaceDark),
+            surface = Color(DashboardPalette.backgroundDark),
+            onSurface = Color(DashboardPalette.onSurfaceDark),
+            surfaceVariant = Color(DashboardPalette.surfaceVariantDark),
+            onSurfaceVariant = Color(DashboardPalette.onSurfaceVariantDark),
+            primary = Color(DashboardPalette.primaryDark),
+            onPrimary = Color(DashboardPalette.onPrimaryDark),
+            primaryContainer = Color(DashboardPalette.primaryContainerDark),
+            onPrimaryContainer = Color(DashboardPalette.onPrimaryContainerDark),
+            secondary = Color(DashboardPalette.secondaryDark),
+            onSecondary = Color(DashboardPalette.onSecondaryDark),
+            secondaryContainer = Color(DashboardPalette.secondaryContainerDark),
+            onSecondaryContainer = Color(DashboardPalette.onSecondaryContainerDark),
+            tertiary = Color(DashboardPalette.tertiaryDark),
+            onTertiary = Color(DashboardPalette.onTertiaryDark),
+            tertiaryContainer = Color(DashboardPalette.tertiaryContainerDark),
+            onTertiaryContainer = Color(DashboardPalette.onTertiaryContainerDark),
+            error = Color(DashboardPalette.error),
+            onError = Color(DashboardPalette.onError),
+            outline = Color(DashboardPalette.outlineDark),
+            outlineVariant = Color(DashboardPalette.outlineVariantDark),
+            surfaceTint = Color(DashboardPalette.primaryDark),
+            surfaceContainerLowest = Color(0xFF08080C),
+            surfaceContainerLow = Color(DashboardPalette.backgroundDark),
+            surfaceContainer = Color(0xFF16161D),
+            surfaceContainerHigh = Color(DashboardPalette.surfaceVariantDark),
+            surfaceContainerHighest = Color(0xFF26262E),
+            surfaceDim = Color(DashboardPalette.backgroundDark),
+            surfaceBright = Color(0xFF232329),
+            inverseSurface = Color(DashboardPalette.onSurfaceDark),
+            inverseOnSurface = Color(DashboardPalette.backgroundDark),
+            inversePrimary = Color(DashboardPalette.primaryLight),
+            scrim = Color.Black,
+        )
+    } else {
+        lightColorScheme(
+            background = Color(DashboardPalette.backgroundLight),
+            onBackground = Color(DashboardPalette.onSurfaceLight),
+            surface = Color(DashboardPalette.backgroundLight),
+            onSurface = Color(DashboardPalette.onSurfaceLight),
+            surfaceVariant = Color(DashboardPalette.surfaceVariantLight),
+            onSurfaceVariant = Color(DashboardPalette.onSurfaceVariantLight),
+            primary = Color(DashboardPalette.primaryLight),
+            onPrimary = Color(DashboardPalette.onPrimaryLight),
+            primaryContainer = Color(DashboardPalette.primaryContainerLight),
+            onPrimaryContainer = Color(DashboardPalette.onPrimaryContainerLight),
+            secondary = Color(DashboardPalette.secondaryLight),
+            onSecondary = Color(DashboardPalette.onSecondaryLight),
+            secondaryContainer = Color(DashboardPalette.secondaryContainerLight),
+            onSecondaryContainer = Color(DashboardPalette.onSecondaryContainerLight),
+            tertiary = Color(DashboardPalette.tertiaryLight),
+            onTertiary = Color(DashboardPalette.onTertiaryLight),
+            tertiaryContainer = Color(DashboardPalette.tertiaryContainerLight),
+            onTertiaryContainer = Color(DashboardPalette.onTertiaryContainerLight),
+            error = Color(DashboardPalette.error),
+            onError = Color(DashboardPalette.onError),
+            outline = Color(DashboardPalette.outlineLight),
+            outlineVariant = Color(DashboardPalette.outlineVariantLight),
+            surfaceTint = Color(DashboardPalette.primaryLight),
+            surfaceContainerLowest = Color(0xFF565A61),
+            surfaceContainerLow = Color(DashboardPalette.backgroundLight),
+            surfaceContainer = Color(0xFF4E5259),
+            surfaceContainerHigh = Color(DashboardPalette.surfaceVariantLight),
+            surfaceContainerHighest = Color(0xFF3A3D43),
+            surfaceDim = Color(DashboardPalette.outlineVariantLight),
+            surfaceBright = Color(0xFF6E7278),
+            inverseSurface = Color(DashboardPalette.onSecondaryLight),
+            inverseOnSurface = Color(DashboardPalette.onSurfaceLight),
+            inversePrimary = Color(DashboardPalette.primaryDark),
+            scrim = Color.Black,
+        )
+    }
+}
+
 private fun circuitScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     val black = androidx.compose.ui.graphics.Color.Black
     val white = androidx.compose.ui.graphics.Color.White

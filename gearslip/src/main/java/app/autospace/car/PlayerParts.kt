@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import app.autospace.car.theme.GsColors
+import app.autospace.car.theme.clusterRingGlow
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsSeekBar
@@ -314,6 +315,10 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
             if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
             if (now.playing) "Pause" else "Play",
             { CarServices.userTogglePlay() },
+            // r222 (Cluster only): the glowing amber ring around the
+            // round primary control — dim at rest, bright while
+            // playing. Outside Cluster this modifier is a no-op.
+            modifier = Modifier.clusterRingGlow(now.playing, playShape),
             colors = if (accent != null) GsColors(accent, accentContent ?: accentContentColor(accent)) else gsColors(GsTone.Primary),
             size = play, iconSize = play * 0.58f, shape = playShape,
         )

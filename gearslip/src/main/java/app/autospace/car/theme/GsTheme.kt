@@ -1256,6 +1256,46 @@ object GsThemes {
     )
 
 
+    /** r222 (Dashboard): Cluster — the car's button language. The dash
+     * buttons are black faces with glowing amber legends, so Cluster
+     * has NO visible face at rest: no border, no bevel, no shadow,
+     * no rim, no lip, no gloss, no hairline, and a fully transparent
+     * container (containerAlpha 0). Only the legend glows amber —
+     * that rule lives in GsButton/GsIconBox (clusterLegend), because
+     * a ControlLook carries no text colour or glow. Pressed, the
+     * glow brightens and the face warms slightly (the glow shadow
+     * tightens and the pressed scale stays 0.95); there is no dim
+     * (pressedDim 0), because there is no face to dim. Latched
+     * controls glow steel blue instead (blue means on in the car).
+     * The face is flat with no container, so the hold marker is DOT,
+     * like Ink (judgment call — one word corrects it). The light
+     * variant is identical on purpose: every container value is
+     * already zero, so there is nothing for a light variant to soften
+     * — the dark/light difference for Cluster lives in the
+     * contrast-gated legend rule, not in the look — and gsLook()
+     * only selects it on near-white surfaces anyway. Every other
+     * field keeps its zero/false default, which is exactly "no
+     * decoration": no rim, hairline, lip, shadow, bevel, sink,
+     * gloss, sheen, wash, halo, ring, stitch, or weave. */
+    val Cluster = GsTheme(
+        id = "cluster",
+        name = "Cluster",
+        control = ControlLook(
+            containerAlpha = 0f,
+            corner = 12.dp,
+            pressedDim = 0f,
+            pressedScale = 0.95f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+        light = ControlLook(
+            containerAlpha = 0f,
+            corner = 12.dp,
+            pressedDim = 0f,
+            pressedScale = 0.95f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -1287,7 +1327,8 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r143: Aurora appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora)
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora, Cluster)
+    // r222 appends Cluster last (pinned by DashboardTest) — same rule as every append: a new style never moves an existing install onto itself.
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

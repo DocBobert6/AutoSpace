@@ -32,9 +32,9 @@ class HorizonTest {
         // and r143 appends Aurora Field last (pinned by
         // AuroraTest); Horizon keeps the slot immediately
         // before Meridian, and nothing else moved.
-        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 4])
+        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 5])
         assertTrue(colorSchemes.contains(ColorScheme.HORIZON))
-        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 5])
+        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 6])
         // No legacy install migrates onto Horizon by accident.
         assertFalse(isLegacyThemeName("HORIZON"))
     }
@@ -102,7 +102,7 @@ class HorizonTest {
         // last, r114 appends Morph last, r142 appends Foundry
         // last, and r143 appends Aurora last; Horizon keeps
         // its slot, ninth from last, and nothing else moved.
-        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 9])
+        assertEquals(GsThemes.Horizon, GsThemes.builtIn[GsThemes.builtIn.size - 10])
         assertEquals("horizon", GsThemes.byId("horizon").id)
         val look = GsThemes.Horizon.control
         assertEquals(28, look.corner.value.toInt())

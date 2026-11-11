@@ -24,11 +24,11 @@ class WorkshopTest {
     fun workshopSchemeIsAppendedBeforeAuroraAndNamedWorkshop() {
         assertEquals(ColorScheme.WORKSHOP, ColorScheme.valueOf("WORKSHOP"))
         assertEquals("Workshop", ColorScheme.WORKSHOP.displayName)
-        assertEquals(ColorScheme.WORKSHOP, colorSchemes[colorSchemes.size - 2])
+        assertEquals(ColorScheme.WORKSHOP, colorSchemes[colorSchemes.size - 3])
         assertTrue(colorSchemes.contains(ColorScheme.WORKSHOP))
         // r143 appends Aurora Field last (pinned by AuroraTest);
         // Meridian is third from last, and nothing else moved.
-        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 3])
+        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 4])
         // No legacy install migrates onto Workshop by accident.
         assertFalse(isLegacyThemeName("WORKSHOP"))
     }

@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.runtime.Composable
@@ -69,6 +70,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.lerp
@@ -339,6 +341,65 @@ fun morphContrastRatio(a: Color, b: Color): Float {
 
 /** r114: the latched text-contrast bar (WCAG AA for normal text). */
 const val MorphLatchedContrastMin = 4.5f
+
+/**
+ * r222 (Cluster only): whether an accent legend reads on the backdrop
+ * at the WCAG AA bar for normal text (4.5:1). Amber on the dark dash
+ * reads at 6.92:1 and steel blue at 4.69:1, so both stay their own
+ * colour; on the light greys amber reads at 2.08:1 and steel blue at
+ * 2.52:1, so both fall back to warm white and only the glow keeps the
+ * accent colour. Pure so it is unit-testable.
+ */
+fun clusterLegendReads(accent: Color, background: Color): Boolean =
+    morphContrastRatio(accent, background) >= 4.5f
+
+/** r222 (Cluster only): the legend colour for an accent on a backdrop — the accent when it reads, the fallback when it does not. Pure so it is unit-testable. */
+fun clusterLegendColor(background: Color, accent: Color, fallback: Color): Color =
+    if (clusterLegendReads(accent, background)) accent else fallback
+
+/**
+ * r222 (Cluster only): the legend colour and glow shadow for a button
+ * whose face is invisible. Outside Cluster it returns the button's
+ * own content colour with no shadow, so no other style changes at
+ * all. `latched` picks the steel-blue accent (blue means on in the
+ * car); otherwise the legend is amber. `pressed` brightens and
+ * tightens the glow. Disabled buttons take the disabled colour with
+ * no glow, exactly like every other style.
+ */
+@Composable
+private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
+    val look = gsLook()
+    if (look.id != "cluster" || !enabled) return defaultContent to null
+    val scheme = MaterialTheme.colorScheme
+    val accent = if (latched) scheme.tertiary else scheme.secondary
+    val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
+    val glow = accent.copy(alpha = if (pressed) 0.95f else 0.6f)
+    return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
+}
+
+/**
+ * r222 (Cluster only): the glowing amber ring around the round primary
+ * control (the media play/pause) — the glowing orange ring around the
+ * head-unit volume knob. Dim at rest, bright when active. Outside
+ * Cluster it is a no-op modifier, so no other style changes at all.
+ * The ring is drawn with the same faked-blur idiom as the halo: three
+ * growing strokes at falling alpha, then a crisp 2dp ring.
+ */
+@Composable
+fun Modifier.clusterRingGlow(active: Boolean, shape: Shape): Modifier {
+    val look = gsLook()
+    if (look.id != "cluster") return this
+    val amber = MaterialTheme.colorScheme.secondary
+    return this.drawWithContent {
+        drawContent()
+        val crisp = if (active) 1f else 0.45f
+        val outline = shape.createOutline(size, layoutDirection, this)
+        drawOutline(outline, amber.copy(alpha = 0.10f * crisp), style = Stroke(width = 10.dp.toPx()))
+        drawOutline(outline, amber.copy(alpha = 0.18f * crisp), style = Stroke(width = 6.dp.toPx()))
+        drawOutline(outline, amber.copy(alpha = 0.35f * crisp), style = Stroke(width = 3.5.dp.toPx()))
+        drawOutline(outline, amber.copy(alpha = crisp), style = Stroke(width = 2.dp.toPx()))
+    }
+}
 
 /**
  * r114 (Morph only): whether latched text stays readable over
@@ -1359,6 +1420,10 @@ fun GsButton(
     val shape = gsShape()
     val source = remember { MutableInteractionSource() }
     val pressed = rememberPressed(source)
+    // r222 (Cluster only): the legend colour + glow shadow for a
+    // button whose face is invisible; outside Cluster this is just
+    // c.content with no shadow, so nothing else changes.
+    val (legendColor, legendShadow) = clusterLegend(pressed, latched = false, enabled, c.content)
     Row(
         modifier
             .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
@@ -1368,8 +1433,8 @@ fun GsButton(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CompositionLocalProvider(LocalContentColor provides c.content) {
-            ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+        CompositionLocalProvider(LocalContentColor provides legendColor) {
+            ProvideTextStyle(if (legendShadow != null) MaterialTheme.typography.labelLarge.copy(shadow = legendShadow) else MaterialTheme.typography.labelLarge) { content() }
         }
     }
 }
@@ -1433,6 +1498,9 @@ fun GsIconBox(
         !morphLatchedWashPasses(c.content, c.container, MaterialTheme.colorScheme.primary, look.washLatchedAlpha)
     val source = remember { MutableInteractionSource() }
     val pressed = rememberPressed(source)
+    // r222 (Cluster only): same glowing-legend rule as GsButton;
+    // latched controls glow steel blue instead of amber.
+    val (legendColor, legendShadow) = clusterLegend(pressed, latched, enabled, c.content)
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
@@ -1440,6 +1508,8 @@ fun GsIconBox(
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)
-        CompositionLocalProvider(LocalContentColor provides c.content) { content() }
+        CompositionLocalProvider(LocalContentColor provides legendColor) {
+            if (legendShadow != null) ProvideTextStyle(LocalTextStyle.current.copy(shadow = legendShadow)) { content() } else content()
+        }
     }
 }

@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheTwelveApprovedInOrder() {
+    fun pairsAreExactlyTheThirteenApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon", "Dashboard + Cluster"),
             themePairs.map { it.label },
         )
     }
@@ -104,6 +104,20 @@ class ThemePairsTest {
     }
 
     @Test
+    fun dashboardPairSetsClusterStyleAndDashboardScheme() {
+        // r222 appends Dashboard + Cluster last: the Cluster style
+        // with the Dashboard scheme.
+        val pair = themePairs[12]
+        assertEquals("cluster", pair.styleId)
+        assertEquals(ColorScheme.DASHBOARD, pair.scheme)
+        assertEquals("Dashboard + Cluster", pair.label)
+        // The pair does not move an existing install: every earlier
+        // pair is still in place, in order.
+        assertEquals("Pitlane + Pitlane", themePairs.first().label)
+        assertEquals("Horizon + Horizon", themePairs[11].label)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -117,6 +131,7 @@ class ThemePairsTest {
         assertEquals(themePairs[9], themePairFor("foundry", ColorScheme.WORKSHOP))
         assertEquals(themePairs[10], themePairFor("aurora", ColorScheme.AURORA_FIELD))
         assertEquals(themePairs[11], themePairFor("horizon", ColorScheme.HORIZON))
+        assertEquals(themePairs[12], themePairFor("cluster", ColorScheme.DASHBOARD))
     }
 
     @Test

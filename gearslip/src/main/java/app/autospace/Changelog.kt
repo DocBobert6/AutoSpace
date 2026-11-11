@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            181, "0.5.0-beta.13",
+            listOf(
+                "A new Dashboard theme, built from a Nissan Altima dash: buttons with no face, just their labels glowing amber — steel blue when one is on — in dark, and mid-to-dark greys in light. Pick it in Settings, under Pairs.",
+            ),
+        ),
+        Release(
             180, "0.5.0-exp.2",
             listOf(
                 "EXPERIMENTAL build, for testing only — it installs beside the beta and never replaces it. Startup is faster, the screen no longer stays on after a drive ends, and the setup-guide words now name the place they actually open.",

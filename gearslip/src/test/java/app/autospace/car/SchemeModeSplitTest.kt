@@ -60,7 +60,7 @@ class SchemeModeSplitTest {
         }
         // Every other scheme: Light forces light, Dark forces dark,
         // System defers to the phone — in both phone states.
-        val following = listOf(ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.CIRCUIT, ColorScheme.HERITAGE, ColorScheme.VERVE, ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD)
+        val following = listOf(ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.CIRCUIT, ColorScheme.HERITAGE, ColorScheme.VERVE, ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD, ColorScheme.DASHBOARD)
         for (scheme in following) {
             assertFalse(resolveDark(scheme, AppearanceMode.LIGHT, true))
             assertFalse(resolveDark(scheme, AppearanceMode.LIGHT, false))
@@ -96,7 +96,7 @@ class SchemeModeSplitTest {
                 ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.NIGHT,
                 ColorScheme.PITLANE, ColorScheme.CIRCUIT, ColorScheme.HERITAGE,
                 ColorScheme.VERVE, ColorScheme.HORIZON, ColorScheme.MERIDIAN,
-                ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD,
+                ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD, ColorScheme.DASHBOARD,
             ),
             colorSchemes,
         )
@@ -110,7 +110,7 @@ class SchemeModeSplitTest {
         // r113: the Night scheme's picker label is Nocturne (label
         // only — the stored enum name stays NIGHT).
         assertEquals(
-            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop", "Aurora Field"),
+            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop", "Aurora Field", "Dashboard"),
             colorSchemes.map { it.displayName },
         )
         assertEquals(

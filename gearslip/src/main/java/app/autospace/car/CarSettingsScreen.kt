@@ -355,8 +355,12 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "Workshop is charcoal linen dark with a brass primary, a copper " +
             "secondary, and an olive tertiary. Aurora Field is deep ocean " +
             "dark with a spring-green primary, a sky secondary, and a lime " +
-            "tertiary. Canvas, Circuit, Heritage, Verve, Horizon, Workshop, " +
-            "and Aurora Field follow the mode control; Auto night still " +
+            "tertiary. Dashboard is the Altima dash scheme: near-black " +
+            "with burnt-amber accents and a steel-blue secondary in its " +
+            "dark variant, mid-to-dark greys in its light variant. It has " +
+            "no red anywhere. Canvas, Circuit, Dashboard, Heritage, " +
+            "Verve, Horizon, Workshop, and Aurora Field follow the mode " +
+            "control; Auto night still " +
             "switches " +
             "every scheme to Nocturne.",
         style = MaterialTheme.typography.bodyMedium,

@@ -1,7 +1,7 @@
-AutoSpace 0.5.0-beta.12 is the twelfth public beta — a prerelease, on the beta line.
+AutoSpace 0.5.0-beta.13 is the thirteenth public beta — a prerelease, on the beta line.
 
 ## New features
-- The assistant can now remember what you tell it: your home place and your name, when you turn memory on in Settings > AI assistant. It stays on this phone only, you can see everything remembered and delete any of it, and turning memory off deletes it all. It is off by default. "Weather at home" uses the remembered home place when one is set.
+- A new Dashboard theme pair, built from a 2019 Nissan Altima dash: buttons with no face, just their labels glowing amber — steel blue when one is on — in dark mode, and mid-to-dark greys in light mode. Pick it in Settings, under Pairs.
 
 ## Improvements
 - No improvements in this release.

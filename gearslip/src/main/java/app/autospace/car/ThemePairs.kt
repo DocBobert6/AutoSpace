@@ -15,7 +15,8 @@ import app.autospace.car.theme.GsThemes
  * Heritage+Heirloom (r108), Canvas+Blueprint (r110),
  * Circuit+Sector (r112), Nocturne+Silhouette (r113), and
  * Material You+Morph (r114), Workshop+Foundry (r142),
- * Aurora Field+Aurora (r143), and Horizon+Horizon (r180).
+ * Aurora Field+Aurora (r143), Horizon+Horizon (r180), and
+ * Dashboard+Cluster (r222).
  * Horizon+Horizon joins in r180: Horizon did not exist when Pairs
  * was approved, so it waited on Robert's word rather than being
  * added silently.
@@ -39,6 +40,7 @@ val themePairs: List<ThemePair> = listOf(
     ThemePair(GsThemes.Foundry.id, ColorScheme.WORKSHOP, "Workshop + Foundry"),
     ThemePair(GsThemes.Aurora.id, ColorScheme.AURORA_FIELD, "Aurora Field + Aurora"),
     ThemePair(GsThemes.Horizon.id, ColorScheme.HORIZON, "Horizon + Horizon"),
+    ThemePair(GsThemes.Cluster.id, ColorScheme.DASHBOARD, "Dashboard + Cluster"),
 )
 
 /**
