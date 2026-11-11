@@ -2116,7 +2116,7 @@ private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorSc
  * raised card still reads as raised. Follows the mode control (it is
  * not in schemeForcesDark), exactly like Canvas and Horizon.
  */
-private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
+internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     return if (dark) {
         androidx.compose.material3.darkColorScheme(
             background = Color(DashboardPalette.backgroundDark),
@@ -2160,7 +2160,9 @@ private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSche
             onBackground = Color(DashboardPalette.onSurfaceLight),
             surface = Color(DashboardPalette.backgroundLight),
             onSurface = Color(DashboardPalette.onSurfaceLight),
-            surfaceVariant = Color(DashboardPalette.surfaceVariantLight),
+            // r223: two grey levels only — panels stay on the field grey and
+            // the trim dividers do the separating, not grey steps.
+            surfaceVariant = Color(DashboardPalette.backgroundLight),
             onSurfaceVariant = Color(DashboardPalette.onSurfaceVariantLight),
             primary = Color(DashboardPalette.primaryLight),
             onPrimary = Color(DashboardPalette.onPrimaryLight),
@@ -2179,13 +2181,14 @@ private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSche
             outline = Color(DashboardPalette.outlineLight),
             outlineVariant = Color(DashboardPalette.outlineVariantLight),
             surfaceTint = Color(DashboardPalette.primaryLight),
-            surfaceContainerLowest = Color(0xFF565A61),
-            surfaceContainerLow = Color(DashboardPalette.backgroundLight),
-            surfaceContainer = Color(0xFF4E5259),
-            surfaceContainerHigh = Color(DashboardPalette.surfaceVariantLight),
-            surfaceContainerHighest = Color(0xFF3A3D43),
-            surfaceDim = Color(DashboardPalette.outlineVariantLight),
-            surfaceBright = Color(0xFF6E7278),
+            // r223: the control surfaces are the near-black buttons.
+            surfaceContainerLowest = Color(DashboardPalette.buttonLight),
+            surfaceContainerLow = Color(DashboardPalette.buttonLight),
+            surfaceContainer = Color(DashboardPalette.buttonLight),
+            surfaceContainerHigh = Color(DashboardPalette.buttonLight),
+            surfaceContainerHighest = Color(DashboardPalette.buttonLight),
+            surfaceDim = Color(DashboardPalette.backgroundLight),
+            surfaceBright = Color(DashboardPalette.backgroundLight),
             inverseSurface = Color(DashboardPalette.onSecondaryLight),
             inverseOnSurface = Color(DashboardPalette.onSurfaceLight),
             inversePrimary = Color(DashboardPalette.primaryDark),

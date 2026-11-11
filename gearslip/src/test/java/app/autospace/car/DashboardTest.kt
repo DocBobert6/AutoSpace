@@ -1,10 +1,14 @@
 package app.autospace.car
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import app.autospace.car.theme.GaugeTickHeightFraction
 import app.autospace.car.theme.GsThemes
 import app.autospace.car.theme.HoldMarkerStyle
+import app.autospace.car.theme.TrimDividerThickness
 import app.autospace.car.theme.clusterLegendColor
 import app.autospace.car.theme.clusterLegendReads
+import app.autospace.car.theme.gaugeTickFractions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,16 +39,21 @@ class DashboardTest {
     @Test
     fun dashboardPaletteTokensMatchTheApprovedSpec() {
         // The settled spec values, exact, both variants — sampled
-        // from Robert's Altima dash photos, not invented.
+        // from Robert's Altima dash photos, not invented. r223: the
+        // accents flipped (steel blue primary, amber secondary) and
+        // light mode is two grey levels (field + near-black buttons).
         assertEquals(0xFF0E0E14.toInt(), DashboardPalette.backgroundDark)
-        assertEquals(0xFFA3541F.toInt(), DashboardPalette.primaryDark)
+        assertEquals(0xFF3E85A7.toInt(), DashboardPalette.primaryDark)
+        assertEquals(0xFF0E0E14.toInt(), DashboardPalette.onPrimaryDark)
         assertEquals(0xFFCD8E48.toInt(), DashboardPalette.secondaryDark)
-        assertEquals(0xFF3E85A7.toInt(), DashboardPalette.tertiaryDark)
+        assertEquals(0xFFA3541F.toInt(), DashboardPalette.tertiaryDark)
+        assertEquals(0xFFFFFFFF.toInt(), DashboardPalette.onTertiaryDark)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceDark)
-        assertEquals(0xFF62666D.toInt(), DashboardPalette.backgroundLight)
+        assertEquals(0xFF2F3237.toInt(), DashboardPalette.backgroundLight)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceLight)
-        assertEquals(0xFF45484F.toInt(), DashboardPalette.surfaceVariantLight)
-        assertEquals(0xFF7FB3C8.toInt(), DashboardPalette.tertiaryLight)
+        assertEquals(0xFF1A1C1F.toInt(), DashboardPalette.buttonLight)
+        assertEquals(0xFF7FB3C8.toInt(), DashboardPalette.primaryLight)
+        assertEquals(0xFFA3541F.toInt(), DashboardPalette.tertiaryLight)
         // The dark background is near-black, not pure black — so
         // Dashboard stays out of oledBlackSchemes by design.
         assertFalse(DashboardPalette.backgroundDark == 0xFF000000.toInt())
@@ -58,10 +67,21 @@ class DashboardTest {
         assertTrue(contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onTertiaryDark, DashboardPalette.tertiaryDark) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onError, DashboardPalette.error) >= 4.5)
-        // Amber and steel blue on the light greys do NOT read — the
-        // legend gate must fall back there (pinned below).
-        assertTrue(contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight) < 4.5)
+        // r223: on the new dark-grey light field the steel-blue primary
+        // (5.63:1) and the light-amber secondary (4.63:1) both read, so
+        // the legend stays its own colour in light mode too; only the
+        // burnt-amber tertiary (2.36:1) still falls back (pinned below).
+        assertTrue(contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight) >= 4.5)
+        assertEquals(5.63, contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertTrue(contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight) >= 4.5)
+        assertEquals(4.63, contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight), 0.02)
         assertTrue(contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight) < 4.5)
+        assertEquals(2.36, contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertEquals(11.51, contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight), 0.02)
+        // The two light levels are a subtle step (1.33:1) — the levels
+        // are told apart by consistency and the trim dividers, not by
+        // a big jump (see the device check).
+        assertEquals(1.33, contrastRatio(DashboardPalette.buttonLight, DashboardPalette.backgroundLight), 0.02)
     }
 
     @Test
@@ -85,7 +105,7 @@ class DashboardTest {
             DashboardPalette.tertiaryContainerDark, DashboardPalette.onTertiaryContainerDark,
             DashboardPalette.outlineDark, DashboardPalette.outlineVariantDark,
             DashboardPalette.backgroundLight, DashboardPalette.onSurfaceLight,
-            DashboardPalette.surfaceVariantLight, DashboardPalette.onSurfaceVariantLight,
+            DashboardPalette.buttonLight, DashboardPalette.onSurfaceVariantLight,
             DashboardPalette.primaryLight, DashboardPalette.onPrimaryLight,
             DashboardPalette.primaryContainerLight, DashboardPalette.onPrimaryContainerLight,
             DashboardPalette.secondaryLight, DashboardPalette.onSecondaryLight,
@@ -151,18 +171,60 @@ class DashboardTest {
     }
 
     @Test
-    fun clusterLegendGateKeepsAmberInDarkAndFallsBackInLight() {
-        // Amber on the dark dash reads (6.92:1) — the legend stays amber.
-        assertTrue(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF0E0E14)))
-        assertEquals(Color(0xFFCD8E48), clusterLegendColor(Color(0xFF0E0E14), Color(0xFFCD8E48), Color(0xFFF5F2EC)))
-        // Steel blue on the dark dash reads too (4.69:1) — latched stays blue.
+    fun clusterLegendGateKeepsBlueInBothModes() {
+        // r223: the legend is the steel-blue primary in both modes.
+        // Steel blue on the dark dash reads (4.69:1) — the legend stays blue.
         assertTrue(clusterLegendReads(Color(0xFF3E85A7), Color(0xFF0E0E14)))
         assertEquals(Color(0xFF3E85A7), clusterLegendColor(Color(0xFF0E0E14), Color(0xFF3E85A7), Color(0xFFF5F2EC)))
-        // Amber on the light greys does not read (2.08:1) — fallback to warm white.
-        assertFalse(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF62666D)))
-        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF62666D), Color(0xFFCD8E48), Color(0xFFF5F2EC)))
-        // Steel blue on the light greys does not read either (2.52:1).
-        assertFalse(clusterLegendReads(Color(0xFF7FB3C8), Color(0xFF62666D)))
-        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF62666D), Color(0xFF7FB3C8), Color(0xFFF5F2EC)))
+        // Light steel blue on the new dark-grey light field reads (5.63:1).
+        assertTrue(clusterLegendReads(Color(0xFF7FB3C8), Color(0xFF2F3237)))
+        assertEquals(Color(0xFF7FB3C8), clusterLegendColor(Color(0xFF2F3237), Color(0xFF7FB3C8), Color(0xFFF5F2EC)))
+        // Light amber reads on both fields now (6.92:1 dark, 4.63:1 light) —
+        // it stays its own colour wherever the rule picks it.
+        assertTrue(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF0E0E14)))
+        assertTrue(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF2F3237)))
+        // Burnt amber on the light field still does not read (2.36:1) —
+        // the fallback to warm white still has a live in-palette case.
+        assertFalse(clusterLegendReads(Color(0xFFA3541F), Color(0xFF2F3237)))
+        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF2F3237), Color(0xFFA3541F), Color(0xFFF5F2EC)))
+    }
+
+    @Test
+    fun dashboardSchemeMappingPinsItsTokens() {
+        // r223: the direct mapping test the first build lacked — a wrong
+        // token here used to show only on device.
+        val dark = dashboardScheme(true)
+        assertEquals(Color(DashboardPalette.primaryDark), dark.primary)
+        assertEquals(Color(DashboardPalette.secondaryDark), dark.secondary)
+        assertEquals(Color(DashboardPalette.tertiaryDark), dark.tertiary)
+        assertEquals(Color(DashboardPalette.backgroundDark), dark.background)
+        assertEquals(Color(DashboardPalette.backgroundDark), dark.surface)
+        assertEquals(Color(DashboardPalette.error), dark.error)
+        val light = dashboardScheme(false)
+        assertEquals(Color(DashboardPalette.primaryLight), light.primary)
+        assertEquals(Color(DashboardPalette.secondaryLight), light.secondary)
+        assertEquals(Color(DashboardPalette.tertiaryLight), light.tertiary)
+        assertEquals(Color(DashboardPalette.backgroundLight), light.background)
+        assertEquals(Color(DashboardPalette.backgroundLight), light.surface)
+        // Two grey levels only in light mode: the field grey and the
+        // near-black buttons — every surface slot is one of the two.
+        assertEquals(Color(DashboardPalette.backgroundLight), light.surfaceVariant)
+        assertEquals(Color(DashboardPalette.buttonLight), light.surfaceContainerLowest)
+        assertEquals(Color(DashboardPalette.buttonLight), light.surfaceContainerLow)
+        assertEquals(Color(DashboardPalette.buttonLight), light.surfaceContainer)
+        assertEquals(Color(DashboardPalette.buttonLight), light.surfaceContainerHigh)
+        assertEquals(Color(DashboardPalette.buttonLight), light.surfaceContainerHighest)
+        assertEquals(Color(DashboardPalette.backgroundLight), light.surfaceDim)
+        assertEquals(Color(DashboardPalette.backgroundLight), light.surfaceBright)
+        assertEquals(Color(DashboardPalette.error), light.error)
+    }
+
+    @Test
+    fun gaugeTicksAndTrimDividerArePinned() {
+        // r223: nine graduations at 10% intervals, a third of the bar tall.
+        assertEquals(listOf(0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f), gaugeTickFractions())
+        assertEquals(0.3f, GaugeTickHeightFraction, 0.001f)
+        // The trim strip is a slightly heavier warm-silver hairline.
+        assertEquals(2.dp, TrimDividerThickness)
     }
 }

@@ -344,11 +344,11 @@ const val MorphLatchedContrastMin = 4.5f
 
 /**
  * r222 (Cluster only): whether an accent legend reads on the backdrop
- * at the WCAG AA bar for normal text (4.5:1). Amber on the dark dash
- * reads at 6.92:1 and steel blue at 4.69:1, so both stay their own
- * colour; on the light greys amber reads at 2.08:1 and steel blue at
- * 2.52:1, so both fall back to warm white and only the glow keeps the
- * accent colour. Pure so it is unit-testable.
+ * at the WCAG AA bar for normal text (4.5:1). r223: light steel blue
+ * on the light field reads at 5.63:1 and light amber at 4.63:1, so
+ * both stay their own colour there too; burnt amber on the light
+ * field reads only 2.36:1, so it still falls back to warm white and
+ * only the glow keeps the accent colour. Pure so it is unit-testable.
  */
 fun clusterLegendReads(accent: Color, background: Color): Boolean =
     morphContrastRatio(accent, background) >= 4.5f
@@ -361,18 +361,21 @@ fun clusterLegendColor(background: Color, accent: Color, fallback: Color): Color
  * r222 (Cluster only): the legend colour and glow shadow for a button
  * whose face is invisible. Outside Cluster it returns the button's
  * own content colour with no shadow, so no other style changes at
- * all. `latched` picks the steel-blue accent (blue means on in the
- * car); otherwise the legend is amber. `pressed` brightens and
- * tightens the glow. Disabled buttons take the disabled colour with
- * no glow, exactly like every other style.
+ * all. r223: the legend is the primary (steel blue) in both states —
+ * blue means a control now; amber is the secondary accent, kept for
+ * the ring-glow, highlights, and selected marks. `latched` keeps a
+ * brighter glow so the on-state stays visible without a colour
+ * change (judgment call — one word corrects it). `pressed` brightens
+ * and tightens the glow. Disabled buttons take the disabled colour
+ * with no glow, exactly like every other style.
  */
 @Composable
 private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
     if (LocalGsTheme.current.id != GsThemes.Cluster.id || !enabled) return defaultContent to null
     val scheme = MaterialTheme.colorScheme
-    val accent = if (latched) scheme.tertiary else scheme.secondary
+    val accent = scheme.primary
     val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
-    val glow = accent.copy(alpha = if (pressed) 0.95f else 0.6f)
+    val glow = accent.copy(alpha = if (pressed || latched) 0.95f else 0.6f)
     return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
 }
 

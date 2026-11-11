@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            182, "0.5.0-beta.14",
+            listOf(
+                "Dashboard, reworked after its first outing: legends glow steel blue now — amber is kept for the ring-glow, highlights, and selected marks — with gauge ticks on sliders and progress bars, silver trim dividers between sections, and a two-level light mode (dark grey field, near-black buttons).",
+            ),
+        ),
+        Release(
             181, "0.5.0-beta.13",
             listOf(
                 "A new Dashboard theme, built from a Nissan Altima dash: buttons with no face, just their labels glowing amber — steel blue when one is on — in dark, and mid-to-dark greys in light. Pick it in Settings, under Pairs.",

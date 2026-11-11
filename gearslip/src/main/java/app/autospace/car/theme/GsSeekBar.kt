@@ -43,6 +43,18 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.sin
 
 /**
+ * r223 (Cluster only): the gauge graduations — nine ticks at 10%
+ * intervals, the cluster's tick language, drawn along the bottom
+ * edge of a progress bar. Pure so it is unit-testable; the drawing
+ * itself is Cluster-gated in [GsProgressBar] and covered by CI
+ * compile + the device check.
+ */
+fun gaugeTickFractions(): List<Float> = (1..9).map { it / 10f }
+
+/** r223: the tick height as a fraction of the bar height. */
+const val GaugeTickHeightFraction = 0.3f
+
+/**
  * A capsule progress bar: a tinted track with a glossy fill set inside it, lighter along the
  * top and darker along the bottom. Below its own height the fill narrows into a smaller oval, so
  * a countdown runs smoothly all the way to empty. The flat theme draws Material's wavy bar instead.
@@ -73,7 +85,21 @@ fun GsProgressBar(
             .height(height)
             .clip(CircleShape)
             .background(lerp(scheme.surfaceContainerHighest, color, 0.28f))
-            .padding(inset),
+            .padding(inset)
+            .then(
+                if (LocalGsTheme.current.id != GsThemes.Cluster.id) Modifier else Modifier.drawWithContent {
+                    drawContent()
+                    // r223: gauge ticks along the bottom edge, over fill
+                    // and track alike, like marks on the dial face.
+                    val tickH = size.height * GaugeTickHeightFraction
+                    val tickColor = scheme.outline.copy(alpha = 0.55f)
+                    val tickW = 1.dp.toPx()
+                    for (f in gaugeTickFractions()) {
+                        val x = size.width * f
+                        drawLine(tickColor, Offset(x, size.height - tickH), Offset(x, size.height), tickW)
+                    }
+                },
+            ),
         contentAlignment = Alignment.CenterStart,
     ) {
         if (shown <= 0f) return@BoxWithConstraints

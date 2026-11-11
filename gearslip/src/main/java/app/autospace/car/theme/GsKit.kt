@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
@@ -692,36 +693,52 @@ fun Modifier.pitLanePanelTexture(): Modifier {
     }
 }
 
+/** r223 (Cluster only): the silver trim strip thickness — a slightly heavier warm-silver hairline. */
+val TrimDividerThickness = 2.dp
+
 /** A section header in the grouped-kit language: bold, on-surface, above its card. */
 @Composable
 fun GsSectionHeader(text: String, modifier: Modifier = Modifier) {
-    // r26: under Pit Lane, headers are engraved panel labels — small, plain,
-    // letterspaced, with a subtle inset: a contrasting copy offset 1dp below
-    // (light on dark panels, dark on light ones) behind the main text, so the
-    // letters read cut into the panel. Headers only; body/button/tile labels
-    // are untouched, and every other style keeps the bold titleMedium header.
-    if (gsLook().engravedHeader) {
-        // The below-copy is the lit lower edge of the cut: white on both
-        // backgrounds (stronger on light panels, subtler on dark ones),
-        // peeking 1dp below the muted main letters.
-        val light = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-        val edge = Color.White.copy(alpha = if (light) 0.45f else 0.28f)
-        val style = MaterialTheme.typography.titleSmall.copy(
-            fontWeight = FontWeight.Normal,
-            letterSpacing = 0.12.em,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        androidx.compose.foundation.layout.Box(modifier.padding(bottom = 4.dp)) {
-            Text(text, style = style.copy(color = edge), modifier = Modifier.padding(top = 1.dp))
-            Text(text, style = style)
+    // r223 (Cluster only): the silver trim strip — a slightly heavier
+    // warm-silver hairline above each section header, the dash's
+    // full-width trim strip. Outside Cluster there is no line, so no
+    // other style changes at all. It sits above the header, so it
+    // reads between the previous section and this one; the first
+    // section on a page gets one at the top too, like the strip
+    // across the top of the dash (judgment call — one word removes it).
+    val trim = LocalGsTheme.current.id == GsThemes.Cluster.id
+    Column(modifier) {
+        if (trim) {
+            Box(Modifier.fillMaxWidth().height(TrimDividerThickness).background(MaterialTheme.colorScheme.outline))
         }
-    } else {
-        Text(
-            text,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = modifier.padding(bottom = 4.dp)
-        )
+        // r26: under Pit Lane, headers are engraved panel labels — small, plain,
+        // letterspaced, with a subtle inset: a contrasting copy offset 1dp below
+        // (light on dark panels, dark on light ones) behind the main text, so the
+        // letters read cut into the panel. Headers only; body/button/tile labels
+        // are untouched, and every other style keeps the bold titleMedium header.
+        if (gsLook().engravedHeader) {
+            // The below-copy is the lit lower edge of the cut: white on both
+            // backgrounds (stronger on light panels, subtler on dark ones),
+            // peeking 1dp below the muted main letters.
+            val light = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+            val edge = Color.White.copy(alpha = if (light) 0.45f else 0.28f)
+            val style = MaterialTheme.typography.titleSmall.copy(
+                fontWeight = FontWeight.Normal,
+                letterSpacing = 0.12.em,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            androidx.compose.foundation.layout.Box(Modifier.padding(top = if (trim) 10.dp else 0.dp, bottom = 4.dp)) {
+                Text(text, style = style.copy(color = edge), modifier = Modifier.padding(top = 1.dp))
+                Text(text, style = style)
+            }
+        } else {
+            Text(
+                text,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = if (trim) 10.dp else 0.dp, bottom = 4.dp)
+            )
+        }
     }
 }
