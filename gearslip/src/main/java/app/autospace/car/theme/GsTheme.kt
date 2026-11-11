@@ -1286,13 +1286,13 @@ object GsThemes {
             pressedDim = 0f,
             pressedScale = 0.95f,
             holdMarker = HoldMarkerStyle.DOT,
-        ),
-        light = ControlLook(
-            containerAlpha = 0f,
-            corner = 12.dp,
-            pressedDim = 0f,
-            pressedScale = 0.95f,
-            holdMarker = HoldMarkerStyle.DOT,
+            light = ControlLook(
+                containerAlpha = 0f,
+                corner = 12.dp,
+                pressedDim = 0f,
+                pressedScale = 0.95f,
+                holdMarker = HoldMarkerStyle.DOT,
+            ),
         ),
     )
 

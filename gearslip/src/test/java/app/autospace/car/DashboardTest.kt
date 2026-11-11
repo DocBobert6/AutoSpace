@@ -139,7 +139,7 @@ class DashboardTest {
         assertEquals(HoldMarkerStyle.DOT, look.holdMarker)
         // The light variant is identical on purpose (see GsTheme.kt):
         // the dark/light difference lives in the legend rule.
-        val light = GsThemes.Cluster.light
+        val light = GsThemes.Cluster.control.light
         assertTrue(light != null)
         assertEquals(look.containerAlpha, light!!.containerAlpha, 0.001f)
         assertEquals(look.pressedScale, light.pressedScale, 0.001f)
