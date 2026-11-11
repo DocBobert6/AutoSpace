@@ -1257,16 +1257,18 @@ object GsThemes {
 
 
     /** r222 (Dashboard): Cluster — the car's button language. The dash
-     * buttons are black faces with glowing amber legends, so Cluster
-     * has NO visible face at rest: no border, no bevel, no shadow,
-     * no rim, no lip, no gloss, no hairline, and a fully transparent
-     * container (containerAlpha 0). Only the legend glows amber —
-     * that rule lives in GsButton/GsIconBox (clusterLegend), because
-     * a ControlLook carries no text colour or glow. Pressed, the
+     * buttons are black faces with glowing amber legends — the car,
+     * not the theme: r223 moved the theme legend to steel blue, and
+     * r224 took the amber out entirely. Cluster has NO visible face
+     * at rest: no border, no bevel, no shadow, no rim, no lip, no
+     * gloss, no hairline, and a fully transparent container
+     * (containerAlpha 0). Only the legend glows, steel blue — that
+     * rule lives in GsButton/GsIconBox (clusterLegend), because a
+     * ControlLook carries no text colour or glow. Pressed, the
      * glow brightens and the face warms slightly (the glow shadow
      * tightens and the pressed scale stays 0.95); there is no dim
      * (pressedDim 0), because there is no face to dim. Latched
-     * controls glow steel blue instead (blue means on in the car).
+     * controls glow steel blue, brighter (blue means on in the car).
      * The face is flat with no container, so the hold marker is DOT,
      * like Ink (judgment call — one word corrects it). The light
      * variant is identical on purpose: every container value is

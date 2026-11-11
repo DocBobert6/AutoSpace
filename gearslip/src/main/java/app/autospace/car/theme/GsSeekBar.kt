@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -53,6 +54,9 @@ fun gaugeTickFractions(): List<Float> = (1..9).map { it / 10f }
 
 /** r223: the tick height as a fraction of the bar height. */
 const val GaugeTickHeightFraction = 0.3f
+
+/** r224: the redline cap — the last 8% of a Cluster bar. */
+const val RedlineCapFraction = 0.08f
 
 /**
  * A capsule progress bar: a tinted track with a glossy fill set inside it, lighter along the
@@ -98,6 +102,15 @@ fun GsProgressBar(
                         val x = size.width * f
                         drawLine(tickColor, Offset(x, size.height - tickH), Offset(x, size.height), tickW)
                     }
+                    // r224: the redline cap — the last segment of the
+                    // bar is signal red, the tach's 6-8 redline arc.
+                    // Full height, over fill and track alike.
+                    val capW = size.width * RedlineCapFraction
+                    drawRect(
+                        color = scheme.tertiary,
+                        topLeft = Offset(size.width - capW, 0f),
+                        size = Size(capW, size.height),
+                    )
                 },
             ),
         contentAlignment = Alignment.CenterStart,

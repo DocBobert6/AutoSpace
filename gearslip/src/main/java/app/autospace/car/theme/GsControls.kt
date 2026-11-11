@@ -346,9 +346,11 @@ const val MorphLatchedContrastMin = 4.5f
  * r222 (Cluster only): whether an accent legend reads on the backdrop
  * at the WCAG AA bar for normal text (4.5:1). r223: light steel blue
  * on the light field reads at 5.63:1 and light amber at 4.63:1, so
- * both stay their own colour there too; burnt amber on the light
- * field reads only 2.36:1, so it still falls back to warm white and
- * only the glow keeps the accent colour. Pure so it is unit-testable.
+ * both stay their own colour there too. r224: the amber is gone —
+ * warm white reads at 11.51:1 on the light field, and signal red
+ * reads only 2.98:1 on dark and 1.99:1 on the light field, so it
+ * still falls back to warm white and only the glow keeps the accent
+ * colour. Pure so it is unit-testable.
  */
 fun clusterLegendReads(accent: Color, background: Color): Boolean =
     morphContrastRatio(accent, background) >= 4.5f
@@ -362,8 +364,9 @@ fun clusterLegendColor(background: Color, accent: Color, fallback: Color): Color
  * whose face is invisible. Outside Cluster it returns the button's
  * own content colour with no shadow, so no other style changes at
  * all. r223: the legend is the primary (steel blue) in both states —
- * blue means a control now; amber is the secondary accent, kept for
- * the ring-glow, highlights, and selected marks. `latched` keeps a
+ * blue means a control now. r224: amber is out entirely — the
+ * secondary accent is warm white, so the ring-glow glows white and
+ * highlights are white; signal red is the deep accent. `latched` keeps a
  * brighter glow so the on-state stays visible without a colour
  * change (judgment call — one word corrects it). `pressed` brightens
  * and tightens the glow. Disabled buttons take the disabled colour
@@ -380,25 +383,27 @@ private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, 
 }
 
 /**
- * r222 (Cluster only): the glowing amber ring around the round primary
- * control (the media play/pause) — the glowing orange ring around the
- * head-unit volume knob. Dim at rest, bright when active. Outside
- * Cluster it is a no-op modifier, so no other style changes at all.
- * The ring is drawn with the same faked-blur idiom as the halo: three
- * growing strokes at falling alpha, then a crisp 2dp ring.
+ * r222 (Cluster only): the glowing ring around the round primary
+ * control (the media play/pause) — the car's own glowing orange ring
+ * around the head-unit volume knob, rendered warm white here: r224
+ * took the amber out entirely, so the ring glows white now. Dim at
+ * rest, bright when active. Outside Cluster it is a no-op modifier,
+ * so no other style changes at all. The ring is drawn with the same
+ * faked-blur idiom as the halo: three growing strokes at falling
+ * alpha, then a crisp 2dp ring.
  */
 @Composable
 fun Modifier.clusterRingGlow(active: Boolean, shape: Shape): Modifier {
     if (LocalGsTheme.current.id != GsThemes.Cluster.id) return this
-    val amber = MaterialTheme.colorScheme.secondary
+    val glow = MaterialTheme.colorScheme.secondary
     return this.drawWithContent {
         drawContent()
         val crisp = if (active) 1f else 0.45f
         val outline = shape.createOutline(size, layoutDirection, this)
-        drawOutline(outline, amber.copy(alpha = 0.10f * crisp), style = Stroke(width = 10.dp.toPx()))
-        drawOutline(outline, amber.copy(alpha = 0.18f * crisp), style = Stroke(width = 6.dp.toPx()))
-        drawOutline(outline, amber.copy(alpha = 0.35f * crisp), style = Stroke(width = 3.5.dp.toPx()))
-        drawOutline(outline, amber.copy(alpha = crisp), style = Stroke(width = 2.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = 0.10f * crisp), style = Stroke(width = 10.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = 0.18f * crisp), style = Stroke(width = 6.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = 0.35f * crisp), style = Stroke(width = 3.5.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = crisp), style = Stroke(width = 2.dp.toPx()))
     }
 }
 
@@ -1500,7 +1505,7 @@ fun GsIconBox(
     val source = remember { MutableInteractionSource() }
     val pressed = rememberPressed(source)
     // r222 (Cluster only): same glowing-legend rule as GsButton;
-    // latched controls glow steel blue instead of amber.
+    // latched controls glow steel blue, brighter than at rest.
     val (legendColor, legendShadow) = clusterLegend(pressed, latched, enabled, c.content)
     Box(
         modifier

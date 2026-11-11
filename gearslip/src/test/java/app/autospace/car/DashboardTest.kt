@@ -8,6 +8,7 @@ import app.autospace.car.theme.HoldMarkerStyle
 import app.autospace.car.theme.TrimDividerThickness
 import app.autospace.car.theme.clusterLegendColor
 import app.autospace.car.theme.clusterLegendReads
+import app.autospace.car.theme.RedlineCapFraction
 import app.autospace.car.theme.gaugeTickFractions
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,18 +43,21 @@ class DashboardTest {
         // from Robert's Altima dash photos, not invented. r223: the
         // accents flipped (steel blue primary, amber secondary) and
         // light mode is two grey levels (field + near-black buttons).
+        // r224: amber is out entirely — white highlights, signal red
+        // deep accent and error.
         assertEquals(0xFF0E0E14.toInt(), DashboardPalette.backgroundDark)
         assertEquals(0xFF3E85A7.toInt(), DashboardPalette.primaryDark)
         assertEquals(0xFF0E0E14.toInt(), DashboardPalette.onPrimaryDark)
-        assertEquals(0xFFCD8E48.toInt(), DashboardPalette.secondaryDark)
-        assertEquals(0xFFA3541F.toInt(), DashboardPalette.tertiaryDark)
+        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.secondaryDark)
+        assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryDark)
         assertEquals(0xFFFFFFFF.toInt(), DashboardPalette.onTertiaryDark)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceDark)
         assertEquals(0xFF2F3237.toInt(), DashboardPalette.backgroundLight)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceLight)
         assertEquals(0xFF1A1C1F.toInt(), DashboardPalette.buttonLight)
         assertEquals(0xFF7FB3C8.toInt(), DashboardPalette.primaryLight)
-        assertEquals(0xFFA3541F.toInt(), DashboardPalette.tertiaryLight)
+        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.secondaryLight)
+        assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryLight)
         // The dark background is near-black, not pure black — so
         // Dashboard stays out of oledBlackSchemes by design.
         assertFalse(DashboardPalette.backgroundDark == 0xFF000000.toInt())
@@ -66,17 +70,20 @@ class DashboardTest {
         assertTrue(contrastRatio(DashboardPalette.onSecondaryDark, DashboardPalette.secondaryDark) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onTertiaryDark, DashboardPalette.tertiaryDark) >= 4.5)
+        assertEquals(6.46, contrastRatio(DashboardPalette.onTertiaryDark, DashboardPalette.tertiaryDark), 0.02)
         assertTrue(contrastRatio(DashboardPalette.onError, DashboardPalette.error) >= 4.5)
-        // r223: on the new dark-grey light field the steel-blue primary
-        // (5.63:1) and the light-amber secondary (4.63:1) both read, so
-        // the legend stays its own colour in light mode too; only the
-        // burnt-amber tertiary (2.36:1) still falls back (pinned below).
+        assertEquals(6.46, contrastRatio(DashboardPalette.onError, DashboardPalette.error), 0.02)
+        assertEquals(17.22, contrastRatio(DashboardPalette.onSecondaryDark, DashboardPalette.secondaryDark), 0.02)
+        // r224: on the dark-grey light field the steel-blue primary
+        // (5.63:1) and the warm-white secondary (11.51:1) both read,
+        // so the legend stays its own colour in light mode too; only
+        // the signal-red tertiary (1.99:1) still falls back (pinned below).
         assertTrue(contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight) >= 4.5)
         assertEquals(5.63, contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight), 0.02)
         assertTrue(contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight) >= 4.5)
-        assertEquals(4.63, contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertEquals(11.51, contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight), 0.02)
         assertTrue(contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight) < 4.5)
-        assertEquals(2.36, contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertEquals(1.99, contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight), 0.02)
         assertEquals(11.51, contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight), 0.02)
         // The two light levels are a subtle step (1.33:1) — the levels
         // are told apart by consistency and the trim dividers, not by
@@ -85,15 +92,14 @@ class DashboardTest {
     }
 
     @Test
-    fun dashboardPaletteHasNoRedAnywhere() {
-        // Robert's hard rule: no red anywhere in Dashboard, either
-        // mode. A token counts as red when its red channel dominates
+    fun dashboardRedLivesOnlyInApprovedTokens() {
+        // r224: the no-red rule is gone — red lives in exactly two
+        // spots, the tertiary role and the error role, and nowhere
+        // else. A token counts as red when its red channel dominates
         // (red > 150 while green and blue stay under 100) AND it is
-        // far more red than green (red - green > 100). The second bar
-        // is what keeps the approved burnt amber (#A3541F, red -
-        // green = 79) from reading as red, while a true red such as
-        // the old error #BA1A1A (red - green = 160) still fails.
-        // The umber error (#6B3410, red 107) is not red by either bar.
+        // far more red than green (red - green > 100). The approved
+        // red is signal red #BA1A1A (red - green = 160); the old
+        // umber error is gone, and so is every amber.
         val tokens = listOf(
             DashboardPalette.backgroundDark, DashboardPalette.onSurfaceDark,
             DashboardPalette.surfaceVariantDark, DashboardPalette.onSurfaceVariantDark,
@@ -115,14 +121,31 @@ class DashboardTest {
             DashboardPalette.outlineLight, DashboardPalette.outlineVariantLight,
             DashboardPalette.error, DashboardPalette.onError,
         )
-        for (token in tokens) {
+        // Exactly three tokens read as red, and all three are the
+        // same signal red: the tertiary in both modes, and the error.
+        val redTokens = tokens.filter { token ->
             val r = (token shr 16) and 0xFF
             val g = (token shr 8) and 0xFF
             val b = token and 0xFF
-            assertFalse("token #" + Integer.toHexString(token) + " reads as red", r > 150 && g < 100 && b < 100 && (r - g) > 100)
+            r > 150 && g < 100 && b < 100 && (r - g) > 100
         }
-        // And the error role really is the umber, not standard red.
-        assertEquals(0xFF6B3410.toInt(), DashboardPalette.error)
+        assertEquals(3, redTokens.size)
+        for (token in redTokens) {
+            assertEquals(0xFFBA1A1A.toInt(), token)
+        }
+        assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryDark)
+        assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryLight)
+        assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.error)
+        // And no amber anywhere: neither old amber value survives,
+        // and no token reads as amber (red high, green mid, blue low,
+        // red clearly ahead of green but not far enough to be red).
+        for (token in tokens) {
+            assertFalse("token #" + Integer.toHexString(token) + " is an old amber", token == 0xFFA3541F.toInt() || token == 0xFFCD8E48.toInt())
+            val r = (token shr 16) and 0xFF
+            val g = (token shr 8) and 0xFF
+            val b = token and 0xFF
+            assertFalse("token #" + Integer.toHexString(token) + " reads as amber", r > 120 && g > 40 && g < 170 && b < 110 && (r - g) > 40 && (r - g) < 130)
+        }
     }
 
     @Test
@@ -179,14 +202,13 @@ class DashboardTest {
         // Light steel blue on the new dark-grey light field reads (5.63:1).
         assertTrue(clusterLegendReads(Color(0xFF7FB3C8), Color(0xFF2F3237)))
         assertEquals(Color(0xFF7FB3C8), clusterLegendColor(Color(0xFF2F3237), Color(0xFF7FB3C8), Color(0xFFF5F2EC)))
-        // Light amber reads on both fields now (6.92:1 dark, 4.63:1 light) —
-        // it stays its own colour wherever the rule picks it.
-        assertTrue(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF0E0E14)))
-        assertTrue(clusterLegendReads(Color(0xFFCD8E48), Color(0xFF2F3237)))
-        // Burnt amber on the light field still does not read (2.36:1) —
-        // the fallback to warm white still has a live in-palette case.
-        assertFalse(clusterLegendReads(Color(0xFFA3541F), Color(0xFF2F3237)))
-        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF2F3237), Color(0xFFA3541F), Color(0xFFF5F2EC)))
+        // Signal red reads on neither field (2.98:1 dark, 1.99:1 light) —
+        // the fallback to warm white still has a live in-palette case,
+        // and red is never a legend anyway (legends are the blue primary).
+        assertFalse(clusterLegendReads(Color(0xFFBA1A1A), Color(0xFF0E0E14)))
+        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF0E0E14), Color(0xFFBA1A1A), Color(0xFFF5F2EC)))
+        assertFalse(clusterLegendReads(Color(0xFFBA1A1A), Color(0xFF2F3237)))
+        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF2F3237), Color(0xFFBA1A1A), Color(0xFFF5F2EC)))
     }
 
     @Test
@@ -226,5 +248,7 @@ class DashboardTest {
         assertEquals(0.3f, GaugeTickHeightFraction, 0.001f)
         // The trim strip is a slightly heavier warm-silver hairline.
         assertEquals(2.dp, TrimDividerThickness)
+        // r224: the redline cap — the last 8% of a Cluster bar.
+        assertEquals(0.08f, RedlineCapFraction, 0.001f)
     }
 }

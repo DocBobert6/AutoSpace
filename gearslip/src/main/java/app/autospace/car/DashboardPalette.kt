@@ -7,31 +7,34 @@ package app.autospace.car
  *
  * r223: the accents flipped — steel blue is the primary now,
  *   amber the secondary — and light mode is two grey levels only.
+ * r224: amber is OUT entirely — the only amber on his dash is
+ *   warning lights, and he does not want it. White takes the
+ *   highlight role (warm white #F5F2EC); signal red (#BA1A1A)
+ *   takes the deep-accent role and the error role.
  * - Dark: the unlit panel is a blue-black (#0E0E14); the primary
  *   accent is steel blue (#3E85A7, the LCD colour — blue means a
- *   control), burnt amber (#A3541F, the deep accent) to light amber
- *   (#CD8E48, the highlight amber) kept only for the ring-glow,
- *   highlights, and selected marks; the hairlines are warm silver.
+ *   control); highlights are warm white; signal red (#BA1A1A) is
+ *   the deep accent and the error; the hairlines are warm silver.
  * - Light: two grey levels only — the dark-grey field (#2F3237) and
  *   near-black buttons (#1A1C1F) — warm-white text (#F5F2EC),
- *   steel blue lightened to #7FB3C8 for text and legends, amber
- *   kept for the ring-glow, highlights, and selected marks.
+ *   steel blue lightened to #7FB3C8 for text and legends, white
+ *   highlights, signal red for the deep accent and the error.
  *
- * HARD RULE (Robert, 2026-11-11): NO red anywhere in Dashboard, in
- * either mode — so the error role is a deep umber (#6B3410), the only
- * red-free way to keep a distinct destructive signal; standard red
- * error would violate the rule. One word from Robert restores
- * standard red error.
+ * RED RULE (Robert, 2026-11-11): red lives in exactly two spots —
+ * the tertiary role (the redline cap on bars, selected marks) and
+ * the error role. No red backgrounds, no red text, and the thin
+ * red line he vetoed stays out. The no-red rule is gone; the pin
+ * in DashboardTest (red only in the approved tokens) is what
+ * keeps the rule from drifting back.
  *
  * Contrast (WCAG sRGB, opaque RGB) — the numbers the legend gate in
- * GsControls relies on: light amber on dark 6.92:1, steel blue on
- * dark 4.69:1, light steel blue on the light field 5.63:1, light
- * amber on the light field 4.63:1, warm white on the light field
- * 11.51:1, white on burnt amber 5.46:1, dark on light amber 6.15:1,
- * dark on light steel blue 7.72:1, white on umber 9.89:1. Burnt
- * amber on the light field reads only 2.36:1, so it still falls
- * back to warm white there (see clusterLegendColor); the old pale
- * light greys (#62666D, amber 2.08:1, steel blue 2.52:1) are gone.
+ * GsControls relies on: steel blue on dark 4.69:1, light steel blue
+ * on the light field 5.63:1, warm white on the light field 11.51:1,
+ * dark on warm white 17.22:1, white on signal red 6.46:1, dark on
+ * light steel blue 7.72:1. Signal red reads only 2.98:1 on dark and
+ * 1.99:1 on the light field, so it still falls back to warm white
+ * there (see clusterLegendColor); the old pale light greys (#62666D,
+ * amber 2.08:1, steel blue 2.52:1) are gone, and so is every amber.
  */
 object DashboardPalette {
     // Dark — the night dash.
@@ -43,14 +46,14 @@ object DashboardPalette {
     const val onPrimaryDark: Int = 0xFF0E0E14.toInt()
     const val primaryContainerDark: Int = 0xFF12283A.toInt()
     const val onPrimaryContainerDark: Int = 0xFFCFE6F2.toInt()
-    const val secondaryDark: Int = 0xFFCD8E48.toInt()
+    const val secondaryDark: Int = 0xFFF5F2EC.toInt()
     const val onSecondaryDark: Int = 0xFF0E0E14.toInt()
-    const val secondaryContainerDark: Int = 0xFF3A2410.toInt()
-    const val onSecondaryContainerDark: Int = 0xFFF2D3A8.toInt()
-    const val tertiaryDark: Int = 0xFFA3541F.toInt()
+    const val secondaryContainerDark: Int = 0xFF453F38.toInt()
+    const val onSecondaryContainerDark: Int = 0xFFF5F2EC.toInt()
+    const val tertiaryDark: Int = 0xFFBA1A1A.toInt()
     const val onTertiaryDark: Int = 0xFFFFFFFF.toInt()
-    const val tertiaryContainerDark: Int = 0xFF4A2608.toInt()
-    const val onTertiaryContainerDark: Int = 0xFFF2C896.toInt()
+    const val tertiaryContainerDark: Int = 0xFF401212.toInt()
+    const val onTertiaryContainerDark: Int = 0xFFF6CFCF.toInt()
     const val outlineDark: Int = 0xFF8A8378.toInt()
     const val outlineVariantDark: Int = 0xFF3A3A42.toInt()
     // Light — the daylight dash, two grey levels only: the dark-grey
@@ -64,17 +67,17 @@ object DashboardPalette {
     const val onPrimaryLight: Int = 0xFF0E1A22.toInt()
     const val primaryContainerLight: Int = 0xFFCFE6F2.toInt()
     const val onPrimaryContainerLight: Int = 0xFF0E1A22.toInt()
-    const val secondaryLight: Int = 0xFFCD8E48.toInt()
+    const val secondaryLight: Int = 0xFFF5F2EC.toInt()
     const val onSecondaryLight: Int = 0xFF1A1C1F.toInt()
-    const val secondaryContainerLight: Int = 0xFFE8C896.toInt()
-    const val onSecondaryContainerLight: Int = 0xFF2A1A08.toInt()
-    const val tertiaryLight: Int = 0xFFA3541F.toInt()
+    const val secondaryContainerLight: Int = 0xFFE8E2D6.toInt()
+    const val onSecondaryContainerLight: Int = 0xFF2A2622.toInt()
+    const val tertiaryLight: Int = 0xFFBA1A1A.toInt()
     const val onTertiaryLight: Int = 0xFFFFFFFF.toInt()
-    const val tertiaryContainerLight: Int = 0xFFF2C896.toInt()
-    const val onTertiaryContainerLight: Int = 0xFF4A2608.toInt()
+    const val tertiaryContainerLight: Int = 0xFFF6D5D5.toInt()
+    const val onTertiaryContainerLight: Int = 0xFF401212.toInt()
     const val outlineLight: Int = 0xFF9A9DA2.toInt()
     const val outlineVariantLight: Int = 0xFF55585E.toInt()
-    // Error, both modes: deep umber, not red (see the hard rule above).
-    const val error: Int = 0xFF6B3410.toInt()
+    // Error, both modes: signal red (see the red rule above).
+    const val error: Int = 0xFFBA1A1A.toInt()
     const val onError: Int = 0xFFFFFFFF.toInt()
 }

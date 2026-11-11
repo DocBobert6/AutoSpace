@@ -315,7 +315,7 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
             if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
             if (now.playing) "Pause" else "Play",
             { CarServices.userTogglePlay() },
-            // r222 (Cluster only): the glowing amber ring around the
+            // r222 (Cluster only): the glowing white ring around the
             // round primary control — dim at rest, bright while
             // playing. Outside Cluster this modifier is a no-op.
             modifier = Modifier.clusterRingGlow(now.playing, playShape),

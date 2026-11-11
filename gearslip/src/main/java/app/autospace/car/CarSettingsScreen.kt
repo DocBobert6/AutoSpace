@@ -356,9 +356,11 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "secondary, and an olive tertiary. Aurora Field is deep ocean " +
             "dark with a spring-green primary, a sky secondary, and a lime " +
             "tertiary. Dashboard is the Altima dash scheme: near-black " +
-            "with burnt-amber accents and a steel-blue secondary in its " +
-            "dark variant, mid-to-dark greys in its light variant. It has " +
-            "no red anywhere. Canvas, Circuit, Dashboard, Heritage, " +
+            "with a steel-blue primary, warm-white highlights, and " +
+            "signal-red accents in its dark variant, a dark-grey field " +
+            "with near-black buttons in its light variant. Red lives " +
+            "only in the redline cap and errors. Canvas, Circuit, " +
+            "Dashboard, Heritage, " +
             "Verve, Horizon, Workshop, and Aurora Field follow the mode " +
             "control; Auto night still " +
             "switches " +

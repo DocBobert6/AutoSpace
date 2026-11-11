@@ -2108,13 +2108,15 @@ private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorSc
  */
 /**
  * r222: the Dashboard scheme — the Altima dash, dark + light. Dark is
- * near-black with burnt-amber accents and a steel-blue secondary;
- * light is mid-to-dark greys with warm-white text, amber for glows
- * and fills, and a lightened steel blue. No red anywhere, in either
- * mode (the error role is deep umber, not red). The surface
- * containers step darker from the mid-grey light background, so a
- * raised card still reads as raised. Follows the mode control (it is
- * not in schemeForcesDark), exactly like Canvas and Horizon.
+ * near-black with a steel-blue primary, warm-white highlights, and
+ * signal-red accents; light is a dark-grey field with near-black
+ * buttons, warm-white text, and a lightened steel blue. r224 took
+ * the amber out entirely (the only amber on the car is warning
+ * lights); red lives only in the tertiary role (the redline cap,
+ * selected marks) and the error role. The light surface containers
+ * are the near-black button grey, so a raised card still reads as
+ * raised. Follows the mode control (it is not in schemeForcesDark),
+ * exactly like Canvas and Horizon.
  */
 internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     return if (dark) {
