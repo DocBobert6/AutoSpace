@@ -346,7 +346,7 @@ class FilterEngineTest {
     @Test
     fun cosmeticCacheKeepsLastSixHosts() {
         // r221 (audit C-02): the cosmetic sheet is cached per host, last 6.
-        install("##.ad-banner\\n")
+        install("##.ad-banner\n")
         val hosts = (1..7).map { "host$it.example.org" }
         hosts.forEach { FilterEngine.cosmeticCss(it) }
         assertEquals(6, FilterEngine.cosmeticCacheSize())
