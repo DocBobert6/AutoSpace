@@ -192,18 +192,27 @@ tasks.matching { it.name == "assembleStandardRelease" || it.name == "assembleExp
 tasks.register("renameApk") {
     doLast {
         val rootBuildDir = rootProject.layout.buildDirectory.get().asFile
-        layout.buildDirectory.dir("outputs/apk").get().asFile.walkTopDown()
+        val apkDir = layout.buildDirectory.dir("outputs/apk").get().asFile
+        apkDir.walkTopDown()
             .filter { it.extension == "apk" }
             .toList()
             .forEach { apk ->
-                // r221 (experimental flavor): the flavored variant dirs are
-                // standardRelease / experimentalRelease; map them back to the
-                // stable asset names so the beta keeps AutoSpace-release.apk
-                // and the experimental build is AutoSpace-experimental.apk.
-                val variant = when (apk.parentFile.name) {
-                    "standardRelease" -> "release"
-                    "experimentalRelease" -> "experimental"
-                    else -> apk.parentFile.name
+                // r221 (experimental flavor): AGP 9 lays flavored APKs out
+                // as outputs/apk/<flavor>/<buildType>/ (experimental/release),
+                // NOT outputs/apk/<flavor><BuildType>/ — so the variant comes
+                // from the path segments under outputs/apk, not the parent
+                // dir alone (the parent is just the build type, "release").
+                // The unflavored layout (outputs/apk/<buildType>/) maps the
+                // same way, so the beta keeps AutoSpace-release.apk and the
+                // experimental build is AutoSpace-experimental.apk.
+                val rel = apk.parentFile.relativeTo(apkDir).path
+                    .split(File.separator).filter { it.isNotEmpty() }
+                val variant = when (rel) {
+                    listOf("experimental", "release") -> "experimental"
+                    listOf("standard", "release"), listOf("release") -> "release"
+                    listOf("experimental", "debug") -> "experimental-debug"
+                    listOf("standard", "debug"), listOf("debug") -> "debug"
+                    else -> rel.joinToString("-")
                 }
                 val renamed = File(rootBuildDir, "AutoSpace-$variant.apk")
                 apk.copyTo(renamed, overwrite = true)
