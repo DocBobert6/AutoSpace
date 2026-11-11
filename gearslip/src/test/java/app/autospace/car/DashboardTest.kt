@@ -68,8 +68,12 @@ class DashboardTest {
     fun dashboardPaletteHasNoRedAnywhere() {
         // Robert's hard rule: no red anywhere in Dashboard, either
         // mode. A token counts as red when its red channel dominates
-        // (red > 150 while green and blue stay under 100); the umber
-        // error (#6B3410, red 107) is not red by that bar.
+        // (red > 150 while green and blue stay under 100) AND it is
+        // far more red than green (red - green > 100). The second bar
+        // is what keeps the approved burnt amber (#A3541F, red -
+        // green = 79) from reading as red, while a true red such as
+        // the old error #BA1A1A (red - green = 160) still fails.
+        // The umber error (#6B3410, red 107) is not red by either bar.
         val tokens = listOf(
             DashboardPalette.backgroundDark, DashboardPalette.onSurfaceDark,
             DashboardPalette.surfaceVariantDark, DashboardPalette.onSurfaceVariantDark,
@@ -95,7 +99,7 @@ class DashboardTest {
             val r = (token shr 16) and 0xFF
             val g = (token shr 8) and 0xFF
             val b = token and 0xFF
-            assertFalse("token #" + Integer.toHexString(token) + " reads as red", r > 150 && g < 100 && b < 100)
+            assertFalse("token #" + Integer.toHexString(token) + " reads as red", r > 150 && g < 100 && b < 100 && (r - g) > 100)
         }
         // And the error role really is the umber, not standard red.
         assertEquals(0xFF6B3410.toInt(), DashboardPalette.error)

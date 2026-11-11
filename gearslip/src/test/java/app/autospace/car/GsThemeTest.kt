@@ -574,7 +574,7 @@ class GsThemeTest {
     }
 
     @Test
-    fun auroraIsBuiltInLastWithDiagonalSheenWhiteRimAndTintedShadow() {
+    fun auroraIsBuiltInSecondFromLastWithDiagonalSheenWhiteRimAndTintedShadow() {
         // r143: Aurora appends last (pinned here); Foundry sits
         // second from last, and nothing else moved. The
         // Frutiger Aero style: 10dp corner, translucent scheme
@@ -590,7 +590,9 @@ class GsThemeTest {
         // auroraCardSheen, which cards call, while the control
         // band lives only in gsSurface, which cards never call).
         assertTrue(GsThemes.builtIn.any { it.id == "aurora" && it.name == "Aurora" })
-        assertEquals(GsThemes.Aurora, GsThemes.builtIn.last())
+        // r222 appends Cluster last (pinned by DashboardTest),
+        // so Aurora is second from last.
+        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("aurora", GsThemes.byId("aurora").id)
         assertEquals("Aurora Field", ColorScheme.AURORA_FIELD.displayName)
         val look = GsThemes.Aurora.control

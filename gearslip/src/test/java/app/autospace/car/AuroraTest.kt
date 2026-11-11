@@ -18,10 +18,12 @@ import org.junit.Test
 class AuroraTest {
 
     @Test
-    fun auroraFieldSchemeIsAppendedLastAndNamedAuroraField() {
+    fun auroraFieldSchemeIsAppendedBeforeDashboardAndNamedAuroraField() {
         assertEquals(ColorScheme.AURORA_FIELD, ColorScheme.valueOf("AURORA_FIELD"))
         assertEquals("Aurora Field", ColorScheme.AURORA_FIELD.displayName)
-        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes.last())
+        // r222 appends Dashboard last (pinned by DashboardTest),
+        // so Aurora Field is second from last.
+        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.AURORA_FIELD))
         // r222 appends Dashboard last (pinned by DashboardTest),
         // so Workshop is third from last, and nothing else moved.
