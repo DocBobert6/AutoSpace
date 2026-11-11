@@ -368,8 +368,7 @@ fun clusterLegendColor(background: Color, accent: Color, fallback: Color): Color
  */
 @Composable
 private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
-    val look = gsLook()
-    if (look.id != "cluster" || !enabled) return defaultContent to null
+    if (LocalGsTheme.current.id != GsThemes.Cluster.id || !enabled) return defaultContent to null
     val scheme = MaterialTheme.colorScheme
     val accent = if (latched) scheme.tertiary else scheme.secondary
     val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
@@ -387,8 +386,7 @@ private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, 
  */
 @Composable
 fun Modifier.clusterRingGlow(active: Boolean, shape: Shape): Modifier {
-    val look = gsLook()
-    if (look.id != "cluster") return this
+    if (LocalGsTheme.current.id != GsThemes.Cluster.id) return this
     val amber = MaterialTheme.colorScheme.secondary
     return this.drawWithContent {
         drawContent()

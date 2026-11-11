@@ -2118,7 +2118,7 @@ private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorSc
  */
 private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     return if (dark) {
-        darkColorScheme(
+        androidx.compose.material3.darkColorScheme(
             background = Color(DashboardPalette.backgroundDark),
             onBackground = Color(DashboardPalette.onSurfaceDark),
             surface = Color(DashboardPalette.backgroundDark),
@@ -2155,7 +2155,7 @@ private fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSche
             scrim = Color.Black,
         )
     } else {
-        lightColorScheme(
+        androidx.compose.material3.lightColorScheme(
             background = Color(DashboardPalette.backgroundLight),
             onBackground = Color(DashboardPalette.onSurfaceLight),
             surface = Color(DashboardPalette.backgroundLight),
