@@ -11,14 +11,19 @@ package app.autospace.car
  *   warning lights, and he does not want it. White takes the
  *   highlight role (warm white #F5F2EC); signal red (#BA1A1A)
  *   takes the deep-accent role and the error role.
+ * r225: white is the primary now — the gauge numerals are white,
+ *   the calm default — and steel blue is the secondary and the
+ *   active colour: blue is what "on" looks like (latched legends,
+ *   the ring-glow, selected marks, progress fills), never white.
  * - Dark: the unlit panel is a blue-black (#0E0E14); the primary
- *   accent is steel blue (#3E85A7, the LCD colour — blue means a
- *   control); highlights are warm white; signal red (#BA1A1A) is
- *   the deep accent and the error; the hairlines are warm silver.
+ *   is warm white (#F5F2EC, the gauge numerals); steel blue
+ *   (#3E85A7, the LCD colour) is the secondary and the active
+ *   colour; signal red (#BA1A1A) is the deep accent and the
+ *   error; the hairlines are warm silver.
  * - Light: two grey levels only — the dark-grey field (#2F3237) and
- *   near-black buttons (#1A1C1F) — warm-white text (#F5F2EC),
- *   steel blue lightened to #7FB3C8 for text and legends, white
- *   highlights, signal red for the deep accent and the error.
+ *   near-black buttons (#1A1C1F) — warm-white text (#F5F2EC) and
+ *   warm-white legends, steel blue lightened to #7FB3C8 for the
+ *   active colour, signal red for the deep accent and the error.
  *
  * RED RULE (Robert, 2026-11-11): red lives in exactly two spots —
  * the tertiary role (the redline cap on bars, selected marks) and
@@ -42,14 +47,14 @@ object DashboardPalette {
     const val onSurfaceDark: Int = 0xFFF5F2EC.toInt()
     const val surfaceVariantDark: Int = 0xFF1C1C23.toInt()
     const val onSurfaceVariantDark: Int = 0xFFB9B2A4.toInt()
-    const val primaryDark: Int = 0xFF3E85A7.toInt()
+    const val primaryDark: Int = 0xFFF5F2EC.toInt()
     const val onPrimaryDark: Int = 0xFF0E0E14.toInt()
-    const val primaryContainerDark: Int = 0xFF12283A.toInt()
-    const val onPrimaryContainerDark: Int = 0xFFCFE6F2.toInt()
-    const val secondaryDark: Int = 0xFFF5F2EC.toInt()
+    const val primaryContainerDark: Int = 0xFF453F38.toInt()
+    const val onPrimaryContainerDark: Int = 0xFFF5F2EC.toInt()
+    const val secondaryDark: Int = 0xFF3E85A7.toInt()
     const val onSecondaryDark: Int = 0xFF0E0E14.toInt()
-    const val secondaryContainerDark: Int = 0xFF453F38.toInt()
-    const val onSecondaryContainerDark: Int = 0xFFF5F2EC.toInt()
+    const val secondaryContainerDark: Int = 0xFF12283A.toInt()
+    const val onSecondaryContainerDark: Int = 0xFFCFE6F2.toInt()
     const val tertiaryDark: Int = 0xFFBA1A1A.toInt()
     const val onTertiaryDark: Int = 0xFFFFFFFF.toInt()
     const val tertiaryContainerDark: Int = 0xFF401212.toInt()
@@ -63,14 +68,14 @@ object DashboardPalette {
     const val onSurfaceLight: Int = 0xFFF5F2EC.toInt()
     const val buttonLight: Int = 0xFF1A1C1F.toInt()
     const val onSurfaceVariantLight: Int = 0xFFD8D2C6.toInt()
-    const val primaryLight: Int = 0xFF7FB3C8.toInt()
-    const val onPrimaryLight: Int = 0xFF0E1A22.toInt()
-    const val primaryContainerLight: Int = 0xFFCFE6F2.toInt()
-    const val onPrimaryContainerLight: Int = 0xFF0E1A22.toInt()
-    const val secondaryLight: Int = 0xFFF5F2EC.toInt()
-    const val onSecondaryLight: Int = 0xFF1A1C1F.toInt()
-    const val secondaryContainerLight: Int = 0xFFE8E2D6.toInt()
-    const val onSecondaryContainerLight: Int = 0xFF2A2622.toInt()
+    const val primaryLight: Int = 0xFFF5F2EC.toInt()
+    const val onPrimaryLight: Int = 0xFF1A1C1F.toInt()
+    const val primaryContainerLight: Int = 0xFFE8E2D6.toInt()
+    const val onPrimaryContainerLight: Int = 0xFF2A2622.toInt()
+    const val secondaryLight: Int = 0xFF7FB3C8.toInt()
+    const val onSecondaryLight: Int = 0xFF0E1A22.toInt()
+    const val secondaryContainerLight: Int = 0xFFCFE6F2.toInt()
+    const val onSecondaryContainerLight: Int = 0xFF0E1A22.toInt()
     const val tertiaryLight: Int = 0xFFBA1A1A.toInt()
     const val onTertiaryLight: Int = 0xFFFFFFFF.toInt()
     const val tertiaryContainerLight: Int = 0xFFF6D5D5.toInt()

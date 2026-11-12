@@ -44,19 +44,20 @@ class DashboardTest {
         // accents flipped (steel blue primary, amber secondary) and
         // light mode is two grey levels (field + near-black buttons).
         // r224: amber is out entirely — white highlights, signal red
-        // deep accent and error.
+        // deep accent and error. r225: white is the primary now and
+        // steel blue is the secondary and the active colour.
         assertEquals(0xFF0E0E14.toInt(), DashboardPalette.backgroundDark)
-        assertEquals(0xFF3E85A7.toInt(), DashboardPalette.primaryDark)
+        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.primaryDark)
         assertEquals(0xFF0E0E14.toInt(), DashboardPalette.onPrimaryDark)
-        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.secondaryDark)
+        assertEquals(0xFF3E85A7.toInt(), DashboardPalette.secondaryDark)
         assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryDark)
         assertEquals(0xFFFFFFFF.toInt(), DashboardPalette.onTertiaryDark)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceDark)
         assertEquals(0xFF2F3237.toInt(), DashboardPalette.backgroundLight)
         assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.onSurfaceLight)
         assertEquals(0xFF1A1C1F.toInt(), DashboardPalette.buttonLight)
-        assertEquals(0xFF7FB3C8.toInt(), DashboardPalette.primaryLight)
-        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.secondaryLight)
+        assertEquals(0xFFF5F2EC.toInt(), DashboardPalette.primaryLight)
+        assertEquals(0xFF7FB3C8.toInt(), DashboardPalette.secondaryLight)
         assertEquals(0xFFBA1A1A.toInt(), DashboardPalette.tertiaryLight)
         // The dark background is near-black, not pure black — so
         // Dashboard stays out of oledBlackSchemes by design.
@@ -67,21 +68,29 @@ class DashboardTest {
     fun dashboardPaletteContrastClearsTheBars() {
         // The numbers the legend gate relies on (WCAG, opaque RGB).
         assertTrue(contrastRatio(DashboardPalette.onPrimaryDark, DashboardPalette.primaryDark) >= 4.5)
+        assertEquals(17.22, contrastRatio(DashboardPalette.onPrimaryDark, DashboardPalette.primaryDark), 0.02)
         assertTrue(contrastRatio(DashboardPalette.onSecondaryDark, DashboardPalette.secondaryDark) >= 4.5)
+        assertEquals(4.69, contrastRatio(DashboardPalette.onSecondaryDark, DashboardPalette.secondaryDark), 0.02)
+        // The swapped containers read too (dark: warm-grey primary 9.30:1,
+        // deep-blue secondary 11.69:1; light: warm-grey primary 11.64:1,
+        // pale-blue secondary 13.66:1).
+        assertTrue(contrastRatio(DashboardPalette.onPrimaryContainerDark, DashboardPalette.primaryContainerDark) >= 4.5)
+        assertTrue(contrastRatio(DashboardPalette.onSecondaryContainerDark, DashboardPalette.secondaryContainerDark) >= 4.5)
+        assertTrue(contrastRatio(DashboardPalette.onPrimaryContainerLight, DashboardPalette.primaryContainerLight) >= 4.5)
+        assertTrue(contrastRatio(DashboardPalette.onSecondaryContainerLight, DashboardPalette.secondaryContainerLight) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight) >= 4.5)
         assertTrue(contrastRatio(DashboardPalette.onTertiaryDark, DashboardPalette.tertiaryDark) >= 4.5)
         assertEquals(6.46, contrastRatio(DashboardPalette.onTertiaryDark, DashboardPalette.tertiaryDark), 0.02)
         assertTrue(contrastRatio(DashboardPalette.onError, DashboardPalette.error) >= 4.5)
         assertEquals(6.46, contrastRatio(DashboardPalette.onError, DashboardPalette.error), 0.02)
-        assertEquals(17.22, contrastRatio(DashboardPalette.onSecondaryDark, DashboardPalette.secondaryDark), 0.02)
-        // r224: on the dark-grey light field the steel-blue primary
-        // (5.63:1) and the warm-white secondary (11.51:1) both read,
+        // r225: on the dark-grey light field the warm-white primary
+        // (11.51:1) and the steel-blue secondary (5.63:1) both read,
         // so the legend stays its own colour in light mode too; only
         // the signal-red tertiary (1.99:1) still falls back (pinned below).
         assertTrue(contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight) >= 4.5)
-        assertEquals(5.63, contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertEquals(11.51, contrastRatio(DashboardPalette.primaryLight, DashboardPalette.backgroundLight), 0.02)
         assertTrue(contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight) >= 4.5)
-        assertEquals(11.51, contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight), 0.02)
+        assertEquals(5.63, contrastRatio(DashboardPalette.secondaryLight, DashboardPalette.backgroundLight), 0.02)
         assertTrue(contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight) < 4.5)
         assertEquals(1.99, contrastRatio(DashboardPalette.tertiaryLight, DashboardPalette.backgroundLight), 0.02)
         assertEquals(11.51, contrastRatio(DashboardPalette.onSurfaceLight, DashboardPalette.backgroundLight), 0.02)
@@ -194,17 +203,24 @@ class DashboardTest {
     }
 
     @Test
-    fun clusterLegendGateKeepsBlueInBothModes() {
-        // r223: the legend is the steel-blue primary in both modes.
-        // Steel blue on the dark dash reads (4.69:1) — the legend stays blue.
+    fun clusterLegendGateKeepsWhiteDefaultAndBlueLatched() {
+        // r225: the legend is warm white by default and steel blue when
+        // latched. Warm white reads on both fields (17.22:1 dark,
+        // 11.51:1 light); steel blue reads too (4.69:1 dark, 5.63:1
+        // light) — so the legend stays its own colour in both states,
+        // and the latched rule (secondary when latched, primary
+        // otherwise) never has to fall back on either field.
+        assertTrue(clusterLegendReads(Color(0xFFF5F2EC), Color(0xFF0E0E14)))
+        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF0E0E14), Color(0xFFF5F2EC), Color(0xFF000000)))
+        assertTrue(clusterLegendReads(Color(0xFFF5F2EC), Color(0xFF2F3237)))
+        assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF2F3237), Color(0xFFF5F2EC), Color(0xFF000000)))
         assertTrue(clusterLegendReads(Color(0xFF3E85A7), Color(0xFF0E0E14)))
-        assertEquals(Color(0xFF3E85A7), clusterLegendColor(Color(0xFF0E0E14), Color(0xFF3E85A7), Color(0xFFF5F2EC)))
-        // Light steel blue on the new dark-grey light field reads (5.63:1).
+        assertEquals(Color(0xFF3E85A7), clusterLegendColor(Color(0xFF0E0E14), Color(0xFF3E85A7), Color(0xFF000000)))
         assertTrue(clusterLegendReads(Color(0xFF7FB3C8), Color(0xFF2F3237)))
-        assertEquals(Color(0xFF7FB3C8), clusterLegendColor(Color(0xFF2F3237), Color(0xFF7FB3C8), Color(0xFFF5F2EC)))
+        assertEquals(Color(0xFF7FB3C8), clusterLegendColor(Color(0xFF2F3237), Color(0xFF7FB3C8), Color(0xFF000000)))
         // Signal red reads on neither field (2.98:1 dark, 1.99:1 light) —
         // the fallback to warm white still has a live in-palette case,
-        // and red is never a legend anyway (legends are the blue primary).
+        // and red is never a legend anyway.
         assertFalse(clusterLegendReads(Color(0xFFBA1A1A), Color(0xFF0E0E14)))
         assertEquals(Color(0xFFF5F2EC), clusterLegendColor(Color(0xFF0E0E14), Color(0xFFBA1A1A), Color(0xFFF5F2EC)))
         assertFalse(clusterLegendReads(Color(0xFFBA1A1A), Color(0xFF2F3237)))

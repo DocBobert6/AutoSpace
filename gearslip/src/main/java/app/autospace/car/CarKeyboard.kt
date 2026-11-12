@@ -418,7 +418,8 @@ fun CarKeyboard(
             // own frame, so the line follows the finger whatever the board's
             // padding or position.
             var overlayCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-            val traceColor = MaterialTheme.colorScheme.primary
+            // r225 (Cluster only): the swipe trace is blue — live activity.
+            val traceColor = clusterOnAccent()
             Box {
                 Column(
                     Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -628,7 +629,8 @@ fun CarKeyboard(
                 }
                 val bandAlpha by animateFloatAsState(if (dictating) 1f else 0f, tween(300), label = "dictation")
                 if (bandAlpha > 0.01f) {
-                    val bandColor = MaterialTheme.colorScheme.primary
+                    // r225 (Cluster only): the dictation band is blue — live activity.
+                    val bandColor = clusterOnAccent()
                     Canvas(Modifier.fillMaxSize()) {
                         val bandHeight = 72.dp.toPx()
                         drawRect(
@@ -747,8 +749,10 @@ private fun Key(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier.height(LocalKeyHeight.current),
+        // r225 (Cluster only): a latched shift key is blue — the 'on'
+        // colour — never white.
         colors = if (active) {
-            GsColors(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onPrimary)
+            GsColors(clusterOnAccent(), clusterOnContent())
         } else {
             GsColors(MaterialTheme.colorScheme.surfaceContainerHighest, MaterialTheme.colorScheme.onSurface)
         },
@@ -782,7 +786,8 @@ private fun Key(
         }
         // r30: the Gboard keycap read — a crisp bottom edge inside the key's
         // own clipped shape (see [KeyEdge]).
-        KeyEdge(if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest)
+        // r225 (Cluster only): the active key edge is blue — the 'on' colour.
+        KeyEdge(if (active) clusterOnAccent() else MaterialTheme.colorScheme.surfaceContainerHighest)
     }
 }
 

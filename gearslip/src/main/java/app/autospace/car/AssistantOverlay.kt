@@ -102,7 +102,8 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
         }
     }
     val listening = state.phase == CarAssistant.Phase.LISTENING && state.ready
-    val glow = MaterialTheme.colorScheme.primary
+    // r225 (Cluster only): the listening glow is blue — the 'on' colour.
+    val glow = clusterOnAccent()
     val glow2 = MaterialTheme.colorScheme.tertiary
     val breathe by rememberInfiniteTransition(label = "glow").animateFloat(
         0.55f, 1f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "glow",
@@ -346,8 +347,8 @@ fun AssistantOverlay(modifier: Modifier = Modifier) {
 private fun PulsingMic(listening: Boolean, modifier: Modifier = Modifier) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary,
-        contentColor = MaterialTheme.colorScheme.onPrimary,
+        color = clusterOnAccent(),
+        contentColor = clusterOnContent(),
         modifier = modifier.size(36.dp),
     ) {
         Row(horizontalArrangement = Arrangement.Center) {

@@ -366,27 +366,59 @@ fun clusterLegendColor(background: Color, accent: Color, fallback: Color): Color
  * all. r223: the legend is the primary (steel blue) in both states —
  * blue means a control now. r224: amber is out entirely — the
  * secondary accent is warm white, so the ring-glow glows white and
- * highlights are white; signal red is the deep accent. `latched` keeps a
- * brighter glow so the on-state stays visible without a colour
- * change (judgment call — one word corrects it). `pressed` brightens
- * and tightens the glow. Disabled buttons take the disabled colour
- * with no glow, exactly like every other style.
+ * highlights are white; signal red is the deep accent. r225: white
+ * is the primary now, so the legend is warm white at rest — and
+ * blue is the active colour, so a latched legend glows steel blue
+ * instead of brighter white: white is never the "on" colour, blue
+ * always is. `pressed` brightens and tightens the glow. Disabled
+ * buttons take the disabled colour with no glow, exactly like every
+ * other style.
  */
 @Composable
 private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
     if (LocalGsTheme.current.id != GsThemes.Cluster.id || !enabled) return defaultContent to null
     val scheme = MaterialTheme.colorScheme
-    val accent = scheme.primary
+    val accent = if (latched) scheme.secondary else scheme.primary
     val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
     val glow = accent.copy(alpha = if (pressed || latched) 0.95f else 0.6f)
     return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
 }
 
 /**
+ * r225 (Cluster only): the "on" accent — steel blue under Cluster, the
+ * scheme primary everywhere else. White is never the "on" colour under
+ * Cluster; blue always is. Other styles are untouched: the helpers
+ * return the scheme primary roles for them.
+ */
+@Composable
+fun clusterOnAccent(): Color =
+    if (LocalGsTheme.current.id == GsThemes.Cluster.id) MaterialTheme.colorScheme.secondary
+    else MaterialTheme.colorScheme.primary
+
+/** r225 (Cluster only): the "on" content — onSecondary under Cluster, onPrimary elsewhere. */
+@Composable
+fun clusterOnContent(): Color =
+    if (LocalGsTheme.current.id == GsThemes.Cluster.id) MaterialTheme.colorScheme.onSecondary
+    else MaterialTheme.colorScheme.onPrimary
+
+/** r225 (Cluster only): the "on" container — secondaryContainer under Cluster, primaryContainer elsewhere. */
+@Composable
+fun clusterOnContainer(): Color =
+    if (LocalGsTheme.current.id == GsThemes.Cluster.id) MaterialTheme.colorScheme.secondaryContainer
+    else MaterialTheme.colorScheme.primaryContainer
+
+/** r225 (Cluster only): the "on" container content — onSecondaryContainer under Cluster, onPrimaryContainer elsewhere. */
+@Composable
+fun clusterOnContainerContent(): Color =
+    if (LocalGsTheme.current.id == GsThemes.Cluster.id) MaterialTheme.colorScheme.onSecondaryContainer
+    else MaterialTheme.colorScheme.primaryContainer
+
+/**
  * r222 (Cluster only): the glowing ring around the round primary
  * control (the media play/pause) — the car's own glowing orange ring
- * around the head-unit volume knob, rendered warm white here: r224
- * took the amber out entirely, so the ring glows white now. Dim at
+ * around the head-unit volume knob, rendered steel blue here: r224
+ * took the amber out entirely and the ring glowed white; r225 made
+ * blue the active colour, so the ring is blue again. Dim at
  * rest, bright when active. Outside Cluster it is a no-op modifier,
  * so no other style changes at all. The ring is drawn with the same
  * faked-blur idiom as the halo: three growing strokes at falling

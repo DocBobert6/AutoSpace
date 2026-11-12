@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            184, "0.5.0-beta.16",
+            listOf(
+                "Dashboard, reworked once more: legends glow warm white now — the gauge numerals — with steel blue kept as the active colour: latched controls, the ring-glow, selected marks, and progress fills are blue. Red stays only in the redline cap and errors; amber stays out.",
+            ),
+        ),
+        Release(
             183, "0.5.0-beta.15",
             listOf(
                 "Dashboard, reworked again: amber is gone entirely — the ring-glow and highlights are warm white now — with a signal-red redline cap at the end of sliders and progress bars, and red back for errors. Blue legends, the two-level light mode, and the gauge ticks stay.",

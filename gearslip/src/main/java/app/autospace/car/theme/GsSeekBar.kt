@@ -75,7 +75,12 @@ fun GsProgressBar(
     val scheme = MaterialTheme.colorScheme
     val shown = fraction.coerceIn(0f, 1f)
     val inset = 3.dp
-    val fill = if (active) lerp(color, Color.White, 0.12f) else color
+    // r225 (Cluster only): progress fills are blue — the "on" colour —
+    // never white, even though white is the new primary. No caller
+    // passes an explicit color (all use the default), so the gate
+    // replaces the default here and in the track below alike.
+    val barColor = if (LocalGsTheme.current.id == GsThemes.Cluster.id) scheme.secondary else color
+    val fill = if (active) lerp(barColor, Color.White, 0.12f) else barColor
     // Phase 10: the unfilled track was only 12% towards primary, so on
     // video it read as a thin smear rather than a bar — 28% keeps it
     // visibly a track in every theme without stealing the fill's job.
@@ -88,7 +93,7 @@ fun GsProgressBar(
             .fillMaxWidth()
             .height(height)
             .clip(CircleShape)
-            .background(lerp(scheme.surfaceContainerHighest, color, 0.28f))
+            .background(lerp(scheme.surfaceContainerHighest, barColor, 0.28f))
             .padding(inset)
             .then(
                 if (LocalGsTheme.current.id != GsThemes.Cluster.id) Modifier else Modifier.drawWithContent {
@@ -236,7 +241,7 @@ fun GsSeekBar(
                     .padding(start = (maxWidth - thumb) * shown)
                     .size(thumb)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+                    .background(clusterOnAccent())
                     .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
             )
         }

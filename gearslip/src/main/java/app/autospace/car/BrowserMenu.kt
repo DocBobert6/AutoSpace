@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -29,6 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.clusterOnAccent
+import app.autospace.car.theme.clusterOnContent
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsSheetSurface
 import app.autospace.car.theme.gsButtonShape
@@ -75,7 +78,8 @@ fun BrowserMenuSheet(
         Row(
             Modifier.fillMaxWidth()
                 .background(
-                    if (checked) MaterialTheme.colorScheme.primary
+                    // r225 (Cluster only): a checked row is blue — the 'on' colour.
+                    if (checked) clusterOnAccent()
                     else MaterialTheme.colorScheme.surfaceContainerHigh,
                     gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)),
                 )
@@ -86,7 +90,7 @@ fun BrowserMenuSheet(
             if (checked) {
                 androidx.compose.material3.Icon(
                     Icons.Filled.Check, null,
-                    tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp),
+                    tint = clusterOnContent(), modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(12.dp))
             } else {
@@ -97,7 +101,7 @@ fun BrowserMenuSheet(
                 label,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = if (checked) FontWeight.Bold else FontWeight.Normal,
-                color = if (checked) MaterialTheme.colorScheme.onPrimary
+                color = if (checked) clusterOnContent()
                 else MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -259,6 +263,8 @@ fun BrowserMenuCustomizeSheet(
                         Switch(
                             checked = BrowserMenuRows.isVisible(id, hiddenIds),
                             onCheckedChange = { checked -> onToggleVisible(id, checked) },
+                            // r225 (Cluster only): a checked switch is blue — the "on" colour.
+                            colors = SwitchDefaults.colors(checkedTrackColor = clusterOnAccent(), checkedThumbColor = clusterOnContent()),
                         )
                     }
                 }

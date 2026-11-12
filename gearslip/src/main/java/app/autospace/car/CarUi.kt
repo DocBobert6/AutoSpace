@@ -100,6 +100,8 @@ import app.autospace.car.theme.gsShape
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.dialogShapeForLook
 import app.autospace.car.theme.morphCardColor
+import app.autospace.car.theme.clusterOnAccent
+import app.autospace.car.theme.clusterOnContent
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.pitLanePanelTexture
 import app.autospace.car.theme.LocalGsTheme
@@ -1453,7 +1455,7 @@ private fun NavAppIcon(
             // where they carry a bitmap icon.
             if (showing) GsColors(Color.White.copy(alpha = NavBarItemAlpha), Color(MapChromeColors.MERIDIAN_ETA))
             else GsColors(Color.Transparent, Color.White)
-        } else if (showing) GsColors(scheme.primary.copy(alpha = NavBarItemAlpha), scheme.onPrimary)
+        } else if (showing) GsColors(clusterOnAccent().copy(alpha = NavBarItemAlpha), clusterOnContent())
         else GsColors(scheme.surfaceVariant.copy(alpha = NavBarItemAlpha), scheme.onSurfaceVariant),
         latched = showing,
         onLongClick = onLongClick,
@@ -1481,7 +1483,7 @@ private fun NavAppIcon(
                     .padding(bottom = 2.dp)
                     .size(width = 12.dp, height = 3.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(if (meridian) Color.White else scheme.primary),
+                    .background(if (meridian) Color.White else clusterOnAccent()),
             )
         }
     }
@@ -1501,7 +1503,8 @@ private fun navColors(selected: Boolean, meridian: Boolean = false): GsColors {
         return if (selected) GsColors(Color.White.copy(alpha = NavBarItemAlpha), Color(MapChromeColors.MERIDIAN_ETA))
         else GsColors(Color.Transparent, Color.White)
     }
-    return if (selected) GsColors(s.primary.copy(alpha = NavBarItemAlpha), s.onPrimary)
+    // r225 (Cluster only): the selected nav item is blue — the 'on' colour — never white.
+    return if (selected) GsColors(clusterOnAccent().copy(alpha = NavBarItemAlpha), clusterOnContent())
     else GsColors(s.surfaceContainerHighest.copy(alpha = NavBarItemAlpha), s.onSurface)
 }
 
@@ -2108,15 +2111,17 @@ private fun auroraFieldScheme(dark: Boolean): androidx.compose.material3.ColorSc
  */
 /**
  * r222: the Dashboard scheme — the Altima dash, dark + light. Dark is
- * near-black with a steel-blue primary, warm-white highlights, and
- * signal-red accents; light is a dark-grey field with near-black
- * buttons, warm-white text, and a lightened steel blue. r224 took
- * the amber out entirely (the only amber on the car is warning
- * lights); red lives only in the tertiary role (the redline cap,
- * selected marks) and the error role. The light surface containers
- * are the near-black button grey, so a raised card still reads as
- * raised. Follows the mode control (it is not in schemeForcesDark),
- * exactly like Canvas and Horizon.
+ * near-black with a warm-white primary, steel-blue active accents,
+ * and signal-red accents; light is a dark-grey field with near-black
+ * buttons, warm-white text and legends, and a lightened steel blue
+ * for the active colour. r224 took the amber out entirely (the only
+ * amber on the car is warning lights); red lives only in the tertiary
+ * role (the redline cap, selected marks) and the error role. r225
+ * makes white the primary and blue the active colour — white is the
+ * calm default, blue is what "on" looks like. The light surface
+ * containers are the near-black button grey, so a raised card still
+ * reads as raised. Follows the mode control (it is not in
+ * schemeForcesDark), exactly like Canvas and Horizon.
  */
 internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorScheme {
     return if (dark) {

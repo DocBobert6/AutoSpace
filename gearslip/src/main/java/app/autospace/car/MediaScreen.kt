@@ -373,7 +373,7 @@ private fun MediaTab(label: String, selected: Boolean, modifier: Modifier, onCli
     GsIconBox(
         onClick = onClick,
         modifier = modifier.height(44.dp),
-        colors = if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+        colors = if (selected) GsColors(clusterOnContainer(), clusterOnContainerContent())
         else GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
         shape = gsButtonShape(MaterialTheme.shapes.large),
         latched = selected,
@@ -435,7 +435,8 @@ internal fun LyricsPanel(
                         fontWeight = if (index == current) FontWeight.Bold else FontWeight.Normal,
                         color = when {
                             !state.result.synced -> MaterialTheme.colorScheme.onSurface
-                            index == current -> MaterialTheme.colorScheme.primary
+                            // r225 (Cluster only): the line playing now is blue — the 'on' colour.
+                            index == current -> clusterOnAccent()
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )

@@ -76,7 +76,8 @@ fun GsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
     GsIconBox(
         onClick = { onCheckedChange(!checked) },
         modifier = modifier.size(width = 64.dp, height = 36.dp),
-        colors = if (checked) GsColors(scheme.primary, scheme.onPrimary) else GsColors(scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
+        // r225 (Cluster only): a checked switch is blue — the 'on' colour — never white.
+        colors = if (checked) GsColors(clusterOnAccent(), clusterOnContent()) else GsColors(scheme.surfaceContainerHighest, scheme.onSurfaceVariant),
         shape = trackShape,
         latched = checked,
         well = look.batToggle,
@@ -101,7 +102,7 @@ fun GsSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit, modifier: Mod
                     Modifier
                         .offset(x = x)
                         .size(knob)
-                        .gsSurface(if (checked) scheme.onPrimary else scheme.outline, gsButtonShape(CircleShape)),
+                        .gsSurface(if (checked) clusterOnContent() else scheme.outline, gsButtonShape(CircleShape)),
                 )
             }
         }

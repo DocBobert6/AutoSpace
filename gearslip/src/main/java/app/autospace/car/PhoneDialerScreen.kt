@@ -212,7 +212,7 @@ private fun DialerTab(label: String, selected: Boolean, modifier: Modifier, onCl
     GsIconBox(
         onClick = onClick,
         modifier = modifier.height(44.dp),
-        colors = if (selected) GsColors(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+        colors = if (selected) GsColors(clusterOnContainer(), clusterOnContainerContent())
         else GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
         shape = gsButtonShape(MaterialTheme.shapes.large),
         latched = selected,
@@ -486,7 +486,8 @@ private fun ContactSearchField(query: String, active: Boolean, onToggle: () -> U
     Surface(
         onClick = onToggle,
         shape = MaterialTheme.shapes.large,
-        color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        // r225 (Cluster only): the active search field takes the blue container.
+        color = if (active) clusterOnContainer() else MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         KeyboardFieldText(

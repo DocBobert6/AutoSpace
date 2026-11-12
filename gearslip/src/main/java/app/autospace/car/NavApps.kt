@@ -43,6 +43,8 @@ import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.cardShapeForLook
 import app.autospace.car.theme.gsButtonShape
+import app.autospace.car.theme.clusterOnAccent
+import app.autospace.car.theme.clusterOnContainer
 import app.autospace.car.theme.gsLook
 import app.autospace.host.CarAppConnection
 import app.autospace.media.CarMedia
@@ -497,10 +499,12 @@ private fun PackIconCell(packPkg: String, drawable: String, selected: Boolean, o
             .aspectRatio(1f)
             .clip(shape)
             .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer
+                // r225 (Cluster only): the selected tile is blue — the
+                // "on" colour — never white.
+                if (selected) clusterOnContainer()
                 else MaterialTheme.colorScheme.surfaceContainerHigh,
             )
-            .then(if (selected) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
+            .then(if (selected) Modifier.border(2.dp, clusterOnAccent(), shape) else Modifier)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {

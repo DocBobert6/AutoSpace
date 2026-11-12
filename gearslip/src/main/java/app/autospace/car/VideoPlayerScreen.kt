@@ -101,6 +101,8 @@ import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import app.autospace.R
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.GsThemes
+import app.autospace.car.theme.LocalGsTheme
 import app.autospace.car.theme.frostBar
 import app.autospace.notify.CarMotion
 import kotlinx.coroutines.Job
@@ -854,7 +856,8 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 } else {
                     null
                 }
-                val bufferFillColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                // r225 (Cluster only): the buffering fill is a progress fill, so it is blue.
+                val bufferFillColor = clusterOnAccent().copy(alpha = 0.35f)
                 Box(
                     Modifier.size(96.dp).clip(CircleShape)
                         .drawBehind {
@@ -928,7 +931,11 @@ fun VideoPlayerScreen(urls: List<String>, titles: List<String?>, startIndex: Int
                 Box(Modifier.weight(1f)) {
                     PlayerScrubber(
                         fraction = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f),
-                        ink = timeColor,
+                        // r225 (Cluster only): the scrubber is a progress
+                        // fill, so it is blue — except over the video,
+                        // where white stays for legibility over moving
+                        // pictures (judgment call — one word changes it).
+                        ink = if (LocalGsTheme.current.id == GsThemes.Cluster.id && !onVideo) MaterialTheme.colorScheme.secondary else timeColor,
                         onSeek = { fraction -> val target = (fraction * dur).toLong(); position = target to dur; player.seekTo(target); touchControls() },
                     )
                 }
@@ -1809,7 +1816,8 @@ private fun PlayerIconButton(
     ) {
         Icon(
             icon, contentDescription,
-            tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            // r225 (Cluster only): an engaged settings row is blue — the 'on' colour.
+            tint = if (active) clusterOnAccent() else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(iconSize),
         )
     }
@@ -1826,7 +1834,8 @@ private fun PlayerTextButton(text: String, selected: Boolean, onClick: () -> Uni
             text,
             style = MaterialTheme.typography.titleMedium,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            // r225 (Cluster only): the selected choice is blue — the 'on' colour.
+            color = if (selected) clusterOnAccent() else MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
         )
     }

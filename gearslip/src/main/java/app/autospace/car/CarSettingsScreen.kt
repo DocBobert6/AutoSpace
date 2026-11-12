@@ -356,7 +356,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "secondary, and an olive tertiary. Aurora Field is deep ocean " +
             "dark with a spring-green primary, a sky secondary, and a lime " +
             "tertiary. Dashboard is the Altima dash scheme: near-black " +
-            "with a steel-blue primary, warm-white highlights, and " +
+            "with a warm-white primary, steel-blue active accents, and " +
             "signal-red accents in its dark variant, a dark-grey field " +
             "with near-black buttons in its light variant. Red lives " +
             "only in the redline cap and errors. Canvas, Circuit, " +
@@ -1397,7 +1397,8 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(64.dp),
-                                colors = if (on) GsColors(scheme.primary, scheme.onPrimary)
+                                // r225 (Cluster only): the selected chip is blue — the 'on' colour.
+                                colors = if (on) GsColors(clusterOnAccent(), clusterOnContent())
                                 else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
                                 latched = on,
                             ) {

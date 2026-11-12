@@ -453,16 +453,16 @@ internal fun ActionButton(
         scheme.surfaceContainerLow.copy(alpha = FrostedChromeAlpha)
     } else if (frostedButton) {
         val frostedBase = when {
-            active -> scheme.primary
+            active -> clusterOnAccent()
             custom -> action.backgroundColor.color(dark, fallback)
             else -> scheme.surfaceContainerLow
         }
         frostedBase.copy(alpha = FrostedChromeAlpha)
-    } else if (active) scheme.primary else action.backgroundColor.color(dark, fallback)
+    } else if (active) clusterOnAccent() else action.backgroundColor.color(dark, fallback)
     val content = if (meridian) Color.White else when {
         headerFrosted && isSearch -> scheme.primary
         headerFrosted -> scheme.onSurface
-        active -> scheme.onPrimary
+        active -> clusterOnContent()
         custom -> Color.White
         else -> scheme.onSurface
     }

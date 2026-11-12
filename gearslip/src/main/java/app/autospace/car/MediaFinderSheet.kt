@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -24,6 +25,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.GsButton
+import app.autospace.car.theme.clusterOnAccent
+import app.autospace.car.theme.clusterOnContent
 import app.autospace.car.theme.GsSheetSurface
 import app.autospace.car.theme.GsTone
 
@@ -169,6 +172,8 @@ fun MediaFinderSheet(items: List<FoundMedia>, onOpen: (FoundMedia) -> Unit, onCl
                         Switch(
                             checked = popupOff,
                             onCheckedChange = onPopupOffChange,
+                            // r225 (Cluster only): a checked switch is blue — the "on" colour.
+                            colors = SwitchDefaults.colors(checkedTrackColor = clusterOnAccent(), checkedThumbColor = clusterOnContent()),
                         )
                     }
                 }

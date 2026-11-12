@@ -1262,7 +1262,8 @@ object GsThemes {
      * r224 took the amber out entirely. Cluster has NO visible face
      * at rest: no border, no bevel, no shadow, no rim, no lip, no
      * gloss, no hairline, and a fully transparent container
-     * (containerAlpha 0). Only the legend glows, steel blue — that
+     * (containerAlpha 0). Only the legend glows — warm white at
+     * rest, steel blue when latched (r225) — that
      * rule lives in GsButton/GsIconBox (clusterLegend), because a
      * ControlLook carries no text colour or glow. Pressed, the
      * glow brightens and the face warms slightly (the glow shadow
