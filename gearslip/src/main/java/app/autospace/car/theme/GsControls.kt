@@ -487,6 +487,7 @@ internal val ShardChromeDark: Color = Color(0xFF6A6A72)
  * is the split that reaches every control type, icon-only ones
  * included. Outside Shard, or unpressed, a no-op.
  */
+@Composable
 fun Modifier.shardPressGlitch(pressed: Boolean, shape: Shape): Modifier {
     if (LocalGsTheme.current.id != GsThemes.Shard.id || !pressed) return this
     val scheme = MaterialTheme.colorScheme
