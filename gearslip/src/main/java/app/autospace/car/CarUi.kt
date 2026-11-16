@@ -222,6 +222,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.AURORA_FIELD -> auroraFieldScheme(dark)
         ColorScheme.DASHBOARD -> dashboardScheme(dark)
         ColorScheme.NEON_RAIN -> neonRainScheme()
+        ColorScheme.CRIMSON_RAIN -> crimsonRainScheme()
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -1054,7 +1055,9 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (LocalGsTheme.current.id == GsThemes.Shard.id) {
-                    ShardClockText(clockTime)
+                    MonoClockText(clockTime)
+                } else if (LocalGsTheme.current.id == GsThemes.Ember.id) {
+                    MonoClockText(clockTime, MaterialTheme.colorScheme.primary)
                 } else {
                     Text(
                         clockTime,
@@ -1079,8 +1082,8 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
                         }
                     }
                 }
-                if (LocalGsTheme.current.id == GsThemes.Shard.id) {
-                    ShardStatusLine(dimColor)
+                if (LocalGsTheme.current.id == GsThemes.Shard.id || LocalGsTheme.current.id == GsThemes.Ember.id) {
+                    SchemeStatusLine(dimColor)
                 }
             }
         }
@@ -1094,10 +1097,12 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
  * rememberNow ticks once a minute and cannot drive it. The time
  * string is split on ':'; a locale whose SHORT form uses another
  * separator falls back to the plain single Text, exactly as every
- * other style renders it.
+ * other style renders it. r228: generalised — the digits take an
+ * optional colour (Ember passes scheme primary, so the clock reads
+ * red mono); Shard passes none and keeps its ambient colour.
  */
 @Composable
-private fun ShardClockText(clockTime: String) {
+private fun MonoClockText(clockTime: String, color: Color? = null) {
     val parts = clockTime.split(":")
     if (parts.size != 2) {
         Text(
@@ -1113,10 +1118,12 @@ private fun ShardClockText(clockTime: String) {
     )
     val colonAlpha = if (phase < 0.5f) 1f else 0f
     val style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
+    val digitColor = color ?: Color.Unspecified
+    val colonColor = (color ?: MaterialTheme.colorScheme.onSurface).copy(alpha = colonAlpha)
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(parts[0], style = style, fontWeight = FontWeight.SemiBold, maxLines = 1)
-        Text(":", style = style, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = colonAlpha), maxLines = 1)
-        Text(parts[1], style = style, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(parts[0], style = style, fontWeight = FontWeight.SemiBold, color = digitColor, maxLines = 1)
+        Text(":", style = style, fontWeight = FontWeight.SemiBold, color = colonColor, maxLines = 1)
+        Text(parts[1], style = style, fontWeight = FontWeight.SemiBold, color = digitColor, maxLines = 1)
     }
 }
 
@@ -1126,13 +1133,19 @@ private fun ShardClockText(clockTime: String) {
  * real values (the scheme from the theme, the motion state from
  * CarMotion). Nothing invented: if a value were unavailable the
  * field would be omitted, not faked. The collect lives here, in
- * the Shard-only branch, so other styles subscribe to nothing.
+ * the Shard/Ember-only branch, so other styles subscribe to
+ * nothing. r228: the name reads the RENDERED scheme
+ * (effectiveColorScheme, auto-night aware) instead of the
+ * hardcoded "NEON RAIN" — a second palette must not announce
+ * the first palette's name.
  */
 @Composable
-private fun ShardStatusLine(dimColor: Color) {
+private fun SchemeStatusLine(dimColor: Color) {
     val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
+    val scheme by CarSettings.effectiveColorScheme.collectAsState()
+    val name = scheme.displayName.uppercase()
     Text(
-        if (moving) "NEON RAIN · MOVING" else "NEON RAIN · PARKED",
+        if (moving) "$name · MOVING" else "$name · PARKED",
         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         color = dimColor,
         maxLines = 1,
@@ -2280,6 +2293,52 @@ internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSch
  * signal-red tertiary and error (r227 role swap). No magenta
  * anywhere, no amber anywhere; no thin red line.
  */
+/**
+ * r228 (Crimson Rain): the scheme mapping for the measured palette
+ * — same shape as [neonRainScheme], dark only. The surface steps
+ * are neutral near-black lifts off the #0B0B0D background, in the
+ * background's own hue (no blue tint: Crimson Rain's field is
+ * neutral, not Neon Rain's blue-black).
+ */
+internal fun crimsonRainScheme(): androidx.compose.material3.ColorScheme {
+    return androidx.compose.material3.darkColorScheme(
+        background = Color(CrimsonRainPalette.background),
+        onBackground = Color(CrimsonRainPalette.onSurface),
+        surface = Color(CrimsonRainPalette.background),
+        onSurface = Color(CrimsonRainPalette.onSurface),
+        surfaceVariant = Color(CrimsonRainPalette.surfaceVariant),
+        onSurfaceVariant = Color(CrimsonRainPalette.onSurfaceVariant),
+        primary = Color(CrimsonRainPalette.primary),
+        onPrimary = Color(CrimsonRainPalette.onPrimary),
+        primaryContainer = Color(CrimsonRainPalette.primaryContainer),
+        onPrimaryContainer = Color(CrimsonRainPalette.onPrimaryContainer),
+        secondary = Color(CrimsonRainPalette.secondary),
+        onSecondary = Color(CrimsonRainPalette.onSecondary),
+        secondaryContainer = Color(CrimsonRainPalette.secondaryContainer),
+        onSecondaryContainer = Color(CrimsonRainPalette.onSecondaryContainer),
+        tertiary = Color(CrimsonRainPalette.tertiary),
+        onTertiary = Color(CrimsonRainPalette.onTertiary),
+        tertiaryContainer = Color(CrimsonRainPalette.tertiaryContainer),
+        onTertiaryContainer = Color(CrimsonRainPalette.onTertiaryContainer),
+        error = Color(CrimsonRainPalette.error),
+        onError = Color(CrimsonRainPalette.onError),
+        outline = Color(CrimsonRainPalette.outline),
+        outlineVariant = Color(CrimsonRainPalette.outlineVariant),
+        surfaceTint = Color(CrimsonRainPalette.primary),
+        surfaceContainerLowest = Color(0xFF060608),
+        surfaceContainerLow = Color(CrimsonRainPalette.background),
+        surfaceContainer = Color(0xFF121216),
+        surfaceContainerHigh = Color(0xFF18181C),
+        surfaceContainerHighest = Color(0xFF202028),
+        surfaceDim = Color(CrimsonRainPalette.background),
+        surfaceBright = Color(0xFF1C1C22),
+        inverseSurface = Color(CrimsonRainPalette.onSurface),
+        inverseOnSurface = Color(CrimsonRainPalette.background),
+        inversePrimary = Color(CrimsonRainPalette.primary),
+        scrim = Color.Black,
+    )
+}
+
 internal fun neonRainScheme(): androidx.compose.material3.ColorScheme {
     return androidx.compose.material3.darkColorScheme(
         background = Color(NeonRainPalette.background),

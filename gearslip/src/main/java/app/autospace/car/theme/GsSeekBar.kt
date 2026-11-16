@@ -133,6 +133,18 @@ fun GsProgressBar(
                 }
                     GsThemes.Shard.id -> Modifier.drawWithContent {
                         drawContent()
+                        // r228: the redline cap — the last segment
+                        // is tertiary red (the tach's redline arc,
+                        // like Cluster's cap), drawn BEFORE the gap
+                        // loop so the last gap cuts its left edge
+                        // and it reads as a segment, not a smear.
+                        // Full height, over fill and track alike.
+                        val capW = size.width / ShardLedSegmentCount
+                        drawRect(
+                            color = scheme.tertiary,
+                            topLeft = Offset(size.width - capW, 0f),
+                            size = Size(capW, size.height),
+                        )
                         // r226: the LED-meter segments — cuts at the
                         // segment boundaries, in the page surface
                         // colour, over fill and track alike, so the

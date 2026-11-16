@@ -12,7 +12,6 @@ import app.autospace.car.theme.ShardLedSegmentCount
 import app.autospace.car.theme.clusterLegendColor
 import app.autospace.car.theme.clusterLegendReads
 import app.autospace.car.theme.shardBarcodeBars
-import app.autospace.car.theme.shardHexTag
 import app.autospace.car.theme.shardSegmentBoundaries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,10 +26,10 @@ class NeonRainTest {
     fun neonRainSchemeIsAppendedLastAndNamedNeonRain() {
         assertEquals(ColorScheme.NEON_RAIN, ColorScheme.valueOf("NEON_RAIN"))
         assertEquals("Neon Rain", ColorScheme.NEON_RAIN.displayName)
-        assertEquals(ColorScheme.NEON_RAIN, colorSchemes.last())
+        assertEquals(ColorScheme.NEON_RAIN, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.NEON_RAIN))
-        // Dashboard is second from last, and nothing else moved.
-        assertEquals(ColorScheme.DASHBOARD, colorSchemes[colorSchemes.size - 2])
+        // Crimson Rain is last now (r228); Dashboard is third from last, and nothing else moved.
+        assertEquals(ColorScheme.DASHBOARD, colorSchemes[colorSchemes.size - 3])
         // No legacy install migrates onto Neon Rain by accident.
         assertFalse(isLegacyThemeName("NEON_RAIN"))
         // Neon Rain forces dark: every mode and phone state renders dark.
@@ -187,11 +186,11 @@ class NeonRainTest {
     fun shardStyleIsAppendedLastAndNamedShard() {
         assertEquals("shard", GsThemes.Shard.id)
         assertEquals("Shard", GsThemes.Shard.name)
-        assertEquals(GsThemes.Shard, GsThemes.builtIn.last())
+        assertEquals(GsThemes.Shard, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("shard", GsThemes.byId("shard").id)
-        // Cluster is second from last, Aurora third, and nothing else moved.
-        assertEquals(GsThemes.Cluster, GsThemes.builtIn[GsThemes.builtIn.size - 2])
-        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        // Ember is last now (r228); Cluster is third from last, Aurora fourth, and nothing else moved.
+        assertEquals(GsThemes.Cluster, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 4])
     }
 
     @Test
@@ -298,28 +297,30 @@ class NeonRainTest {
         // Twelve LED segments, eleven cuts at 1/12 intervals.
         assertEquals(12, ShardLedSegmentCount)
         assertEquals(listOf(0.083333336f, 0.16666667f, 0.25f, 0.33333334f, 0.41666667f, 0.5f, 0.5833333f, 0.6666667f, 0.75f, 0.8333333f, 0.9166667f), shardSegmentBoundaries())
-        // The hex tag is the section name's hash as 4 hex digits.
-        assertEquals("0xF112", shardHexTag("Voice"))
-        assertEquals("0x8CE6", shardHexTag("AI assistant"))
-        assertEquals(shardHexTag("Voice"), shardHexTag("Voice"))
-        assertTrue(shardHexTag("Voice").startsWith("0x"))
-        assertEquals(6, shardHexTag("Voice").length)
-        // The barcode is 24 bars, widths 1..3, deterministic.
+        // The barcode encodes the section name now (r228) —
+        // 24 bars, cycling through the name, one bar per
+        // character, width = (code % 3) + 1 — so "Voice" and "AI
+        // assistant" draw different strips, and the same name
+        // always draws the same strip. The hex tag is gone.
         val bars = shardBarcodeBars("Voice")
         assertEquals(24, bars.size)
+        assertEquals(listOf(3, 1, 1, 1, 3, 3, 1, 1, 1, 3, 3, 1, 1, 1, 3, 3, 1, 1, 1, 3, 3, 1, 1, 1), bars)
         assertTrue(bars.all { it in 1..3 })
         assertEquals(bars, shardBarcodeBars("Voice"))
+        assertEquals(listOf(3, 2, 3, 2, 2, 2, 1, 2, 3, 2, 3, 3, 3, 2, 3, 2, 2, 2, 1, 2, 3, 2, 3, 3), shardBarcodeBars("AI assistant"))
     }
 
     @Test
-    fun neonRainPairIsAppendedLast() {
-        val pair = themePairs.last()
+    fun neonRainPairIsSecondFromLast() {
+        // r228 appends Crimson Rain + Ember last; Neon Rain +
+        // Shard is second from last now.
+        val pair = themePairs[themePairs.size - 2]
         assertEquals("Neon Rain + Shard", pair.label)
         assertEquals("shard", pair.styleId)
         assertEquals(ColorScheme.NEON_RAIN, pair.scheme)
         assertEquals(pair, themePairFor("shard", ColorScheme.NEON_RAIN))
-        // Dashboard + Cluster is second from last, and nothing else moved.
-        assertEquals("Dashboard + Cluster", themePairs[themePairs.size - 2].label)
+        // Dashboard + Cluster is third from last, and nothing else moved.
+        assertEquals("Dashboard + Cluster", themePairs[themePairs.size - 3].label)
         assertEquals("Pitlane + Pitlane", themePairs.first().label)
     }
 }

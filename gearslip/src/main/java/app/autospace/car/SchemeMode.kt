@@ -18,7 +18,7 @@ package app.autospace.car
  * from [colorSchemes] / [appearanceModes] and [displayName], so the lists
  * cannot drift from what the tests pin.
  */
-enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON, MERIDIAN, WORKSHOP, AURORA_FIELD, DASHBOARD, NEON_RAIN }
+enum class ColorScheme { NEUTRAL, MATERIAL_YOU, NIGHT, PITLANE, CIRCUIT, HERITAGE, VERVE, HORIZON, MERIDIAN, WORKSHOP, AURORA_FIELD, DASHBOARD, NEON_RAIN, CRIMSON_RAIN }
 
 enum class AppearanceMode { LIGHT, DARK, SYSTEM }
 
@@ -43,6 +43,7 @@ val ColorScheme.displayName: String
         ColorScheme.AURORA_FIELD -> "Aurora Field"
         ColorScheme.DASHBOARD -> "Dashboard"
         ColorScheme.NEON_RAIN -> "Neon Rain"
+        ColorScheme.CRIMSON_RAIN -> "Crimson Rain"
     }
 
 val AppearanceMode.displayName: String
@@ -85,7 +86,7 @@ fun isLegacyThemeName(stored: String): Boolean = stored in setOf(
 
 /**
  * Whether the car UI renders dark for a scheme + mode + the phone's own
- * mode. Night, Pitlane, Meridian, and Neon Rain are always dark (as they always
+ * mode. Night, Pitlane, Meridian, Neon Rain, and Crimson Rain are always dark (as they always
  * were); every other scheme follows the mode control, with SYSTEM
  * deferring to the phone. This is the single place the rule lives —
  * CarUi and the tests both read it, so the rendered dark value cannot
@@ -93,7 +94,7 @@ fun isLegacyThemeName(stored: String): Boolean = stored in setOf(
  */
 fun resolveDark(scheme: ColorScheme, mode: AppearanceMode, phoneDark: Boolean): Boolean =
     when {
-        scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN || scheme == ColorScheme.NEON_RAIN -> true
+        scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN || scheme == ColorScheme.NEON_RAIN || scheme == ColorScheme.CRIMSON_RAIN -> true
         mode == AppearanceMode.LIGHT -> false
         mode == AppearanceMode.DARK -> true
         else -> phoneDark
@@ -110,7 +111,7 @@ fun effectiveScheme(stored: ColorScheme, autoNightActive: Boolean): ColorScheme 
 
 /** True when the stored scheme forces dark regardless of the mode control. */
 fun schemeForcesDark(scheme: ColorScheme): Boolean =
-    scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN || scheme == ColorScheme.NEON_RAIN
+    scheme == ColorScheme.NIGHT || scheme == ColorScheme.PITLANE || scheme == ColorScheme.MERIDIAN || scheme == ColorScheme.NEON_RAIN || scheme == ColorScheme.CRIMSON_RAIN
 
 /**
  * r152 (audit §3 N9): the schemes whose dark surfaces are pure black, and
@@ -128,7 +129,8 @@ fun schemeForcesDark(scheme: ColorScheme): Boolean =
  * HERITAGE is deep racing green, VERVE dark ink #16121F, HORIZON navy
  * #0B1526, MERIDIAN #131429, WORKSHOP charcoal #252423, AURORA_FIELD
  * ocean #0A1F2E. NEON_RAIN is near-black #0A0A12, not pure black — out
- * by design, like Dashboard. CarUi's LocalOledDark provider reads this set, so
+ * by design, like Dashboard. CRIMSON_RAIN is near-black #0B0B0D —
+ * out by design too. CarUi's LocalOledDark provider reads this set, so
  * grey-surface schemes keep the surface-derived frost gradient under
  * Pitch instead of the black-background idiom.
  */

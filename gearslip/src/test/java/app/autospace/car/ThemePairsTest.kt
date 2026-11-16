@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheFourteenApprovedInOrder() {
+    fun pairsAreExactlyTheFifteenApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon", "Dashboard + Cluster", "Neon Rain + Shard"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon", "Dashboard + Cluster", "Neon Rain + Shard", "Crimson Rain + Ember"),
             themePairs.map { it.label },
         )
     }
@@ -132,6 +132,20 @@ class ThemePairsTest {
     }
 
     @Test
+    fun crimsonRainPairSetsEmberStyleAndCrimsonRainScheme() {
+        // r228 appends Crimson Rain + Ember last: the Ember style
+        // with the Crimson Rain scheme.
+        val pair = themePairs[14]
+        assertEquals("ember", pair.styleId)
+        assertEquals(ColorScheme.CRIMSON_RAIN, pair.scheme)
+        assertEquals("Crimson Rain + Ember", pair.label)
+        // The pair does not move an existing install: every earlier
+        // pair is still in place, in order.
+        assertEquals("Pitlane + Pitlane", themePairs.first().label)
+        assertEquals("Neon Rain + Shard", themePairs[13].label)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -147,6 +161,7 @@ class ThemePairsTest {
         assertEquals(themePairs[11], themePairFor("horizon", ColorScheme.HORIZON))
         assertEquals(themePairs[12], themePairFor("cluster", ColorScheme.DASHBOARD))
         assertEquals(themePairs[13], themePairFor("shard", ColorScheme.NEON_RAIN))
+        assertEquals(themePairs[14], themePairFor("ember", ColorScheme.CRIMSON_RAIN))
     }
 
     @Test

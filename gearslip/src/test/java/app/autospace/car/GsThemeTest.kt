@@ -215,7 +215,7 @@ class GsThemeTest {
         // r143: Aurora appends after Foundry, so Heirloom sits
         // seventh from last.
         assertTrue(GsThemes.builtIn.any { it.id == "heirloom" && it.name == "Heirloom" })
-        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 9])
+        assertEquals(GsThemes.Heirloom, GsThemes.builtIn[GsThemes.builtIn.size - 10])
         assertEquals("heirloom", GsThemes.byId("heirloom").id)
         val look = GsThemes.Heirloom.control
         assertEquals(22, look.corner.value.toInt())
@@ -273,7 +273,7 @@ class GsThemeTest {
         // r143: Aurora appends after Foundry, so Blueprint sits
         // sixth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "blueprint" && it.name == "Blueprint" })
-        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 8])
+        assertEquals(GsThemes.Blueprint, GsThemes.builtIn[GsThemes.builtIn.size - 9])
         assertEquals("blueprint", GsThemes.byId("blueprint").id)
         assertEquals("Canvas", ColorScheme.NEUTRAL.displayName)
         val look = GsThemes.Blueprint.control
@@ -321,7 +321,7 @@ class GsThemeTest {
         // r143: Aurora appends after Foundry, so Sector sits
         // fifth from last.
         assertTrue(GsThemes.builtIn.any { it.id == "sector" && it.name == "Sector" })
-        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 7])
+        assertEquals(GsThemes.Sector, GsThemes.builtIn[GsThemes.builtIn.size - 8])
         assertEquals("sector", GsThemes.byId("sector").id)
         val look = GsThemes.Sector.control
         assertEquals(14, look.corner.value.toInt())
@@ -384,7 +384,7 @@ class GsThemeTest {
         // third from last.
         // r143: Aurora appends after Foundry, so Silhouette sits
         // fourth from last.
-        assertEquals(GsThemes.Silhouette, GsThemes.builtIn[GsThemes.builtIn.size - 6])
+        assertEquals(GsThemes.Silhouette, GsThemes.builtIn[GsThemes.builtIn.size - 7])
         assertEquals("silhouette", GsThemes.byId("silhouette").id)
         assertEquals("Nocturne", ColorScheme.NIGHT.displayName)
         val look = GsThemes.Silhouette.control
@@ -444,7 +444,7 @@ class GsThemeTest {
         assertTrue(GsThemes.builtIn.any { it.id == "morph" && it.name == "Morph" })
         // r142: Foundry appends after it, and r143 appends
         // Aurora last, so Morph sits third from last.
-        assertEquals(GsThemes.Morph, GsThemes.builtIn[GsThemes.builtIn.size - 5])
+        assertEquals(GsThemes.Morph, GsThemes.builtIn[GsThemes.builtIn.size - 6])
         assertEquals("morph", GsThemes.byId("morph").id)
         assertEquals("Material You", ColorScheme.MATERIAL_YOU.displayName)
         val look = GsThemes.Morph.control
@@ -518,7 +518,7 @@ class GsThemeTest {
         // the gloss band lives only in gsSurface, which cards
         // never call).
         assertTrue(GsThemes.builtIn.any { it.id == "foundry" && it.name == "Foundry" })
-        assertEquals(GsThemes.Foundry, GsThemes.builtIn[GsThemes.builtIn.size - 4])
+        assertEquals(GsThemes.Foundry, GsThemes.builtIn[GsThemes.builtIn.size - 5])
         assertEquals("foundry", GsThemes.byId("foundry").id)
         assertEquals("Workshop", ColorScheme.WORKSHOP.displayName)
         val look = GsThemes.Foundry.control
@@ -599,7 +599,7 @@ class GsThemeTest {
         assertTrue(GsThemes.builtIn.any { it.id == "aurora" && it.name == "Aurora" })
         // r222 appends Cluster last (pinned by DashboardTest),
         // so Aurora is second from last.
-        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 4])
         assertEquals("aurora", GsThemes.byId("aurora").id)
         assertEquals("Aurora Field", ColorScheme.AURORA_FIELD.displayName)
         val look = GsThemes.Aurora.control

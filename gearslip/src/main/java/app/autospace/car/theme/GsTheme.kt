@@ -1336,6 +1336,41 @@ object GsThemes {
         ),
     )
 
+    /** r228 (Crimson Rain): Ember — the squared-slab style. The
+     * corner is SQUARED, not cut and not rounded: chamferCut 0,
+     * corner 2dp, so buttons, tiles, keys, cards, and sheets all
+     * read as slabs — the structural opposite of Shard's 6dp
+     * chamfer. The face is flat (topLight 0, no bevel, no
+     * hairline, no rim of its own — the machined edge is drawn,
+     * not a ControlLook field) with a modest 2dp shadow so dark
+     * slabs still lift off the near-black field. rockerToggle
+     * turns the switches into rocker paddles whose bolts light
+     * the scheme primary (red when on — the photos' red-lit
+     * toggles). ledDot turns on the latched dot, in the scheme
+     * primary (r228: role-driven, not the old fixed yellow).
+     * engravedHeader turns the section headers into engraved
+     * red-mono labels (GsKit). No rivets: the slab is clean —
+     * the bolts live on the rocker, not the corners. No light
+     * variant: dark-only by design, like Shard. Pressed dims
+     * 0.12 and scales 0.95; the hold marker is DOT. */
+    val Ember = GsTheme(
+        id = "ember",
+        name = "Ember",
+        control = ControlLook(
+            containerAlpha = 1f,
+            corner = 2.dp,
+            chamferCut = 0.dp,
+            rockerToggle = true,
+            ledDot = true,
+            engravedHeader = true,
+            shadow = 2.dp,
+            shadowAlpha = 0.30f,
+            pressedDim = 0.12f,
+            pressedScale = 0.95f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -1367,9 +1402,10 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r143: Aurora appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora, Cluster, Shard)
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora, Cluster, Shard, Ember)
     // r222 appends Cluster last (pinned by DashboardTest) — same rule as every append: a new style never moves an existing install onto itself.
     // r226 appends Shard last (pinned by NeonRainTest) — same rule.
+    // r228 appends Ember last (pinned by CrimsonRainTest) — same rule.
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

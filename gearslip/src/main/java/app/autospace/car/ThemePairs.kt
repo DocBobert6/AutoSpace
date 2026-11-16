@@ -16,7 +16,8 @@ import app.autospace.car.theme.GsThemes
  * Circuit+Sector (r112), Nocturne+Silhouette (r113), and
  * Material You+Morph (r114), Workshop+Foundry (r142),
  * Aurora Field+Aurora (r143), Horizon+Horizon (r180), and
- * Dashboard+Cluster (r222), and Neon Rain+Shard (r226).
+ * Dashboard+Cluster (r222), Neon Rain+Shard (r226), and
+ * Crimson Rain+Ember (r228).
  * Horizon+Horizon joins in r180: Horizon did not exist when Pairs
  * was approved, so it waited on Robert's word rather than being
  * added silently.
@@ -42,6 +43,7 @@ val themePairs: List<ThemePair> = listOf(
     ThemePair(GsThemes.Horizon.id, ColorScheme.HORIZON, "Horizon + Horizon"),
     ThemePair(GsThemes.Cluster.id, ColorScheme.DASHBOARD, "Dashboard + Cluster"),
     ThemePair(GsThemes.Shard.id, ColorScheme.NEON_RAIN, "Neon Rain + Shard"),
+    ThemePair(GsThemes.Ember.id, ColorScheme.CRIMSON_RAIN, "Crimson Rain + Ember"),
 )
 
 /**

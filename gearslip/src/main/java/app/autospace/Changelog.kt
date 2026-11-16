@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            187, "0.5.0-beta.19",
+            listOf(
+                "A second cyberpunk theme, Crimson Rain + Ember: signal red and measured teal on near-black, with squared slab buttons, rocker switches, a red-ring play button, and red mono headers. Shard gets real hazard stripes on delete buttons, a true red-cyan-white glitch on press, a machined chrome edge, scanlines that fade down the card, a redline cap on the LED bar, and real values — counts and states — where the hash readouts were. The floating media card takes the theme frame when it has no album art. Dark only. Pick it in Settings, under Pairs.",
+            ),
+        ),
+        Release(
             186, "0.5.0-beta.18",
             listOf(
                 "Neon Rain + Shard, reworked: acid yellow is the primary now, neon cyan is the active colour, signal red is the accent, and the settings sliders are thin angular tracks with a sharp thumb and tick marks. The Appearance screen is fixed too: the first row no longer hides under the header, the Tile size number matches its slider, buttons and pickers read clearly, and the dock-position picker greys out while docking is off. Dark only. Pick it in Settings, under Pairs.",

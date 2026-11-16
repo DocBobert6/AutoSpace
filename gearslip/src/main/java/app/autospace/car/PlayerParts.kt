@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.clusterRingGlow
+import app.autospace.car.theme.emberRingGlow
 import app.autospace.car.theme.GsIconBox
 import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsSeekBar
@@ -318,7 +319,10 @@ internal fun TransportRow(now: NowPlaying, media: CarMedia, skip: Dp, modifier: 
             // r222 (Cluster only): the glowing white ring around the
             // round primary control — dim at rest, bright while
             // playing. Outside Cluster this modifier is a no-op.
-            modifier = Modifier.clusterRingGlow(now.playing, playShape),
+            // r228 (Ember only): the red ring glow around the
+            // round primary control — the photos' red-ring knobs.
+            // Outside Ember this modifier is a no-op.
+            modifier = Modifier.clusterRingGlow(now.playing, playShape).emberRingGlow(now.playing, playShape),
             colors = if (accent != null) GsColors(accent, accentContent ?: accentContentColor(accent)) else gsColors(GsTone.Primary),
             size = play, iconSize = play * 0.58f, shape = playShape,
         )

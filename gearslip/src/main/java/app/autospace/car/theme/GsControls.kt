@@ -409,14 +409,64 @@ private fun shardLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, de
     return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
 }
 
-/** r226: the legend rule for the active style — Cluster's or Shard's, or the plain content colour. r227: the container travels with it, so Shard can gate the legend against the control's own face. */
+/**
+ * r228 (Ember only): the legend colour and glow shadow — the same
+ * rule as Shard (secondary when latched, primary otherwise),
+ * which under Crimson Rain reads red at rest and teal when
+ * latched: red is the information colour, teal is what "on"
+ * looks like. The contrast gate is the shared clusterLegendColor,
+ * reading the accent against the control's OWN face: red on the
+ * field reads 4.98:1 and stays, but red on a dark chip face reads
+ * only 4.48:1, so there the text falls back to the default content
+ * colour and only the glow keeps the red — the same shape as
+ * Cluster's r224 red rule. Outside Ember it returns the button's
+ * own content colour with no shadow, exactly like shardLegend,
+ * so no other style changes at all.
+ */
+@Composable
+private fun emberLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color, container: Color): Pair<Color, Shadow?> {
+    if (LocalGsTheme.current.id != GsThemes.Ember.id || !enabled) return defaultContent to null
+    val scheme = MaterialTheme.colorScheme
+    val accent = if (latched) scheme.secondary else scheme.primary
+    val legend = clusterLegendColor(container, accent, defaultContent)
+    val glow = accent.copy(alpha = if (pressed || latched) 0.95f else 0.6f)
+    return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
+}
+
+/** r226: the legend rule for the active style — Cluster's, Shard's, or Ember's, or the plain content colour. r227: the container travels with it, so Shard can gate the legend against the control's own face. */
 @Composable
 private fun themedLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color, container: Color): Pair<Color, Shadow?> =
     when (LocalGsTheme.current.id) {
         GsThemes.Cluster.id -> clusterLegend(pressed, latched, enabled, defaultContent)
         GsThemes.Shard.id -> shardLegend(pressed, latched, enabled, defaultContent, container)
+        GsThemes.Ember.id -> emberLegend(pressed, latched, enabled, defaultContent, container)
         else -> defaultContent to null
     }
+
+/**
+ * r228 (Shard only): the true RGB-split glitch on the label path —
+ * three copies of the label stacked in a Box: tertiary red at
+ * -2dp, secondary cyan at +2dp, and the label itself centered.
+ * The centered copy is white, gated by the container-aware legend
+ * rule — on a bright fill it falls back to the tone's content
+ * colour (near-black), so a pressed primary button never goes
+ * unreadable, the r227 lesson. Press-only by construction (it
+ * reads the pressed state), never ambient, never while driving —
+ * a finger has to be down. Returns null outside Shard or when
+ * unpressed, so no other style changes at all. The offsets are
+ * 2dp, not 2px, so the split stays visible on dense screens.
+ * The content lambda is invoked three times while pressed (the
+ * same trick as the engraved header's double draw); labels are
+ * stateless text and icons, so the triple draw costs nothing
+ * but layout.
+ */
+@Composable
+private fun shardGlitchColors(pressed: Boolean, container: Color, defaultContent: Color): Triple<Color, Color, Color>? {
+    if (LocalGsTheme.current.id != GsThemes.Shard.id || !pressed) return null
+    val scheme = MaterialTheme.colorScheme
+    val center = clusterLegendColor(container, Color.White, defaultContent)
+    return Triple(scheme.tertiary, scheme.secondary, center)
+}
 
 /**
  * r225 (Cluster only): the "on" accent — steel blue under Cluster, the
@@ -474,35 +524,37 @@ fun Modifier.clusterRingGlow(active: Boolean, shape: Shape): Modifier {
 }
 
 /**
- * r226 (Shard only): the chrome tones — light silver for the top
- * edge's bright end, dark silver for its far end. The rim itself
- * is drawn in gsSurface (buttons) and shardCardFrame (cards).
- */
-internal val ShardChromeLight: Color = Color(0xFFC0C0C8)
-internal val ShardChromeDark: Color = Color(0xFF6A6A72)
-
-/**
- * r226 (Shard only): the press glitch — a brief RGB split of the
- * control's edge while pressed: the outline redrawn offset +2px in
- * cyan and -2px in yellow (r227: magenta is gone, so the split is
- * the two theme accents). Press-only by construction (it reads
- * the pressed state), never ambient, never while driving — a
- * finger has to be down. The edge splits rather than the label:
- * the label path carries a single-shadow TextStyle, so the edge
- * is the split that reaches every control type, icon-only ones
- * included. Outside Shard, or unpressed, a no-op.
+ * r228 (Ember only): the glowing ring around the round primary
+ * control (the media play/pause) — the photos' red-ring knobs,
+ * rendered in the scheme primary (signal red under Crimson Rain):
+ * dim at rest, bright when active. Outside Ember it is a no-op
+ * modifier, so no other style changes at all. The ring is drawn
+ * with the same faked-blur idiom as the halo: three growing
+ * strokes at falling alpha, then a crisp 2dp ring.
  */
 @Composable
-fun Modifier.shardPressGlitch(pressed: Boolean, shape: Shape): Modifier {
-    if (LocalGsTheme.current.id != GsThemes.Shard.id || !pressed) return this
-    val scheme = MaterialTheme.colorScheme
+fun Modifier.emberRingGlow(active: Boolean, shape: Shape): Modifier {
+    if (LocalGsTheme.current.id != GsThemes.Ember.id) return this
+    val glow = MaterialTheme.colorScheme.primary
     return this.drawWithContent {
         drawContent()
+        val crisp = if (active) 1f else 0.45f
         val outline = shape.createOutline(size, layoutDirection, this)
-        translate(2f, 0f) { drawOutline(outline, scheme.secondary.copy(alpha = 0.7f), style = Stroke(width = 1.5.dp.toPx())) }
-        translate(-2f, 0f) { drawOutline(outline, scheme.primary.copy(alpha = 0.7f), style = Stroke(width = 1.5.dp.toPx())) }
+        drawOutline(outline, glow.copy(alpha = 0.10f * crisp), style = Stroke(width = 10.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = 0.18f * crisp), style = Stroke(width = 6.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = 0.35f * crisp), style = Stroke(width = 3.5.dp.toPx()))
+        drawOutline(outline, glow.copy(alpha = crisp), style = Stroke(width = 2.dp.toPx()))
     }
 }
+
+/**
+ * r226 (Shard only): the chrome tone — bright silver for the
+ * machined edge. The rim itself is drawn in gsSurface (buttons)
+ * and shardCardFrame (cards). r228: the dark end of the old
+ * gradient strip is gone with the strip — one bright line now.
+ */
+internal val ShardChromeLight: Color = Color(0xFFC0C0C8)
+
 
 /**
  * r114 (Morph only): whether latched text stays readable over
@@ -657,6 +709,8 @@ fun Modifier.gsSurface(
     keepAlpha: Boolean = false,
     /** r114: latched tint-only fallback (see the guard in GsIconBox) — the fill stays unwashed and carries only the faint tint, because the full-strength wash would leave latched text below 4.5:1. */
     latchedWashFallback: Boolean = false,
+    /** r228: the control's tone, for the hazard strip — Danger draws it. gsSurface never saw the tone before this round: GsButton and GsIconBox carry it (GsButton's own tone param, GsIconBox's new one), so only callers that pass it get stripes; direct gsSurface callers keep the Neutral default and draw nothing new. */
+    tone: GsTone = GsTone.Neutral,
 ): Modifier {
     val look = gsLook()
     // r114 (Morph only): the Chroma wash — the fill IS the
@@ -1147,16 +1201,17 @@ fun Modifier.gsSurface(
         if (look.rimAlpha > 0f) {
             m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), drawShape)
         }
-        // r226 (Shard only): the chrome rim — a 2dp silver strip
-        // along the TOP edge only, light silver #C0C0C8 to dark
-        // silver #6A6A72, like a machined edge. Clipped to the
-        // shape outline so it never overhangs the chamfered
+        // r226 (Shard only): the chrome rim, reworked r228 as a
+        // real machined edge — a 1dp bright-silver line inset 1dp
+        // from the top edge (Foundry's innerTopHighlightAlpha
+        // idiom), replacing the flat 2dp gradient strip. Clipped
+        // to the shape outline so it never overhangs the chamfered
         // corners. Pressed dims it with the rest of the face (the
         // dim at the end of gsSurface overlays everything).
         if (LocalGsTheme.current.id == GsThemes.Shard.id) {
             m = m.drawWithContent {
                 drawContent()
-                val stripH = 2.dp.toPx()
+                val linePx = 1.dp.toPx()
                 val outline = drawShape.createOutline(size, layoutDirection, this)
                 val clip = Path().apply {
                     when (outline) {
@@ -1167,9 +1222,9 @@ fun Modifier.gsSurface(
                 }
                 clipPath(clip) {
                     drawRect(
-                        Brush.horizontalGradient(0f to ShardChromeLight, 1f to ShardChromeDark),
-                        topLeft = Offset.Zero,
-                        size = Size(size.width, stripH),
+                        ShardChromeLight,
+                        topLeft = Offset(0f, linePx),
+                        size = Size(size.width, linePx),
                     )
                 }
             }
@@ -1326,6 +1381,57 @@ fun Modifier.gsSurface(
                 }
             }
         }
+        // r228 (Shard only, Danger tone only): the hazard strip —
+        // real diagonal 45-degree stripes in the scheme primary
+        // and black, in a 4dp band along the top edge — the r226
+        // doc claimed hazard stripes, but no stripe routine ever
+        // existed; this is the first one. The stripes are the
+        // PRIMARY, not the tertiary: under Neon Rain the primary
+        // is acid yellow (yellow/black, as the r226 concept drew
+        // them) and under Crimson Rain it is signal red (red/black)
+        // — a tertiary strip would be yellow under Neon Rain and
+        // pale ice under Crimson Rain, which is not the hazard
+        // read at all. The face itself stays the error colour
+        // (the Danger tone's container), so the destructive
+        // signal never changes and the white label stays
+        // readable; the strip is the warning on top of it. The
+        // band is drawn under content, like Sector's trio, and
+        // clipped to the shape, so the ends follow the corners.
+        // Pressed: the dim at the end of gsSurface overlays
+        // everything, so a pressed control dims its stripes
+        // with the rest of the face but never drops them.
+        if (LocalGsTheme.current.id == GsThemes.Shard.id && tone == GsTone.Danger) {
+            val stripe = MaterialTheme.colorScheme.primary
+            val stripeThickness = 4.dp
+            m = m.drawBehind {
+                val thicknessPx = stripeThickness.toPx()
+                val stripeW = 8.dp.toPx()
+                val slant = thicknessPx
+                val band = Path().apply {
+                    moveTo(0f, thicknessPx)
+                    lineTo(size.width, thicknessPx)
+                    lineTo(size.width, 0f)
+                    lineTo(0f, 0f)
+                    close()
+                }
+                clipPath(band) {
+                    var x = -thicknessPx
+                    var i = 0
+                    while (x < size.width + stripeW) {
+                        val block = Path().apply {
+                            moveTo(x, thicknessPx)
+                            lineTo(x + stripeW, thicknessPx)
+                            lineTo(x + stripeW + slant, 0f)
+                            lineTo(x + slant, 0f)
+                            close()
+                        }
+                        drawPath(block, if (i % 2 == 0) stripe else Color.Black)
+                        x += stripeW
+                        i++
+                    }
+                }
+            }
+        }
         // r108 (Heirloom only): the leather stitch — a dashed
         // hairline inset from the edge, drawn as part of the button
         // background (under content, like the weave), never as an
@@ -1380,18 +1486,23 @@ fun Modifier.gsSurface(
                 )
             }
         }
-        // r26: latched LED — a single lit yellow dot at the top-end
+        // r26: latched LED — a single lit dot at the top-end
         // corner, an ADDITION to the primary fill + bold label, never a
         // replacement for it. One dot, no strip, no pattern: this is not
         // a checker and nothing checker-like returns with it. Drawn over
         // the texture and edge, clear of the centered content.
+        // r228: the dot is the scheme primary, read in the body
+        // (a draw scope cannot call MaterialTheme) — Ember's dot
+        // reads red, and Pitlane's reads its own primary (F1 red)
+        // instead of the old fixed yellow.
+        val ledColor = MaterialTheme.colorScheme.primary
         if (latched && look.ledDot) {
             m = m.drawBehind {
                 val d = 6.dp.toPx()
                 val inset = 5.dp.toPx()
                 val cx = if (layoutDirection == LayoutDirection.Ltr) size.width - inset - d / 2 else inset + d / 2
                 val cy = inset + d / 2
-                val led = Color(0xFFFFD200)
+                val led = ledColor
                 drawCircle(led.copy(alpha = 0.30f), radius = d / 2 + 2.dp.toPx(), center = Offset(cx, cy))
                 drawCircle(led, radius = d / 2, center = Offset(cx, cy))
                 drawCircle(Color.Black.copy(alpha = 0.35f), radius = d / 2, center = Offset(cx, cy), style = Stroke(width = 1.dp.toPx()))
@@ -1558,14 +1669,43 @@ fun GsButton(
         modifier
             .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
             .gsPressable(source, pressed, enabled, onClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed)
-            .shardPressGlitch(pressed, shape)
+            .gsSurface(c.container, shape, c.border, pressed, tone = tone)
             .padding(contentPadding),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // r228 (Shard only): the true RGB-split glitch — the label
+        // drawn three times (red -2dp, cyan +2dp, gated white
+        // centered) while pressed, instead of the old outline
+        // ghost. Each copy is its own Row so the RowScope content
+        // keeps its receiver.
+        val glitch = shardGlitchColors(pressed, c.container, c.content)
         CompositionLocalProvider(LocalContentColor provides legendColor) {
-            ProvideTextStyle(if (legendShadow != null) MaterialTheme.typography.labelLarge.copy(shadow = legendShadow) else MaterialTheme.typography.labelLarge) { content() }
+            if (glitch != null) {
+                Box {
+                    CompositionLocalProvider(LocalContentColor provides glitch.first) {
+                        Box(Modifier.offset((-2).dp, 0.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+                            }
+                        }
+                    }
+                    CompositionLocalProvider(LocalContentColor provides glitch.second) {
+                        Box(Modifier.offset(2.dp, 0.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+                            }
+                        }
+                    }
+                    CompositionLocalProvider(LocalContentColor provides glitch.third) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ProvideTextStyle(MaterialTheme.typography.labelLarge) { content() }
+                        }
+                    }
+                }
+            } else {
+                ProvideTextStyle(if (legendShadow != null) MaterialTheme.typography.labelLarge.copy(shadow = legendShadow) else MaterialTheme.typography.labelLarge) { content() }
+            }
         }
     }
 }
@@ -1589,7 +1729,7 @@ fun GsIconButton(
     iconSize: Dp = 24.dp,
     shape: Shape = gsShape(),
 ) {
-    GsIconBox(onClick, modifier.size(size), colors, enabled, shape) {
+    GsIconBox(onClick, modifier.size(size), colors, enabled, shape, tone = tone) {
         Icon(icon, contentDescription, Modifier.size(iconSize))
     }
 }
@@ -1621,6 +1761,8 @@ fun GsIconBox(
     keepAlpha: Boolean = false,
     /** r227: the disabled text alpha — 0.38 everywhere except choice rows, which pass [ChoiceRowDisabledContentAlpha]. */
     disabledContentAlpha: Float = 0.38f,
+    /** r228: the control's tone, for the hazard strip in [gsSurface] — Danger draws it. Callers that pass explicit [colors] without a tone get no stripes. */
+    tone: GsTone = GsTone.Neutral,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface, disabledContentAlpha)
@@ -1646,13 +1788,30 @@ fun GsIconBox(
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha, latchedWashFallback)
-            .shardPressGlitch(pressed, shape),
+            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha, latchedWashFallback, tone),
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)
+        // r228 (Shard only): the true RGB-split glitch — the
+        // content drawn three times (red -2dp, cyan +2dp, gated
+        // white centered) while pressed. Each copy is its own Box
+        // so the BoxScope content keeps its receiver; icon-only
+        // controls glitch through their tinted icon copies.
+        val glitch = shardGlitchColors(pressed, c.container, c.content)
         CompositionLocalProvider(LocalContentColor provides legendColor) {
-            if (legendShadow != null) ProvideTextStyle(LocalTextStyle.current.copy(shadow = legendShadow)) { content() } else content()
+            if (glitch != null) {
+                Box {
+                    CompositionLocalProvider(LocalContentColor provides glitch.first) {
+                        Box(Modifier.offset((-2).dp, 0.dp)) { content() }
+                    }
+                    CompositionLocalProvider(LocalContentColor provides glitch.second) {
+                        Box(Modifier.offset(2.dp, 0.dp)) { content() }
+                    }
+                    CompositionLocalProvider(LocalContentColor provides glitch.third) {
+                        Box { content() }
+                    }
+                }
+            } else if (legendShadow != null) ProvideTextStyle(LocalTextStyle.current.copy(shadow = legendShadow)) { content() } else content()
         }
     }
 }

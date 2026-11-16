@@ -810,7 +810,7 @@ private fun VoicePage() {
     val context = LocalContext.current
     androidx.compose.runtime.LaunchedEffect(context) { VoiceShortcuts.ensureLoaded(context) }
     val shortcuts by VoiceShortcuts.shortcuts.collectAsState()
-    GsSectionHeader("Voice shortcuts")
+    GsSectionHeader("Voice shortcuts", detail = "${shortcuts.size} SAVED")
     Text(
         "Saved on the phone, in Settings > Voice shortcuts. Say a keyword after a " +
             "navigate, open, or search phrasing — for example, “navigate to home” for a saved address.",
@@ -848,7 +848,7 @@ private fun VoicePage() {
     androidx.compose.runtime.LaunchedEffect(context) { AiKeyStore.ensureLoaded(context) }
     val aiEnabled by AiKeyStore.enabled.collectAsState()
     val aiProvider by AiKeyStore.provider.collectAsState()
-    GsSectionHeader("AI assistant")
+    GsSectionHeader("AI assistant", detail = if (aiEnabled) "ON · ${aiProvider.displayName.uppercase()}" else "OFF")
     Text(
         // r40: read-only, as before — the provider name is shown, but no key entry,
         // toggle, or key display ever appears on a head unit.
@@ -1013,7 +1013,7 @@ private fun SubtitleSettings() {
     var color by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleColor()) }
     var bg by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleBg()) }
     var edge by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(CarSettings.subtitleEdge()) }
-    GsSectionHeader("Subtitles")
+    GsSectionHeader("Subtitles", detail = "$size%")
     GsGroupedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
@@ -1086,7 +1086,7 @@ private fun VoiceSettings() {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        GsSectionHeader("Voice")
+        GsSectionHeader("Voice", detail = selectedVoice.id.uppercase())
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
@@ -1134,7 +1134,7 @@ private fun VoiceSettings() {
                 }
             }
         }
-        GsSectionHeader("Kokoro voice")
+        GsSectionHeader("Kokoro voice", detail = when (kokoroState) { is State.Ready -> "READY"; is State.Downloading -> "DL ${kokoroState.percent}%"; is State.Failed -> "FAILED"; is State.Missing -> "MISSING" })
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -1228,7 +1228,7 @@ private fun VoiceTraceSettings() {
     val capturing by VoiceTrace.capturing.collectAsState()
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        GsSectionHeader("Voice trace")
+        GsSectionHeader("Voice trace", detail = when { capturing -> "CAPTURING"; armed -> "ARMED ${window / 1000}S"; else -> "OFF" })
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(

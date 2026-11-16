@@ -53,9 +53,11 @@ import app.autospace.car.theme.GsIconButton
 import app.autospace.car.theme.GsKit
 import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.cardShapeForLook
+import app.autospace.car.theme.emberCardFrame
 import app.autospace.car.theme.gsColors
 import app.autospace.car.theme.gsLook
 import app.autospace.car.theme.gsShape
+import app.autospace.car.theme.shardCardFrame
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -488,7 +490,15 @@ internal fun FloatingMediaCard(now: NowPlaying, modifier: Modifier = Modifier) {
     // shared with the frosted map chrome so the two cannot drift.
     // r71 (A28): the swipe threshold in pixels, resolved once per composition.
     val swipeThresholdPx = with(LocalDensity.current) { FloatingCardSessionSwipeMinDp.toPx() }
-    Box(modifier) {
+    // r228 (Shard/Ember only): the floating media card takes the
+    // theme frame — but ONLY when it has no album art (r133: the
+    // art IS the face; no kit edge over art). The frosted art-less
+    // card takes shardCardFrame + emberCardFrame, the same frames
+    // the grouped/panel/sheet cards take. MEDIUM RISK: frosted
+    // legibility is pinned for a reason — the frame draws over
+    // the frosted fill, so Robert's device check decides whether
+    // it stays.
+    Box(if (blurredArt == null) modifier.shardCardFrame(cardShape).emberCardFrame(cardShape) else modifier) {
         // r129: the artwork itself is the card's background now,
         // drawn OPAQUE with only a very slight blur (ArtBlur radius 2
         // on the card's own 256px working copy — r133: the 64px copy

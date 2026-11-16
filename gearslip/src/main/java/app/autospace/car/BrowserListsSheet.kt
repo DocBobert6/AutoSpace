@@ -325,7 +325,7 @@ fun BrowserListsSheet(
                                         }
                                     }
                                 }
-                                GsButton(onClick = { onRemoveBookmark(entry.url) }, tone = GsTone.Neutral) {
+                                GsButton(onClick = { onRemoveBookmark(entry.url) }, tone = GsTone.Danger) {
                                     Text("Remove")
                                 }
                             }
@@ -413,7 +413,7 @@ fun BrowserListsSheet(
                                         Text("Retry")
                                     }
                                 }
-                                GsButton(onClick = { onDeleteDownload(record) }, tone = GsTone.Neutral) {
+                                GsButton(onClick = { onDeleteDownload(record) }, tone = GsTone.Danger) {
                                     Text("Delete")
                                 }
                             }
@@ -473,7 +473,7 @@ fun BrowserListsSheet(
                                 GsButton(onClick = { onSaveLibraryCopy(record) }, tone = GsTone.Neutral) {
                                     Text("Save a copy")
                                 }
-                                GsButton(onClick = { onDeleteLibrary(record) }, tone = GsTone.Neutral) {
+                                GsButton(onClick = { onDeleteLibrary(record) }, tone = GsTone.Danger) {
                                     Text("Delete")
                                 }
                                 if (BrowserDownloads.showLibraryRetry(record)) {
@@ -544,7 +544,7 @@ fun BrowserListsSheet(
                                 GsButton(onClick = { onLoad(article.url) }, tone = GsTone.Neutral) {
                                     Text("Live page")
                                 }
-                                GsButton(onClick = { onDeleteNewsstand(article) }, tone = GsTone.Neutral) {
+                                GsButton(onClick = { onDeleteNewsstand(article) }, tone = GsTone.Danger) {
                                     Text("Delete")
                                 }
                             }

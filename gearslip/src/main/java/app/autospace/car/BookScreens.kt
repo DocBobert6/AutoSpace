@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import app.autospace.car.theme.FrostedPanelSurface
 import app.autospace.car.theme.GsButton
 import app.autospace.car.theme.GsIconButton
+import app.autospace.car.theme.GsTone
 import app.autospace.car.theme.gsButtonShape
 import app.autospace.notify.CarMotion
 import app.autospace.speech.VoiceEngine
@@ -400,7 +400,7 @@ fun BookshelfScreen() {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(16.dp))
-                    BookRow("Remove", null) {
+                    BookRow("Remove", null, tone = GsTone.Danger) {
                         val wasReading = session.bookId == book.id
                         if (wasReading) session.stop()
                         BookImport.remove(context, book.id)
@@ -493,9 +493,7 @@ private fun BookshelfPage(
                     }
                 },
                 trailing = {
-                    IconButton(onClick = { onDelete(book) }) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove ${book.title}")
-                    }
+                    GsIconButton(Icons.Filled.Delete, "Remove ${book.title}", { onDelete(book) }, tone = GsTone.Danger)
                     Icon(Icons.Filled.ChevronRight, contentDescription = null)
                 },
             ) { onOpen(book) }
@@ -757,15 +755,24 @@ private fun ReaderPage(
 
 /** One full-width car row: touchscreen tap, D-pad focus with the car ring, and gamepad A all confirm. */
 @Composable
+/**
+ * r228: [tone] — Danger draws the row as a destructive action
+ * (error fill, onError title) for the delete/remove rows. The
+ * default Neutral keeps today's surface exactly. BookRow is a
+ * plain Surface, not gsSurface, so the hazard stripes cannot
+ * reach it without converting it — the red fill is the signal
+ * here, and the stripes live on the kit buttons.
+ */
 private fun BookRow(
     title: String,
     caption: String?,
     leading: @Composable RowScope.() -> Unit = {},
     trailing: @Composable RowScope.() -> Unit = {},
     onClick: () -> Unit,
+    tone: GsTone = GsTone.Neutral,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = if (tone == GsTone.Danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = gsButtonShape(MaterialTheme.shapes.large),
     ) {
         Row(
@@ -789,6 +796,7 @@ private fun BookRow(
                     title,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
+                    color = if (tone == GsTone.Danger) MaterialTheme.colorScheme.onError else Color.Unspecified,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )

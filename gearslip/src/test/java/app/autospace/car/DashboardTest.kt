@@ -23,10 +23,10 @@ class DashboardTest {
         assertEquals(ColorScheme.DASHBOARD, ColorScheme.valueOf("DASHBOARD"))
         assertEquals("Dashboard", ColorScheme.DASHBOARD.displayName)
         // r226 appends Neon Rain last, so Dashboard is second from last now.
-        assertEquals(ColorScheme.DASHBOARD, colorSchemes[colorSchemes.size - 2])
+        assertEquals(ColorScheme.DASHBOARD, colorSchemes[colorSchemes.size - 3])
         assertTrue(colorSchemes.contains(ColorScheme.DASHBOARD))
         // Aurora Field is third from last, and nothing else moved.
-        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 3])
+        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 4])
         // No legacy install migrates onto Dashboard by accident.
         assertFalse(isLegacyThemeName("DASHBOARD"))
         // Dashboard follows the mode control (it is not forced dark):
@@ -163,10 +163,10 @@ class DashboardTest {
         assertEquals("cluster", GsThemes.Cluster.id)
         assertEquals("Cluster", GsThemes.Cluster.name)
         // r226 appends Shard last, so Cluster is second from last now.
-        assertEquals(GsThemes.Cluster, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        assertEquals(GsThemes.Cluster, GsThemes.builtIn[GsThemes.builtIn.size - 3])
         assertEquals("cluster", GsThemes.byId("cluster").id)
         // Aurora is third from last, and nothing else moved.
-        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 3])
+        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 4])
     }
 
     @Test
