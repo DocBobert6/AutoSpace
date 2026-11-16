@@ -105,8 +105,10 @@ class NeonRainTest {
 
     @Test
     fun neonRainRedLivesOnlyInApprovedTokens() {
-        // Red lives in exactly two spots, the tertiary role and
-        // the error role, and nowhere else. A token counts as red
+        // Red lives in exactly one spot, the error role, and
+        // nowhere else — unlike Dashboard, whose tertiary is signal
+        // red, Neon Rain's tertiary is acid yellow. A token counts
+        // as red
         // when its red channel dominates (red > 150 while green
         // and blue stay under 100) AND it is far more red than
         // green (red - green > 100). The approved red is signal
@@ -129,11 +131,10 @@ class NeonRainTest {
             val b = token and 0xFF
             r > 150 && g < 100 && b < 100 && (r - g) > 100
         }
-        assertEquals(2, redTokens.size)
+        assertEquals(1, redTokens.size)
         for (token in redTokens) {
             assertEquals(0xFFFF003C.toInt(), token)
         }
-        assertEquals(0xFFFF003C.toInt(), NeonRainPalette.tertiary)
         assertEquals(0xFFFF003C.toInt(), NeonRainPalette.error)
         // And no amber anywhere: neither old amber value survives,
         // and no token reads as amber (red high, green mid, blue low,

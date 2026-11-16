@@ -87,9 +87,11 @@ class GsThemeTest {
         // Rectangular buttons are Pitlane-only: every other built-in
         // style keeps its existing shapes exactly.
         assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.rectangularButtons })
-        // The chamfer is Pitlane-only too.
-        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { it.control.chamferCut > 0.dp })
-        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" }.any { (it.control.light?.chamferCut ?: 0.dp) > 0.dp })
+        // The chamfer is Pitlane-only too — except Shard (r226),
+        // which reuses the chamfer shape for its cut corners by
+        // design; no other style cuts its corners.
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" && it.id != "shard" }.any { it.control.chamferCut > 0.dp })
+        assertFalse(GsThemes.builtIn.filter { it.id != "pitlane" && it.id != "shard" }.any { (it.control.light?.chamferCut ?: 0.dp) > 0.dp })
     }
 
     @Test
@@ -102,6 +104,11 @@ class GsThemeTest {
         // carries weave + bolts only) and the bat toggle is superseded by
         // the rocker toggle; weave, rivets (now hex bolts), LED, engraved
         // headers and bevel-on-latched stay Pitlane-only.
+        // r226: Shard shares TWO of these on purpose — the chamfer
+        // (its cut corners) and the rivets (its corner bolts) — so
+        // the loop below excludes shard as well as pitlane; the
+        // weave, LED, engraved headers, and bevel-on-latched stay
+        // Pitlane-only.
         val pitlane = GsThemes.Pitlane.control
         assertEquals(0.05f, pitlane.weaveAlpha, 0.001f)
         assertEquals(0f, pitlane.grainAlpha, 0.001f)
@@ -129,7 +136,7 @@ class GsThemeTest {
         assertEquals(0.55f, light.bevelBottom, 0.001f)
         assertEquals(0f, pitlane.topLight, 0.001f)
         assertEquals(0, pitlane.shadow.value.toInt())
-        for (other in GsThemes.builtIn.filter { it.id != "pitlane" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "pitlane" && it.id != "shard" }) {
             assertEquals(0f, other.control.weaveAlpha, 0.001f)
             assertEquals(0f, other.control.grainAlpha, 0.001f)
             assertFalse(other.control.rivets)
