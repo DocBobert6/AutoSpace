@@ -108,7 +108,12 @@ class GsThemeTest {
         // (its cut corners) and the rivets (its corner bolts) — so
         // the loop below excludes shard as well as pitlane; the
         // weave, LED, engraved headers, and bevel-on-latched stay
-        // Pitlane-only.
+        // Pitlane-only. r228: Ember shares THREE on purpose — the
+        // LED dot (role-driven, red under Crimson Rain), the rocker
+        // toggle (bolts light the scheme primary), and the engraved
+        // headers (red mono) — so the loop excludes ember too; its
+        // batToggle and bevel-on-latched stay off, pinned in
+        // CrimsonRainTest.emberLookPins.
         val pitlane = GsThemes.Pitlane.control
         assertEquals(0.05f, pitlane.weaveAlpha, 0.001f)
         assertEquals(0f, pitlane.grainAlpha, 0.001f)
@@ -136,7 +141,7 @@ class GsThemeTest {
         assertEquals(0.55f, light.bevelBottom, 0.001f)
         assertEquals(0f, pitlane.topLight, 0.001f)
         assertEquals(0, pitlane.shadow.value.toInt())
-        for (other in GsThemes.builtIn.filter { it.id != "pitlane" && it.id != "shard" }) {
+        for (other in GsThemes.builtIn.filter { it.id != "pitlane" && it.id != "shard" && it.id != "ember" }) {
             assertEquals(0f, other.control.weaveAlpha, 0.001f)
             assertEquals(0f, other.control.grainAlpha, 0.001f)
             assertFalse(other.control.rivets)

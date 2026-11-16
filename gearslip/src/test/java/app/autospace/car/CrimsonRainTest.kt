@@ -209,6 +209,8 @@ class CrimsonRainTest {
         assertTrue(look.rockerToggle)
         assertTrue(look.ledDot)
         assertTrue(look.engravedHeader)
+        assertFalse(look.batToggle)
+        assertFalse(look.bevelOnLatched)
         assertFalse(look.rivets)
         assertEquals(0f, look.weaveAlpha, 0.001f)
         assertEquals(0f, look.topLight, 0.001f)
