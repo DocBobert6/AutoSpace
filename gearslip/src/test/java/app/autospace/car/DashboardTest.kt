@@ -19,13 +19,14 @@ import org.junit.Test
 class DashboardTest {
 
     @Test
-    fun dashboardSchemeIsAppendedLastAndNamedDashboard() {
+    fun dashboardSchemeIsNamedDashboardAndSecondFromLast() {
         assertEquals(ColorScheme.DASHBOARD, ColorScheme.valueOf("DASHBOARD"))
         assertEquals("Dashboard", ColorScheme.DASHBOARD.displayName)
-        assertEquals(ColorScheme.DASHBOARD, colorSchemes.last())
+        // r226 appends Neon Rain last, so Dashboard is second from last now.
+        assertEquals(ColorScheme.DASHBOARD, colorSchemes[colorSchemes.size - 2])
         assertTrue(colorSchemes.contains(ColorScheme.DASHBOARD))
-        // Aurora Field is second from last, and nothing else moved.
-        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 2])
+        // Aurora Field is third from last, and nothing else moved.
+        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 3])
         // No legacy install migrates onto Dashboard by accident.
         assertFalse(isLegacyThemeName("DASHBOARD"))
         // Dashboard follows the mode control (it is not forced dark):
@@ -158,13 +159,14 @@ class DashboardTest {
     }
 
     @Test
-    fun clusterStyleIsAppendedLastAndNamedCluster() {
+    fun clusterStyleIsNamedClusterAndSecondFromLast() {
         assertEquals("cluster", GsThemes.Cluster.id)
         assertEquals("Cluster", GsThemes.Cluster.name)
-        assertEquals(GsThemes.Cluster, GsThemes.builtIn.last())
+        // r226 appends Shard last, so Cluster is second from last now.
+        assertEquals(GsThemes.Cluster, GsThemes.builtIn[GsThemes.builtIn.size - 2])
         assertEquals("cluster", GsThemes.byId("cluster").id)
-        // Aurora is second from last, and nothing else moved.
-        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 2])
+        // Aurora is third from last, and nothing else moved.
+        assertEquals(GsThemes.Aurora, GsThemes.builtIn[GsThemes.builtIn.size - 3])
     }
 
     @Test

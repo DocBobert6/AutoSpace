@@ -1299,6 +1299,43 @@ object GsThemes {
         ),
     )
 
+    /** r226 (Neon Rain): Shard — the cut-corner style. The corner
+     * is CUT, not rounded: chamferCut 6dp (Pitlane's is 4dp — Shard's
+     * cut is the style's whole identity, so it reads deeper), and
+     * the chamfered shape flows through buttonShapeForLook /
+     * cardShapeForLook exactly like Pitlane's, so buttons, tiles,
+     * keys, cards, and sheets all cut. The face is flat black
+     * (topLight 0, no bevel, no hairline, no rim of its own — the
+     * chrome rim is drawn by gsSurface, not a ControlLook field)
+     * with a modest 2dp shadow so black cards still lift off the
+     * near-black field. rivets = true turns on the corner bolts:
+     * hex bolts at the four corners on buttons (the zoned-frame
+     * block in gsSurface) and on panels (pitLanePanelTexture) —
+     * the bolts are the "corner rivets" detail; the weave stays
+     * off (weaveAlpha 0), so no Pitlane carbon texture leaks in.
+     * No light variant: the style is dark-only by design, like
+     * Meridian and Silhouette — on a light scheme it keeps its
+     * flat dark read while the neon simply does not glow. The
+     * legend rule (cyan at rest, magenta latched) lives in
+     * GsControls (shardLegend), because a ControlLook carries no
+     * text colour or glow. Pressed dims 0.12 and scales 0.95;
+     * the hold marker is DOT, like Cluster and Ink. */
+    val Shard = GsTheme(
+        id = "shard",
+        name = "Shard",
+        control = ControlLook(
+            containerAlpha = 1f,
+            corner = 12.dp,
+            chamferCut = 6.dp,
+            rivets = true,
+            shadow = 2.dp,
+            shadowAlpha = 0.30f,
+            pressedDim = 0.12f,
+            pressedScale = 0.95f,
+            holdMarker = HoldMarkerStyle.DOT,
+        ),
+    )
+
     val default = Frost
     // Phase 7: Material REMOVED from builtIn (Robert 2026-10-24 23:58) — it was
     // redundant with the App theme's Material You, and its pure-Material-3 look
@@ -1330,8 +1367,9 @@ object GsThemes {
     // automatically, and no existing stored style changes meaning.
     // r143: Aurora appended last, same rule — nobody moves to it
     // automatically, and no existing stored style changes meaning.
-    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora, Cluster)
+    val builtIn = listOf(Frost, Flat, Tactile, Edge, Pitlane, Verve, Horizon, Meridian, Heirloom, Blueprint, Sector, Silhouette, Morph, Foundry, Aurora, Cluster, Shard)
     // r222 appends Cluster last (pinned by DashboardTest) — same rule as every append: a new style never moves an existing install onto itself.
+    // r226 appends Shard last (pinned by NeonRainTest) — same rule.
 
     fun byId(id: String?): GsTheme = builtIn.firstOrNull { it.id == id } ?: default
 }

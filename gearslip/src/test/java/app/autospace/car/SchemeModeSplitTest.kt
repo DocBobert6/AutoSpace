@@ -56,6 +56,7 @@ class SchemeModeSplitTest {
                 assertTrue(resolveDark(ColorScheme.NIGHT, mode, phoneDark))
                 assertTrue(resolveDark(ColorScheme.PITLANE, mode, phoneDark))
                 assertTrue(resolveDark(ColorScheme.MERIDIAN, mode, phoneDark))
+                assertTrue(resolveDark(ColorScheme.NEON_RAIN, mode, phoneDark))
             }
         }
         // Every other scheme: Light forces light, Dark forces dark,
@@ -96,7 +97,7 @@ class SchemeModeSplitTest {
                 ColorScheme.NEUTRAL, ColorScheme.MATERIAL_YOU, ColorScheme.NIGHT,
                 ColorScheme.PITLANE, ColorScheme.CIRCUIT, ColorScheme.HERITAGE,
                 ColorScheme.VERVE, ColorScheme.HORIZON, ColorScheme.MERIDIAN,
-                ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD, ColorScheme.DASHBOARD,
+                ColorScheme.WORKSHOP, ColorScheme.AURORA_FIELD, ColorScheme.DASHBOARD, ColorScheme.NEON_RAIN,
             ),
             colorSchemes,
         )
@@ -110,7 +111,7 @@ class SchemeModeSplitTest {
         // r113: the Night scheme's picker label is Nocturne (label
         // only — the stored enum name stays NIGHT).
         assertEquals(
-            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop", "Aurora Field", "Dashboard"),
+            listOf("Canvas", "Material You", "Nocturne", "Pitlane", "Circuit", "Heritage", "Verve", "Horizon", "Meridian", "Workshop", "Aurora Field", "Dashboard", "Neon Rain"),
             colorSchemes.map { it.displayName },
         )
         assertEquals(

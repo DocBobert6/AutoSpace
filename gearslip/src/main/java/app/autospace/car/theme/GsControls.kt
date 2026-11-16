@@ -385,6 +385,36 @@ private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, 
 }
 
 /**
+ * r226 (Shard only): the legend colour and glow shadow — the same
+ * rule as Cluster (secondary when latched, primary otherwise),
+ * which under Neon Rain reads cyan at rest and magenta when
+ * latched: cyan is the calm default, magenta is what "on" looks
+ * like. The contrast gate is the shared clusterLegendColor, so a
+ * latched magenta that ever stopped reading would fall back to
+ * onSurface instead of going dim. Outside Shard it returns the
+ * button's own content colour with no shadow, exactly like
+ * clusterLegend, so no other style changes at all.
+ */
+@Composable
+private fun shardLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
+    if (LocalGsTheme.current.id != GsThemes.Shard.id || !enabled) return defaultContent to null
+    val scheme = MaterialTheme.colorScheme
+    val accent = if (latched) scheme.secondary else scheme.primary
+    val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
+    val glow = accent.copy(alpha = if (pressed || latched) 0.95f else 0.6f)
+    return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
+}
+
+/** r226: the legend rule for the active style — Cluster's or Shard's, or the plain content colour. */
+@Composable
+private fun themedLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> =
+    when (LocalGsTheme.current.id) {
+        GsThemes.Cluster.id -> clusterLegend(pressed, latched, enabled, defaultContent)
+        GsThemes.Shard.id -> shardLegend(pressed, latched, enabled, defaultContent)
+        else -> defaultContent to null
+    }
+
+/**
  * r225 (Cluster only): the "on" accent — steel blue under Cluster, the
  * scheme primary everywhere else. White is never the "on" colour under
  * Cluster; blue always is. Other styles are untouched: the helpers
@@ -436,6 +466,35 @@ fun Modifier.clusterRingGlow(active: Boolean, shape: Shape): Modifier {
         drawOutline(outline, glow.copy(alpha = 0.18f * crisp), style = Stroke(width = 6.dp.toPx()))
         drawOutline(outline, glow.copy(alpha = 0.35f * crisp), style = Stroke(width = 3.5.dp.toPx()))
         drawOutline(outline, glow.copy(alpha = crisp), style = Stroke(width = 2.dp.toPx()))
+    }
+}
+
+/**
+ * r226 (Shard only): the chrome tones — light silver for the top
+ * edge's bright end, dark silver for its far end. The rim itself
+ * is drawn in gsSurface (buttons) and shardCardFrame (cards).
+ */
+internal val ShardChromeLight: Color = Color(0xFFC0C0C8)
+internal val ShardChromeDark: Color = Color(0xFF6A6A72)
+
+/**
+ * r226 (Shard only): the press glitch — a brief RGB split of the
+ * control's edge while pressed: the outline redrawn offset +2px in
+ * magenta and -2px in cyan. Press-only by construction (it reads
+ * the pressed state), never ambient, never while driving — a
+ * finger has to be down. The edge splits rather than the label:
+ * the label path carries a single-shadow TextStyle, so the edge
+ * is the split that reaches every control type, icon-only ones
+ * included. Outside Shard, or unpressed, a no-op.
+ */
+fun Modifier.shardPressGlitch(pressed: Boolean, shape: Shape): Modifier {
+    if (LocalGsTheme.current.id != GsThemes.Shard.id || !pressed) return this
+    val scheme = MaterialTheme.colorScheme
+    return this.drawWithContent {
+        drawContent()
+        val outline = shape.createOutline(size, layoutDirection, this)
+        translate(2f, 0f) { drawOutline(outline, scheme.secondary.copy(alpha = 0.7f), style = Stroke(width = 1.5.dp.toPx())) }
+        translate(-2f, 0f) { drawOutline(outline, scheme.primary.copy(alpha = 0.7f), style = Stroke(width = 1.5.dp.toPx())) }
     }
 }
 
@@ -1082,6 +1141,33 @@ fun Modifier.gsSurface(
         if (look.rimAlpha > 0f) {
             m = m.border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = look.rimAlpha), Color.Transparent)), drawShape)
         }
+        // r226 (Shard only): the chrome rim — a 2dp silver strip
+        // along the TOP edge only, light silver #C0C0C8 to dark
+        // silver #6A6A72, like a machined edge. Clipped to the
+        // shape outline so it never overhangs the chamfered
+        // corners. Pressed dims it with the rest of the face (the
+        // dim at the end of gsSurface overlays everything).
+        if (LocalGsTheme.current.id == GsThemes.Shard.id) {
+            m = m.drawWithContent {
+                drawContent()
+                val stripH = 2.dp.toPx()
+                val outline = drawShape.createOutline(size, layoutDirection, this)
+                val clip = Path().apply {
+                    when (outline) {
+                        is Outline.Generic -> addPath(outline.path)
+                        is Outline.Rounded -> addRoundRect(outline.roundRect)
+                        is Outline.Rectangle -> addRect(outline.rect)
+                    }
+                }
+                clipPath(clip) {
+                    drawRect(
+                        Brush.horizontalGradient(0f to ShardChromeLight, 1f to ShardChromeDark),
+                        topLeft = Offset.Zero,
+                        size = Size(size.width, stripH),
+                    )
+                }
+            }
+        }
         // Notscape FrostKit's hairline: a true 0.5dp outline at 0.45 alpha, on top of the
         // rim fade, so the edge reads on any background — not just on dark ones.
         if (look.hairlineAlpha > 0f) {
@@ -1461,12 +1547,13 @@ fun GsButton(
     // r222 (Cluster only): the legend colour + glow shadow for a
     // button whose face is invisible; outside Cluster this is just
     // c.content with no shadow, so nothing else changes.
-    val (legendColor, legendShadow) = clusterLegend(pressed, latched = false, enabled, c.content)
+    val (legendColor, legendShadow) = themedLegend(pressed, latched = false, enabled, c.content)
     Row(
         modifier
             .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
             .gsPressable(source, pressed, enabled, onClick, shape = shape)
             .gsSurface(c.container, shape, c.border, pressed)
+            .shardPressGlitch(pressed, shape)
             .padding(contentPadding),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
@@ -1538,11 +1625,12 @@ fun GsIconBox(
     val pressed = rememberPressed(source)
     // r222 (Cluster only): same glowing-legend rule as GsButton;
     // latched controls glow steel blue, brighter than at rest.
-    val (legendColor, legendShadow) = clusterLegend(pressed, latched, enabled, c.content)
+    val (legendColor, legendShadow) = themedLegend(pressed, latched, enabled, c.content)
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)
-            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha, latchedWashFallback),
+            .gsSurface(c.container, shape, c.border, pressed, latched, well, keepAlpha, latchedWashFallback)
+            .shardPressGlitch(pressed, shape),
         contentAlignment = Alignment.Center,
     ) {
         if (onLongClick != null && enabled) GsHoldMarker(gsLook().holdMarker, c.container, shape, source)

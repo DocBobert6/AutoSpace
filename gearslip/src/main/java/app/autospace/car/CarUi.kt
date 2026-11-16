@@ -65,6 +65,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import android.media.session.PlaybackState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -79,6 +85,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontFamily
 import app.autospace.R
 import app.autospace.car.theme.GsColors
 import app.autospace.car.theme.GsKit
@@ -214,6 +221,7 @@ fun CarUi(previewTheme: PreviewThemeOverride? = null) {
         ColorScheme.WORKSHOP -> workshopScheme(dark)
         ColorScheme.AURORA_FIELD -> auroraFieldScheme(dark)
         ColorScheme.DASHBOARD -> dashboardScheme(dark)
+        ColorScheme.NEON_RAIN -> neonRainScheme()
         ColorScheme.MATERIAL_YOU -> if (dark) {
             if (effDarkType == DarkModeType.OLED) oledDynamicDark(appContext) else dynamicDarkColorScheme(appContext)
         } else dynamicLightColorScheme(appContext)
@@ -1045,12 +1053,16 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
                 )
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    clockTime,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                )
+                if (LocalGsTheme.current.id == GsThemes.Shard.id) {
+                    ShardClockText(clockTime)
+                } else {
+                    Text(
+                        clockTime,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -1067,9 +1079,64 @@ private fun RailClockBlock(navigator: CarNavigator, meridian: Boolean) {
                         }
                     }
                 }
+                if (LocalGsTheme.current.id == GsThemes.Shard.id) {
+                    ShardStatusLine(dimColor)
+                }
             }
         }
     }
+}
+
+/**
+ * r226 (Shard only): the rail clock in monospace with a blinking
+ * colon at ~1 Hz — a hard blink (on half the cycle, off the other
+ * half), driven by an infinite transition, so it needs no ticker:
+ * rememberNow ticks once a minute and cannot drive it. The time
+ * string is split on ':'; a locale whose SHORT form uses another
+ * separator falls back to the plain single Text, exactly as every
+ * other style renders it.
+ */
+@Composable
+private fun ShardClockText(clockTime: String) {
+    val parts = clockTime.split(":")
+    if (parts.size != 2) {
+        Text(
+            clockTime,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        return
+    }
+    val phase by rememberInfiniteTransition(label = "shardColon").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(1_000, easing = LinearEasing), RepeatMode.Restart), label = "colonPhase",
+    )
+    val colonAlpha = if (phase < 0.5f) 1f else 0f
+    val style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Monospace)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(parts[0], style = style, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(":", style = style, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface.copy(alpha = colonAlpha), maxLines = 1)
+        Text(parts[1], style = style, fontWeight = FontWeight.SemiBold, maxLines = 1)
+    }
+}
+
+/**
+ * r226 (Shard only): the system status line under the rail clock —
+ * the active scheme's name and whether the car is moving, both
+ * real values (the scheme from the theme, the motion state from
+ * CarMotion). Nothing invented: if a value were unavailable the
+ * field would be omitted, not faked. The collect lives here, in
+ * the Shard-only branch, so other styles subscribe to nothing.
+ */
+@Composable
+private fun ShardStatusLine(dimColor: Color) {
+    val moving by CarMotion.movingFlow.collectAsState(initial = CarMotion.moving)
+    Text(
+        if (moving) "NEON RAIN · MOVING" else "NEON RAIN · PARKED",
+        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        color = dimColor,
+        maxLines = 1,
+    )
 }
 
 /**
@@ -2202,6 +2269,54 @@ internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSch
             scrim = Color.Black,
         )
     }
+}
+
+
+/**
+ * r226: the Neon Rain scheme — dark only, like Night, Pitlane, and
+ * Meridian (it takes no dark flag: the scheme forces dark through
+ * resolveDark, so the light branch never exists). Near-black field,
+ * neon-cyan primary, hot-magenta secondary and active colour, acid
+ * yellow tertiary used sparingly, signal-red error. No amber
+ * anywhere; no thin red line.
+ */
+internal fun neonRainScheme(): androidx.compose.material3.ColorScheme {
+    return androidx.compose.material3.darkColorScheme(
+        background = Color(NeonRainPalette.background),
+        onBackground = Color(NeonRainPalette.onSurface),
+        surface = Color(NeonRainPalette.background),
+        onSurface = Color(NeonRainPalette.onSurface),
+        surfaceVariant = Color(NeonRainPalette.surfaceVariant),
+        onSurfaceVariant = Color(NeonRainPalette.onSurfaceVariant),
+        primary = Color(NeonRainPalette.primary),
+        onPrimary = Color(NeonRainPalette.onPrimary),
+        primaryContainer = Color(NeonRainPalette.primaryContainer),
+        onPrimaryContainer = Color(NeonRainPalette.onPrimaryContainer),
+        secondary = Color(NeonRainPalette.secondary),
+        onSecondary = Color(NeonRainPalette.onSecondary),
+        secondaryContainer = Color(NeonRainPalette.secondaryContainer),
+        onSecondaryContainer = Color(NeonRainPalette.onSecondaryContainer),
+        tertiary = Color(NeonRainPalette.tertiary),
+        onTertiary = Color(NeonRainPalette.onTertiary),
+        tertiaryContainer = Color(NeonRainPalette.tertiaryContainer),
+        onTertiaryContainer = Color(NeonRainPalette.onTertiaryContainer),
+        error = Color(NeonRainPalette.error),
+        onError = Color(NeonRainPalette.onError),
+        outline = Color(NeonRainPalette.outline),
+        outlineVariant = Color(NeonRainPalette.outlineVariant),
+        surfaceTint = Color(NeonRainPalette.primary),
+        surfaceContainerLowest = Color(0xFF06060B),
+        surfaceContainerLow = Color(NeonRainPalette.background),
+        surfaceContainer = Color(0xFF12121C),
+        surfaceContainerHigh = Color(0xFF181824),
+        surfaceContainerHighest = Color(0xFF20202E),
+        surfaceDim = Color(NeonRainPalette.background),
+        surfaceBright = Color(0xFF1C1C28),
+        inverseSurface = Color(NeonRainPalette.onSurface),
+        inverseOnSurface = Color(NeonRainPalette.background),
+        inversePrimary = Color(NeonRainPalette.primary),
+        scrim = Color.Black,
+    )
 }
 
 private fun circuitScheme(dark: Boolean): androidx.compose.material3.ColorScheme {

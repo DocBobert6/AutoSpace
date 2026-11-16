@@ -22,9 +22,9 @@ class MeridianTest {
         // and r143 appends Aurora Field last (pinned by
         // AuroraTest), so Meridian sits third from last, and
         // nothing else moved.
-        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 4])
+        assertEquals(ColorScheme.MERIDIAN, colorSchemes[colorSchemes.size - 5])
         assertTrue(colorSchemes.contains(ColorScheme.MERIDIAN))
-        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 5])
+        assertEquals(ColorScheme.HORIZON, colorSchemes[colorSchemes.size - 6])
         // No legacy install migrates onto Meridian by accident.
         assertFalse(isLegacyThemeName("MERIDIAN"))
     }

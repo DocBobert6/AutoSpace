@@ -8,9 +8,9 @@ import org.junit.Test
 class ThemePairsTest {
 
     @Test
-    fun pairsAreExactlyTheThirteenApprovedInOrder() {
+    fun pairsAreExactlyTheFourteenApprovedInOrder() {
         assertEquals(
-            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon", "Dashboard + Cluster"),
+            listOf("Pitlane + Pitlane", "Verve + Verve", "Frost + Canvas", "Meridian + Meridian", "Heritage + Heirloom", "Canvas + Blueprint", "Circuit + Sector", "Nocturne + Silhouette", "Material You + Morph", "Workshop + Foundry", "Aurora Field + Aurora", "Horizon + Horizon", "Dashboard + Cluster", "Neon Rain + Shard"),
             themePairs.map { it.label },
         )
     }
@@ -118,6 +118,20 @@ class ThemePairsTest {
     }
 
     @Test
+    fun neonRainPairSetsShardStyleAndNeonRainScheme() {
+        // r226 appends Neon Rain + Shard last: the Shard style
+        // with the Neon Rain scheme.
+        val pair = themePairs[13]
+        assertEquals("shard", pair.styleId)
+        assertEquals(ColorScheme.NEON_RAIN, pair.scheme)
+        assertEquals("Neon Rain + Shard", pair.label)
+        // The pair does not move an existing install: every earlier
+        // pair is still in place, in order.
+        assertEquals("Pitlane + Pitlane", themePairs.first().label)
+        assertEquals("Dashboard + Cluster", themePairs[12].label)
+    }
+
+    @Test
     fun lookupFindsEachPair() {
         assertEquals(themePairs[0], themePairFor("pitlane", ColorScheme.PITLANE))
         assertEquals(themePairs[1], themePairFor("verve", ColorScheme.VERVE))
@@ -132,6 +146,7 @@ class ThemePairsTest {
         assertEquals(themePairs[10], themePairFor("aurora", ColorScheme.AURORA_FIELD))
         assertEquals(themePairs[11], themePairFor("horizon", ColorScheme.HORIZON))
         assertEquals(themePairs[12], themePairFor("cluster", ColorScheme.DASHBOARD))
+        assertEquals(themePairs[13], themePairFor("shard", ColorScheme.NEON_RAIN))
     }
 
     @Test

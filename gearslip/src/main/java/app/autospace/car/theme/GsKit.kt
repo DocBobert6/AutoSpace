@@ -7,7 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -33,6 +37,7 @@ import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.Shape
@@ -44,6 +49,7 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.luminance
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -390,6 +396,72 @@ fun Modifier.foundryCardGradient(containerColor: Color, enabled: Boolean = true)
     }
 }
 
+/**
+ * r226 (Shard only): the card frame — chrome rim, corner brackets,
+ * scanlines, and the neon reflection, drawn over the card.
+ * No-op under every other style. Applied at the same three call
+ * sites as the other card treatments (GsGroupedCard, GsPanelCard,
+ * GsSheetSurface) — rail/pill and frosted surfaces do not take it,
+ * so the floating media card keeps its pinned frosted read.
+ */
+@Composable
+fun Modifier.shardCardFrame(shape: Shape): Modifier {
+    if (LocalGsTheme.current.id != GsThemes.Shard.id) return this
+    val scheme = MaterialTheme.colorScheme
+    return this.drawWithContent {
+        drawContent()
+        val outline = shape.createOutline(size, layoutDirection, this)
+        val clip = Path().apply {
+            when (outline) {
+                is Outline.Generic -> addPath(outline.path)
+                is Outline.Rounded -> addRoundRect(outline.roundRect)
+                is Outline.Rectangle -> addRect(outline.rect)
+            }
+        }
+        // Chrome rim: a 2dp silver strip along the top edge only.
+        clipPath(clip) {
+            drawRect(
+                Brush.horizontalGradient(0f to ShardChromeLight, 1f to ShardChromeDark),
+                topLeft = Offset.Zero,
+                size = Size(size.width, 2.dp.toPx()),
+            )
+        }
+        // Corner brackets: L-shaped HUD marks at the four corners.
+        val arm = 12.dp.toPx()
+        val inset = 6.dp.toPx()
+        val stroke = 1.5.dp.toPx()
+        val bracket = scheme.primary.copy(alpha = 0.55f)
+        val w = size.width
+        val h = size.height
+        drawLine(bracket, Offset(inset, inset), Offset(inset + arm, inset), stroke)
+        drawLine(bracket, Offset(inset, inset), Offset(inset, inset + arm), stroke)
+        drawLine(bracket, Offset(w - inset - arm, inset), Offset(w - inset, inset), stroke)
+        drawLine(bracket, Offset(w - inset, inset), Offset(w - inset, inset + arm), stroke)
+        drawLine(bracket, Offset(inset, h - inset), Offset(inset + arm, h - inset), stroke)
+        drawLine(bracket, Offset(inset, h - inset - arm), Offset(inset, h - inset), stroke)
+        drawLine(bracket, Offset(w - inset - arm, h - inset), Offset(w - inset, h - inset), stroke)
+        drawLine(bracket, Offset(w - inset, h - inset - arm), Offset(w - inset, h - inset), stroke)
+        // Scanlines: 1px horizontal lines every 4dp, faint white.
+        var y = 0f
+        val step = 4.dp.toPx()
+        while (y < size.height) {
+            drawLine(Color.White.copy(alpha = 0.035f), Offset(0f, y), Offset(size.width, y), 1f)
+            y += step
+        }
+        // Neon reflection: a cyan-to-magenta gradient along the
+        // bottom edge, like neon in a wet street.
+        val reflH = 28.dp.toPx()
+        drawRect(
+            Brush.horizontalGradient(
+                0f to scheme.primary.copy(alpha = 0.07f),
+                1f to scheme.secondary.copy(alpha = 0.07f),
+            ),
+            topLeft = Offset(0f, size.height - reflH),
+            size = Size(size.width, reflH),
+        )
+    }
+}
+
 /** A grouped card in the kit's card material and radius. r29: the card
  * shape follows the r24 button-shape rule — squared under Pit Lane,
  * today's 20dp everywhere else — so dialog/sheet cards go rectangular
@@ -404,7 +476,7 @@ fun GsGroupedCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape).auroraCardRim(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape).auroraCardRim(cardShape).shardCardFrame(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = auroraCardColor(morphCardColor(GsKit.cardColor()))),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -432,7 +504,7 @@ fun GsPanelCard(
     val cardShape = cardShapeForLook(look, GsKit.CardShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Card(
-        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape).auroraCardRim(cardShape),
+        modifier = modifier.pitLanePanelBorder(cardShape).blueprintCardRing(cardShape).silhouetteCardHalo(cardShape).foundryCardRim(cardShape).auroraCardRim(cardShape).shardCardFrame(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = auroraCardColor(morphCardColor(MaterialTheme.colorScheme.surfaceContainerLow))),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -457,7 +529,7 @@ fun GsSheetSurface(
     val sheetShape = cardShapeForLook(look, GsKit.SheetShape)
     val panelTextured = look.weaveAlpha > 0f || look.rivets
     Surface(
-        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape).foundryCardRim(sheetShape).auroraCardRim(sheetShape),
+        modifier = modifier.pitLanePanelBorder(sheetShape).blueprintCardRing(sheetShape).silhouetteCardHalo(sheetShape).foundryCardRim(sheetShape).auroraCardRim(sheetShape).shardCardFrame(sheetShape),
         color = auroraCardColor(morphCardColor(GsKit.sheetColor())),
         shape = sheetShape,
         border = if (LocalOledDark.current && look.ringAlpha <= 0f) BorderStroke(0.5.dp, GsKit.hairline()) else null,
@@ -621,7 +693,11 @@ fun Modifier.pitLanePanelTexture(): Modifier {
     val look = gsLook()
     if (look.weaveAlpha <= 0f && !look.rivets) return this
     val dark = MaterialTheme.colorScheme.surface.luminance() <= 0.5f
-    val weave = if (dark) 0.08f else 0.06f
+    // r226: the weave follows the look — Pitlane carries it, Shard
+    // (rivets only) does not, so a Shard panel gets bolts without
+    // Pitlane's carbon weave. Pitlane is unchanged: its weaveAlpha
+    // is above zero, so it keeps exactly its old value.
+    val weave = if (look.weaveAlpha > 0f) (if (dark) 0.08f else 0.06f) else 0f
     val thread = if (dark) Color.White else Color.Black
     return this.drawWithCache {
         // r115: same zones as gsSurface, same tier table. The panel's
@@ -693,6 +769,21 @@ fun Modifier.pitLanePanelTexture(): Modifier {
     }
 }
 
+/** r226 (Shard only): the hex tag for a section header — the section name's hash as a 4-hex readout. Pure so it is unit-testable. */
+fun shardHexTag(text: String): String {
+    val hash = text.hashCode() and 0xFFFF
+    return "0x" + hash.toString(16).uppercase().padStart(4, '0')
+}
+
+/** r226 (Shard only): the barcode bar widths under a section header — 24 bars, widths 1..3 units, derived from the section name's hash so they never drift between renders. Pure so it is unit-testable. */
+fun shardBarcodeBars(text: String): List<Int> {
+    var seed = text.hashCode()
+    return List(24) {
+        seed = seed * 31 + 17
+        (seed ushr 16 and 0x3) % 3 + 1
+    }
+}
+
 /** r223 (Cluster only): the silver trim strip thickness — a slightly heavier warm-silver hairline. */
 val TrimDividerThickness = 2.dp
 
@@ -732,13 +823,43 @@ fun GsSectionHeader(text: String, modifier: Modifier = Modifier) {
                 Text(text, style = style)
             }
         } else {
-            Text(
-                text,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(top = if (trim) 10.dp else 0.dp, bottom = 4.dp)
-            )
+            // r226 (Shard only): the header is a terminal label —
+            // monospace, in the scheme primary (cyan), with the
+            // section's hex readout at the end. Every other style
+            // keeps the bold titleMedium header.
+            val shard = LocalGsTheme.current.id == GsThemes.Shard.id
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text,
+                    style = if (shard) MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace) else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (shard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f).padding(top = if (trim) 10.dp else 0.dp, bottom = 4.dp)
+                )
+                if (shard) {
+                    Text(
+                        shardHexTag(text),
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        if (LocalGsTheme.current.id == GsThemes.Shard.id) {
+            // r226 (Shard only): the circuit trace — a node and a
+            // line running from the header toward the card below —
+            // and the barcode strip, both deterministic from the
+            // section name, so they never drift between renders.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 6.dp)) {
+                Box(Modifier.size(4.dp).background(MaterialTheme.colorScheme.primary))
+                Box(Modifier.weight(0.4f).height(1.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(1.dp), modifier = Modifier.padding(bottom = 4.dp)) {
+                for (w in shardBarcodeBars(text)) {
+                    Box(Modifier.width((w * 2).dp).height(12.dp).background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)))
+                }
+            }
         }
     }
 }

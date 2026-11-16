@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            185, "0.5.0-beta.17",
+            listOf(
+                "A new Neon Rain theme, the most detailed yet: cut-corner Shard buttons with glowing cyan legends — magenta when one is on — scanlines, corner brackets, circuit traces, hex readouts, barcode strips, a system status line, a blinking clock colon, and LED-segment progress bars. Dark only. Pick it in Settings, under Pairs.",
+            ),
+        ),
+        Release(
             184, "0.5.0-beta.16",
             listOf(
                 "Dashboard, reworked once more: legends glow warm white now — the gauge numerals — with steel blue kept as the active colour: latched controls, the ring-glow, selected marks, and progress fills are blue. Red stays only in the redline cap and errors; amber stays out.",

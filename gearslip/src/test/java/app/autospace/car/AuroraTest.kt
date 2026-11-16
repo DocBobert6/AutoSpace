@@ -23,11 +23,11 @@ class AuroraTest {
         assertEquals("Aurora Field", ColorScheme.AURORA_FIELD.displayName)
         // r222 appends Dashboard last (pinned by DashboardTest),
         // so Aurora Field is second from last.
-        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 2])
+        assertEquals(ColorScheme.AURORA_FIELD, colorSchemes[colorSchemes.size - 3])
         assertTrue(colorSchemes.contains(ColorScheme.AURORA_FIELD))
         // r222 appends Dashboard last (pinned by DashboardTest),
         // so Workshop is third from last, and nothing else moved.
-        assertEquals(ColorScheme.WORKSHOP, colorSchemes[colorSchemes.size - 3])
+        assertEquals(ColorScheme.WORKSHOP, colorSchemes[colorSchemes.size - 4])
         // No legacy install migrates onto Aurora Field by accident.
         assertFalse(isLegacyThemeName("AURORA_FIELD"))
     }

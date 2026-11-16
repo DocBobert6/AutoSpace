@@ -58,6 +58,12 @@ const val GaugeTickHeightFraction = 0.3f
 /** r224: the redline cap — the last 8% of a Cluster bar. */
 const val RedlineCapFraction = 0.08f
 
+/** r226 (Shard only): the LED-meter segment count for progress bars — twelve discrete segments, like an equaliser meter. */
+const val ShardLedSegmentCount = 12
+
+/** r226 (Shard only): the segment boundary fractions for the LED-meter bars — eleven cuts at 1/12 intervals. Pure so it is unit-testable; the drawing itself is Shard-gated in [GsProgressBar] and covered by CI compile + the device check. */
+fun shardSegmentBoundaries(): List<Float> = (1 until ShardLedSegmentCount).map { it / ShardLedSegmentCount.toFloat() }
+
 /**
  * A capsule progress bar: a tinted track with a glossy fill set inside it, lighter along the
  * top and darker along the bottom. Below its own height the fill narrows into a smaller oval, so
@@ -96,7 +102,8 @@ fun GsProgressBar(
             .background(lerp(scheme.surfaceContainerHighest, barColor, 0.28f))
             .padding(inset)
             .then(
-                if (LocalGsTheme.current.id != GsThemes.Cluster.id) Modifier else Modifier.drawWithContent {
+                when (LocalGsTheme.current.id) {
+                    GsThemes.Cluster.id -> Modifier.drawWithContent {
                     drawContent()
                     // r223: gauge ticks along the bottom edge, over fill
                     // and track alike, like marks on the dial face.
@@ -116,6 +123,25 @@ fun GsProgressBar(
                         topLeft = Offset(size.width - capW, 0f),
                         size = Size(capW, size.height),
                     )
+                }
+                    GsThemes.Shard.id -> Modifier.drawWithContent {
+                        drawContent()
+                        // r226: the LED-meter segments — cuts at the
+                        // segment boundaries, in the page surface
+                        // colour, over fill and track alike, so the
+                        // bar reads as discrete lit segments.
+                        val gapW = 2.dp.toPx()
+                        val gapColor = scheme.surface
+                        for (f in shardSegmentBoundaries()) {
+                            val x = size.width * f
+                            drawRect(
+                                gapColor,
+                                topLeft = Offset(x - gapW / 2f, 0f),
+                                size = Size(gapW, size.height),
+                            )
+                        }
+                    }
+                    else -> Modifier
                 },
             ),
         contentAlignment = Alignment.CenterStart,

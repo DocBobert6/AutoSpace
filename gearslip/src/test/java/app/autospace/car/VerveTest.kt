@@ -32,7 +32,7 @@ class VerveTest {
         // r222 appends Dashboard last (pinned by DashboardTest);
         // Verve keeps its order before all five, and nothing
         // else moved.
-        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 6])
+        assertEquals(ColorScheme.VERVE, colorSchemes[colorSchemes.size - 7])
         assertTrue(colorSchemes.contains(ColorScheme.VERVE))
         // No legacy install migrates onto Verve by accident.
         assertFalse(isLegacyThemeName("VERVE"))
@@ -96,7 +96,7 @@ class VerveTest {
         // last, r143 appends Aurora last, and r222 appends
         // Cluster last (pinned by DashboardTest); Verve keeps its
         // order before all ten, and nothing else moved.
-        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 11])
+        assertEquals(GsThemes.Verve, GsThemes.builtIn[GsThemes.builtIn.size - 12])
         assertEquals("verve", GsThemes.byId("verve").id)
         val look = GsThemes.Verve.control
         assertEquals(24, look.corner.value.toInt())
