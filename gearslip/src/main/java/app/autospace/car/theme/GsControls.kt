@@ -385,32 +385,36 @@ private fun clusterLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, 
 }
 
 /**
- * r226 (Shard only): the legend colour and glow shadow — the same
+ * r227 (Shard only): the legend colour and glow shadow — the same
  * rule as Cluster (secondary when latched, primary otherwise),
- * which under Neon Rain reads cyan at rest and magenta when
- * latched: cyan is the calm default, magenta is what "on" looks
- * like. The contrast gate is the shared clusterLegendColor, so a
- * latched magenta that ever stopped reading would fall back to
- * onSurface instead of going dim. Outside Shard it returns the
- * button's own content colour with no shadow, exactly like
- * clusterLegend, so no other style changes at all.
+ * which under Neon Rain reads yellow at rest and cyan when
+ * latched: yellow is the calm default, cyan is what "on" looks
+ * like. The contrast gate is the shared clusterLegendColor, but
+ * it reads the accent against the control's OWN face, not the
+ * page background — a filled primary button is yellow on yellow
+ * at 1.00:1, so the legend falls back to the default content
+ * colour (near-black on a bright fill) instead of going
+ * invisible. On a dark face the accent still reads and stays.
+ * Outside Shard it returns the button's own content colour with
+ * no shadow, exactly like clusterLegend, so no other style
+ * changes at all.
  */
 @Composable
-private fun shardLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> {
+private fun shardLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color, container: Color): Pair<Color, Shadow?> {
     if (LocalGsTheme.current.id != GsThemes.Shard.id || !enabled) return defaultContent to null
     val scheme = MaterialTheme.colorScheme
     val accent = if (latched) scheme.secondary else scheme.primary
-    val legend = clusterLegendColor(scheme.background, accent, scheme.onSurface)
+    val legend = clusterLegendColor(container, accent, defaultContent)
     val glow = accent.copy(alpha = if (pressed || latched) 0.95f else 0.6f)
     return legend to Shadow(color = glow, blurRadius = if (pressed) 16f else 10f)
 }
 
-/** r226: the legend rule for the active style — Cluster's or Shard's, or the plain content colour. */
+/** r226: the legend rule for the active style — Cluster's or Shard's, or the plain content colour. r227: the container travels with it, so Shard can gate the legend against the control's own face. */
 @Composable
-private fun themedLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color): Pair<Color, Shadow?> =
+private fun themedLegend(pressed: Boolean, latched: Boolean, enabled: Boolean, defaultContent: Color, container: Color): Pair<Color, Shadow?> =
     when (LocalGsTheme.current.id) {
         GsThemes.Cluster.id -> clusterLegend(pressed, latched, enabled, defaultContent)
-        GsThemes.Shard.id -> shardLegend(pressed, latched, enabled, defaultContent)
+        GsThemes.Shard.id -> shardLegend(pressed, latched, enabled, defaultContent, container)
         else -> defaultContent to null
     }
 
@@ -480,7 +484,8 @@ internal val ShardChromeDark: Color = Color(0xFF6A6A72)
 /**
  * r226 (Shard only): the press glitch — a brief RGB split of the
  * control's edge while pressed: the outline redrawn offset +2px in
- * magenta and -2px in cyan. Press-only by construction (it reads
+ * cyan and -2px in yellow (r227: magenta is gone, so the split is
+ * the two theme accents). Press-only by construction (it reads
  * the pressed state), never ambient, never while driving — a
  * finger has to be down. The edge splits rather than the label:
  * the label path carries a single-shadow TextStyle, so the edge
@@ -1522,11 +1527,11 @@ private fun Modifier.gsPressable(
         )
 }
 
-private fun GsColors.disabled(enabled: Boolean, onSurface: Color): GsColors =
+private fun GsColors.disabled(enabled: Boolean, onSurface: Color, contentAlpha: Float = 0.38f): GsColors =
     if (enabled) this
     else GsColors(
         container = if (container.alpha > 0f) onSurface.copy(alpha = 0.12f) else container,
-        content = onSurface.copy(alpha = 0.38f),
+        content = onSurface.copy(alpha = contentAlpha),
         border = if (border.isSpecified) onSurface.copy(alpha = 0.12f) else border,
     )
 
@@ -1548,7 +1553,7 @@ fun GsButton(
     // r222 (Cluster only): the legend colour + glow shadow for a
     // button whose face is invisible; outside Cluster this is just
     // c.content with no shadow, so nothing else changes.
-    val (legendColor, legendShadow) = themedLegend(pressed, latched = false, enabled, c.content)
+    val (legendColor, legendShadow) = themedLegend(pressed, latched = false, enabled, c.content, c.container)
     Row(
         modifier
             .defaultMinSize(minWidth = 64.dp, minHeight = 48.dp)
@@ -1589,6 +1594,15 @@ fun GsIconButton(
     }
 }
 
+/**
+ * r227 (Appearance audit): the disabled content alpha for choice
+ * chips — 0.60, not the usual 0.38. At 0.38 the chip labels read
+ * 3.34:1 on the chip face (grey on grey, unreadable); at 0.60
+ * they read 6.41:1 and stay legible while still visibly dimmed.
+ * The 0.38 default stands everywhere else.
+ */
+const val ChoiceRowDisabledContentAlpha = 0.60f
+
 /** [GsIconButton] with arbitrary content, for glyphs drawn in code or app icons. */
 @Composable
 fun GsIconBox(
@@ -1605,9 +1619,11 @@ fun GsIconBox(
     well: Boolean = false,
     /** r46: keep the container's alpha exactly (frosted fills pin theirs — see [scaledContainerAlpha]). */
     keepAlpha: Boolean = false,
+    /** r227: the disabled text alpha — 0.38 everywhere except choice rows, which pass [ChoiceRowDisabledContentAlpha]. */
+    disabledContentAlpha: Float = 0.38f,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface)
+    val c = colors.disabled(enabled, MaterialTheme.colorScheme.onSurface, disabledContentAlpha)
     val look = gsLook()
     // r114 (Morph only): the latched contrast guard — before
     // a latched control reaches gsSurface, check its actual
@@ -1626,7 +1642,7 @@ fun GsIconBox(
     val pressed = rememberPressed(source)
     // r222 (Cluster only): same glowing-legend rule as GsButton;
     // latched controls glow steel blue, brighter than at rest.
-    val (legendColor, legendShadow) = themedLegend(pressed, latched, enabled, c.content)
+    val (legendColor, legendShadow) = themedLegend(pressed, latched, enabled, c.content, c.container)
     Box(
         modifier
             .gsPressable(source, pressed, enabled, onClick, onLongClick, shape = shape)

@@ -16,6 +16,12 @@ object Changelog {
 
     val releases = listOf(
         Release(
+            186, "0.5.0-beta.18",
+            listOf(
+                "Neon Rain + Shard, reworked: acid yellow is the primary now, neon cyan is the active colour, signal red is the accent, and the settings sliders are thin angular tracks with a sharp thumb and tick marks. The Appearance screen is fixed too: the first row no longer hides under the header, the Tile size number matches its slider, buttons and pickers read clearly, and the dock-position picker greys out while docking is off. Dark only. Pick it in Settings, under Pairs.",
+            ),
+        ),
+        Release(
             185, "0.5.0-beta.17",
             listOf(
                 "A new Neon Rain theme, the most detailed yet: cut-corner Shard buttons with glowing cyan legends — magenta when one is on — scanlines, corner brackets, circuit traces, hex readouts, barcode strips, a system status line, a blinking clock colon, and LED-segment progress bars. Dark only. Pick it in Settings, under Pairs.",

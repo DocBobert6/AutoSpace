@@ -449,8 +449,10 @@ fun Modifier.shardCardFrame(shape: Shape): Modifier {
             drawLine(Color.White.copy(alpha = 0.035f), Offset(0f, y), Offset(size.width, y), 1f)
             y += step
         }
-        // Neon reflection: a cyan-to-magenta gradient along the
-        // bottom edge, like neon in a wet street.
+        // Neon reflection: a yellow-to-cyan gradient along the
+        // bottom edge, like neon in a wet street. (r227: the
+        // gradient is role-driven — primary to secondary — so the
+        // role swap re-pins it with no code change.)
         val reflH = 28.dp.toPx()
         drawRect(
             Brush.horizontalGradient(

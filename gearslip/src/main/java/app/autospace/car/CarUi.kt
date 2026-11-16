@@ -2276,9 +2276,9 @@ internal fun dashboardScheme(dark: Boolean): androidx.compose.material3.ColorSch
  * r226: the Neon Rain scheme — dark only, like Night, Pitlane, and
  * Meridian (it takes no dark flag: the scheme forces dark through
  * resolveDark, so the light branch never exists). Near-black field,
- * neon-cyan primary, hot-magenta secondary and active colour, acid
- * yellow tertiary used sparingly, signal-red error. No amber
- * anywhere; no thin red line.
+ * acid-yellow primary, neon-cyan secondary and active colour,
+ * signal-red tertiary and error (r227 role swap). No magenta
+ * anywhere, no amber anywhere; no thin red line.
  */
 internal fun neonRainScheme(): androidx.compose.material3.ColorScheme {
     return androidx.compose.material3.darkColorScheme(

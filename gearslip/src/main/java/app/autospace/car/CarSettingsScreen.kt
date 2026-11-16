@@ -93,12 +93,23 @@ fun CarSettingsScreen() {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
+        // r227 (Appearance audit): one scroll state for the whole
+        // settings screen, shared by the menu and every category
+        // page — so a menu scroll used to carry into the page and
+        // clip its first row under the header. Opening a page
+        // resets to the top; the menu keeps its own position on
+        // the way back. The 8dp top pad keeps the first row off
+        // the header even at scroll zero.
+        val settingsScroll = rememberScrollState()
+        androidx.compose.runtime.LaunchedEffect(page) {
+            if (page != null) settingsScroll.scrollTo(0)
+        }
         ScreenHeader(page?.title ?: "Settings", Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
         Column(
             Modifier
                 .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 24.dp, end = 24.dp, top = 0.dp, bottom = 96.dp),
+                .verticalScroll(settingsScroll)
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 96.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             if (page == null) {
@@ -228,6 +239,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
                 GsSeekBar(
                     fraction = ((scale - 0.5f) / 1.0f).coerceIn(0f, 1f),
                     onSeek = { CarSettings.setScale(0.5f + it * 1.0f) },
+                    angular = true,
                 )
                 Text(
                     "Scales the whole car UI, 0–100; 50 is the ship default. 0 is the smallest size, not zero size — nothing vanishes at 0.",
@@ -255,6 +267,7 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
                 GsSeekBar(
                     fraction = (iconSize),
                     onSeek = { CarSettings.setIconSize(it) },
+                    angular = true,
                 )
                 Text(
                     "Icons only; tiles stay large and tappable even at 0%, when the icon is hidden and only the label shows.",
@@ -266,7 +279,13 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     }
 
     // Tile size (Phase 7): 50%-150%, default 100% = the Phase 6 large tile
-    // size. The tile graphic shrinks with it, but the tap area never drops
+    // size. r227 (Appearance audit): the pill is the slider position
+    // (0-100 along the 50-150% range), exactly like UI size — the old
+    // pill printed the raw factor as a percent (95% at tileSize 0.95)
+    // while the thumb sat at 45% of the track, so the two disagreed.
+    // The thumb was placed right for a 50-150 range; the pill printed
+    // the wrong number. The tile graphic shrinks with it, but the tap
+    // area never drops
     // below a car target — launcher tiles floor at 88dp high, pinned tiles
     // at 72dp — and the grid reflows with size. Applies to launcher tiles
     // and to screen-sharing (PhoneApps) tiles.
@@ -276,13 +295,14 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             androidx.compose.foundation.layout.Box(
                 Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, gsButtonShape(androidx.compose.foundation.shape.RoundedCornerShape(50)))
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-            ) { Text("${(tileSize * 100).roundToInt()}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
+            ) { Text("${((tileSize - 0.5f) * 100f).roundToInt().coerceIn(0, 100)}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
         }
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GsSeekBar(
                     fraction = (tileSize - 0.5f),
                     onSeek = { CarSettings.setTileSize(0.5f + it) },
+                    angular = true,
                 )
                 Text(
                     "Tiles and their grid, 50%–150%; icons keep their own size above.",
@@ -359,7 +379,10 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
             "with a warm-white primary, steel-blue active accents, and " +
             "signal-red accents in its dark variant, a dark-grey field " +
             "with near-black buttons in its light variant. Red lives " +
-            "only in the redline cap and errors. Canvas, Circuit, " +
+            "only in the redline cap and errors. Neon Rain is the " +
+            "cut-corner neon scheme: near-black with an acid-yellow " +
+            "primary, neon-cyan active accents, and signal-red " +
+            "accents, always dark. Canvas, Circuit, " +
             "Dashboard, Heritage, " +
             "Verve, Horizon, Workshop, and Aurora Field follow the mode " +
             "control; Auto night still " +
@@ -428,8 +451,13 @@ private fun AppearancePage(keyboardSlot: WebPageKeyboardSlot) {
     ChoiceRow(
         "Media card dock position",
         listOf(MediaCardDock.START to "Start", MediaCardDock.CENTER to "Center", MediaCardDock.END to "End"),
-        mediaCardDock,
+        // r227 (Appearance audit): while docking is off no chip
+        // shows as selected — the stored position returns when
+        // docking turns back on — and the row renders dimmed but
+        // still legible (ChoiceRowDisabledContentAlpha).
+        if (dockEnabled) mediaCardDock else null,
         enabled = dockEnabled,
+        disabledContentAlpha = ChoiceRowDisabledContentAlpha,
     ) { CarSettings.setMediaCardDock(it) }
     Text(
         "Start steps aside to End while the trip bar shows, so the card never covers the ETA pill.",
@@ -611,7 +639,7 @@ private fun IconPackSection(keyboardSlot: WebPageKeyboardSlot) {
         ) {
             KeyboardFieldText(
                 manualInput,
-                "com.example.pack — tap to type a package name",
+                "Type a package name",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 style = MaterialTheme.typography.bodyLarge,
                 showCaret = editing,
@@ -1362,7 +1390,7 @@ private fun VoiceEngineRow(
 }
 
 @Composable
-private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T?, enabled: Boolean = true, onSelect: (T) -> Unit) {
+private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T?, enabled: Boolean = true, disabledContentAlpha: Float = 0.38f, onSelect: (T) -> Unit) {
     // Phase 7: every choice row is its own grouped card (surfaceBright on the
     // page's tinted backdrop), so settings read as Notscape's grouped lists.
     // Phase 8 audit fix: the section header sits ABOVE the card in a
@@ -1394,6 +1422,7 @@ private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selecte
                             GsIconBox(
                                 onClick = { onSelect(value) },
                                 enabled = enabled,
+                                disabledContentAlpha = disabledContentAlpha,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(64.dp),

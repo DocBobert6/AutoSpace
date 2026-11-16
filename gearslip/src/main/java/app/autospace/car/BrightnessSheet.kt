@@ -102,7 +102,7 @@ fun BrightnessSheet(contentPadding: PaddingValues = PaddingValues()) {
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                GsSeekBar(fraction = brightness, onSeek = CarSettings::setBrightness)
+                GsSeekBar(fraction = brightness, onSeek = CarSettings::setBrightness, angular = true)
                 Text(
                     "${(brightness * 100).roundToInt()}% — 100% is the head unit's own maximum; " +
                         "this slider dims only and cannot brighten past the backlight.",

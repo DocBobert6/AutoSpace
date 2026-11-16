@@ -203,7 +203,7 @@ fun QuickTilesSheet(contentPadding: PaddingValues = PaddingValues(), onOpenSetti
                     }
                 }
                 Text("Brightness", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                GsSeekBar(fraction = brightness, onSeek = CarSettings::setBrightness)
+                GsSeekBar(fraction = brightness, onSeek = CarSettings::setBrightness, angular = true)
                 Text(
                     "${(brightness * 100).roundToInt()}% — dims only the car screen, never past the head unit's backlight.",
                     style = MaterialTheme.typography.bodyMedium,

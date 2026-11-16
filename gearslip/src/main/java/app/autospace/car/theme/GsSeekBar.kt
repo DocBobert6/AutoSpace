@@ -64,6 +64,13 @@ const val ShardLedSegmentCount = 12
 /** r226 (Shard only): the segment boundary fractions for the LED-meter bars — eleven cuts at 1/12 intervals. Pure so it is unit-testable; the drawing itself is Shard-gated in [GsProgressBar] and covered by CI compile + the device check. */
 fun shardSegmentBoundaries(): List<Float> = (1 until ShardLedSegmentCount).map { it / ShardLedSegmentCount.toFloat() }
 
+/** r227 (Shard only): the thin angular settings-slider track — 8dp, sharp corners, no capsule, no gloss. The LED-segmented bar stays for seek and buffering ([GsProgressBar]'s Shard branch is untouched). */
+val ShardAngularTrackHeight: Dp = 8.dp
+/** r227 (Shard only): the sharp thumb on the angular track — a chamfered square, the theme's cut-corner language at thumb scale. */
+val ShardAngularThumbSize: Dp = 28.dp
+/** r227 (Shard only): the chamfer cut on the angular thumb. */
+val ShardAngularThumbCut: Dp = 4.dp
+
 /**
  * A capsule progress bar: a tinted track with a glossy fill set inside it, lighter along the
  * top and darker along the bottom. Below its own height the fill narrows into a smaller oval, so
@@ -237,6 +244,8 @@ fun GsSeekBar(
     /** A car-sized thumb; false keeps the old thumb-less bar (unused by the player now). */
     showThumb: Boolean = true,
     trackHeight: Dp = 28.dp,
+    /** r227: the thin angular Shard track (settings sliders) instead of the LED-segmented bar; media seek keeps the default. */
+    angular: Boolean = false,
 ) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     // A taller touch area than the bar itself, so it's easy to hit on a car screen.
@@ -257,19 +266,54 @@ fun GsSeekBar(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        GsProgressBar(dragging ?: fraction, active = dragging != null, height = trackHeight)
-        if (showThumb) {
+        if (LocalGsTheme.current.id == GsThemes.Shard.id && angular) {
+            // r227: the thin angular track — a sharp 8dp bar with
+            // tick marks at 10% intervals and a chamfered-square
+            // thumb. No capsule, no gloss, no LED segments. The
+            // touch area stays the full 48dp box.
             val shown = (dragging ?: fraction).coerceIn(0f, 1f)
-            val thumb = 36.dp
-            Box(
-                Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = (maxWidth - thumb) * shown)
-                    .size(thumb)
-                    .clip(CircleShape)
-                    .background(clusterOnAccent())
-                    .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
-            )
+            val scheme = MaterialTheme.colorScheme
+            val barColor = clusterOnAccent()
+            val trackColor = lerp(scheme.surfaceContainerHighest, barColor, 0.28f)
+            Canvas(
+                Modifier.fillMaxWidth().height(ShardAngularTrackHeight),
+            ) {
+                drawRect(trackColor, size = size)
+                if (shown > 0f) drawRect(barColor, topLeft = Offset.Zero, size = Size(size.width * shown, size.height))
+                val tickColor = scheme.outline.copy(alpha = 0.55f)
+                val tickW = 1.dp.toPx()
+                val over = 2.dp.toPx()
+                for (f in gaugeTickFractions()) {
+                    val x = size.width * f
+                    drawLine(tickColor, Offset(x, -over), Offset(x, size.height + over), tickW)
+                }
+            }
+            val thumb = ShardAngularThumbSize
+            if (showThumb) {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = (maxWidth - thumb) * shown)
+                        .size(thumb)
+                        .background(barColor, ChamferShape(ShardAngularThumbCut))
+                        .border(2.dp, MaterialTheme.colorScheme.surface, ChamferShape(ShardAngularThumbCut)),
+                )
+            }
+        } else {
+            GsProgressBar(dragging ?: fraction, active = dragging != null, height = trackHeight)
+            if (showThumb) {
+                val shown = (dragging ?: fraction).coerceIn(0f, 1f)
+                val thumb = 36.dp
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = (maxWidth - thumb) * shown)
+                        .size(thumb)
+                        .clip(CircleShape)
+                        .background(clusterOnAccent())
+                        .border(2.dp, MaterialTheme.colorScheme.surface, CircleShape),
+                )
+            }
         }
     }
 }

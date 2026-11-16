@@ -1,13 +1,13 @@
-AutoSpace 0.5.0-beta.16 is the sixteenth public beta — a prerelease, on the beta line.
+AutoSpace 0.5.0-beta.18 is the eighteenth public beta — a prerelease, on the beta line.
 
 ## New features
-- Dashboard, reworked once more: legends glow warm white now — the gauge numerals — with steel blue kept as the active colour: latched controls, the ring-glow, selected marks, and progress fills are blue. Red stays only in the redline cap and errors; amber stays out. Pick it in Settings, under Pairs.
+- Neon Rain + Shard, reworked: acid yellow is the primary now, neon cyan is the active colour, signal red is the accent, and the settings sliders are thin angular tracks with a sharp thumb and tick marks. Cut corners, scanlines, brackets, and the chrome rim stay. Pick it in Settings, under Pairs.
 
 ## Improvements
 - No improvements in this release.
 
 ## Bug fixes
-- No bug fixes in this release.
+- Various bug fixes and stability improvements.
 
 ## Maintenance
 - No maintenance changes in this release.

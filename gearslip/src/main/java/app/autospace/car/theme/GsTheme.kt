@@ -1316,7 +1316,7 @@ object GsThemes {
      * No light variant: the style is dark-only by design, like
      * Meridian and Silhouette — on a light scheme it keeps its
      * flat dark read while the neon simply does not glow. The
-     * legend rule (cyan at rest, magenta latched) lives in
+     * legend rule (yellow at rest, cyan latched) lives in
      * GsControls (shardLegend), because a ControlLook carries no
      * text colour or glow. Pressed dims 0.12 and scales 0.95;
      * the hold marker is DOT, like Cluster and Ink. */
