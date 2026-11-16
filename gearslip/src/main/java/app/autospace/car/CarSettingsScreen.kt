@@ -1134,7 +1134,7 @@ private fun VoiceSettings() {
                 }
             }
         }
-        GsSectionHeader("Kokoro voice", detail = when (kokoroState) { is State.Ready -> "READY"; is State.Downloading -> "DL ${kokoroState.percent}%"; is State.Failed -> "FAILED"; is State.Missing -> "MISSING" })
+        GsSectionHeader("Kokoro voice", detail = when (val state = kokoroState) { is State.Ready -> "READY"; is State.Downloading -> "DL ${state.percent}%"; is State.Failed -> "FAILED"; is State.Missing -> "MISSING" })
         GsGroupedCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(

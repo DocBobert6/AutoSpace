@@ -768,8 +768,8 @@ private fun BookRow(
     caption: String?,
     leading: @Composable RowScope.() -> Unit = {},
     trailing: @Composable RowScope.() -> Unit = {},
-    onClick: () -> Unit,
     tone: GsTone = GsTone.Neutral,
+    onClick: () -> Unit,
 ) {
     Surface(
         color = if (tone == GsTone.Danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceContainerHigh,
